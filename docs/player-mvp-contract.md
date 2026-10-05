@@ -219,17 +219,20 @@ Toda tela segue o **horário do ponto** (não existe horário por tela).
   `fim: "24:00"` = até o fim do dia; `fim` menor que `inicio` cruza a
   meia-noite, e a madrugada pertence à faixa do dia em que começou.
 - ponto sem horário cadastrado = aberto 24 h (todos os dias `00:00`–`24:00`).
-- **ponto móvel** (migrations 112 a 114 — contrato do backend; o Player não
-  muda): o móvel não tem base. Enquanto está ALOCADO (hospedagem ativa ou
-  evento em andamento), `operacao` traz o **horário de funcionamento da
-  alocação**, definido pelo Admin naquele agendamento (formato de sempre;
-  "24 h" só quando escolhido). Sem alocação, a config vem como ponto sem
-  horário (24 h) e a **playlist é só institucional** (itens
-  `institucional: true`, `contabiliza: false`, sem anunciante) — o
-  equipamento não é inventário. Iniciar e encerrar uma hospedagem ou um
-  evento sobem a `configVersion` das telas do ponto. Nada muda no formato
-  nem nos campos: o Player não sabe que o ponto é móvel. Nenhum campo novo
-  foi adicionado à resposta.
+- **tela da rede móvel** (migrations 112 a 115 — contrato do backend; o
+  Player não muda): o "ponto móvel" é a REDE MÓVEL de uma cidade, com N
+  telas, e a config é POR TELA. Enquanto a TELA está ALOCADA (hospedagem
+  ativa dela ou evento em andamento com ela), `operacao` traz o horário da
+  alocação — "operar durante todo o período" (sem grade: 24 h dentro do
+  período) por padrão, ou a grade que o Admin definiu (formato de sempre,
+  com feriados). Sem alocação, a config vem como ponto sem horário (24 h) e
+  a **playlist é só institucional** (itens `institucional: true`,
+  `contabiliza: false`, sem anunciante) — a tela não é inventário. A tela
+  alocada no meio de uma hora só recebe campanha a partir da hora
+  seguinte (o pool da hora — `docs/funcional.md`, RN-71b); até lá, só
+  institucional. Iniciar e encerrar uma hospedagem ou um evento sobem a
+  `configVersion` SÓ das telas envolvidas. Nada muda no formato nem nos
+  campos: o Player não sabe que a tela é móvel. Nenhum campo novo.
 - `feriados`: data (`AAAA-MM-DD`) → faixas daquele dia. **Substitui** o dia
   da semana, inclusive a madrugada que viria da véspera. Feriados nacionais
   do ano corrente e dos dois seguintes; `{}` = sem regra especial.
@@ -387,8 +390,9 @@ resto é processado.
 
 ## 8.5 Tempo operacional (ponto móvel) — `POST /player/:dispositivoId/operacao`
 
-Migration 113 (02/10/2026). Só a tela de **ponto móvel** mede tempo
-operacional — é a régua do benefício da hospedagem temporária. Duas fontes,
+Migration 113 (02/10/2026). Só a tela de **rede móvel** mede tempo
+operacional — é a régua do benefício da hospedagem temporária, que soma o
+tempo DA TELA hospedada (migration 115: `dispositivo_id`). Duas fontes,
 somadas por UNIÃO no servidor (o mesmo minuto conta uma vez):
 
 - **Online:** o heartbeat (§5) com `estado` `PLAYING` ou `IDLE` estende o

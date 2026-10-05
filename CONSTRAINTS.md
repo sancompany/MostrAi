@@ -157,13 +157,17 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
 - **Comissão de vendedor recorrente pode caracterizar representação comercial
   (Lei 4.886/65).** Não é limite de software; é limite de operação. O contrato
   com o vendedor é decisão do dono e está fora deste repositório.
-- **Ponto móvel: o "local atual" é administrativo, não posição real**
-  (02/10/2026, RN-71; sem base desde a migration 114). Vem da hospedagem ou
-  do evento que o Admin marcou como em andamento; sem nenhum dos dois o
-  móvel está "Sem alocação" e fora do inventário — nunca de GPS, e a tela
-  não manda onde está. Se o Admin esquecer de iniciar uma alocação, o
-  móvel fica fora do inventário até alguém corrigir; o fim é automático
-  (o sistema encerra no fim previsto). O
+- **Rede móvel: o lugar de cada tela é administrativo, não posição real**
+  (02/10/2026, RN-71; rede da cidade com N telas desde a migration 115).
+  Vem da hospedagem ou do evento que o Admin marcou como em andamento PARA
+  AQUELA TELA; sem nenhum dos dois a tela está sem alocação e fora do
+  inventário — nunca de GPS, e a tela não manda onde está. Se o Admin
+  esquecer de iniciar uma alocação, a tela fica fora do inventário até
+  alguém corrigir; o fim é automático (o sistema encerra no fim previsto).
+  A tela alocada no meio de uma hora só recebe campanha a partir da hora
+  seguinte (pool da hora, RN-71b) — limite deliberado para a rede nunca
+  valer mais de uma posição. O termo de hospedagem é FÍSICO (papel): o
+  sistema só registra Pendente/Assinado; não é plataforma de assinatura. O
   **público estimado** é o número que a organização do evento informou:
   aparece como "~N pessoas", nunca entra no POP, no saldo nem em promessa
   de audiência. limite: GPS e audiência medida estão nas próximas versões

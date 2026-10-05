@@ -21,7 +21,7 @@
 //   · o cupom de indicação é por CONTA — criado só se ela ainda não tem;
 //   · candidatura gera SEMPRE ponto FIXO (V2 do ponto móvel, 02/10/2026): o
 //     móvel é um equipamento da Mostraí e nasce só pelo Admin, em Rede →
-//     Pontos móveis (src/pontos/movel.js#criarPontoMovel).
+//     Redes móveis (src/pontos/movel.js#criarRedeMovel).
 const pool = require('../db/pool');
 const pontosRepo = require('./repository');
 const categoriasRepo = require('../categorias/repository');

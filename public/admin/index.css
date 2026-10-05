@@ -4212,12 +4212,27 @@ button.pend-bloco:focus-visible {
 .modal-form fieldset.campo-grupo { border: 0; padding: 0; margin: 0 0 8px; }
 .modal-form fieldset.campo-grupo legend { font-weight: 600; font-size: 0.9rem; margin-bottom: 4px; }
 .check-linha { display: flex; gap: 8px; align-items: center; font-size: 0.9rem; margin: 2px 0; }
-.termo-texto { white-space: pre-wrap; max-height: 40vh; overflow: auto; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.85rem; margin-top: 6px; }
 
-/* Rede → Pontos móveis: AGORA, PRÓXIMO, tela e conexão em linhas próprias. */
+/* Rede → Pontos móveis (a central das redes): cada rede com o resumo das
+   telas, AGORA e PRÓXIMO em linhas próprias e "Abrir rede" ao lado. */
 .lista-moveis { display: grid; gap: 8px; }
-.movel-card-corpo { display: grid; gap: 2px; min-width: 0; }
+.movel-card { align-items: center; }
+.movel-card-corpo { display: grid; gap: 2px; min-width: 0; flex: 1; }
 .movel-card-corpo .item-meta { display: block; overflow-wrap: anywhere; }
+
+/* Ficha da rede móvel: título em caixa alta, resumo das telas, a operação
+   de agora e a alocação de cada tela na lista. */
+.rede-titulo { text-transform: uppercase; letter-spacing: 0.02em; }
+.rede-movel-resumo { margin: var(--e-3) 0 0; font-size: 0.9rem; }
+.lista-operacao-rede { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 0.9rem; }
+.lista-operacao-rede .dado-sub { display: inline; margin-left: 6px; }
+.tela-linha:has(.tela-linha-alocacao) { grid-template-columns: minmax(84px, auto) minmax(0, 1fr) minmax(0, 1.2fr) auto; }
+.tela-linha-alocacao { font-size: 0.84rem; min-width: 0; overflow-wrap: anywhere; }
+.tela-linha-alocacao .dado-sub { display: block; }
+@media (max-width: 760px) {
+  .tela-linha:has(.tela-linha-alocacao) { grid-template-columns: minmax(0, 1fr) auto; }
+  .tela-linha-alocacao { grid-column: 1 / -1; }
+}
 
 /* Upload de foto estilizado (Criar ponto móvel): o <input type="file"> real
    fica em .u-sr e o <label> é o botão; nada do controle nativo aparece. */

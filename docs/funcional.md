@@ -272,36 +272,47 @@ Escrito por grupo, porque o padrão se repete.
   todos os dias"; **Excluir ponto** no pé da ficha: sai com as telas, e
   ponto com histórico — exibição, crédito, repasse, Plano Básico — recusa e
   pede pra deixar as telas Inativas) e as telas em linhas (`M-0235` · situação · Abrir ·
-  Excluir); **ponto móvel** (RN-71/RN-72): aba **Rede › Pontos móveis** com
-  a lista dos móveis (foto, tela com conexão e operação, **AGORA** — "Sem
-  alocação", "Hospedado · X até …" ou "Em evento · X até …" — e
-  **PRÓXIMO** — o compromisso seguinte ou "Nenhum compromisso agendado"),
-  [Criar ponto móvel] (só nome, foto e nota — a Tela 1 nasce junto, sem
-  alocação), os **Interesses em hospedar** (conta, direito ativo hoje e de
-  onde vem, contato, local escolhido, ramo, observação, histórico da conta;
-  [Em contato], [Aprovar], [Agendar hospedagem], [Recusar], [Nota]), o card
-  **BENEFÍCIO POR HOSPEDAGEM** (percentual, "Com 20%: 30 h de operação
-  válida geram 6 h de mídia", [Alterar percentual], histórico) e o **Termo
-  de hospedagem**; na ficha do ponto: selo "Ponto móvel", **Equipamento**
-  (nome, número, proprietário "Mostraí", sem benefício, horário = o da
-  alocação, [Trocar foto do equipamento]), **Situação atual** (agora,
-  próximo, tela, se é inventário), [Cadastrar evento] (início e fim com
-  hora, horário de funcionamento, contexto de concorrência),
-  [Agendar hospedagem] (móvel → conta anfitriã → local e endereço → início e
-  fim com hora → horário de funcionamento — "Aberto 24 horas" só explícito →
-  ramo → observação → "Esta hospedagem ficará vinculada a 20%" → confirmar),
-  a **Agenda** única — hospedagem com [Iniciar (a tela chegou)] /
-  [Alterar período e horário] / [Cancelar] ou [Encerrar hospedagem] /
-  [Prorrogar], tempo válido e benefício (estimado enquanto ativa); evento
-  com [Iniciar] / [Encerrar evento] / [Cancelar] — e as seções
-  **Hospedagens** e **Eventos** encerrados (encerramento automático
-  marcado); sem bloco de endereço nem de base (o histórico de bases do
-  modelo antigo só aparece se existir); a aprovação de candidatura não pergunta tipo (sempre
+  Excluir); **Mostraí Móvel — a rede móvel da cidade** (RN-71/RN-72): aba
+  **Rede › Pontos móveis** é a CENTRAL das redes — **Redes móveis** (um card
+  compacto por cidade: foto pequena, "N telas · X em operação · Y agendadas ·
+  Z disponíveis", **AGORA** por tela e **PRÓXIMO** compromisso, [Abrir rede];
+  [+ Nova rede móvel] com Cidade*, UF*, nome opcional — "Mostraí Móvel —
+  {Cidade}" —, **Foto/capa da rede móvel** e nota; nenhuma tela nasce junto),
+  **Próximos compromissos** (de todas as redes, com as telas), **Interesses
+  em hospedar** (conta, direito ativo hoje e de onde vem, contato, local,
+  observação, histórico; [Em contato], [Aprovar], [Agendar hospedagem] — que
+  abre a nova hospedagem com conta, local, endereço e categoria preenchidos —,
+  [Recusar], [Nota]) e **Configuração do benefício** ("Benefício padrão de
+  hospedagem: 20% [Alterar]", "Ver histórico"); na ficha da rede: cabeçalho
+  "MOSTRAÍ MÓVEL — MATÃO/SP" com os selos REDE ITINERANTE e Ativa, o resumo
+  "N telas · X em operação agora · Y com compromisso futuro · Z disponíveis",
+  **Disponível para anunciantes: Sim** (1 posição do plano, com qualquer
+  número de telas), **Telas comerciais ativas agora: X de N**, [+ Adicionar
+  tela], [+ Novo evento], [+ Nova hospedagem], [Editar rede], [Trocar
+  foto/capa], [Excluir rede]; **TELAS** (código, situação do Player, a
+  alocação de agora ou o próximo compromisso, Abrir/Excluir — a ficha da tela
+  é a de sempre); **OPERAÇÃO AGORA** por tela; **AGENDA** consolidada (cada
+  hospedagem ou evento com tela(s), período, local e estado) e **Histórico**.
+  [+ Novo evento]: nome*, organização, local*, endereço* (a cidade é a da
+  rede), público estimado, observação, início* e fim*, "Operar durante todo
+  o período" marcado por padrão (desmarcado abre a grade por dia com
+  feriados), **TELAS PARTICIPANTES** (caixas com "livre"/"ocupada: …" no
+  período) e **Categoria protegida** ("Nenhuma restrição" ou uma categoria).
+  [+ Nova hospedagem]: rede → **tela*** (só as livres no período) → conta
+  anfitriã* → local* e endereço* → início* e fim* → horário (todo o período
+  por padrão) → categoria protegida (padrão: a do anfitrião) → observação →
+  "Esta hospedagem ficará vinculada a 20%" → confirmar. Na hospedagem:
+  **TERMO FÍSICO: Pendente/Assinado** com [Marcar como assinado] (data e
+  observação opcionais) — [Iniciar (a tela chegou)] fica travado até o
+  termo estar assinado e pede a entrega —, [Alterar tela, período e
+  horário], [Cancelar], [Encerrar hospedagem] (retirada opcional),
+  [Prorrogar], tempo válido e benefício (estimado enquanto ativa); evento com
+  [Iniciar (as telas chegaram)] / [Encerrar evento] / [Cancelar]; a aprovação de candidatura não pergunta tipo (sempre
   fixo); a ficha da conta mostra o **Saldo de hospedagem** (disponível,
   recebido, entregue, extrato) com [Ajustar]; ficha da tela em blocos — **Resumo** (último sinal, versão do
   Player, mídia atual), **Instalação** (ID da tela, código com contagem
   regressiva, Copiar, Gerar novo código → "Player conectado"), **Área segura**
-  (4 lados em vmin), **Estado** (Ativa/Em reparo/Inativa, equipamento),
+  (4 lados em vmin), **Estado** (Ativa/Em reparo/Inativa, "Instalada em"),
   **Suporte** (só com erro ou comprovante pendente) e **Ações** (Revogar
   Player, Excluir tela). Tudo se refaz pelo SSE, sem recarregar.
 - *Sem permissão:* 401 → login do admin.
@@ -1683,58 +1694,84 @@ de ponto (dono ou Admin) fica em `pontos_enderecos_historico`. A varredura
 diária (`scripts/conciliar.js`) e a primeira visita ao painel apontam o
 cadastro antigo, gravado antes da regra — sem mudar dado nenhum.
 
-**RN-71 — Ponto fixo e ponto móvel: o móvel é um ativo itinerante da
-Mostraí, nasce pelo Admin, nunca tem dono e NÃO TEM BASE.** (Migrations 112,
-113 e 114 — V1.1, 05/10/2026.) Todo ponto tem um TIPO, decidido no
-NASCIMENTO e imutável (gatilho no banco). **Fixo** é o de sempre: nasce da
-candidatura aprovada — candidatura gera **sempre** fixo — e a conta que cedeu
-a parede é a dona (crédito mensal, Plano Básico, cupom). **Móvel** nasce só em
-Admin → Rede → Pontos móveis, como EQUIPAMENTO (nome opcional — "Mostraí Móvel
-#NN" —, foto e nota interna; a Tela 1 nasce junto; nada de base, endereço,
-ramo ou horário): `anunciante_id` e `candidatura_id` vazios (CHECK no banco),
-**uma tela só** (a segunda é recusada). O móvel só tem local, contexto
-comercial, horário e lugar no inventário enquanto está **ALOCADO** — numa
-HOSPEDAGEM (RN-72) ou num EVENTO (nome, organização, local, início e fim com
-data e hora, **horário de funcionamento** obrigatório, público estimado,
-observação e o **contexto de concorrência** opcionais). Sem alocação ele está
-**"Sem alocação"** — estado distinto de inativo, reparo e sem comunicação:
-`localAtual` nulo, fora do inventário (não recebe campanha, não aparece "No
-ar", não entra na capacidade, em "Onde estamos" nem na escolha de pontos do
-anunciante) e a tela, se ligada, toca só o institucional. Hospedagem e evento
-ocupam uma **agenda única** por instante ([início, fim), no relógio de
-Matão): nunca se sobrepõem — hospedagem × hospedagem, hospedagem × evento,
-evento × evento —, 08:00–12:00 e 12:00–18:00 no mesmo dia não colidem, e
-nunca há dois em curso; o banco recusa mesmo em corrida. Nada começa
-sozinho: o Admin marca o início (a hospedagem com termo aceito e entrega
-registrada). O sistema encerra no fim previsto (`encerramento` `automatico`)
-e cancela o programado que passou sem começar. **Local atual**: a hospedagem
-ativa, senão o evento em andamento, senão nenhum. **Próximo evento**: o
-programado de início mais próximo que ainda não terminou. **Horário em
-vigor** (o que vai para a TV em `config.operacao`): o da alocação em curso.
-**Contexto de concorrência**: hospedagem → o ramo definido nela (padrão: o do
-anfitrião, que é a "casa" da tela); evento → o ramo que o Admin escolheu ou
-nenhum; sem alocação → nenhum. Hospedagem ≠ evento nas regras comerciais
-(evento não gera benefício nem tem anfitrião). A conversão fixo ⇄ móvel
-saiu (rotas 410); `PUT /admin/pontos/:id/base` → 410. Ninguém ganha crédito,
-Plano Básico, cupom ou papel de dono pelo móvel — nem o organizador do
-evento, que é só texto. O anunciante escolhe o PONTO móvel, nunca uma
-hospedagem ou um evento: o card mostra nome, foto, onde está agora ("Agora
-em: <local>" ou "<local> · <evento>") e o próximo evento — nunca a conta do
-anfitrião, o período, o percentual, o saldo, a agenda privada ou a
-logística; quem já tinha escolhido o móvel e ele ficou sem alocação vê
-"Sem alocação no momento" e pode desmarcar, mas ninguém escolhe um móvel
-sem alocação. As colunas `base_*` e a tabela `pontos_moveis_bases` ficam só
-como histórico (deprecated). *Violada:* candidatura como móvel, segunda
-tela, conflito de agenda, dono em móvel, horário ou ramo no próprio móvel,
-troca de tipo → recusa com o motivo. *Quem vê:* o Admin (tudo), o
-anunciante (card), o anfitrião (a hospedagem dele no painel).
+**RN-71 — Mostraí Móvel: a REDE MÓVEL de uma cidade, com N telas; o
+anunciante escolhe a rede (1 posição) e cada tela opera onde está alocada.**
+(Migrations 112 a 115 — reconstrução de 05/10/2026.) Todo ponto tem um TIPO,
+decidido no NASCIMENTO e imutável (gatilho no banco). **Fixo** é o de
+sempre: nasce da candidatura aprovada — candidatura gera **sempre** fixo — e a
+conta que cedeu a parede é a dona (crédito mensal, Plano Básico, cupom). O
+tipo **móvel** é a **REDE MÓVEL COMERCIAL DE UMA CIDADE** ("Mostraí Móvel —
+Matão/SP", selo ITINERANTE): nasce só em Admin → Rede → Pontos móveis, com
+**cidade e UF obrigatórias** (uma rede por cidade + UF — índice único; a
+mesma cidade de novo é recusada), nome opcional ("Mostraí Móvel —
+{Cidade}"), foto/capa e nota; `anunciante_id` e `candidatura_id` vazios
+(CHECK no banco); **nenhuma tela nasce junto** — "+ Adicionar tela", quantas
+forem. Não confundir: a **rede** (o que o anunciante escolhe); a **tela**
+(o equipamento físico: Player, credencial, heartbeat, POP, área segura e
+suporte por tela, como no fixo); a **alocação** (onde a tela está num
+período): **HOSPEDAGEM** (UMA tela num comércio — RN-72) ou **EVENTO** (uma
+ou VÁRIAS telas da rede; nome, organização opcional, local, endereço,
+início e fim com data e hora, público estimado e observação opcionais, o
+horário — "operar durante todo o período" por padrão, ou a grade
+personalizada com feriados — e a **categoria protegida**). A **agenda é por
+TELA** ([início, fim), relógio de Matão): duas telas da mesma rede podem
+estar em compromissos simultâneos (uma num evento, outra hospedada); a
+MESMA tela nunca (hospedagem × hospedagem, hospedagem × evento, evento ×
+evento, e nunca duas em curso) — o banco recusa mesmo em corrida (trava por
+tela). Nada começa sozinho: o Admin marca o início (o evento leva todas as
+telas dele; a hospedagem exige o termo físico assinado e a entrega). O
+sistema encerra no fim previsto (`encerramento` `automatico`) e cancela o
+programado que passou sem começar; encerrar a alocação de uma tela não mexe
+nas outras. **Contexto por tela** (`src/lib/contexto-do-ponto.js`): na
+hospedagem ativa, o horário e a categoria protegida dela e a "casa" é o
+anfitrião; no evento em andamento, o horário e a categoria dele, sem casa;
+**sem alocação, a tela não é inventário** — sem campanha, saldo, mídia
+própria ou obrigação, e se ligada toca só o institucional. "Onde estamos"
+mostra só as alocações reais de agora (um card por hospedagem ou evento,
+com o local e o endereço) — nunca um pino da rede. **O anunciante escolhe a
+REDE, nunca uma tela**: o card "MOSTRAÍ MÓVEL — MATÃO" (ITINERANTE, "Rede
+móvel de eventos e ações em Matão.", "N telas na rede · X em operação
+agora") aparece SEMPRE e a seleção nunca é bloqueada por falta de tela; com
+0 em operação: "Nenhuma tela móvel em operação agora. A campanha volta
+automaticamente para a rede móvel quando houver inventário ativo em
+Matão." A escolha conta **1 posição** do plano, com 1 ou 10 telas — nunca
+a conta, a agenda, o período ou a logística. Ninguém ganha crédito, Plano
+Básico, cupom ou papel de dono pela rede — nem o organizador do evento. A
+conversão fixo ⇄ móvel saiu (rotas 410); `PUT /admin/pontos/:id/base` →
+410; as colunas `base_*` e `pontos_moveis_bases` ficam só como histórico.
+*Violada:* candidatura como móvel, rede repetida na cidade, conflito na
+agenda da tela, tela de outra rede, dono na rede, troca de tipo → recusa com
+o motivo. *Quem vê:* o Admin (tudo), o anunciante (o card da rede), o
+anfitrião (a hospedagem dele no painel).
+
+**RN-71b — A COTA DA REDE MÓVEL numa hora (scheduler, migration 115).** A
+rede é UM ponto da cobertura: a conta que a cobre tem UMA parcela dela por
+hora (base, RN-49 e obrigação — a mesma conta do ponto fixo), e essa parcela
+se DIVIDE entre as telas do **pool da hora** — as telas da rede, ativas no
+cadastro, que estavam alocadas no INÍCIO da hora (`rede_movel_pool(rede,
+hora)`, por id). Divisão inteira exata: a tela de índice i num pool de k
+recebe ⌊n/k⌋, mais 1 se i < n mod k — a soma das telas é sempre a cota,
+nunca mais. Determinismo no meio da hora: a tela que entra (14:20) só
+participa da próxima hora; a que sai (14:40) leva a parcela dela sem
+entregar e ninguém herda — nunca vira 1,5, 2 ou 3 posições. A rede conta
+como **um** ponto em operação na hora quando o pool não é vazio — a
+distribuição automática a sorteia uma vez, com 1 ou 4 telas; pool vazio = a
+rede sai da conta da hora e o tempo de quem a escolheu volta aos pontos no
+ar (RN-49) ou à distribuição automática (quem escolheu SÓ a rede continua
+veiculando pela distribuição automática); volta sozinha quando houver tela
+alocada. Nenhuma dívida própria da rede nasce por falta de tela. Sem
+promessa de simultaneidade entre telas. A tela comercial só recebe campanha
+com status ativo, alocação válida, dentro do período e do horário, contexto
+que permite (categoria protegida) e no pool; métricas e POP continuam por
+tela física (agregáveis pela rede).
 
 **RN-72 — Hospedagem temporária: tempo operacional válido × percentual
 congelado = horas de mídia gratuitas na rede.** (Migration 113, 02/10/2026.)
-Um comércio recebe o ponto móvel por alguns dias. Não é aluguel: não paga
-nada, não vira dono, ponto fixo, Básico, crédito nem cupom. Estados:
-programada → ativa (o Admin marca que a tela chegou, a partir do início
-previsto — nunca sozinha) → encerrada (o Admin, antes do fim se for o caso,
+Um comércio recebe UMA TELA da rede móvel por alguns dias (V1: uma tela por
+hospedagem). Não é aluguel: não paga nada, não vira dono, ponto fixo, Básico,
+crédito nem cupom. Estados: programada → ativa (o Admin marca que a tela
+chegou, a partir do início previsto, com o termo físico assinado e a entrega
+registrada — nunca sozinha) → encerrada (o Admin, antes do fim se for o caso,
 ou o sistema no fim previsto); programada →
 cancelada (só antes de começar; benefício zero). Encerrada não muda mais
 (gatilho) — só o tempo comprovado DENTRO da janela pode crescer, quando a
@@ -1744,7 +1781,8 @@ percentual. O **percentual** é global (Admin → Rede → Pontos móveis →
 alteração auditada com anterior, novo, admin e data) e é **congelado** na
 hospedagem quando o Admin confirma — a confirmação leva o percentual que o
 Admin revisou e é recusada se o global mudou no meio. O **tempo operacional
-válido** (V1.1) é a UNIÃO das sessões comprovadas ∩ o período da hospedagem
+válido** (V1.1) é a UNIÃO das sessões comprovadas DAQUELA TELA (as outras telas
+da rede não somam) ∩ o período da hospedagem
 (a partir de quando a tela chegou) ∩ o horário de funcionamento da
 hospedagem — 27 h válidas × 20% = 5 h 24 min. As sessões são os intervalos
 em que a tela esteve ligada e exibindo
@@ -1753,7 +1791,7 @@ maior que 2 min — a tolerância de "sem sinal"; o Player bate a cada 15 s — 
 com o relógio monotônico e enviou quando voltou (idempotentes por tela, boot
 e sequência). Só tela ATIVA no cadastro mede (reparo/inativa não) — o
 segmento offline vale pelo estado de QUANDO foi exibido —, e o tempo fica
-com o ponto em que foi medido (excluir a tela não o apaga). Nunca
+com a tela em que foi medido. Nunca
 a duração do calendário, nunca um número digitado; o encerramento não passa
 do fim previsto. O **benefício** nasce no encerramento:
 `floor(tempo × percentual / 100)` segundos num lançamento com a chave
@@ -1774,7 +1812,7 @@ da compensação/reposição e da devolução de atraso, antes da Mídia Mostra�
 (T3c, desde 02/10/2026) e do institucional — no ritmo de até 140 s por hora
 de tela, sem nunca tirar entrega paga; a vaga reservada na primeira geração
 da hora toca a hora inteira. O anfitrião da hospedagem ATIVA não ganha
-veiculação gratuita no próprio móvel (a casa — o anfitrião do móvel ou a
+veiculação gratuita na tela que hospeda (a casa — o anfitrião da tela ou a
 dona do fixo — não é concorrente de si mesma na trava de ramo). Hospedagem cancelada devolve o interesse que a
 originou para "em contato" (fecha como recusado se a conta já tem outro
 aberto).
@@ -1796,28 +1834,23 @@ direito ("Quero ser um ponto" continua a principal). Um interesse em aberto
 por conta. Andamento: recebido → em contato → aprovado para agendamento →
 agendado (só pela hospedagem) ou recusado. **Enviar interesse não reserva um
 equipamento**: disponibilidade, período e horário são definidos com a
-equipe Mostraí — o Admin agenda (móvel, local, endereço, início e fim com
-hora, horário, ramo, observação, percentual revisado), o sistema confere a
-agenda, congela o percentual e prepara o termo. *Quem vê:* o anfitrião (as
+equipe Mostraí — o Admin agenda (rede, tela livre no período, local,
+endereço, início e fim com hora, horário, categoria protegida, observação,
+percentual revisado), o sistema confere a agenda da tela e congela o
+percentual. *Quem vê:* o anfitrião (as
 hospedagens dele, o estimado durante, as horas e o saldo), o Admin (tudo,
 inclusive o extrato com autores).
-*Termo e equipamento (Ponto Móvel V1 §23–24, 05/10/2026):* a hospedagem só
-começa com o **aceite** eletrônico do "Termo de Hospedagem Temporária, Guarda
-de Equipamento e Contrapartida em Mídia" pela conta anfitriã — no painel, o
-card da hospedagem programada abre o termo com local, endereço, período
-(data e hora), horário de funcionamento, percentual e equipamento; a pessoa digita o nome e marca "Li e concordo". Fica gravado,
-imutável: versão, hash do texto, hash do documento (termo + dados da
-hospedagem + nome), IP, navegador e data. O painel devolve os dados que
-mostrou: se o Admin mudou algo enquanto a pessoa lia, o aceite é recusado e
-ela relê. Mudou local, endereço, período, horário, percentual ou equipamento
-→ aceite novo (os anteriores ficam); na
-prorrogação de uma hospedagem em andamento o aceite do início continua
-registrado e o painel pede o aceite do novo período (o Admin vê "prorrogação
-aguardando o aceite"). O Admin publica versão nova do termo (nunca edita a antiga —
-quem aceitou a anterior continua com ela). O texto vigente
-(`minuta-2`, migration 114 — a `minuta-1` da 113 não foi editada) é **minuta
-operacional sem revisão jurídica** (PENDENCIAS T13).
-O Admin só marca "a tela chegou" registrando a **entrega** (itens — tela
+*Termo e equipamento:* o termo de hospedagem é **FÍSICO** — assinado em
+papel com o anfitrião (migration 115; o aceite eletrônico com versões, hash
+e "aguardando aceite" saiu — 0 aceites em produção). O sistema guarda só o
+controle operacional: **TERMO FÍSICO Pendente/Assinado** na hospedagem, o
+Admin marca (data da assinatura e observação opcionais, quem marcou e
+quando); desmarca só antes de iniciar. O anexo digitalizado fica de fora
+enquanto o único armazenamento for público (PENDENCIAS). O **modelo do termo
+físico** passa por revisão jurídica antes da primeira hospedagem real
+(PENDENCIAS T13). O painel do anfitrião mostra só a situação ("assinado em
+papel com a equipe Mostraí, na entrega da tela").
+O Admin só marca "a tela chegou" com o termo físico assinado e registrando a **entrega** (itens — tela
 obrigatória, suporte, player, cabos, controle —, condição ok/com avarias,
 observação obrigatória na avaria, foto opcional, também enviada depois); a
 **retirada** se registra no encerramento (marcando que o equipamento foi
@@ -2074,7 +2107,8 @@ página de política que ninguém abre.
 ## 9. A métrica de sucesso e os eventos que a alimentam
 
 **Métrica principal:** margem mensal real — receita confirmada menos ajuda de
-custo aos pontos, menos amortização das telas, menos custos fixos. Definida na
+custo aos pontos, menos custos fixos (a amortização de equipamento por tela
+saiu do produto em 05/10/2026, migration 115). Definida na
 Estação 1. É precursora de receita porque uma rede que cresce com margem
 negativa quebra crescendo. Continua calculada em `GET /admin/resumo`
 (`margemMensal`); desde a rodada Financeiro de 22/09/2026 não aparece em

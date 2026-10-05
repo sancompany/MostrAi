@@ -4,7 +4,12 @@ const concorrencia = require('../categorias/concorrencia');
 const { pontosDoAnunciante } = require('../lib/pacing');
 const { cabeNoTeto } = require('../pontos/basico');
 const { operacaoDoPonto, minutosOperando } = require('../lib/operacao-tela');
-const { horarioEmVigorSql, categoriaEmVigorSql, casaEmVigorSql, inventarioSql } = require('../lib/contexto-do-ponto');
+const {
+  horarioDaTelaSql,
+  categoriaDaTelaSql,
+  casaDaTelaSql,
+  telaNoInventarioSql,
+} = require('../lib/contexto-do-ponto');
 
 // Primeira entrada no ar (estação de distribuição, 27/09/2026): entre
 // "Aprovado" e "rodando" não pode haver limbo. O estado de cada peça é
@@ -74,19 +79,21 @@ function horaCheiaSeguinte(instante) {
 // "O ponto funciona nesta hora" = aberto a hora INTEIRA — uma hora em que
 // ele abre às 08:30 não garante a vaga da peça (ela pode cair às 08:10, com
 // a TV apagada). Cache por (ponto, hora): a mesma pergunta se repete pra
-// cada peça e cada conta da mesma requisição.
+// cada peça e cada conta da mesma requisição. `chave` separa as telas de
+// uma rede móvel (cada uma com o horário da sua alocação); sem ela, o id.
 function criarRelogioDaCobertura(pontos) {
-  const operacoes = new Map(pontos.map((p) => [p.id, operacaoDoPonto(p.horario_semanal)]));
+  const chaveDe = (p) => p.chave ?? p.id;
+  const operacoes = new Map(pontos.map((p) => [chaveDe(p), operacaoDoPonto(p.horario_semanal)]));
   const cache = new Map();
-  const abertoNaHora = (pontoId, hora) => {
-    const chave = `${pontoId}|${hora.getTime()}`;
+  const abertoNaHora = (chavePonto, hora) => {
+    const chave = `${chavePonto}|${hora.getTime()}`;
     if (!cache.has(chave)) {
-      const minutos = minutosOperando(operacoes.get(pontoId), hora, new Date(hora.getTime() + HORA_MS));
+      const minutos = minutosOperando(operacoes.get(chavePonto), hora, new Date(hora.getTime() + HORA_MS));
       cache.set(chave, minutos >= 60);
     }
     return cache.get(chave);
   };
-  const algumAberto = (hora) => pontos.some((p) => abertoNaHora(p.id, hora));
+  const algumAberto = (hora) => pontos.some((p) => abertoNaHora(chaveDe(p), hora));
   return { abertoNaHora, algumAberto };
 }
 
@@ -127,24 +134,29 @@ async function coberturaDaConta(conta, plano, db = pool, basicos = [], { redeInt
     db.query('SELECT ponto_id FROM anunciantes_pontos WHERE anunciante_id = $1 ORDER BY escolhido_em', [conta.id]),
     db.query(
       // Ramo, casa e horário EM VIGOR — os mesmos que o gerador usa na tela
-      // (src/lib/contexto-do-ponto.js): no ponto móvel mudam com a
-      // hospedagem ou o evento em curso.
-      `SELECT p.id, ${horarioEmVigorSql('p')} AS horario_semanal, ${categoriaEmVigorSql('p')} AS categoria_id,
-              ${casaEmVigorSql('p')} AS casa_id
-         FROM pontos p WHERE p.status = 'em_operacao' AND ${inventarioSql('p')} ORDER BY p.id`,
+      // (src/lib/contexto-do-ponto.js). Ponto fixo: uma linha. Rede móvel:
+      // uma linha por TELA ALOCADA (cada uma no contexto da sua hospedagem
+      // ou evento), todas com o id da rede — a rede é UM ponto da fatia.
+      `SELECT p.id, CASE WHEN p.tipo = 'movel' THEN p.id || ':' || d.id ELSE p.id::text END AS chave,
+              ${horarioDaTelaSql('p', 'd')} AS horario_semanal, ${categoriaDaTelaSql('p', 'd')} AS categoria_id,
+              ${casaDaTelaSql('p', 'd')} AS casa_id
+         FROM pontos p
+         LEFT JOIN LATERAL (
+           SELECT x.id FROM dispositivos x
+            WHERE p.tipo = 'movel' AND x.ponto_id = p.id AND x.status = 'ativo' AND ${telaNoInventarioSql('p', 'x')}
+         ) d ON true
+        WHERE p.status = 'em_operacao' AND (p.tipo <> 'movel' OR d.id IS NOT NULL)
+        ORDER BY p.id, d.id`,
     ),
     pontosRepo.idsBloqueadosParaEscolha(),
     concorrencia.concorrentesDe(conta.categoria_id, db),
   ]);
   const escolhidos = escolhas.map((r) => r.ponto_id);
+  const idsNoAr = [...new Set(noAr.map((p) => p.id))];
   const ids = plano
-    ? pontosDoAnunciante(
-        { id: conta.id, pontosIncluidos: plano.pontos_incluidos, escolhidos },
-        noAr.map((p) => p.id),
-        bloqueados,
-      )
+    ? pontosDoAnunciante({ id: conta.id, pontosIncluidos: plano.pontos_incluidos, escolhidos }, idsNoAr, bloqueados)
     : [];
-  const naFatia = new Set(redeInteira ? noAr.map((p) => p.id) : ids);
+  const naFatia = new Set(redeInteira ? idsNoAr : ids);
   const proprios = new Set(basicos.map((b) => b.ponto_id));
   return noAr.filter(
     (p) =>

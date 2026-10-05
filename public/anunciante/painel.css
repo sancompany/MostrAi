@@ -609,5 +609,3 @@
 }
 
 /* Termo de hospedagem (public/hospedagem-conta.js) */
-.dlg-termo { max-width: 640px; width: calc(100% - 32px); }
-.hosp-termo-texto { white-space: pre-wrap; max-height: 45vh; overflow: auto; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.9rem; line-height: 1.5; margin: 8px 0 12px; }

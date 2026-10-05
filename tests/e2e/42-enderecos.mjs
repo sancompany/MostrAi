@@ -18,7 +18,7 @@
 //
 // Assume banco zerado (tests/e2e/reset-db.sh) e servidor na 3999.
 import { chromium } from 'playwright';
-import { acompanharRede, irQuieto, recarregarQuieto } from './espera.mjs';
+import { acompanharRede, irQuieto, recarregarQuieto, redeQuieta } from './espera.mjs';
 import { codigoPara } from './emails.mjs';
 import { execSync } from 'node:child_process';
 
@@ -250,6 +250,10 @@ const liberou = await adm.evaluate(async (id) => (await fetch(`/admin/candidatur
 check('admin aprovou o pedido', liberou);
 const pontoId = PG(`SELECT id FROM pontos WHERE candidatura_id = ${candId}`);
 PG(`UPDATE pontos SET status = 'em_operacao' WHERE id = ${pontoId}`);
+// A aprovação dispara o SSE da conta e o painel recarrega os módulos: a
+// página assenta antes do F5 (senão a busca em voo é cortada e vira "Failed
+// to fetch" no console — corrida do roteiro, não da página).
+await redeQuieta(mp);
 await recarregarQuieto(mp);
 const cardPonto = mp.locator(`[data-estab="ponto-${pontoId}"]`);
 await cardPonto.waitFor({ timeout: 10000 });

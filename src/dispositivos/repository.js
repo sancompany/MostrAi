@@ -3,11 +3,11 @@ const pool = require('../db/pool');
 const cofre = require('../lib/cofre');
 const { saudeDaTela, situacaoConfig, situacaoFila, alertasDaTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
 const {
-  alocadoSql,
-  horarioEmVigorSql,
-  categoriaEmVigorSql,
-  casaEmVigorSql,
-  anfitriaEmVigorSql,
+  telaAlocadaSql,
+  horarioDaTelaSql,
+  categoriaDaTelaSql,
+  casaDaTelaSql,
+  anfitriaDaTelaSql,
 } = require('../lib/contexto-do-ponto');
 const { sincronizarStatusPonto } = require('../pontos/repository');
 const telaEventos = require('../player/tela-eventos');
@@ -29,8 +29,6 @@ const {
 // do ponto; PIN de saída é global (src/player/pin-saida.js).
 const CAMPOS_ATUALIZAVEIS = [
   'status',
-  'custo_equipamento',
-  'meses_amortizacao',
   'instalado_em',
   'margem_superior',
   'margem_direita',
@@ -48,22 +46,22 @@ const INSTALACAO_REPETICAO_MIN = 5;
 // Tem hash de chave — só sai deste módulo pelas projeções abaixo, que
 // escolhem campo a campo o que pode sair. É o caminho quente do Player (toda
 // requisição autenticada, heartbeat a cada 15 s): nada além do necessário.
-// Horário, ramo e "casa" são os EM VIGOR (src/lib/contexto-do-ponto.js): no
-// ponto móvel mudam com a hospedagem ou o evento em curso (migrations 112 a
-// 114). `casa_conta_id` é a conta cujo comércio recebe a tela agora (a dona
-// do fixo; o anfitrião do móvel hospedado) — nunca dona do móvel, só quem a
-// trava de ramo protege (gerador.js#anunciantesElegiveis). `categoria_id` é o
-// ramo em vigor, não necessariamente o gravado no ponto. `movel_alocado`:
-// o móvel está em hospedagem ou evento agora — sem isso ele não é inventário
-// e o gerador só toca o institucional (migration 114).
+// Horário, ramo e "casa" são os EM VIGOR NESTA TELA (src/lib/contexto-do-ponto.js):
+// na tela de uma rede móvel mudam com a hospedagem ou o evento em curso
+// DELA (migrations 112 a 115). `casa_conta_id` é a conta cujo comércio
+// recebe a tela agora (a dona do fixo; o anfitrião da tela móvel hospedada)
+// — só quem a trava de ramo protege (gerador.js#anunciantesElegiveis).
+// `categoria_id` é o ramo em vigor, não necessariamente o gravado no ponto.
+// `movel_alocado`: a tela móvel está em hospedagem ou evento agora — sem
+// isso ela não é inventário e o gerador só toca o institucional.
 const SELECT_TELA = `
   SELECT d.*,
          p.nome AS ponto_nome, p.cidade AS ponto_cidade, p.status AS ponto_status,
-         ${horarioEmVigorSql('p')} AS ponto_horario_semanal,
-         p.anunciante_id AS dono_conta_id, ${casaEmVigorSql('p')} AS casa_conta_id, p.tipo AS ponto_tipo,
-         ${anfitriaEmVigorSql('p')} AS anfitria_conta_id,
-         ${categoriaEmVigorSql('p')} AS categoria_id, p.cota_autoanuncio_slots_hora,
-         ${alocadoSql('p')} AS movel_alocado,
+         ${horarioDaTelaSql('p', 'd')} AS ponto_horario_semanal,
+         p.anunciante_id AS dono_conta_id, ${casaDaTelaSql('p', 'd')} AS casa_conta_id, p.tipo AS ponto_tipo,
+         ${anfitriaDaTelaSql('p', 'd')} AS anfitria_conta_id,
+         ${categoriaDaTelaSql('p', 'd')} AS categoria_id, p.cota_autoanuncio_slots_hora,
+         ${telaAlocadaSql('p', 'd')} AS movel_alocado,
          (SELECT COUNT(*)::int FROM dispositivos x WHERE x.ponto_id = d.ponto_id AND x.status = 'ativo') AS telas_do_ponto
     FROM dispositivos d
     JOIN pontos p ON p.id = d.ponto_id`;
@@ -153,8 +151,6 @@ function paraAdmin(t, agora = new Date()) {
     alertas: alertasDaTela(t, saude, agora),
     criadaEm: t.created_at,
     instaladoEm: t.instalado_em,
-    custoEquipamento: Number(t.custo_equipamento),
-    mesesAmortizacao: t.meses_amortizacao,
     primeiroSinalEm: t.primeiro_sinal_em,
     ultimoSinalEm: t.chave_hash ? t.ultima_vez_online : null,
     player: t.chave_hash ? { versao: t.player_versao, build: t.player_build } : null,
@@ -211,14 +207,9 @@ async function criar(pontoId, dados = {}) {
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
-      `INSERT INTO dispositivos (ponto_id, apelido, status, custo_equipamento, meses_amortizacao)
-       VALUES ($1, 'Tela', $2, $3, $4) RETURNING id, numero`,
-      [
-        pontoId,
-        STATUS.includes(dados.status) ? dados.status : 'ativo',
-        Number(dados.custo_equipamento) || 0,
-        Number(dados.meses_amortizacao) || 36,
-      ],
+      `INSERT INTO dispositivos (ponto_id, apelido, status)
+       VALUES ($1, 'Tela', $2) RETURNING id, numero`,
+      [pontoId, STATUS.includes(dados.status) ? dados.status : 'ativo'],
     );
     await client.query('UPDATE dispositivos SET apelido = $2 WHERE id = $1', [rows[0].id, `Tela ${rows[0].numero}`]);
     await telaEventos.registrar(rows[0].id, 'SCREEN_CREATED', { numero: rows[0].numero }, client);
@@ -288,6 +279,19 @@ async function deletar(id) {
   if (await temExibicaoConfirmada(id)) {
     throw Object.assign(
       new Error('Esta tela possui histórico de exibições e não pode ser excluída permanentemente. Deixe-a Inativa.'),
+      { status: 409 },
+    );
+  }
+  // Tela de rede móvel que já esteve (ou está) numa hospedagem ou evento: a
+  // alocação é registro operacional e do benefício — não se apaga.
+  const { rows: alocacoes } = await pool.query(
+    `SELECT EXISTS (SELECT 1 FROM pontos_moveis_hospedagens WHERE dispositivo_id = $1)
+         OR EXISTS (SELECT 1 FROM pontos_moveis_evento_telas WHERE dispositivo_id = $1) AS tem`,
+    [id],
+  );
+  if (alocacoes[0].tem) {
+    throw Object.assign(
+      new Error('Esta tela tem hospedagem ou evento registrado e não pode ser excluída. Deixe-a Inativa.'),
       { status: 409 },
     );
   }

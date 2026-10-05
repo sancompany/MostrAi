@@ -46,7 +46,6 @@ async function exportarConta(anuncianteId) {
     pedidosAvulsos,
     hospedagens,
     interessesHospedagem,
-    aceitesHospedagem,
     saldoHospedagem,
   ] = await Promise.all([
     q('SELECT * FROM pontos WHERE anunciante_id = $1 ORDER BY id'),
@@ -82,7 +81,7 @@ async function exportarConta(anuncianteId) {
     q(`SELECT nome, propriedades, criado_em FROM eventos
         WHERE anunciante_id = $1 ORDER BY criado_em`),
     q(`SELECT d.id, d.ponto_id, 'Tela ' || d.numero AS tela, d.status, d.ultima_vez_online,
-              d.custo_equipamento, d.meses_amortizacao, d.instalado_em, d.created_at
+              d.instalado_em, d.created_at
          FROM dispositivos d
          JOIN pontos p ON p.id = d.ponto_id
         WHERE p.anunciante_id = $1 ORDER BY d.id`),
@@ -106,16 +105,15 @@ async function exportarConta(anuncianteId) {
     q('SELECT * FROM banco_horas WHERE anunciante_id = $1 ORDER BY 1'),
     q('SELECT * FROM ciclos_contratados WHERE anunciante_id = $1 ORDER BY 1'),
     q('SELECT * FROM pedidos_avulsos WHERE anunciante_id = $1 ORDER BY 1'),
-    // Ponto Móvel (migration 113): a conta como anfitriã.
-    q(`SELECT id, ponto_id, local, endereco, data_inicio, data_fim, percentual, estado, iniciada_em, encerrada_em,
-              tempo_operacional_segundos, beneficio_segundos
+    // Mostraí Móvel (migrations 113 e 115): a conta como anfitriã de uma
+    // tela da rede, com o controle do termo físico (o aceite eletrônico
+    // saiu na 115).
+    q(`SELECT id, ponto_id, dispositivo_id, local, endereco, inicio, fim, percentual, estado, iniciada_em, encerrada_em,
+              tempo_operacional_segundos, beneficio_segundos, termo_assinado, termo_assinado_em
          FROM pontos_moveis_hospedagens WHERE conta_id = $1 ORDER BY id`),
     q(`SELECT id, origem, empresa, responsavel, contato_telefone, contato_email, endereco, categoria_livre, disponibilidade,
               observacao, status, criado_em
          FROM hospedagem_interesses WHERE conta_id = $1 ORDER BY id`),
-    q(`SELECT hospedagem_id, termo_versao, termo_hash, documento_hash, responsavel, local, endereco, data_inicio,
-              data_fim, percentual, ip, user_agent, aceito_em
-         FROM hospedagem_aceites WHERE conta_id = $1 ORDER BY aceito_em`),
     q(`SELECT tipo, segundos, hospedagem_id, criado_em
          FROM saldo_hospedagem_lancamentos WHERE conta_id = $1 ORDER BY criado_em`),
   ]);
@@ -148,7 +146,6 @@ async function exportarConta(anuncianteId) {
     pedidos_avulsos: pedidosAvulsos,
     hospedagens_como_anfitria: hospedagens,
     interesses_em_hospedar: interessesHospedagem,
-    aceites_do_termo_de_hospedagem: aceitesHospedagem,
     saldo_de_hospedagem: saldoHospedagem,
   };
 }

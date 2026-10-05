@@ -2,7 +2,6 @@ const pool = require('../db/pool');
 const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
 const { LIMITE_COMERCIAL } = require('../lib/capacidade');
 const { PARTES, colunasDoEndereco } = require('../lib/endereco');
-const { inventarioSql } = require('../lib/contexto-do-ponto');
 
 // Cinco status (migration 069 + `aguardando_primeiro_sinal` na 088) —
 // e AUTOMÁTICO: ninguém escreve aqui direto, `sincronizarStatusPonto` (mais
@@ -297,23 +296,35 @@ async function sincronizarStatusPonto(pontoId, db = pool) {
 // antes, então entra na mesma lista — só `inativo` (tela(s) cadastrada(s),
 // nenhuma funcionando) é o caso realmente novo que faz sentido esconder.
 //
-// Ponto móvel (migration 114): só aparece ALOCADO, e onde está agora — o
-// nome e o endereço do local da hospedagem, ou o local do evento. Sem
-// alocação não é inventário e não aparece. Nunca a conta anfitriã, o
+// Rede móvel (migration 115): nunca um pino da rede — só as ALOCAÇÕES
+// REAIS de agora, uma linha por lugar: cada hospedagem ativa (o nome e o
+// endereço do local) e cada evento em andamento (o local e o endereço do
+// evento, uma linha só mesmo com várias telas lá), de tela ativa no
+// cadastro. Sem alocação, a rede não aparece. Nunca a conta anfitriã, o
 // período, o percentual ou a agenda.
 async function listarPublicos() {
   const { rows } = await pool.query(
-    `SELECT p.id, p.nome, p.cidade, p.endereco, p.bairro, p.status, p.foto_instalacao_url, c.nome AS categoria_nome,
-            p.tipo,
-            COALESCE(h.local, ev.local) AS local_atual,
-            COALESCE(h.endereco, ev.local) AS local_endereco,
-            ev.nome AS evento_nome
-     FROM pontos p
-     LEFT JOIN categorias c ON c.id = p.categoria_id
-     LEFT JOIN pontos_moveis_hospedagens h ON h.ponto_id = p.id AND h.estado = 'ativa'
-     LEFT JOIN pontos_moveis_eventos ev ON ev.ponto_id = p.id AND ev.estado = 'em_andamento'
-     WHERE p.status = ANY($1::text[]) AND ${inventarioSql('p')}
-     ORDER BY (p.status = 'em_operacao') DESC, p.nome`,
+    `SELECT x.* FROM (
+       SELECT p.id, p.nome, p.cidade, p.endereco, p.bairro, p.status, p.foto_instalacao_url,
+              c.nome AS categoria_nome, p.tipo, NULL::text AS local_atual, NULL::text AS local_endereco,
+              NULL::text AS evento_nome
+         FROM pontos p LEFT JOIN categorias c ON c.id = p.categoria_id
+        WHERE p.status = ANY($1::text[]) AND p.tipo <> 'movel'
+       UNION ALL
+       SELECT DISTINCT ON (h.id) p.id, p.nome, p.cidade, NULL, NULL, 'em_operacao', p.foto_instalacao_url,
+              NULL, p.tipo, h.local, h.endereco, NULL
+         FROM pontos_moveis_hospedagens h JOIN pontos p ON p.id = h.ponto_id
+         JOIN dispositivos d ON d.id = h.dispositivo_id AND d.status = 'ativo'
+        WHERE h.estado = 'ativa' AND p.status <> 'arquivado'
+       UNION ALL
+       SELECT DISTINCT ON (e.id) p.id, p.nome, p.cidade, NULL, NULL, 'em_operacao', p.foto_instalacao_url,
+              NULL, p.tipo, e.local, COALESCE(e.endereco, e.local), e.nome
+         FROM pontos_moveis_eventos e JOIN pontos p ON p.id = e.ponto_id
+         JOIN pontos_moveis_evento_telas et ON et.evento_id = e.id
+         JOIN dispositivos d ON d.id = et.dispositivo_id AND d.status = 'ativo'
+        WHERE e.estado = 'em_andamento' AND p.status <> 'arquivado'
+     ) x
+     ORDER BY (x.status = 'em_operacao') DESC, x.nome, x.local_atual`,
     [STATUS_NA_REDE],
   );
   return rows;

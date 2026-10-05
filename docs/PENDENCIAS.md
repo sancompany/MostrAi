@@ -5827,18 +5827,24 @@ conversão fixo ⇄ móvel da seção S.
       nas horas congeladas, e hora congelada com zero programado não marca
       atraso (`src/midias/metricas.js`, teste 30b de
       `tests/distribuicao.test.js`). A entrega não mudou.
-- T13 [ ] **Só o dono — texto jurídico do termo de hospedagem:** o "Termo
-      de Hospedagem Temporária, Guarda de Equipamento e Contrapartida em
-      Mídia" da migration 113 é a `minuta-1` — rascunho OPERACIONAL, sem
-      revisão jurídica (o próprio texto diz isso). Antes da primeira
-      hospedagem real, o jurídico revisa e o Admin publica a versão final em
-      Rede → Pontos móveis → Termo de hospedagem (versão nova; a minuta fica
-      no histórico, nunca é editada). O sistema (versão, aceite, hashes,
-      IP/navegador, data, imutabilidade) está pronto. V1.1 (migration 114):
-      a vigente passou a ser a `minuta-2` (mesmo status: sem revisão
-      jurídica; a `minuta-1` não foi editada). O aceite agora vincula local,
-      endereço, início e fim com hora, horário de funcionamento, percentual
-      e equipamento.
+- T13 [ ] **Só o dono — o MODELO do termo FÍSICO de hospedagem passa pelo
+      jurídico antes da primeira hospedagem real.** Desde a migration 115
+      (05/10/2026) o termo é assinado EM PAPEL: o aceite eletrônico (versões
+      `minuta-1`/`minuta-2`, hash, IP, "aguardando aceite") saiu — 0 aceites
+      em produção, tabelas `hospedagem_termos`/`hospedagem_aceites`
+      removidas. O sistema guarda só o controle (TERMO FÍSICO Pendente /
+      Assinado, data e observação opcionais, quem marcou); iniciar exige o
+      termo marcado + a entrega. Falta: o documento em papel ("Termo de
+      Hospedagem Temporária, Guarda de Equipamento e Contrapartida em
+      Mídia" — UMA tela da rede, período, horário, percentual congelado,
+      entrega/retirada) revisado pelo jurídico. O texto das minutas antigas
+      está nas migrations 113/114 como ponto de partida.
+- T13b [ ] **Anexo digitalizado do termo físico** (pedido opcional da
+      estação de 05/10/2026, não construído): o único bucket do projeto é
+      PÚBLICO, e documento assinado (nome, assinatura, endereço) não vai
+      para endereço público. Construir junto com armazenamento privado +
+      URL assinada de curta duração (o mesmo caminho resolve T14(c)). Até
+      lá o papel fica arquivado na Mostraí e a observação do termo diz onde.
 - T14 [ ] LOW aceitos na revisão focal da finalização V1 (05/10/2026), sem
       efeito em regra nem em dinheiro:
       (a) o Admin mostra como "aceite do início" o último aceite feito antes
@@ -5863,19 +5869,51 @@ veiculação (`possuiDireitoAtivoDeVeiculacao`), com os dados da conta e o
 local (conta / ponto / outro endereço); CTA secundário em Meus pontos;
 `/hospedar.html` em três estados. Ficou para depois (nada disto bloqueia):
 - V11.1 [ ] Remover fisicamente `pontos.base_*` e `pontos_moveis_bases`
-      (deprecated desde a 114; 0 linhas em produção).
-- V11.2 [ ] Agenda visual (calendário/timeline) no Admin; filtros novos na
-      lista de interesses; prioridade/ranking de interessados.
+      (deprecated desde a 114; 0 linhas em produção). A 115 não removeu: o
+      CHECK `pontos_movel_coerente` e o histórico de bases da ficha ainda
+      as citam — remover junto, numa migration só, quando der.
+- V11.2 [~] Agenda visual: a 115 entregou a agenda CONSOLIDADA multi-tela
+      na ficha da rede (cada compromisso com as telas) e os próximos
+      compromissos de todas as redes na central. Falta: calendário/timeline,
+      filtros na lista de interesses, prioridade/ranking de interessados.
 - V11.3 [ ] Notificar a conta quando o Admin muda o andamento do interesse
       (hoje só SSE para o painel aberto).
-- V11.4 [ ] DOC — consolidar a documentação do Ponto Móvel pós-V1.1
-      (`docs/teia.md`, `docs/furos.md`, `.ia/BUSINESS_RULES.md` e os
-      relatórios antigos ainda citam a base; `funcional.md` RN-71/72,
-      `api.md` e o contrato do Player já estão corretos).
+- V11.4 [~] DOC — `funcional.md` (RN-71, RN-71b, RN-72), `api.md` e o
+      contrato do Player descrevem a rede móvel (115). Ainda citam o modelo
+      antigo (histórico, sem efeito): `docs/teia.md`, `docs/furos.md`,
+      `.ia/BUSINESS_RULES.md` e relatórios datados.
 - V11.5 [ ] Encerrar a hospedagem antes do fim conta o tempo até ali; uma
       hospedagem já ATIVA não muda horário nem local (só prorroga o fim) —
       se precisar, encerrar e agendar outra.
 - V11.6 [ ] Mapa / roteirização / otimização de frota (ideias, sem data).
+
+#### Mostraí Móvel = REDE MÓVEL DA CIDADE (05/10/2026, migration 115)
+Feito (estação "Reconstrução final do Mostraí Móvel"): o ponto móvel virou a
+REDE MÓVEL de uma cidade (cidade + UF obrigatórias, uma por cidade, nome
+padrão "Mostraí Móvel — {Cidade}", sem Tela 1 automática) com N telas; a
+regra "1 móvel = 1 tela" saiu (gatilho removido); a agenda, o contexto
+(horário, categoria protegida, casa) e a alocação são POR TELA; evento com
+1..N telas (`pontos_moveis_evento_telas`), endereço obrigatório, organização
+opcional, "operar durante todo o período" por padrão; hospedagem de UMA tela
+(`dispositivo_id`), benefício = tempo válido daquela tela × percentual
+congelado; termo FÍSICO (Pendente/Assinado) no lugar do aceite eletrônico;
+custo/amortização de equipamento removidos do produto (colunas, API, Admin,
+o campo `custo_aparelho` do evento `tela:dispositivo_ativa`, Visão geral); o anunciante escolhe a REDE,
+que aparece sempre (com 0 tela em operação também) e conta 1 posição; o
+scheduler dá à rede UMA parcela por hora dividida entre as telas do pool da
+hora (divisão inteira exata; entrada/saída no meio da hora não multiplica a
+posição); "Onde estamos" mostra só as alocações reais; a central "Pontos
+móveis" com Redes móveis / Próximos compromissos / Interesses /
+Configuração do benefício. O móvel de Matão em produção (ponto 9, tela 10)
+vira a rede "Mostraí Móvel — Matão" (SP), mesmos IDs, credencial e Player.
+Ficou para depois (nada bloqueia):
+- RM1 [ ] Métricas agregadas por rede (hoje por tela física; a soma pela
+      rede já sai de `exibicoes_contador` × `dispositivos.ponto_id` — falta
+      só a visão no painel/Admin, se o dono quiser).
+- RM2 [ ] Hospedagem de várias telas de uma vez (V1: uma tela por
+      hospedagem; para duas telas no mesmo comércio, duas hospedagens).
+- RM3 [ ] Mudar as telas de um evento já cadastrado (hoje: cancelar e
+      cadastrar de novo, antes de começar).
 
       (d) (Codex, PR #114) um ajuste NEGATIVO do Admin feito no mesmo
       instante em que o gerador reserva a hora da conta pode deixar a rede

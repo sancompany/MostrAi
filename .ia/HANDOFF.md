@@ -1,6 +1,26 @@
 # Current Handoff
 
 ## Updated
+2026-10-05 — **Mostraí Móvel = REDE MÓVEL DA CIDADE** (migration 115,
+ADR-038; branch `claude/busy-noether-hheir2`). Substitui o "1 móvel = 1
+tela" da 112–114: o ponto `tipo='movel'` é a rede comercial de uma
+cidade+UF (única, `ux_pontos_rede_movel_cidade`), com N telas
+(`dispositivos`). Alocação POR TELA: hospedagem = 1 tela
+(`pontos_moveis_hospedagens.dispositivo_id`), evento = 1..N telas
+(`pontos_moveis_evento_telas`); agenda por tela no banco
+(`movel_tela_ocupada` + gatilhos com `pg_advisory_xact_lock(115, tela)`;
+`src/pontos/agenda.js` só explica o 409). Contexto por tela em
+`src/lib/contexto-do-ponto.js` (`telaAlocadaSql`, `horarioDaTelaSql`, …).
+Anunciante: a rede é 1 posição, sempre escolhível (0 tela em operação =
+sai da conta da hora e volta sozinha). Scheduler: `rede_movel_pool(rede,
+hora)` = telas alocadas no início da hora; a parcela da rede se divide
+exata (`pacing.js#parcelaNoPool`); quem entra no meio da hora espera a
+próxima. Termo de hospedagem agora FÍSICO (`hospedagem-equipamento.js#
+marcarTermoFisico`; tabelas do aceite eletrônico removidas; anexo não
+construído porque o bucket é público — T13b). Custo/amortização de tela
+removidos. Pendências RM1–RM3 em `docs/PENDENCIAS.md`. Não desfazer sem
+contexto. Review-Master segue PAUSADA.
+
 2026-10-05 — **Ponto Móvel V1.1: sem base, alocação administrada**
 (migration 114). O móvel é equipamento: só tem local, contexto, horário e
 inventário enquanto ALOCADO (hospedagem ativa ou evento em andamento);

@@ -21,10 +21,10 @@ const pool = require('../db/pool');
 //     mesmo boot, e manda quando volta. Idempotente por (tela, boot, seq):
 //     reenvio, retry e duplicata gravam uma vez; um segmento que cresceu
 //     (o Player reenvia o aberto) só estende.
-// Só tela ATIVA de ponto MÓVEL grava aqui — ponto fixo não tem hospedagem, e
+// Só tela ATIVA de REDE MÓVEL grava aqui — ponto fixo não tem hospedagem, e
 // tela em reparo ou inativa no cadastro não está operando para a Mostraí
-// (mesmo que o aparelho siga ligado). Cada intervalo leva o ponto em que a
-// tela estava: é por ele que a hospedagem soma.
+// (mesmo que o aparelho siga ligado). A hospedagem soma pela TELA
+// (`dispositivo_id`, migration 115); o intervalo guarda também a rede.
 
 const ESTADOS_EXIBINDO = new Set(['PLAYING', 'IDLE']);
 // Enquanto a tela está "conectada" (src/lib/heartbeat.js: 8 batidas de 15 s),

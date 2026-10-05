@@ -8,6 +8,7 @@ const {
   segundosCompensados,
   segundosDeObrigacao,
   espalhar,
+  parcelaNoPool,
   ID_INSTITUCIONAL,
   DURACAO_INSTITUCIONAL,
   DURACAO_PADRAO,
@@ -21,7 +22,7 @@ const midiasRepo = require('../midias/repository');
 const basicoRepo = require('../pontos/basico');
 const hospedagem = require('../pontos/hospedagem');
 const { operacaoDoPonto, minutosOperando } = require('../lib/operacao-tela');
-const { inventarioSql } = require('../lib/contexto-do-ponto');
+const { telaNoInventarioSql } = require('../lib/contexto-do-ponto');
 
 // Quem chega no meio da hora (ponto escolhido agora, criativo aprovado
 // agora) não disputa vaga com quem já estava programado — só pede a fatia
@@ -80,10 +81,10 @@ function limiteDeCriativos(contaPropria, limitePlano, disponiveis) {
   return Math.min(CRIATIVOS_POR_CONTA, Math.max(1, Number(limitePlano) || 1));
 }
 
-// A conta que a trava de ramo protege numa tela: a dona do ponto fixo; no
-// ponto móvel, o comércio onde ele está AGORA — o anfitrião da hospedagem
-// ativa, ou ninguém durante um evento (src/lib/contexto-do-ponto.js,
-// já resolvido em SELECT_TELA). Não é dona: isto só a livra da própria trava
+// A conta que a trava de ramo protege numa tela: a dona do ponto fixo; na
+// tela da rede móvel, o comércio onde ELA está AGORA — o anfitrião da
+// hospedagem ativa dela, ou ninguém durante um evento
+// (src/lib/contexto-do-ponto.js, já resolvido em SELECT_TELA). Não é dona: isto só a livra da própria trava
 // quando ela escolhe o ponto, como a dona no fixo. Cota, Básico e "criativos
 // do dono" continuam só da dona.
 const casaDaTela = (dispositivo) => dispositivo.casa_conta_id ?? null;
@@ -164,11 +165,12 @@ async function contasDaHospedagemNaTela(categoriaDoPonto, excluirContaId, casa, 
 }
 
 // Quantas telas puxam o saldo de hospedagem na mesma hora: a rede inteira
-// (o saldo não é de ponto nenhum). Nunca 0.
+// (o saldo não é de ponto nenhum) — toda tela de ponto fixo no ar e cada
+// tela móvel alocada. Nunca 0.
 async function telasNaRede() {
   const { rows } = await pool.query(
     `SELECT COUNT(*)::int AS n FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
-      WHERE d.status = 'ativo' AND p.status = 'em_operacao' AND ${inventarioSql('p')}`,
+      WHERE d.status = 'ativo' AND p.status = 'em_operacao' AND ${telaNoInventarioSql('p', 'd')}`,
   );
   return Math.max(1, rows[0].n);
 }
@@ -291,11 +293,45 @@ function quantasInsercoes(conta, segundos, duracaoSegundos) {
   return Number(conta.frequencia_hora) || 0;
 }
 
-async function pontosEmOperacao() {
+// A rede móvel conta como UM ponto em operação na hora `hora` quando o pool
+// dela naquela hora não é vazio (alguma tela estava alocada no início da
+// hora — `rede_movel_pool`, migration 115): todas as telas da mesma hora
+// veem a mesma resposta. Pool vazio = a rede sai da conta da hora e a
+// cobertura de quem a escolheu volta para os pontos no ar (RN-49) ou para
+// a distribuição automática — e volta sozinha quando houver tela alocada.
+async function pontosEmOperacao(hora = new Date()) {
   const { rows } = await pool.query(
-    `SELECT p.id FROM pontos p WHERE p.status = 'em_operacao' AND ${inventarioSql('p')} ORDER BY p.id`,
+    `SELECT p.id FROM pontos p
+      WHERE p.status = 'em_operacao'
+        AND (p.tipo <> 'movel' OR cardinality(rede_movel_pool(p.id, $1::timestamptz)) > 0)
+      ORDER BY p.id`,
+    [hora],
   );
   return rows.map((r) => r.id);
+}
+
+// O pool da rede móvel na hora: as telas que dividem a parcela da rede.
+async function poolDaRede(redeId, hora) {
+  const { rows } = await pool.query('SELECT rede_movel_pool($1, $2::timestamptz) AS telas', [redeId, hora]);
+  return rows[0].telas || [];
+}
+
+// A parte DESTA TELA da parcela de uma conta na rede móvel: base e total
+// (base + RN-49) divididos pelo pool com a mesma conta inteira
+// (`parcelaNoPool`) — compensação é a diferença, então nada passa da cota
+// da rede. A obrigação da rede na hora também se divide assim.
+function parcelaDaTela(n, rede) {
+  if (!rede) return n;
+  const k = rede.pool.length;
+  const base = parcelaNoPool(n.base, k, rede.indice);
+  const total = Math.max(base, parcelaNoPool(n.total, k, rede.indice));
+  return { ...n, base, compensacao: total - base, total };
+}
+
+function obrigacaoDaTela(n, minutosAbertos, rede) {
+  if (!rede) return segundosDeObrigacao({ ...n.obrigacaoHoraCheia, minutosAbertos });
+  const daRede = segundosDeObrigacao({ ...n.obrigacaoHoraCheia, telasDoPonto: 1, minutosAbertos });
+  return parcelaNoPool(daRede, rede.pool.length, rede.indice);
 }
 
 // Por quantos pontos o Saldo de Veiculação de uma conta sai na mesma hora: a
@@ -585,12 +621,20 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   const minutosAbertos = minutosAbertosNaHora(dispositivo, horaAtual, fimDaHora);
   const aberta = minutosAbertos > 0;
 
-  // PONTO MÓVEL SEM ALOCAÇÃO (migration 114): é equipamento guardado ou em
-  // trânsito, não inventário — sem campanha, saldo, Básico, mídia própria ou
-  // obrigação. Ligado, toca só o institucional (nada é gravado nem congelado:
-  // se a alocação começar no meio da hora, a geração seguinte nasce limpa).
-  if (dispositivo.ponto_tipo === 'movel' && !dispositivo.movel_alocado) {
-    return playlistSoInstitucional(dispositivo, horaAtual);
+  // TELA DA REDE MÓVEL (migrations 114 e 115). Sem alocação agora, é
+  // equipamento guardado ou em trânsito, não inventário — sem campanha,
+  // saldo, mídia própria ou obrigação; ligada, toca só o institucional (nada
+  // é gravado nem congelado). Alocada, ela só veicula se está no POOL DA
+  // HORA (alocada no início da hora): quem chega no meio da hora entra na
+  // próxima, e a parcela da rede se divide só entre as telas do pool — a
+  // rede nunca vira mais de uma posição.
+  let rede = null;
+  if (dispositivo.ponto_tipo === 'movel') {
+    if (!dispositivo.movel_alocado) return playlistSoInstitucional(dispositivo, horaAtual);
+    const telasDoPool = await poolDaRede(dispositivo.ponto_id, horaAtual);
+    const indice = telasDoPool.indexOf(dispositivo.id);
+    if (indice < 0) return playlistSoInstitucional(dispositivo, horaAtual);
+    rede = { pool: telasDoPool, indice };
   }
 
   // O DONO DO PONTO PASSA NA PRÓPRIA TELA (decisão do dono, 17/09/2026 —
@@ -632,7 +676,7 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
       ),
       aberta ? deficitHoraAnterior(dispositivo.id, horaAnterior, horaAtual) : {},
       criativosDoDono(dispositivo.dono_conta_id),
-      pontosEmOperacao(),
+      pontosEmOperacao(horaAtual),
       pontosRepo.idsBloqueadosParaEscolha(),
       midiasElegiveis(dispositivo.ponto_id),
       obterVideoInstitucional(),
@@ -675,7 +719,7 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   // hora anterior) são T2; `banco` é T3.
   const entrada = anunciantes.map((a) => {
     const cobertos = cobertura.get(a.id).length;
-    const n = numerosDaConta(a, cobertos, dispositivo.telas_do_ponto);
+    const n = parcelaDaTela(numerosDaConta(a, cobertos, dispositivo.telas_do_ponto), rede);
     // Saldo de Veiculação (banco de horas): quem tem saldo DISPONÍVEL (dívida
     // de mês anterior ainda não devolvida, menos o que outra hora já
     // programou e ainda não liquidou) pede exibições a mais — mas só no tempo
@@ -703,9 +747,12 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
     // `deficits`) devolve nesta mesma hora: a parte dela sai do pedido do
     // banco, senão a mesma falta seria programada duas vezes.
     const vigenteNaHora = a.plano_vigente !== false;
+    // Na rede móvel, as telas do pool dividem a parte do ponto.
     const atrasoNestePonto = Math.max(
       0,
-      (bancoDaConta?.segundos || 0) / pontosQuePuxamOSaldo(cobertura.get(a.id), basicosPorConta.get(a.id)) -
+      (bancoDaConta?.segundos || 0) /
+        pontosQuePuxamOSaldo(cobertura.get(a.id), basicosPorConta.get(a.id)) /
+        (rede ? rede.pool.length : 1) -
         (vigenteNaHora ? deficits[a.id] || 0 : 0) * duracaoValida(n.duracaoSegundos),
     );
     const prioridadeBanco = aberta
@@ -725,7 +772,7 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
       // Congelada junto com a hora: a capacidade desta tela nesta hora não
       // muda entre os polls (nem se a rede mudar no meio da hora). É
       // diagnóstico da capacidade — a dívida nasce do ciclo, não daqui.
-      obrigacaoSegundos: vigenteNaHora ? segundosDeObrigacao({ ...n.obrigacaoHoraCheia, minutosAbertos }) : 0,
+      obrigacaoSegundos: vigenteNaHora ? obrigacaoDaTela(n, minutosAbertos, rede) : 0,
     };
   });
 
@@ -1379,6 +1426,7 @@ async function confirmarExecucao(dispositivoIdEsperado, itemProgramacaoId, janel
 module.exports = {
   gerarPlaylistDaHora,
   obrigacoesDaTela,
+  pontosEmOperacao,
   minutosAbertosNaHora,
   confirmarExecucao,
   marcarExibicaoDoCriativo,

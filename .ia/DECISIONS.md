@@ -1494,3 +1494,44 @@ data (só o Admin sabe se a tela chegou).
   programar nas horas congeladas — corrige a métrica, não a entrega.
 - T9 mantida (regra do Básico no saldo), não bloqueia: não há regra
   melhor sem decisão do dono, e trocar é uma constante.
+
+## ADR-038 — Mostraí Móvel = rede móvel da cidade; agenda e contexto por tela; a rede vale 1 posição (05/10/2026)
+
+**Contexto.** As migrations 112–114 nasceram com "1 ponto móvel = 1
+equipamento = 1 tela". O dono redefiniu o produto: o Mostraí Móvel é a REDE
+MÓVEL COMERCIAL de uma cidade ("Mostraí Móvel — Matão/SP"), com N telas
+físicas; o anunciante escolhe a rede, nunca uma tela; a rede vale UMA
+posição do plano com qualquer número de telas.
+
+**Decisão (migration 115).**
+- Menor mudança segura: a rede continua sendo `pontos` (`tipo='movel'`),
+  agora com cidade + UF obrigatórias e únicas (índice
+  `ux_pontos_rede_movel_cidade`); as telas continuam `dispositivos` (Player,
+  credencial, heartbeat, POP, provisionamento sem mudança). O gatilho
+  `dispositivos_uma_tela_por_movel` saiu. O móvel de produção (ponto 9,
+  tela 10) virou a rede de Matão com os mesmos IDs — nenhuma TV refeita.
+- Alocação POR TELA: `pontos_moveis_hospedagens.dispositivo_id` (V1: uma
+  tela por hospedagem) e `pontos_moveis_evento_telas` (evento com 1..N
+  telas, sem copiar o evento). Agenda por tela no banco
+  (`movel_tela_ocupada` + gatilhos com `pg_advisory_xact_lock(115, tela)`);
+  os índices "um em curso por ponto" viraram "um ativo por tela".
+- Contexto por tela (`src/lib/contexto-do-ponto.js`, alias `p`/`d`):
+  horário, categoria protegida, casa e anfitrião vêm da alocação da TELA.
+- Scheduler: o POOL DA HORA (`rede_movel_pool(rede, hora)` — telas ativas
+  alocadas no início da hora, por id) define quem divide a parcela da rede;
+  divisão inteira exata (`parcelaNoPool`: ⌊n/k⌋ + 1 se i < n mod k). A rede
+  conta como ponto em operação na hora sse o pool não é vazio — uma vez,
+  com 1 ou 10 telas. Recusados: (a) cada tela como um ponto (multiplicava a
+  posição — achado do Codex no PR #117); (b) fração proporcional ao tempo
+  alocado na hora (entrada/saída no meio da hora criava 1,5/2 posições e
+  mudava a base congelada); (c) redistribuir a parcela de quem sai no meio
+  da hora (a soma passaria da cota se a outra já tivesse congelado). O
+  preço: a tela que entra no meio da hora espera a próxima.
+- Termo FÍSICO no lugar do aceite eletrônico (0 aceites em produção;
+  tabelas `hospedagem_termos`/`hospedagem_aceites` removidas): o sistema não
+  é plataforma de assinatura; guarda só Pendente/Assinado (+ data,
+  observação, quem marcou). Anexo digitalizado recusado enquanto o único
+  bucket for público (PENDENCIAS T13b).
+- Custo/amortização de equipamento removidos (colunas sem valor em
+  produção: 0 e o padrão 36). `instalado_em` fica.
+- "Onde estamos" mostra as alocações reais, nunca um pino da rede.

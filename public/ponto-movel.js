@@ -1,21 +1,20 @@
-// Ponto móvel (migrations 112 e 114): os textos que aparecem em mais de uma
-// tela — escolha de pontos do anunciante, Admin e "Onde estamos" — nascem
-// aqui uma vez. Quem decide local atual e próximo evento é o servidor
-// (src/pontos/movel.js); aqui só se escreve. O móvel não tem base: só tem
-// local enquanto está ALOCADO (hospedagem ou evento).
+// Mostraí Móvel — a REDE MÓVEL de uma cidade (migrations 112 a 115): os
+// textos que aparecem em mais de uma tela — escolha de pontos do
+// anunciante, Admin e "Onde estamos" — nascem aqui uma vez. Quantas telas a
+// rede tem e quantas estão em operação é o servidor que decide
+// (src/pontos/movel.js); aqui só se escreve. A cidade vem da rede — nunca
+// fixa no texto.
 (() => {
+  const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
   window.PONTO_MOVEL = {
-    selo: 'Ponto móvel',
+    selo: 'Itinerante',
     // A ideia comercial (pedido do dono): mobilidade e eventos — nunca
     // promessa de audiência.
-    explica: 'Circula por eventos e locais da cidade, levando sua campanha além de um endereço fixo.',
-    semEvento: 'Sem evento programado no momento.',
-    // Já em evento e nada depois dele: "sem evento no momento" desmentiria
-    // o "Agora em: <evento>" logo acima.
-    semOutroEvento: 'Nenhum outro evento programado.',
-    semAlocacao: 'Sem alocação',
-    // Quem já tinha escolhido o móvel e ele ficou sem alocação.
-    semAlocacaoEscolhido: 'Sem alocação no momento — volta a veicular quando for alocado.',
+    explica: (cidade) => `Rede móvel de eventos e ações${cidade ? ` em ${cidade}` : ''}.`,
+    telas: (total, emOperacao) => `${plural(total, 'tela', 'telas')} na rede · ${emOperacao} em operação agora`,
+    // 0 tela em operação: a rede continua escolhível (1 posição do plano).
+    semOperacao: (cidade) =>
+      `Nenhuma tela móvel em operação agora. A campanha volta automaticamente para a rede móvel quando houver inventário ativo${cidade ? ` em ${cidade}` : ''}.`,
   };
 
   // "10/10 08:00", no relógio de Matão (o período da alocação tem hora).

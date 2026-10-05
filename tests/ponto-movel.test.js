@@ -4,15 +4,21 @@ const { randomUUID } = require('node:crypto');
 const pool = require('../src/db/pool');
 const { gerarHash } = require('../src/lib/senha');
 
-// PONTO FIXO E PONTO MÓVEL (migrations 112, 113 e 114, src/pontos/movel.js).
-// V2 (02/10/2026): o móvel nasce só pelo Admin (POST /admin/pontos-moveis),
-// com a Tela 1; candidatura gera sempre fixo; o tipo não muda. V1.1
-// (05/10/2026, migration 114): o móvel NÃO TEM BASE — é equipamento, e só
-// tem local, horário, ramo e lugar no inventário enquanto está ALOCADO
-// (hospedagem ativa ou evento em andamento). Roda o `app` REAL
-// (src/server.js): a guarda do /admin, o login do admin e o do anunciante de
-// verdade. Cada teste cria as próprias contas e pontos — os arquivos de teste
-// rodam em paralelo no mesmo banco.
+// PONTO FIXO E REDE MÓVEL (migrations 112 a 115, src/pontos/movel.js). O
+// ponto móvel (`pontos.tipo = 'movel'`) é a REDE MÓVEL de uma cidade
+// (migration 115): nasce só pelo Admin (POST /admin/pontos-moveis, cidade +
+// UF, uma por cidade), sem dona e SEM tela — as telas entram por "+ Adicionar
+// tela", quantas forem. Candidatura gera sempre fixo; o tipo não muda. Cada
+// TELA só tem local, horário, ramo e lugar no inventário enquanto está
+// ALOCADA (hospedagem ativa ou evento em andamento com ela); o evento é da
+// rede, com uma ou várias telas. Aqui: o fixo intocado, a propriedade, o
+// ciclo do evento, o contexto que o evento dá às telas DELE (horário na TV,
+// trava de ramo, POP) e o card do anunciante. Várias telas ao mesmo tempo, o
+// pool da hora e a hospedagem: tests/rede-movel.test.js e
+// tests/hospedagem.test.js. Roda o `app` REAL (src/server.js): a guarda do
+// /admin, o login do admin e o do anunciante de verdade. Cada teste cria as
+// próprias contas e redes (em cidades únicas) — os arquivos de teste rodam
+// em paralelo no mesmo banco.
 process.env.ADMIN_USER ||= 'admin';
 process.env.ADMIN_PASSWORD ||= 'Admin12@teste';
 process.env.SESSION_SECRET ||= 'teste-ponto-movel';
@@ -33,7 +39,8 @@ const { instalarPlayer, tirarDoSorteio } = require('./apoio-player');
 
 const IP = `10.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
 const SENHA = 'Senha12@teste';
-const criadas = { contas: [], pontos: [], categorias: [] };
+const criadas = { contas: [], pontos: [], categorias: [], aprovacoes: 0 };
+const INICIO_DO_ARQUIVO = new Date();
 let base;
 let servidor;
 let admin;
@@ -79,27 +86,25 @@ test.after(async () => {
   await require('../src/lib/eventos').aguardarGravacoes();
   for (const id of criadas.pontos) {
     const telas = 'SELECT id FROM dispositivos WHERE ponto_id = $1';
+    // As métricas anônimas que citam a rede, o ponto ou a tela de teste.
     await pool.query(
-      'DELETE FROM saldo_hospedagem_lancamentos WHERE hospedagem_id IN (SELECT id FROM pontos_moveis_hospedagens WHERE ponto_id = $1)',
+      `DELETE FROM eventos WHERE anunciante_id IS NULL
+          AND (propriedades->>'ponto_id' = $1::int::text
+               OR propriedades->>'dispositivo_id' IN (SELECT id::text FROM dispositivos WHERE ponto_id = $1::int))`,
       [id],
     );
-    // Termo/equipamento da hospedagem de teste (o aceite é imutável: o
-    // gatilho sai só durante a limpeza).
-    await pool.query('ALTER TABLE hospedagem_aceites DISABLE TRIGGER hospedagem_aceite_imutavel');
-    await pool.query(
-      `DELETE FROM hospedagem_aceites WHERE hospedagem_id IN (SELECT id FROM pontos_moveis_hospedagens WHERE ponto_id = $1)`,
-      [id],
-    );
-    await pool.query('ALTER TABLE hospedagem_aceites ENABLE TRIGGER hospedagem_aceite_imutavel');
-    await pool.query(
-      `DELETE FROM hospedagem_movimentacoes WHERE hospedagem_id IN (SELECT id FROM pontos_moveis_hospedagens WHERE ponto_id = $1)`,
-      [id],
-    );
+    const hosp = 'SELECT id FROM pontos_moveis_hospedagens WHERE ponto_id = $1';
+    await pool.query(`DELETE FROM saldo_hospedagem_lancamentos WHERE hospedagem_id IN (${hosp})`, [id]);
+    await pool.query(`DELETE FROM hospedagem_movimentacoes WHERE hospedagem_id IN (${hosp})`, [id]);
+    // Hospedagem e evento (com as telas dele, em cascata) saem antes das
+    // telas que eles referenciam.
     await pool.query('DELETE FROM pontos_moveis_hospedagens WHERE ponto_id = $1', [id]);
     await pool.query(`DELETE FROM execucoes_confirmadas WHERE dispositivo_id IN (${telas})`, [id]);
+    await pool.query('DELETE FROM pontos_moveis_eventos WHERE ponto_id = $1', [id]);
     await pool.query(`DELETE FROM exibicoes_contador WHERE dispositivo_id IN (${telas})`, [id]);
     await pool.query(`DELETE FROM midias_exibicoes_contador WHERE dispositivo_id IN (${telas})`, [id]);
     await pool.query(`DELETE FROM playlist_hora_congelada WHERE dispositivo_id IN (${telas})`, [id]);
+    await pool.query('DELETE FROM tela_operacao WHERE ponto_id = $1', [id]);
     await pool.query('DELETE FROM dispositivos WHERE ponto_id = $1', [id]);
     await pool.query('DELETE FROM creditos_ledger WHERE ponto_id = $1', [id]);
     await pool.query('DELETE FROM anunciantes_pontos WHERE ponto_id = $1', [id]);
@@ -118,6 +123,15 @@ test.after(async () => {
     await pool.query('DELETE FROM anunciantes WHERE id = $1', [id]);
   }
   for (const id of criadas.categorias) await pool.query('DELETE FROM categorias WHERE id = $1', [id]);
+  // A métrica anônima de cada aprovação deste arquivo (não cita o ponto).
+  await pool.query(
+    `DELETE FROM eventos WHERE id IN (
+       SELECT id FROM eventos
+        WHERE nome = 'ponto:candidatura_aprova' AND anunciante_id IS NULL AND criado_em >= $1
+          AND propriedades @> '{"ramo": "academia", "cidade": "Matão", "ponto_tipo": "fixo"}'
+        ORDER BY id DESC LIMIT $2)`,
+    [INICIO_DO_ARQUIVO, criadas.aprovacoes],
+  );
   servidor.closeAllConnections();
   await new Promise((r) => servidor.close(r));
   await pool.end();
@@ -158,9 +172,9 @@ async function novaCategoria(prefixo) {
   return rows[0].id;
 }
 
-// Horário de funcionamento do ponto fixo (candidatura) e do evento padrão. O
-// formato é o de `pontos.horario_semanal` já normalizado (com `feriados`),
-// para comparar com o que a TV recebe.
+// Horário de funcionamento do ponto fixo (candidatura) e de evento com
+// horário próprio. O formato é o de `pontos.horario_semanal` já normalizado
+// (com `feriados`), para comparar com o que a TV recebe.
 const HORARIO_COMERCIAL = {
   seg: { abre: '06:00', fecha: '22:00' },
   ter: { abre: '06:00', fecha: '22:00' },
@@ -203,21 +217,30 @@ async function aprovar(conta, corpo) {
   const cand = await novaCandidatura(conta);
   const r = await admin('POST', `/admin/candidaturas/${cand.id}/liberar`, corpo);
   assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+  criadas.aprovacoes += 1;
   return pontoDaCandidatura(cand.id);
 }
 
-// O móvel nasce pelo Admin: só o EQUIPAMENTO (nome opcional e nota interna);
-// a Tela 1 nasce junto. Nasce sem alocação.
-async function criarMovel(corpo = {}) {
-  const r = await admin('POST', '/admin/pontos-moveis', corpo);
+const cidadeUnica = () => `Cidade ${randomUUID().slice(0, 8)}`;
+
+// A rede nasce pelo Admin (cidade única + UF; nome opcional e nota
+// interna), sem tela; `telas` telas entram em seguida pela rota da ficha
+// ("+ Adicionar tela"). Nasce sem alocação.
+async function criarMovel(corpo = {}, { telas = 1 } = {}) {
+  const r = await admin('POST', '/admin/pontos-moveis', { cidade: cidadeUnica(), uf: 'SP', ...corpo });
   assert.strictEqual(r.status, 201, JSON.stringify(r.json));
   criadas.pontos.push(r.json.id);
+  const ids = [];
+  for (let i = 0; i < telas; i++) {
+    const t = await admin('POST', `/admin/pontos/${r.json.id}/dispositivos`, {});
+    assert.strictEqual(t.status, 201, JSON.stringify(t.json));
+    ids.push(t.json.id);
+  }
   const { rows } = await pool.query('SELECT * FROM pontos WHERE id = $1', [r.json.id]);
-  return { ...rows[0], telaId: r.json.telaId };
+  return { ...rows[0], telaId: ids[0], telas: ids };
 }
 
-// Tela instalada: no móvel, a Tela 1 que nasceu com ele (1 móvel = 1 tela);
-// no fixo, uma tela nova.
+// Tela instalada: na rede, a primeira tela dela; no fixo, uma tela nova.
 async function telaInstalada(pontoId) {
   const { rows: existente } = await pool.query(
     `UPDATE dispositivos SET status = 'ativo', chave_hash = md5(random()::text) || md5(random()::text)
@@ -247,38 +270,48 @@ const diaDaSemana = (dia) => {
   return DIA_DA_SEMANA[new Date(Date.UTC(a, m - 1, d)).getUTCDay()];
 };
 
-// Evento padrão: daqui a 5 dias, por um dia, horário comercial. Com
-// `data_inicio` (formato antigo, só datas), o período vem dele.
-async function cadastrarEvento(pontoId, extra = {}) {
-  const r = await admin('POST', `/admin/pontos/${pontoId}/eventos`, corpoDeEvento(extra));
-  assert.strictEqual(r.status, 201, JSON.stringify(r.json));
-  return r.json.id;
-}
-
-function corpoDeEvento(extra = {}) {
+// Evento padrão nas `telas`: daqui a 5 dias, por um dia, operando o período
+// inteiro (sem horário). Com `data_inicio` (formato antigo, só datas) ou
+// `inicio`, o período vem do `extra`.
+function corpoDeEvento(telas, extra = {}) {
   const periodo = extra.data_inicio || extra.inicio ? {} : { inicio: paredeMais(5 * 24), fim: paredeMais(6 * 24) };
   return {
     nome: 'Campeonato Regional de Jiu-Jitsu',
     organizacao: 'Federação Regional',
     local: 'Ginásio Municipal',
+    endereco: 'Rua do Ginásio, 50',
     ...periodo,
-    horario_operacao: HORARIO_COMERCIAL,
     publico_estimado: 600,
+    telas,
     ...extra,
   };
 }
 
-// Evento que cobre agora (começou há 1 h, acaba amanhã), já iniciado.
-async function eventoEmAndamento(pontoId, extra = {}) {
-  const id = await cadastrarEvento(pontoId, { inicio: paredeMais(-1), fim: paredeMais(24), ...extra });
-  const r = await acaoNoEvento(pontoId, id, 'iniciar');
+// Na primeira tela da rede, salvo `telas` no `extra`.
+async function cadastrarEvento(ponto, extra = {}) {
+  const r = await admin('POST', `/admin/pontos/${ponto.id}/eventos`, corpoDeEvento([ponto.telaId], extra));
+  assert.strictEqual(r.status, 201, JSON.stringify(r.json));
+  return r.json.id;
+}
+
+// Evento que cobre agora (começou há 1 h, acaba amanhã), já iniciado — e
+// iniciado ANTES da hora cheia: as telas dele estão no pool da hora
+// (`rede_movel_pool`) e o gerador veicula nelas já nesta hora.
+async function eventoEmAndamento(ponto, extra = {}) {
+  const id = await cadastrarEvento(ponto, { inicio: paredeMais(-1), fim: paredeMais(24), ...extra });
+  const r = await acaoNoEvento(ponto.id, id, 'iniciar');
   assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+  await pool.query(
+    `UPDATE pontos_moveis_eventos SET iniciado_em = date_trunc('hour', now()) - interval '1 minute' WHERE id = $1`,
+    [id],
+  );
   return id;
 }
 
 const ficha = async (pontoId) => (await admin('GET', `/admin/pontos/${pontoId}/movel`)).json;
+const telaNaFicha = (f, telaId) => f.telas.find((t) => t.id === telaId);
 const acaoNoEvento = (pontoId, eventoId, acao) => admin('POST', `/admin/pontos/${pontoId}/eventos/${eventoId}/${acao}`);
-const daLista = async (pontoId) => (await movel.listarMoveis()).find((m) => m.id === pontoId);
+const daLista = async (pontoId) => (await movel.listarRedes()).find((m) => m.id === pontoId);
 const publicos = async () => (await navegador()('GET', '/pontos')).json;
 const noInventario = async (pontoId) =>
   (await pool.query(`SELECT ${inventarioSql('p')} AS sim FROM pontos p WHERE p.id = $1`, [pontoId])).rows[0].sim;
@@ -323,7 +356,7 @@ test('2b. tipo explícito "fixo" e tipo inválido', async () => {
   assert.strictEqual(await pontoDaCandidatura(cand.id), null, 'nada nasce com tipo inválido');
 });
 
-test('3. candidatura nunca vira móvel; o Admin cria o móvel só com o equipamento — sem base, endereço, horário ou ramo', async () => {
+test('3. candidatura nunca vira rede móvel; o Admin cria a rede da cidade — sem dona, base, endereço, horário, ramo nem tela', async () => {
   const conta = await novaConta();
   const cand = await novaCandidatura(conta);
   const r = await admin('POST', `/admin/candidaturas/${cand.id}/liberar`, { tipo: 'movel' });
@@ -332,14 +365,21 @@ test('3. candidatura nunca vira móvel; o Admin cria o móvel só com o equipame
   assert.strictEqual(await pontoDaCandidatura(cand.id), null);
 
   // Campos do modelo antigo (base, endereço, horário) são ignorados.
-  const ponto = await criarMovel({
-    base_conta_id: conta.id,
-    base_nome: 'Academia X',
-    logradouro: 'Avenida Brasil',
-    horario_semanal: HORARIO_COMERCIAL,
-    observacoes: 'caixa 3 no depósito',
-  });
+  const cidade = cidadeUnica();
+  const ponto = await criarMovel(
+    {
+      cidade,
+      base_conta_id: conta.id,
+      base_nome: 'Academia X',
+      logradouro: 'Avenida Brasil',
+      horario_semanal: HORARIO_COMERCIAL,
+      observacoes: 'caixa 3 no depósito',
+    },
+    { telas: 0 },
+  );
   assert.strictEqual(ponto.tipo, 'movel');
+  assert.strictEqual(ponto.nome, `Mostraí Móvel — ${cidade}`);
+  assert.deepStrictEqual([ponto.cidade, ponto.uf], [cidade, 'SP']);
   assert.strictEqual(ponto.anunciante_id, null, 'sem dona');
   assert.strictEqual(ponto.candidatura_id, null, 'não vem de candidatura');
   assert.strictEqual(ponto.base_conta_id, null, 'sem base');
@@ -350,30 +390,24 @@ test('3. candidatura nunca vira móvel; o Admin cria o móvel só com o equipame
   assert.strictEqual(ponto.horario_semanal, null, 'sem horário próprio');
   assert.strictEqual(ponto.categoria_id, null, 'sem ramo próprio');
   assert.strictEqual(ponto.observacoes, 'caixa 3 no depósito', 'nota interna');
-  assert.match(ponto.nome, /^Mostraí Móvel #\d{2,}$/);
-  assert.ok(ponto.telaId, 'a Tela 1 nasce junto');
+  const { rows: telas } = await pool.query('SELECT 1 FROM dispositivos WHERE ponto_id = $1', [ponto.id]);
+  assert.strictEqual(telas.length, 0, 'nenhuma tela nasce junto');
   const { rows } = await pool.query('SELECT papeis FROM anunciantes WHERE id = $1', [conta.id]);
   assert.ok(!rows[0].papeis.includes('ponto'), 'ninguém ganha o papel de dono');
   const cupom = await pool.query('SELECT 1 FROM cupons_ponto WHERE conta_id = $1', [conta.id]);
-  assert.strictEqual(cupom.rowCount, 0, 'criar móvel não cria cupom para ninguém');
+  assert.strictEqual(cupom.rowCount, 0, 'criar a rede não cria cupom para ninguém');
 
-  // Nome informado vale; comprido demais é recusado.
-  const nomeado = await criarMovel({ nome: '  Totem   da Feira ' });
+  // Nome informado vale (espaços normalizados); comprido demais é recusado.
+  const nomeado = await criarMovel({ nome: '  Totem   da Feira ' }, { telas: 0 });
   assert.strictEqual(nomeado.nome, 'Totem da Feira');
   assert.ok(nomeado.movel_numero > ponto.movel_numero, 'o número continua sequencial');
-  const longo = await admin('POST', '/admin/pontos-moveis', { nome: 'x'.repeat(121) });
+  const longo = await admin('POST', '/admin/pontos-moveis', { cidade: cidadeUnica(), uf: 'SP', nome: 'x'.repeat(121) });
   assert.strictEqual(longo.status, 400);
   assert.strictEqual(longo.json.campo, 'nome');
-
-  // 1 móvel = 1 tela: a segunda não entra (gatilho da 113).
-  await assert.rejects(
-    pool.query(`INSERT INTO dispositivos (ponto_id, apelido, status) VALUES ($1, 'Tela 2', 'pendente')`, [ponto.id]),
-    (e) => e.code === '23505',
-  );
 });
 
 // ---------- 4 e 17. segurança e propriedade ----------
-test('4. conta comum (e anônimo) não cria móvel nem mexe em evento', async () => {
+test('4. conta comum (e anônimo) não cria rede nem mexe em rede, tela livre ou evento', async () => {
   const conta = await novaConta();
   const nav = await entrar(conta);
   const anon = navegador();
@@ -382,8 +416,10 @@ test('4. conta comum (e anônimo) não cria móvel nem mexe em evento', async ()
   const fixo = await aprovar(await novaConta());
   for (const quem of [nav, anon]) {
     assert.strictEqual((await quem('POST', `/admin/candidaturas/${cand.id}/liberar`, { tipo: 'movel' })).status, 401);
-    assert.strictEqual((await quem('POST', '/admin/pontos-moveis', { nome: 'X' })).status, 401);
+    assert.strictEqual((await quem('POST', '/admin/pontos-moveis', { cidade: cidadeUnica(), uf: 'SP' })).status, 401);
     assert.strictEqual((await quem('GET', '/admin/pontos-moveis')).status, 401);
+    assert.strictEqual((await quem('PATCH', `/admin/pontos/${movelPronto.id}/movel`, { nome: 'X' })).status, 401);
+    assert.strictEqual((await quem('POST', `/admin/pontos/${movelPronto.id}/dispositivos`, {})).status, 401);
     assert.strictEqual((await quem('POST', `/admin/pontos/${fixo.id}/tornar-movel`)).status, 401);
     assert.strictEqual((await quem('POST', `/admin/pontos/${movelPronto.id}/tornar-fixo`)).status, 401);
     assert.strictEqual((await quem('PUT', `/admin/pontos/${movelPronto.id}/base`, {})).status, 401);
@@ -392,7 +428,7 @@ test('4. conta comum (e anônimo) não cria móvel nem mexe em evento', async ()
         await quem(
           'POST',
           `/admin/pontos/${movelPronto.id}/eventos`,
-          corpoDeEvento({ inicio: paredeMais(2), fim: paredeMais(5) }),
+          corpoDeEvento([movelPronto.telaId], { inicio: paredeMais(2), fim: paredeMais(5) }),
         )
       ).status,
       401,
@@ -404,11 +440,13 @@ test('4. conta comum (e anônimo) não cria móvel nem mexe em evento', async ()
   assert.strictEqual(rows[0].tipo, 'fixo');
   const eventos = await pool.query('SELECT 1 FROM pontos_moveis_eventos WHERE ponto_id = $1', [movelPronto.id]);
   assert.strictEqual(eventos.rowCount, 0);
+  const telas = await pool.query('SELECT 1 FROM dispositivos WHERE ponto_id = $1', [movelPronto.id]);
+  assert.strictEqual(telas.rowCount, 1, 'só a tela que o Admin adicionou');
 });
 
-test('17. propriedade: móvel nunca ganha dono — nem pelo PATCH do admin, nem pelo banco, nem pela escolha', async () => {
+test('17. propriedade: a rede nunca ganha dono — nem pelo PATCH do admin, nem pelo banco, nem pela escolha', async () => {
   const conta = await novaConta();
-  const ponto = await criarMovel();
+  const ponto = await criarMovel({}, { telas: 0 });
   const r = await admin('PATCH', `/admin/pontos/${ponto.id}`, { anunciante_id: conta.id });
   assert.strictEqual(r.status, 400);
   assert.match(r.json.erro, /não tem dono/);
@@ -420,16 +458,15 @@ test('17. propriedade: móvel nunca ganha dono — nem pelo PATCH do admin, nem 
   await assert.rejects(
     pool.query('UPDATE pontos SET candidatura_id = (SELECT id FROM candidaturas LIMIT 1) WHERE id = $1', [ponto.id]),
     (e) => e.code === '23514',
-    'móvel nunca vem de candidatura',
+    'rede móvel nunca vem de candidatura',
   );
   await assert.rejects(
     pool.query('UPDATE pontos SET movel_numero = NULL WHERE id = $1', [ponto.id]),
     (e) => e.code === '23514',
-    'móvel sempre tem número',
+    'rede móvel sempre tem número',
   );
-  // Quem escolhe o móvel (durante um evento) não vira dona: não edita o
-  // endereço e não o vê em "Meus pontos".
-  await eventoEmAndamento(ponto.id);
+  // Quem escolhe a rede (escolhível mesmo sem tela em operação) não vira
+  // dona: não edita o endereço e não a vê em "Meus pontos".
   await anunciantesRepo.atualizar(conta.id, { plano_id: 'essencial-1m' });
   const nav = await entrar(conta);
   assert.strictEqual((await nav('PUT', '/anunciantes/me/pontos', { pontos: [ponto.id] })).status, 200);
@@ -438,124 +475,145 @@ test('17. propriedade: móvel nunca ganha dono — nem pelo PATCH do admin, nem 
   const meus = await nav('GET', '/anunciantes/me/meus-pontos');
   assert.strictEqual(meus.status, 200);
   assert.strictEqual(meus.json.ehPonto, false);
-  assert.ok(!meus.json.estabelecimentos.some((e) => e.id === ponto.id), 'o móvel não aparece como dela');
+  assert.ok(!meus.json.estabelecimentos.some((e) => e.id === ponto.id), 'a rede não aparece como dela');
   assert.strictEqual(
     (await pool.query('SELECT anunciante_id FROM pontos WHERE id = $1', [ponto.id])).rows[0].anunciante_id,
     null,
   );
 });
 
-// ---------- 5 e 6. sem alocação ----------
-test('5 e 6. sem alocação: nenhum local, fora de "Onde estamos", da escolha e do inventário; a tela só toca o institucional', async () => {
-  const ponto = await criarMovel();
-  const telaId = await telaInstalada(ponto.id);
-  // Mesmo "em operação" (tela ligada), sem alocação não é inventário.
+// ---------- 5 a 11. eventos ----------
+test('5 a 9. evento em andamento aloca SÓ as telas dele (local, inventário, "Onde estamos"); encerrado, voltam a sem alocação', async () => {
+  const ponto = await criarMovel({}, { telas: 2 });
+  const [a, b] = ponto.telas;
   await tirarDoSorteio(ponto.id);
-  await pool.query(`UPDATE pontos SET status = 'em_operacao' WHERE id = $1`, [ponto.id]);
-
-  const f = await ficha(ponto.id);
+  // Sem alocação: nenhum local, nada na agenda, fora do inventário e de
+  // "Onde estamos" (a rede não tem base nem pino próprio).
+  let f = await ficha(ponto.id);
   assert.strictEqual(f.tipo, 'movel');
-  assert.strictEqual(f.localAtual, null, 'sem alocação, nenhum local');
-  assert.strictEqual(f.proximoEvento, null);
-  assert.strictEqual(f.alocado, false);
-  assert.strictEqual(f.agora, null);
-  assert.strictEqual(f.proximo, null);
   assert.deepStrictEqual(f.agenda, []);
   assert.deepStrictEqual(f.basesAnteriores, []);
-  assert.strictEqual(f.tela.id, ponto.telaId);
   assert.strictEqual(f.base, undefined, 'a ficha não tem base');
-  const naLista = await daLista(ponto.id);
-  assert.strictEqual(naLista.alocado, false);
-  assert.strictEqual(naLista.agora, null);
-  assert.strictEqual(naLista.tela.id, telaId);
-
-  assert.ok(!(await publicos()).some((p) => p.id === ponto.id), 'fora de "Onde estamos"');
+  assert.ok(f.telas.every((t) => t.alocacao === null && t.proximo === null));
   assert.strictEqual(await noInventario(ponto.id), false, 'fora do inventário (pontosEmOperacao/telasNaRede)');
+  assert.ok(!(await publicos()).some((p) => p.id === ponto.id), 'fora de "Onde estamos"');
 
-  const anunciante = await novaConta();
-  await anunciantesRepo.atualizar(anunciante.id, { plano_id: 'essencial-1m' });
-  const nav = await entrar(anunciante);
-  const lista = await nav('GET', '/anunciantes/me/pontos-disponiveis');
-  assert.strictEqual(lista.status, 200, JSON.stringify(lista.json));
-  assert.ok(!lista.json.pontos.some((p) => p.id === ponto.id), 'fora da escolha');
-  const escolha = await nav('PUT', '/anunciantes/me/pontos', { pontos: [ponto.id] });
-  assert.strictEqual(escolha.status, 409, 'escolha nova de móvel sem alocação é recusada');
-  assert.match(escolha.json.erro, /sem alocação/);
-
-  // A tela ligada toca só o institucional — mesmo com conta que já tinha
-  // escolhido o móvel e peça aprovada.
-  await contaComPlanoEPeca(ponto.id);
-  const dispositivo = await dispositivosRepo.buscarComPonto(telaId);
-  assert.strictEqual(dispositivo.movel_alocado, false);
-  assert.strictEqual(dispositivo.ponto_horario_semanal, null, 'sem horário comercial');
-  assert.strictEqual(dispositivo.categoria_id, null, 'sem ramo');
-  assert.strictEqual(dispositivo.casa_conta_id, null, 'sem casa');
-  const envelope = await gerador.gerarPlaylistDaHora(dispositivo, new Date());
-  assert.ok(envelope.itens.length > 0);
-  assert.ok(
-    envelope.itens.every((i) => i.institucional === true && i.contabiliza === false && i.anuncianteId === null),
-    JSON.stringify(envelope.itens.slice(0, 3)),
+  const eventoId = await eventoEmAndamento(ponto, { nome: 'Copa de Judô', telas: [a] });
+  f = await ficha(ponto.id);
+  const ta = telaNaFicha(f, a);
+  assert.deepStrictEqual(
+    [ta.alocacao.tipo, ta.alocacao.id, ta.alocacao.local, ta.alocacao.endereco, ta.operando],
+    ['evento', eventoId, 'Ginásio Municipal', 'Rua do Ginásio, 50', true],
   );
-  const contador = await pool.query('SELECT 1 FROM exibicoes_contador WHERE dispositivo_id = $1', [telaId]);
-  assert.strictEqual(contador.rowCount, 0, 'nada programado para ninguém');
+  assert.strictEqual(telaNaFicha(f, b).alocacao, null, 'a outra tela da rede continua sem alocação');
+  assert.strictEqual(f.resumo.emOperacao, 1);
+  assert.deepStrictEqual(
+    f.agenda.map((x) => [x.tipo, x.id, x.estado, x.telas.map((t) => t.id)]),
+    [['evento', eventoId, 'em_andamento', [a]]],
+  );
+  const naLista = await daLista(ponto.id);
+  assert.deepStrictEqual(
+    naLista.agora.map((x) => x.id),
+    [eventoId],
+  );
+  assert.strictEqual(await noInventario(ponto.id), true, 'uma tela alocada: a rede é inventário');
+  const publico = (await publicos()).filter((p) => p.id === ponto.id);
+  assert.strictEqual(publico.length, 1, 'aparece pela alocação real, uma linha');
+  assert.strictEqual(publico[0].tipo, 'movel');
+  assert.strictEqual(publico[0].local_atual, 'Ginásio Municipal');
+  assert.strictEqual(publico[0].local_endereco, 'Rua do Ginásio, 50');
+  assert.strictEqual(publico[0].evento_nome, 'Copa de Judô');
+  assert.strictEqual(publico[0].base_nome, undefined);
+
+  // A tela A está num lugar só: período cruzando nem entra; um evento de
+  // outra data com ela não começa com este em andamento.
+  const sobreposto = await admin(
+    'POST',
+    `/admin/pontos/${ponto.id}/eventos`,
+    corpoDeEvento([a], { nome: 'Outro', inicio: paredeMais(2), fim: paredeMais(5) }),
+  );
+  assert.strictEqual(sobreposto.status, 409);
+  assert.match(sobreposto.json.erro, /já está no evento “Copa de Judô”/);
+  const outro = await cadastrarEvento(ponto, {
+    nome: 'Outro',
+    inicio: paredeMais(72),
+    fim: paredeMais(80),
+    telas: [a],
+  });
+  const dois = await acaoNoEvento(ponto.id, outro, 'iniciar');
+  assert.strictEqual(dois.status, 409);
+  assert.match(dois.json.erro, /já está no evento/);
+  assert.strictEqual((await acaoNoEvento(ponto.id, eventoId, 'cancelar')).status, 409, 'em andamento não cancela');
+
+  assert.strictEqual((await acaoNoEvento(ponto.id, eventoId, 'encerrar')).status, 200);
+  f = await ficha(ponto.id);
+  assert.strictEqual(telaNaFicha(f, a).alocacao, null, 'encerrado: sem alocação de novo');
+  assert.strictEqual(telaNaFicha(f, a).proximo.id, outro);
+  const encerrado = f.eventos.find((e) => e.id === eventoId);
+  assert.strictEqual(encerrado.estado, 'encerrado');
+  assert.strictEqual(encerrado.encerramento, 'manual');
+  assert.ok(encerrado.iniciadoEm && encerrado.encerradoEm);
+  assert.strictEqual(await noInventario(ponto.id), false);
+  assert.ok(!(await publicos()).some((p) => p.id === ponto.id), 'some de "Onde estamos"');
+  assert.strictEqual((await acaoNoEvento(ponto.id, eventoId, 'iniciar')).status, 409, 'encerrado não recomeça');
+  assert.strictEqual((await acaoNoEvento(ponto.id, outro, 'encerrar')).status, 409, 'programado não encerra');
+  assert.strictEqual((await acaoNoEvento(ponto.id, outro, 'pausar')).status, 404, 'ação desconhecida');
 });
 
-// ---------- 7 a 11. eventos ----------
-test('7 e 11. evento futuro vira o próximo evento; horário de funcionamento obrigatório; público opcional', async () => {
+test('7 e 11. evento futuro é o próximo compromisso da tela; sem horário opera o período inteiro; público opcional', async () => {
   const ponto = await criarMovel();
   // Formato antigo (só datas) continua aceito: o dia inteiro em Matão.
-  const semPublico = await cadastrarEvento(ponto.id, {
+  const semPublico = await cadastrarEvento(ponto, {
     nome: 'Feira do Livro',
     data_inicio: diaMais(20),
     data_fim: '',
     publico_estimado: '',
   });
   let f = await ficha(ponto.id);
-  assert.strictEqual(f.proximoEvento.id, semPublico);
-  assert.strictEqual(f.proximoEvento.publicoEstimado, null, 'sem público, sem número inventado');
-  assert.strictEqual(f.proximoEvento.dataFim, f.proximoEvento.dataInicio, 'sem fim = evento de um dia');
   const feira = f.eventos.find((e) => e.id === semPublico);
+  assert.strictEqual(feira.publicoEstimado, null, 'sem público, sem número inventado');
+  assert.strictEqual(feira.dataFim, feira.dataInicio, 'sem fim = evento de um dia');
   assert.strictEqual(feira.inicioLocal, `${diaMais(20)}T00:00`);
   assert.strictEqual(feira.fimLocal, `${diaMais(21)}T00:00`);
+  assert.strictEqual(feira.horarioOperacao, null, 'sem horário: operar durante todo o período');
+  assert.strictEqual(feira.horario, null);
+  assert.strictEqual(telaNaFicha(f, ponto.telaId).proximo.id, semPublico);
 
   const inicio = `${diaMais(3)}T08:00`;
   const fim = `${diaMais(4)}T18:30`;
-  const maisCedo = await cadastrarEvento(ponto.id, { inicio, fim, horario_operacao: '24h' });
+  const maisCedo = await cadastrarEvento(ponto, { inicio, fim, horario_operacao: '24h' });
   f = await ficha(ponto.id);
-  assert.strictEqual(f.proximoEvento.id, maisCedo, 'o próximo é o de início mais próximo');
-  assert.strictEqual(f.proximoEvento.publicoEstimado, 600);
-  assert.strictEqual(f.proximoEvento.local, 'Ginásio Municipal');
-  assert.strictEqual(f.proximoEvento.dataInicio, diaMais(3));
-  assert.strictEqual(f.proximoEvento.dataFim, diaMais(4));
-  assert.strictEqual(f.localAtual, null, 'evento programado não aloca o móvel');
-  assert.strictEqual(f.alocado, false);
-  assert.strictEqual(f.proximo.tipo, 'evento');
-  assert.strictEqual(f.proximo.id, maisCedo);
+  const tela = telaNaFicha(f, ponto.telaId);
+  assert.strictEqual(tela.proximo.id, maisCedo, 'o próximo é o de início mais próximo');
+  assert.strictEqual(tela.alocacao, null, 'evento programado não aloca a tela');
+  assert.strictEqual(f.resumo.comCompromissoFuturo, 1);
   assert.deepStrictEqual(
-    f.agenda.map((a) => a.id),
+    f.agenda.map((x) => x.id),
     [maisCedo, semPublico],
     'a agenda vem por início',
   );
   const ev = f.eventos.find((e) => e.id === maisCedo);
+  assert.strictEqual(ev.publicoEstimado, 600);
+  assert.strictEqual(ev.local, 'Ginásio Municipal');
+  assert.strictEqual(ev.endereco, 'Rua do Ginásio, 50');
+  assert.strictEqual(ev.dataInicio, diaMais(3));
+  assert.strictEqual(ev.dataFim, diaMais(4));
   assert.strictEqual(ev.inicioLocal, inicio, 'a hora digitada é a de Matão');
   assert.strictEqual(ev.fimLocal, fim);
   assert.deepStrictEqual(ev.horarioOperacao, alocacao.HORARIO_24H, "'24h' é escolha explícita");
+  assert.deepStrictEqual(
+    ev.telas.map((t) => t.id),
+    [ponto.telaId],
+  );
   assert.strictEqual((await daLista(ponto.id)).proximo.id, maisCedo);
 
-  const tentar = (extra) => admin('POST', `/admin/pontos/${ponto.id}/eventos`, corpoDeEvento(extra));
-  const semHorario = await tentar({
-    horario_operacao: undefined,
-    inicio: paredeMais(30 * 24),
-    fim: paredeMais(31 * 24),
-  });
-  assert.strictEqual(semHorario.status, 400, 'sem horário de funcionamento, nada de 24 h automático');
-  assert.strictEqual(semHorario.json.campo, 'horario_operacao');
+  const tentar = (extra) => admin('POST', `/admin/pontos/${ponto.id}/eventos`, corpoDeEvento([ponto.telaId], extra));
   const horarioVazio = await tentar({
     horario_operacao: { seg: null, ter: null, qua: null, qui: null, sex: null, sab: null, dom: null },
     inicio: paredeMais(30 * 24),
     fim: paredeMais(31 * 24),
   });
-  assert.strictEqual(horarioVazio.status, 400, 'pelo menos um dia aberto');
+  assert.strictEqual(horarioVazio.status, 400, 'horário próprio: pelo menos um dia aberto');
   assert.strictEqual(horarioVazio.json.campo, 'horario_operacao');
   const horarioInvalido = await tentar({
     horario_operacao: { seg: { abre: '25:00', fecha: '10:00' } },
@@ -592,140 +650,86 @@ test('7 e 11. evento futuro vira o próximo evento; horário de funcionamento ob
   assert.strictEqual((await ficha(ponto.id)).eventos.length, 2, 'nada inválido entrou');
 });
 
-test('evento com hora: dois no mesmo dia em horários que não se cruzam entram; cruzando, 409', async () => {
+test('evento com hora: dois no mesmo dia na mesma tela, sem se cruzar, entram; cruzando, 409', async () => {
   const ponto = await criarMovel();
   const dia = diaMais(7);
-  const manha = await cadastrarEvento(ponto.id, { nome: 'Manhã', inicio: `${dia}T08:00`, fim: `${dia}T12:00` });
-  const tarde = await cadastrarEvento(ponto.id, { nome: 'Tarde', inicio: `${dia}T12:00`, fim: `${dia}T18:00` });
+  const manha = await cadastrarEvento(ponto, { nome: 'Manhã', inicio: `${dia}T08:00`, fim: `${dia}T12:00` });
+  const tarde = await cadastrarEvento(ponto, { nome: 'Tarde', inicio: `${dia}T12:00`, fim: `${dia}T18:00` });
   assert.ok(manha && tarde, '[08:00, 12:00) e [12:00, 18:00) não colidem');
-  const cruzando = await admin(
-    'POST',
-    `/admin/pontos/${ponto.id}/eventos`,
-    corpoDeEvento({ nome: 'Almoço', inicio: `${dia}T11:00`, fim: `${dia}T13:00` }),
-  );
+  const tentar = (extra) => admin('POST', `/admin/pontos/${ponto.id}/eventos`, corpoDeEvento([ponto.telaId], extra));
+  const cruzando = await tentar({ nome: 'Almoço', inicio: `${dia}T11:00`, fim: `${dia}T13:00` });
   assert.strictEqual(cruzando.status, 409);
   assert.match(cruzando.json.erro, /já está no evento “Manhã”/);
-  const dentro = await admin(
-    'POST',
-    `/admin/pontos/${ponto.id}/eventos`,
-    corpoDeEvento({ nome: 'Dentro', inicio: `${dia}T13:00`, fim: `${dia}T14:00` }),
-  );
+  const dentro = await tentar({ nome: 'Dentro', inicio: `${dia}T13:00`, fim: `${dia}T14:00` });
   assert.strictEqual(dentro.status, 409);
   assert.match(dentro.json.erro, /“Tarde”/);
-  const noite = await cadastrarEvento(ponto.id, { nome: 'Noite', inicio: `${dia}T18:00`, fim: `${dia}T23:00` });
+  const noite = await cadastrarEvento(ponto, { nome: 'Noite', inicio: `${dia}T18:00`, fim: `${dia}T23:00` });
   assert.ok(noite);
-  // Cancelado libera a agenda.
+  // Cancelado libera a agenda da tela.
   assert.strictEqual((await acaoNoEvento(ponto.id, manha, 'cancelar')).status, 200);
-  await cadastrarEvento(ponto.id, { nome: 'Almoço', inicio: `${dia}T11:00`, fim: `${dia}T12:00` });
-  // O banco é a última linha de defesa: o gatilho recusa a sobreposição.
+  await cadastrarEvento(ponto, { nome: 'Almoço', inicio: `${dia}T11:00`, fim: `${dia}T12:00` });
+  // O banco é a última linha de defesa: a tela não entra num evento que
+  // cruza outro dela.
+  const { rows } = await pool.query(
+    `INSERT INTO pontos_moveis_eventos (ponto_id, nome, local, data_inicio, data_fim, inicio, fim)
+     VALUES ($1, 'X', 'Z', $2, $2, $3::timestamptz, $4::timestamptz) RETURNING id`,
+    [ponto.id, dia, `${dia}T15:00:00-03:00`, `${dia}T16:00:00-03:00`],
+  );
   await assert.rejects(
-    pool.query(
-      `INSERT INTO pontos_moveis_eventos (ponto_id, nome, organizacao, local, data_inicio, data_fim, inicio, fim)
-       VALUES ($1, 'X', 'Y', 'Z', $2, $2, $3::timestamptz, $4::timestamptz)`,
-      [ponto.id, dia, `${dia}T15:00:00-03:00`, `${dia}T16:00:00-03:00`],
-    ),
+    pool.query('INSERT INTO pontos_moveis_evento_telas (evento_id, dispositivo_id) VALUES ($1, $2)', [
+      rows[0].id,
+      ponto.telaId,
+    ]),
     (e) => e.code === '23P01',
   );
 });
 
-test('8 e 9. evento em andamento aloca o móvel (local, inventário, "Onde estamos"); encerrado, volta a sem alocação', async () => {
+test('10. evento cancelado não é próximo nem alocação, e fica no histórico', async () => {
   const ponto = await criarMovel();
-  const eventoId = await eventoEmAndamento(ponto.id, { local: 'Ginásio Municipal', nome: 'Copa de Judô' });
-  let f = await ficha(ponto.id);
-  assert.strictEqual(f.localAtual.origem, 'evento');
-  assert.strictEqual(f.localAtual.nome, 'Ginásio Municipal');
-  assert.strictEqual(f.localAtual.endereco, 'Ginásio Municipal');
-  assert.strictEqual(f.localAtual.evento.id, eventoId);
-  assert.strictEqual(f.localAtual.evento.nome, 'Copa de Judô');
-  assert.strictEqual(f.localAtual.evento.dataInicio, diaMais(0));
-  assert.ok(f.localAtual.evento.inicio && f.localAtual.evento.fim);
-  assert.strictEqual(f.proximoEvento, null, 'em andamento não é "próximo"');
-  assert.strictEqual(f.alocado, true);
-  assert.strictEqual(f.agora.tipo, 'evento');
-  assert.strictEqual(f.agora.id, eventoId);
-  const naLista = await daLista(ponto.id);
-  assert.strictEqual(naLista.alocado, true);
-  assert.strictEqual(naLista.agora.id, eventoId);
-  assert.strictEqual(await noInventario(ponto.id), true, 'alocado, é inventário');
-  const publico = (await publicos()).find((p) => p.id === ponto.id);
-  assert.ok(publico, 'alocado, aparece em "Onde estamos"');
-  assert.strictEqual(publico.tipo, 'movel');
-  assert.strictEqual(publico.local_atual, 'Ginásio Municipal');
-  assert.strictEqual(publico.evento_nome, 'Copa de Judô');
-  assert.strictEqual(publico.base_nome, undefined);
-
-  // Um lugar por vez (agenda única): período cruzando nem entra; um evento
-  // de outra data não começa com este em andamento.
-  const sobreposto = await admin(
-    'POST',
-    `/admin/pontos/${ponto.id}/eventos`,
-    corpoDeEvento({ nome: 'Outro', inicio: paredeMais(2), fim: paredeMais(5) }),
-  );
-  assert.strictEqual(sobreposto.status, 409);
-  assert.match(sobreposto.json.erro, /já está no evento/);
-  const outro = await cadastrarEvento(ponto.id, { nome: 'Outro', inicio: paredeMais(72), fim: paredeMais(80) });
-  const dois = await acaoNoEvento(ponto.id, outro, 'iniciar');
-  assert.strictEqual(dois.status, 409);
-  assert.match(dois.json.erro, /já está no evento/);
-  assert.strictEqual((await acaoNoEvento(ponto.id, eventoId, 'cancelar')).status, 409, 'em andamento não cancela');
-
-  assert.strictEqual((await acaoNoEvento(ponto.id, eventoId, 'encerrar')).status, 200);
-  f = await ficha(ponto.id);
-  assert.strictEqual(f.localAtual, null, 'encerrado: sem alocação de novo');
-  assert.strictEqual(f.alocado, false);
-  assert.strictEqual(f.proximoEvento.id, outro);
-  const encerrado = f.eventos.find((e) => e.id === eventoId);
-  assert.strictEqual(encerrado.estado, 'encerrado');
-  assert.strictEqual(encerrado.encerramento, 'manual');
-  assert.ok(encerrado.iniciadoEm && encerrado.encerradoEm);
-  assert.strictEqual(await noInventario(ponto.id), false);
-  assert.ok(!(await publicos()).some((p) => p.id === ponto.id), 'some de "Onde estamos"');
-  assert.strictEqual((await acaoNoEvento(ponto.id, eventoId, 'iniciar')).status, 409, 'encerrado não recomeça');
-  assert.strictEqual((await acaoNoEvento(ponto.id, outro, 'encerrar')).status, 409, 'programado não encerra');
-  assert.strictEqual((await acaoNoEvento(ponto.id, outro, 'pausar')).status, 404, 'ação desconhecida');
-});
-
-test('10. evento cancelado não é próximo nem local atual, e fica no histórico', async () => {
-  const ponto = await criarMovel();
-  const cedo = await cadastrarEvento(ponto.id, { nome: 'Cedo', inicio: paredeMais(48), fim: paredeMais(56) });
-  const tarde = await cadastrarEvento(ponto.id, {
+  const cedo = await cadastrarEvento(ponto, { nome: 'Cedo', inicio: paredeMais(48), fim: paredeMais(56) });
+  const tarde = await cadastrarEvento(ponto, {
     nome: 'Tarde',
     inicio: paredeMais(9 * 24),
     fim: paredeMais(10 * 24),
   });
   assert.strictEqual((await acaoNoEvento(ponto.id, cedo, 'cancelar')).status, 200);
   const f = await ficha(ponto.id);
-  assert.strictEqual(f.proximoEvento.id, tarde);
-  assert.strictEqual(f.localAtual, null);
+  assert.strictEqual(telaNaFicha(f, ponto.telaId).proximo.id, tarde);
+  assert.strictEqual(telaNaFicha(f, ponto.telaId).alocacao, null);
   const cancelado = f.eventos.find((e) => e.id === cedo);
   assert.strictEqual(cancelado.estado, 'cancelado', 'auditável');
   assert.ok(cancelado.canceladoEm);
   assert.ok(!f.agenda.some((a) => a.id === cedo), 'cancelado sai da agenda');
   assert.strictEqual((await acaoNoEvento(ponto.id, cedo, 'iniciar')).status, 409, 'cancelado não começa');
-  // Evento de outro ponto não se mexe por este.
-  const outroPonto = await criarMovel();
+  // Evento de outra rede não se mexe por esta.
+  const outroPonto = await criarMovel({}, { telas: 0 });
   assert.strictEqual((await acaoNoEvento(outroPonto.id, tarde, 'iniciar')).status, 404);
   // Evento que passou do horário sem ter começado não começa mais.
   const { rows } = await pool.query(
-    `INSERT INTO pontos_moveis_eventos (ponto_id, nome, organizacao, local, data_inicio, data_fim, inicio, fim)
-     VALUES ($1, 'Velho', 'Org', 'Lugar', $2, $2, now() - interval '5 hours', now() - interval '1 hour') RETURNING id`,
+    `INSERT INTO pontos_moveis_eventos (ponto_id, nome, local, data_inicio, data_fim, inicio, fim)
+     VALUES ($1, 'Velho', 'Lugar', $2, $2, now() - interval '5 hours', now() - interval '1 hour') RETURNING id`,
     [ponto.id, diaMais(0)],
   );
+  await pool.query('INSERT INTO pontos_moveis_evento_telas (evento_id, dispositivo_id) VALUES ($1, $2)', [
+    rows[0].id,
+    ponto.telaId,
+  ]);
   const velho = await acaoNoEvento(ponto.id, rows[0].id, 'iniciar');
   assert.strictEqual(velho.status, 409);
   assert.match(velho.json.erro, /já terminou/);
-  assert.notStrictEqual((await ficha(ponto.id)).proximoEvento.id, Number(rows[0].id), 'passado nunca é próximo');
+  assert.strictEqual(telaNaFicha(await ficha(ponto.id), ponto.telaId).proximo.id, tarde, 'passado nunca é próximo');
 });
 
-test('evento só existe em ponto móvel; base não existe mais (410)', async () => {
+test('evento só existe na rede móvel; base não existe mais (410)', async () => {
   const fixo = await aprovar(await novaConta());
+  const tela = await telaInstalada(fixo.id);
   const r = await admin(
     'POST',
     `/admin/pontos/${fixo.id}/eventos`,
-    corpoDeEvento({ inicio: paredeMais(72), fim: paredeMais(80) }),
+    corpoDeEvento([tela], { inicio: paredeMais(72), fim: paredeMais(80) }),
   );
   assert.strictEqual(r.status, 409);
-  const m = await criarMovel();
+  const m = await criarMovel({}, { telas: 0 });
   for (const id of [fixo.id, m.id]) {
     const b = await admin('PUT', `/admin/pontos/${id}/base`, { base_conta_id: fixo.anunciante_id, base_nome: 'X' });
     assert.strictEqual(b.status, 410);
@@ -735,8 +739,8 @@ test('evento só existe em ponto móvel; base não existe mais (410)', async () 
   assert.deepStrictEqual(rows[0], { base_conta_id: null, base_nome: null });
 });
 
-test('o móvel não tem horário, ramo nem endereço próprios: PATCH recusa', async () => {
-  const ponto = await criarMovel();
+test('a rede não tem horário, ramo nem endereço próprios; nome, cidade, UF e nota se editam na ficha', async () => {
+  const ponto = await criarMovel({}, { telas: 0 });
   const categoriaId = await novaCategoria('Ramo Teste');
   const horario = await admin('PATCH', `/admin/pontos/${ponto.id}`, { horario_semanal: HORARIO_COMERCIAL });
   assert.strictEqual(horario.status, 400);
@@ -757,16 +761,34 @@ test('o móvel não tem horário, ramo nem endereço próprios: PATCH recusa', a
     ponto.id,
   ]);
   assert.deepStrictEqual(rows[0], { horario_semanal: null, categoria_id: null, logradouro: null });
-  // O que é do equipamento continua editável.
+  // O que é da rede continua editável.
   const nota = await admin('PATCH', `/admin/pontos/${ponto.id}`, { observacoes: 'lacre 123' });
   assert.strictEqual(nota.status, 200, JSON.stringify(nota.json));
+  const cidade = cidadeUnica();
+  const editada = await admin('PATCH', `/admin/pontos/${ponto.id}/movel`, { cidade, uf: 'MG', nome: '' });
+  assert.strictEqual(editada.status, 200, JSON.stringify(editada.json));
+  const { id, nome, uf } = editada.json;
+  assert.deepStrictEqual(
+    { id, nome, cidade: editada.json.cidade, uf },
+    { id: ponto.id, nome: `Mostraí Móvel — ${cidade}`, cidade, uf: 'MG' },
+    'nome vazio volta ao padrão da cidade',
+  );
+  const outra = await criarMovel({}, { telas: 0 });
+  const dup = await admin('PATCH', `/admin/pontos/${outra.id}/movel`, {
+    cidade: ` ${cidade.toUpperCase()} `,
+    uf: 'MG',
+  });
+  assert.strictEqual(dup.status, 409, 'uma rede por cidade + UF');
+  assert.strictEqual((await admin('PATCH', `/admin/pontos/${outra.id}/movel`, { uf: 'XX' })).status, 400);
+  const fixo = await aprovar(await novaConta());
+  assert.strictEqual((await admin('PATCH', `/admin/pontos/${fixo.id}/movel`, { nome: 'X' })).status, 409);
 });
 
 // ---------- 12 a 14. organizador, Plano Básico, crédito ----------
-test('12, 13 e 14. organizador não vira dono; evento e móvel não dão Plano Básico nem crédito', async () => {
+test('12, 13 e 14. organizador não vira dono; evento e rede não dão Plano Básico nem crédito', async () => {
   const ponto = await criarMovel();
   await telaInstalada(ponto.id);
-  await eventoEmAndamento(ponto.id, { organizacao: 'Igreja Y' });
+  await eventoEmAndamento(ponto, { organizacao: 'Igreja Y' });
 
   await basico.sincronizar({ apenasPontos: [ponto.id] });
   await creditosPonto.concederCreditosMensais({ apenasPontos: [ponto.id] });
@@ -777,7 +799,7 @@ test('12, 13 e 14. organizador não vira dono; evento e móvel não dão Plano B
   const igreja = await pool.query(`SELECT 1 FROM anunciantes WHERE nome_empresa = 'Igreja Y'`);
   assert.strictEqual(igreja.rowCount, 0, 'organização é texto do evento, nunca conta');
   const basicoDoPonto = await pool.query('SELECT 1 FROM beneficios_basico_ponto WHERE ponto_id = $1', [ponto.id]);
-  assert.strictEqual(basicoDoPonto.rowCount, 0, 'sem Plano Básico pelo móvel');
+  assert.strictEqual(basicoDoPonto.rowCount, 0, 'sem Plano Básico pela rede');
   const credito = await pool.query('SELECT 1 FROM creditos_ledger WHERE ponto_id = $1', [ponto.id]);
   assert.strictEqual(credito.rowCount, 0, 'sem crédito mensal');
 
@@ -796,60 +818,43 @@ test('12, 13 e 14. organizador não vira dono; evento e móvel não dão Plano B
   await pool.query('DELETE FROM beneficios_basico_ponto WHERE ponto_id = $1', [fixo.id]);
 });
 
-// ---------- 15. escolha do anunciante ----------
-test('15. o anunciante escolhe o PONTO móvel alocado e vê o local e o próximo evento; sem alocação, só quem já tinha', async () => {
-  const ponto = await criarMovel();
-  const eventoId = await eventoEmAndamento(ponto.id, { local: 'Parque de Exposições' });
-  const proximo = await cadastrarEvento(ponto.id, { inicio: paredeMais(4 * 24), fim: paredeMais(5 * 24) });
+// ---------- 15. card do anunciante ----------
+test('15. o anunciante vê a REDE: telas, quantas em operação e onde — nada administrativo do evento', async () => {
+  const ponto = await criarMovel({}, { telas: 2 });
+  await tirarDoSorteio(ponto.id);
+  await eventoEmAndamento(ponto, {
+    local: 'Parque de Exposições',
+    organizacao: 'Sindicato Rural',
+    telas: [ponto.telaId],
+  });
   const anunciante = await novaConta();
   await anunciantesRepo.atualizar(anunciante.id, { plano_id: 'essencial-1m' });
   const nav = await entrar(anunciante);
   const lista = await nav('GET', '/anunciantes/me/pontos-disponiveis');
   assert.strictEqual(lista.status, 200, JSON.stringify(lista.json));
-  const doMovel = lista.json.pontos.filter((p) => p.id === ponto.id);
-  assert.strictEqual(doMovel.length, 1, 'o móvel é UM item da lista');
-  const item = doMovel[0];
+  const daRede = lista.json.pontos.filter((p) => p.id === ponto.id);
+  assert.strictEqual(daRede.length, 1, 'a rede é UM item da lista, com 2 telas');
+  const item = daRede[0];
   assert.strictEqual(item.tipo, 'movel');
+  assert.strictEqual(item.uf, 'SP');
   assert.strictEqual(item.inventario, true);
   assert.strictEqual(item.seuPonto, false);
-  assert.strictEqual(item.movel.localAtual.origem, 'evento');
-  assert.strictEqual(item.movel.localAtual.nome, 'Parque de Exposições');
-  assert.strictEqual(item.movel.localAtual.evento.id, eventoId);
+  assert.strictEqual(item.movel.telas, 2);
+  assert.strictEqual(item.movel.emOperacao, 1);
+  assert.deepStrictEqual(
+    item.movel.locaisAgora.map((l) => [l.origem, l.nome, l.endereco]),
+    [['evento', 'Parque de Exposições', 'Rua do Ginásio, 50']],
+  );
   assert.strictEqual(item.movel.base, undefined, 'sem base');
-  assert.strictEqual(item.movel.proximoEvento.id, proximo);
-  assert.strictEqual(item.movel.proximoEvento.publicoEstimado, 600);
-  assert.strictEqual(item.movel.proximoEvento.organizacao, undefined, 'dado administrativo não vai pro card');
+  assert.doesNotMatch(
+    JSON.stringify(item),
+    /Sindicato Rural|organizacao|publico/i,
+    'dado administrativo não vai pro card',
+  );
   assert.ok(
     lista.json.pontos.filter((p) => p.tipo === 'fixo').every((p) => p.movel === null),
     'fixo não carrega nada de móvel',
   );
-
-  const escolha = await nav('PUT', '/anunciantes/me/pontos', { pontos: [ponto.id] });
-  assert.strictEqual(escolha.status, 200, JSON.stringify(escolha.json));
-  const { rows } = await pool.query('SELECT ponto_id FROM anunciantes_pontos WHERE anunciante_id = $1', [
-    anunciante.id,
-  ]);
-  assert.deepStrictEqual(
-    rows.map((r) => r.ponto_id),
-    [ponto.id],
-  );
-
-  // Fim do evento: sem alocação. Quem já tinha escolhido continua vendo (para
-  // poder tirar), marcado fora do inventário, e pode manter a escolha.
-  assert.strictEqual((await acaoNoEvento(ponto.id, eventoId, 'encerrar')).status, 200);
-  const depois = (await nav('GET', '/anunciantes/me/pontos-disponiveis')).json.pontos.find((p) => p.id === ponto.id);
-  assert.ok(depois, 'quem já tinha vê o móvel');
-  assert.strictEqual(depois.inventario, false);
-  assert.strictEqual(depois.movel.localAtual, null);
-  assert.strictEqual(depois.naCobertura, false, 'sem alocação não entra na cobertura');
-  assert.strictEqual((await nav('PUT', '/anunciantes/me/pontos', { pontos: [ponto.id] })).status, 200, 'manter vale');
-  // Outra conta não vê nem escolhe.
-  const outra = await novaConta();
-  await anunciantesRepo.atualizar(outra.id, { plano_id: 'essencial-1m' });
-  const navOutra = await entrar(outra);
-  const listaOutra = await navOutra('GET', '/anunciantes/me/pontos-disponiveis');
-  assert.ok(!listaOutra.json.pontos.some((p) => p.id === ponto.id));
-  assert.strictEqual((await navOutra('PUT', '/anunciantes/me/pontos', { pontos: [ponto.id] })).status, 409);
 });
 
 // ---------- 16. Proof-of-Play ----------
@@ -889,7 +894,7 @@ async function confirmarUmaExibicao(dispositivoId, contaId, hora) {
   return { ...r, eventoId: rows[0].evento_id === null ? null : Number(rows[0].evento_id) };
 }
 
-test('16. Proof-of-Play: conta igual, no ponto certo; durante o evento guarda o evento (auditoria)', async () => {
+test('16. Proof-of-Play: conta igual na tela; durante o evento dela guarda o evento (auditoria)', async () => {
   const ponto = await criarMovel();
   const telaId = await telaInstalada(ponto.id);
   const conta = await contaComPlanoEPeca(ponto.id);
@@ -908,7 +913,7 @@ test('16. Proof-of-Play: conta igual, no ponto certo; durante o evento guarda o 
   assert.strictEqual(antes.status, 'contabilizado');
   assert.strictEqual(antes.eventoId, null, 'fora de evento, sem evento');
 
-  const eventoId = await eventoEmAndamento(ponto.id);
+  const eventoId = await eventoEmAndamento(ponto);
   const noEvento = await confirmarUmaExibicao(telaId, conta.id, hora);
   assert.strictEqual(noEvento.status, 'contabilizado', 'a regra de contabilização não muda');
   assert.strictEqual(noEvento.eventoId, eventoId);
@@ -922,26 +927,25 @@ test('16. Proof-of-Play: conta igual, no ponto certo; durante o evento guarda o 
     'SELECT vezes_confirmadas FROM exibicoes_contador WHERE anunciante_id = $1 AND dispositivo_id = $2 AND janela_hora = $3',
     [conta.id, telaId, hora],
   );
-  assert.strictEqual(rows[0].vezes_confirmadas, 3, 'as três contaram na tela do ponto móvel');
+  assert.strictEqual(rows[0].vezes_confirmadas, 3, 'as três contaram na tela da rede');
   const doEvento = (await ficha(ponto.id)).eventos.find((e) => e.id === eventoId);
   assert.strictEqual(doEvento.exibicoesConfirmadas, 1, 'a ficha mostra o que tocou durante o evento');
 });
 
-// ---------- trava de ramo: o contexto é o do evento ----------
-test('trava de ramo no evento: o ramo é o do evento (não há base); sem ramo no evento, ninguém é barrado', async () => {
+// ---------- trava de ramo: o contexto é o do evento da tela ----------
+test('trava de ramo no evento: o ramo é o do evento da tela (não há base); sem ramo no evento, ninguém é barrado', async () => {
   const categoriaId = await novaCategoria('Academia Teste');
   const ponto = await criarMovel();
   await tirarDoSorteio(ponto.id);
-  const tela = { id: ponto.telaId };
-  await dispositivosRepo.atualizar(tela.id, { status: 'ativo' });
-  await instalarPlayer(tela.id);
+  await dispositivosRepo.atualizar(ponto.telaId, { status: 'ativo' });
+  await instalarPlayer(ponto.telaId);
 
-  // Um concorrente do ramo do evento e uma conta sem ramo escolheram o móvel.
+  // Um concorrente do ramo do evento e uma conta sem ramo escolheram a rede.
   const concorrente = await contaComPlanoEPeca(ponto.id, categoriaId);
   const neutra = await contaComPlanoEPeca(ponto.id);
 
-  const eventoId = await eventoEmAndamento(ponto.id, { categoria_id: categoriaId, horario_operacao: '24h' });
-  const dispositivo = await dispositivosRepo.buscarComPonto(tela.id);
+  const eventoId = await eventoEmAndamento(ponto, { categoria_id: categoriaId });
+  const dispositivo = await dispositivosRepo.buscarComPonto(ponto.telaId);
   assert.strictEqual(dispositivo.movel_alocado, true);
   assert.strictEqual(dispositivo.categoria_id, categoriaId, 'o ramo em vigor é o do evento');
   assert.strictEqual(dispositivo.casa_conta_id, null, 'evento não tem casa');
@@ -952,13 +956,13 @@ test('trava de ramo no evento: o ramo é o do evento (não há base); sem ramo n
   assert.ok(!contas.has(concorrente.id), 'o concorrente do ramo do evento fica fora');
   assert.strictEqual((await ficha(ponto.id)).eventos.find((e) => e.id === eventoId).categoria.id, categoriaId);
 
-  // Outro móvel, evento sem ramo: o mesmo concorrente entra.
+  // Outra rede, evento sem ramo: o mesmo concorrente entra.
   const livre = await criarMovel();
   await tirarDoSorteio(livre.id);
   await dispositivosRepo.atualizar(livre.telaId, { status: 'ativo' });
   await instalarPlayer(livre.telaId);
   const concorrenteLivre = await contaComPlanoEPeca(livre.id, categoriaId);
-  await eventoEmAndamento(livre.id, { horario_operacao: '24h' });
+  await eventoEmAndamento(livre);
   const dispLivre = await dispositivosRepo.buscarComPonto(livre.telaId);
   assert.strictEqual(dispLivre.categoria_id, null);
   const envLivre = await gerador.gerarPlaylistDaHora(dispLivre, new Date());
@@ -968,34 +972,37 @@ test('trava de ramo no evento: o ramo é o do evento (não há base); sem ramo n
   );
 });
 
-// ---------- horário: o do evento vai para a TV ----------
-test('em evento a TV recebe o horário DO EVENTO; ao encerrar, fica sem horário — e a TV é avisada', async () => {
-  const ponto = await criarMovel();
-  const telaId = await telaInstalada(ponto.id);
-  const versao = async () =>
+// ---------- horário: o do evento vai para a TV das telas DELE ----------
+test('em evento a TV recebe o horário DO EVENTO; ao encerrar, fica sem horário — e só as telas do evento são avisadas', async () => {
+  const ponto = await criarMovel({}, { telas: 2 });
+  const [a, b] = ponto.telas;
+  const versao = async (telaId) =>
     (await pool.query('SELECT config_versao_desejada FROM dispositivos WHERE id = $1', [telaId])).rows[0]
       .config_versao_desejada;
-  const antes = await versao();
-  assert.strictEqual((await dispositivosRepo.buscarComPonto(telaId)).ponto_horario_semanal, null, 'sem alocação');
+  const [antesA, antesB] = [await versao(a), await versao(b)];
+  assert.strictEqual((await dispositivosRepo.buscarComPonto(a)).ponto_horario_semanal, null, 'sem alocação');
 
   const horarioDoEvento = { ...HORARIO_COMERCIAL, dom: { abre: '09:00', fecha: '17:00' } };
-  const eventoId = await eventoEmAndamento(ponto.id, { horario_operacao: horarioDoEvento });
-  assert.deepStrictEqual((await dispositivosRepo.buscarComPonto(telaId)).ponto_horario_semanal, horarioDoEvento);
-  assert.ok((await versao()) > antes, 'a config da TV muda ao entrar no evento');
+  const eventoId = await eventoEmAndamento(ponto, { horario_operacao: horarioDoEvento, telas: [a] });
+  assert.deepStrictEqual((await dispositivosRepo.buscarComPonto(a)).ponto_horario_semanal, horarioDoEvento);
+  assert.strictEqual((await dispositivosRepo.buscarComPonto(b)).ponto_horario_semanal, null, 'a outra tela não muda');
+  assert.ok((await versao(a)) > antesA, 'a config da TV muda ao entrar no evento');
+  assert.strictEqual(await versao(b), antesB, 'a TV que não está no evento não é avisada');
   assert.deepStrictEqual(
     (await ficha(ponto.id)).eventos.find((e) => e.id === eventoId).horarioOperacao,
     horarioDoEvento,
   );
 
-  const noEvento = await versao();
+  const noEvento = await versao(a);
   await acaoNoEvento(ponto.id, eventoId, 'encerrar');
-  assert.strictEqual((await dispositivosRepo.buscarComPonto(telaId)).ponto_horario_semanal, null);
-  assert.ok((await versao()) > noEvento, 'e muda de novo ao sair');
+  assert.strictEqual((await dispositivosRepo.buscarComPonto(a)).ponto_horario_semanal, null);
+  assert.ok((await versao(a)) > noEvento, 'e muda de novo ao sair');
+  assert.strictEqual(await versao(b), antesB);
 });
 
 // A régua "no ar" do anunciante lê o MESMO horário em vigor da TV
-// (src/lib/contexto-do-ponto.js): sem alocação, "sem alocação"; no evento, o
-// horário do evento decide entre "no ar" e "fora do horário".
+// (src/lib/contexto-do-ponto.js): sem tela alocada, "sem alocação"; no
+// evento, o horário do evento decide entre "no ar" e "fora do horário".
 test('situação da tela para o anunciante e o Admin: sem alocação, fora do horário do evento, no ar', async () => {
   const ponto = await criarMovel();
   const telaId = await telaInstalada(ponto.id);
@@ -1024,7 +1031,7 @@ test('situação da tela para o anunciante e o Admin: sem alocação, fora do ho
   const outroDia = diaDaSemana(diaMais(3));
   const fechadoHoje = { seg: null, ter: null, qua: null, qui: null, sex: null, sab: null, dom: null };
   fechadoHoje[outroDia] = { abre: '10:00', fecha: '11:00' };
-  const fechado = await eventoEmAndamento(ponto.id, { horario_operacao: fechadoHoje });
+  const fechado = await eventoEmAndamento(ponto, { horario_operacao: fechadoHoje });
   assert.deepStrictEqual(
     await situacoes(),
     { anunciante: 'fora_do_horario', admin: 'fora_do_horario' },
@@ -1032,8 +1039,8 @@ test('situação da tela para o anunciante e o Admin: sem alocação, fora do ho
   );
   assert.strictEqual((await acaoNoEvento(ponto.id, fechado, 'encerrar')).status, 200);
 
-  const aberto = await eventoEmAndamento(ponto.id, { horario_operacao: '24h' });
-  assert.deepStrictEqual(await situacoes(), { anunciante: 'no_ar', admin: 'operando' }, 'no evento 24 h');
+  const aberto = await eventoEmAndamento(ponto);
+  assert.deepStrictEqual(await situacoes(), { anunciante: 'no_ar', admin: 'operando' }, 'no evento, o período inteiro');
 
   await acaoNoEvento(ponto.id, aberto, 'encerrar');
   assert.strictEqual((await situacoes()).anunciante, 'sem_alocacao', 'de volta a sem alocação');
@@ -1043,7 +1050,7 @@ test('situação da tela para o anunciante e o Admin: sem alocação, fora do ho
 test('tipo imutável: fixo não vira móvel nem móvel vira fixo — rota 410 e o banco recusa', async () => {
   const dona = await novaConta();
   const fixo = await aprovar(dona);
-  const movelPronto = await criarMovel();
+  const movelPronto = await criarMovel({}, { telas: 0 });
   const a = await admin('POST', `/admin/pontos/${fixo.id}/tornar-movel`);
   const b = await admin('POST', `/admin/pontos/${movelPronto.id}/tornar-fixo`);
   assert.strictEqual(a.status, 410);
@@ -1069,15 +1076,25 @@ test('tipo imutável: fixo não vira móvel nem móvel vira fixo — rota 410 e 
   assert.strictEqual(rows.find((r) => r.id === movelPronto.id).tipo, 'movel');
 });
 
-test('situacaoDosMoveis ignora ponto fixo e id inválido; "Meus pontos" não tem mais móvel', async () => {
+test('situacaoDasRedes ignora ponto fixo e id inválido; "Meus pontos" não tem rede móvel', async () => {
   const fixo = await aprovar(await novaConta());
-  const mapa = await movel.situacaoDosMoveis([fixo.id, 'abc', -1]);
+  const mapa = await movel.situacaoDasRedes([fixo.id, 'abc', -1]);
   assert.strictEqual(mapa.size, 0);
   const meus = await meusPontosDaConta(fixo.anunciante_id);
   assert.ok(meus.every((e) => e.tipo !== 'base_movel'));
-  const m = await criarMovel();
-  assert.deepStrictEqual((await movel.situacaoDosMoveis([m.id, fixo.id])).get(m.id), {
-    localAtual: null,
-    proximoEvento: null,
-  });
+  const m = await criarMovel({}, { telas: 2 });
+  const { nome, cidade, uf, telas, emOperacao, locaisAgora } = (await movel.situacaoDasRedes([m.id, fixo.id])).get(
+    m.id,
+  );
+  assert.deepStrictEqual(
+    { nome, cidade, uf, telas, emOperacao, locaisAgora },
+    {
+      nome: m.nome,
+      cidade: m.cidade,
+      uf: 'SP',
+      telas: 2,
+      emOperacao: 0,
+      locaisAgora: [],
+    },
+  );
 });
