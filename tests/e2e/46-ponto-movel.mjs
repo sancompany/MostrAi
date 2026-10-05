@@ -8,11 +8,11 @@
 //     fim com data e hora e o horário de funcionamento (padrão 08:00–18:00);
 //   · evento só programado não põe o móvel no inventário: o anunciante não o
 //     vê na escolha de pontos;
-//   · o evento inicia → "Em evento"; o anunciante escolhe a opção MOSTRAÍ
-//     MÓVEL (migration 115 — compacta, também no celular), nunca a unidade:
-//     sem nome do equipamento, local ou agenda no card;
-//   · o evento encerra → "Sem alocação" no Admin (nunca "volta para a
-//     base"); para o anunciante a opção continua marcada e pode desmarcar;
+//   · o evento inicia → "Em evento"; o anunciante vê o card "Ponto móvel"
+//     (compacto, também no celular) com "Agora em" e o próximo evento, e
+//     escolhe o PONTO;
+//   · o evento encerra → "Sem alocação" (nunca "volta para a base"); quem já
+//     tinha escolhido vê o aviso e pode desmarcar;
 //   · a conta que pediu pra ser ponto vê só o próprio ponto fixo em
 //     "Meus pontos" — o móvel não é de ninguém.
 // Banco zerado, servidor na 3999 e o .env carregado:
@@ -331,35 +331,40 @@ await admin.waitForFunction(() =>
 );
 check('Admin: próximo = "Feira do Produtor"', true);
 
-// Escolha do anunciante (migration 115): a opção MOSTRAÍ MÓVEL, nunca a
-// unidade — sem nome do equipamento, sem "Agora em", sem endereço.
 await recarregarQuieto(pA);
-await pA.waitForSelector('[data-mostrai-movel]', { timeout: 10000 });
-const cardA = pA.locator('[data-mostrai-movel]');
+await pA.waitForSelector(`.ponto-movel[data-ponto-id="${PONTO}"]`, { timeout: 10000 });
+const cardA = pA.locator(`.ponto-movel[data-ponto-id="${PONTO}"]`);
 let texto = await cardA.innerText();
-check('card "Mostraí Móvel" com o selo "Itinerante"', /Mostraí Móvel/.test(texto) && /Itinerante/i.test(texto), texto);
-check('"Eventos e locais temporários"', /Eventos e locais temporários/.test(texto), texto);
-check('status da frota em operação agora', /em operação agora/.test(texto), texto);
-check('sem a unidade, o local ou a agenda no card', !texto.includes(NOME) && !/Agora em|Próximo evento|Praça|Ginásio/.test(texto), texto);
-check('a unidade não é item da escolha', (await pA.locator(`.ponto-escolha[data-ponto-id="${PONTO}"]`).count()) === 0);
+check('selo "Ponto móvel"', /Ponto móvel/.test(texto), texto);
+check('nome do móvel', texto.includes(NOME), texto);
+check(
+  '"Agora em: Ginásio Municipal · Campeonato…"',
+  /Agora em: Ginásio Municipal · Campeonato Regional de Jiu-Jitsu/.test(texto),
+  texto,
+);
+check(
+  'próximo evento com local e público estimado',
+  /Próximo evento[\s\S]*Feira do Produtor[\s\S]*Praça da Matriz[\s\S]*~1\.200 pessoas/i.test(texto),
+  texto,
+);
+check('sem ocupação/horário/base no card do móvel', !/vendido|Horário|base/i.test(texto), texto);
 await cardA.scrollIntoViewIfNeeded();
 await cardA.screenshot({ path: `${SAIDA}46-movel-card-desktop.png` });
 
-// Escolher a opção: grava a preferência, nunca a unidade.
+// Escolher o PONTO (não o evento): a seleção grava o ponto.
 await cardA.locator('input[type="checkbox"]').check();
 await pA.waitForFunction(() => /Pronto/.test(document.getElementById('msgPontos')?.textContent || ''), null, {
   timeout: 8000,
 });
 check(
-  'a escolha grava a opção Mostraí Móvel (não a unidade)',
-  PG(`SELECT mostrai_movel_escolhido_em IS NOT NULL FROM anunciantes WHERE id = ${ANUNCIANTE}`) === 't' &&
-    PG(`SELECT COUNT(*) FROM anunciantes_pontos WHERE anunciante_id = ${ANUNCIANTE}`) === '0',
+  'a escolha grava o ponto móvel',
+  PG(`SELECT ponto_id FROM anunciantes_pontos WHERE anunciante_id = ${ANUNCIANTE}`) === PONTO,
 );
 
 // Celular: o card cabe, sem rolagem lateral.
 const pM = await entrarConta(emailAnunciante, 390, 844);
-await pM.waitForSelector('[data-mostrai-movel]', { timeout: 10000 });
-const cardM = pM.locator('[data-mostrai-movel]');
+await pM.waitForSelector(`.ponto-movel[data-ponto-id="${PONTO}"]`, { timeout: 10000 });
+const cardM = pM.locator(`.ponto-movel[data-ponto-id="${PONTO}"]`);
 await cardM.scrollIntoViewIfNeeded();
 const medidas = await cardM.evaluate((el) => {
   const r = el.getBoundingClientRect();
@@ -394,19 +399,28 @@ check(
 await admin.screenshot({ path: `${SAIDA}46-movel-ficha-sem-alocacao.png`, fullPage: true });
 
 await recarregarQuieto(pA);
-await pA.waitForSelector('[data-mostrai-movel]');
-texto = await pA.locator('[data-mostrai-movel]').innerText();
-check('sem unidade alocada a opção continua no catálogo', /Mostraí Móvel/.test(texto), texto);
-check('sem "Sem alocação" nem "Agora em" no card', !/Sem alocação|Agora em/.test(texto), texto);
-check('continua marcada (preferência, pode desmarcar)', await pA.locator('[data-mostrai-movel] input').isChecked());
-await pA.locator('[data-mostrai-movel]').screenshot({ path: `${SAIDA}46-movel-card-sem-alocacao.png` });
-await pA.locator('[data-mostrai-movel] input').uncheck();
+await pA.waitForSelector(`.ponto-movel[data-ponto-id="${PONTO}"]`);
+texto = await pA.locator(`.ponto-movel[data-ponto-id="${PONTO}"]`).innerText();
+check(
+  'quem já escolheu vê "Sem alocação no momento — volta a veicular…"',
+  /Sem alocação no momento — volta a veicular quando for alocado/.test(texto),
+  texto,
+);
+check('sem "Agora em"', !/Agora em/.test(texto), texto);
+check(
+  'continua marcado (pode desmarcar)',
+  await pA.locator(`.ponto-movel[data-ponto-id="${PONTO}"] input`).isChecked(),
+);
+await pA
+  .locator(`.ponto-movel[data-ponto-id="${PONTO}"]`)
+  .screenshot({ path: `${SAIDA}46-movel-card-sem-alocacao.png` });
+await pA.locator(`.ponto-movel[data-ponto-id="${PONTO}"] input`).uncheck();
 await pA.waitForFunction(() => /Pronto/.test(document.getElementById('msgPontos')?.textContent || ''), null, {
   timeout: 8000,
 });
 check(
-  'desmarcada: a escolha sai do banco',
-  PG(`SELECT mostrai_movel_escolhido_em IS NULL FROM anunciantes WHERE id = ${ANUNCIANTE}`) === 't',
+  'desmarcado: a escolha sai do banco',
+  PG(`SELECT COUNT(*) FROM anunciantes_pontos WHERE anunciante_id = ${ANUNCIANTE} AND ponto_id = ${PONTO}`) === '0',
 );
 await recarregarQuieto(pA);
 await pA.waitForSelector(`.ponto-escolha[data-ponto-id="${FIXO}"]`);

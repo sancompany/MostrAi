@@ -347,9 +347,8 @@ await shot(modCel, 'painel-meus-pontos-elegivel-390');
 await celular.context().close();
 
 // Desktop: painel → ação secundária → /hospedar.html → envia.
-// 400: o PUT da escolha com a unidade móvel, provocado em D (a escolha é a
-// opção Mostraí Móvel, migration 115).
-const pE = await entrarConta(emailEleg, 1280, 1000, /status of (400|401)/);
+// 409: o PUT da escolha com o móvel sem alocação, provocado em D.
+const pE = await entrarConta(emailEleg, 1280, 1000, /status of (401|409)/);
 const modE = await meusPontos(pE);
 const convite = modE.locator('.ponto-movel-convite');
 check('elegível: a ação secundária aparece uma vez', (await convite.count()) === 1);
@@ -568,11 +567,7 @@ const escolherMovel = await pE.evaluate(async (id) => {
   });
   return r.status;
 }, PONTO);
-check('PUT da escolha com a unidade móvel → 400 (a escolha é a opção Mostraí Móvel)', escolherMovel === 400, String(escolherMovel));
-check(
-  'a opção Mostraí Móvel está no catálogo mesmo com o móvel sem alocação',
-  (await pE.locator('[data-mostrai-movel]').count()) === 1,
-);
+check('PUT da escolha com o móvel sem alocação → 409', escolherMovel === 409, String(escolherMovel));
 await pE.locator('#painelPontos').scrollIntoViewIfNeeded();
 await shot(pE.locator('#painelPontos'), 'selecao-pontos-anunciante');
 
@@ -789,20 +784,14 @@ check(
 );
 await shot(onde, 'onde-estamos-alocado', { fullPage: true });
 await recarregarQuieto(pE);
-// Escolha de pontos (migration 115): a opção Mostraí Móvel conta a unidade
-// alocada, sem dizer qual nem onde — o local fica em "Onde estamos".
-await pE.waitForSelector('[data-mostrai-movel]', { timeout: 10000 });
-const cardEscolha = await pE.locator('[data-mostrai-movel]').innerText();
+await pE.waitForSelector(`.ponto-movel[data-ponto-id="${PONTO}"]`, { timeout: 10000 });
+const cardEscolha = await pE.locator(`.ponto-movel[data-ponto-id="${PONTO}"]`).innerText();
 check(
-  'alocado: a opção Mostraí Móvel diz "1 tela móvel em operação agora"',
-  /1 tela móvel em operação agora/.test(cardEscolha),
+  'alocado: a escolha de pontos mostra o móvel "Agora em: Quiosque do Shopping"',
+  /Agora em: Quiosque do Shopping/.test(cardEscolha),
   cardEscolha,
 );
-check(
-  'alocado: o card não mostra local, conta, percentual nem saldo',
-  !/Quiosque|Doceria|%|saldo/i.test(cardEscolha),
-  cardEscolha,
-);
+check('alocado: o card não mostra conta, percentual nem saldo', !/Doceria|%|saldo/i.test(cardEscolha), cardEscolha);
 await shot(pE.locator('#painelPontos'), 'selecao-pontos-anunciante-alocado');
 
 // A tela operou 3 h desde que chegou (24 h de horário: tudo válido).

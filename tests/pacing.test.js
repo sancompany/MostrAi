@@ -3,9 +3,6 @@ const assert = require('node:assert');
 const {
   montarHoraDeTv,
   pontosDoAnunciante,
-  coberturaDoAnunciante,
-  fracaoNoPool,
-  segundosDeObrigacao,
   contarPorAnunciante,
   dividirCota,
   duracaoValida,
@@ -17,7 +14,6 @@ const {
   ID_INSTITUCIONAL,
   exibicoesPorMes,
 } = require('../src/lib/pacing');
-const { MOSTRAI_MOVEL } = require('../src/lib/mostrai-movel');
 
 const pagos = (itens) => itens.filter((i) => i !== ID_INSTITUCIONAL);
 
@@ -270,92 +266,6 @@ test('rede menor que o plano não quebra — cobre o que existe', () => {
 
 test('rede vazia devolve lista vazia, não explode', () => {
   assert.deepStrictEqual(pontosDoAnunciante({ id: 7, pontosIncluidos: 3 }, []), []);
-});
-
-// ---------------------------------------------------------------------------
-// MOSTRAÍ MÓVEL (migration 115): a opção virtual ocupa UMA posição do plano e
-// vale pelo pool das unidades móveis no ar nesta hora.
-// ---------------------------------------------------------------------------
-const M = MOSTRAI_MOVEL;
-
-test('Mostraí Móvel: 2 fixos + a opção = 3 de 3 posições, com 1 ou 5 unidades ativas', () => {
-  for (const frota of [[11], [11, 12, 13, 14, 15]]) {
-    const c = coberturaDoAnunciante(
-      { id: 7, pontosIncluidos: 3, escolhidos: [1, 2, M] },
-      [...REDE, ...frota],
-      [],
-      frota,
-    );
-    assert.strictEqual(c.posicoes, 3, `${frota.length} unidade(s) ocupam 1 posição`);
-    assert.deepStrictEqual(c.pontos, [1, 2, ...frota], 'as unidades entram no pool, os fixos ficam');
-    assert.deepStrictEqual(c.pool, frota);
-    assert.strictEqual(segundosCompensados(120, 3, c.posicoes), 120, 'sem compensação: o plano está completo');
-  }
-});
-
-test('Mostraí Móvel: a escolha nunca é uma unidade — o pool muda a cada hora sem editar nada', () => {
-  const conta = { id: 7, pontosIncluidos: 3, escolhidos: [M] };
-  const segunda = coberturaDoAnunciante(conta, [...REDE, 11], [], [11]);
-  assert.deepStrictEqual(segunda.pool, [11], '#11 ativo entra');
-  const terca = coberturaDoAnunciante(conta, [...REDE, 12, 13], [], [12, 13]);
-  assert.deepStrictEqual(terca.pool, [12, 13], '#11 saiu do pool, #12 e #13 entraram — a mesma escolha');
-  // Unidade fora de operação (sem alocação, sem tela no ar) não é pool, mesmo
-  // se vier na lista de móveis.
-  assert.deepStrictEqual(coberturaDoAnunciante(conta, REDE, [], [11]).pool, []);
-});
-
-test('Mostraí Móvel: vários móveis não multiplicam a obrigação — a parcela se reparte no pool', () => {
-  const frota = [11, 12, 13, 14];
-  const c = coberturaDoAnunciante({ id: 7, pontosIncluidos: 3, escolhidos: [1, 2, M] }, [...REDE, ...frota], [], frota);
-  const obrigacao = (pontoId) =>
-    segundosDeObrigacao({
-      segundosPorHora: 120,
-      pontosIncluidos: 3,
-      pontosCobertos: c.posicoes,
-      duracaoSegundos: 15,
-      telasDoPonto: fracaoNoPool(c, pontoId),
-    });
-  assert.strictEqual(fracaoNoPool(c, 1), 1, 'ponto fixo: a parcela inteira');
-  assert.strictEqual(fracaoNoPool(c, 11), 4);
-  const daPosicaoMovel = frota.reduce((t, id) => t + obrigacao(id), 0);
-  assert.strictEqual(daPosicaoMovel, obrigacao(1), 'as 4 unidades somam UMA posição, não quatro');
-});
-
-test('Mostraí Móvel sem unidade ativa: as horas voltam para os fixos escolhidos (RN-49)', () => {
-  const c = coberturaDoAnunciante({ id: 7, pontosIncluidos: 3, escolhidos: [1, 2, M] }, REDE, [], []);
-  assert.deepStrictEqual(c.pontos, [1, 2]);
-  assert.strictEqual(c.posicoes, 2, 'a posição móvel não está no ar agora');
-  assert.strictEqual(segundosCompensados(120, 3, c.posicoes), 180, 'o tempo dela volta para os 2 fixos');
-});
-
-test('só Mostraí Móvel e nenhuma unidade ativa: a campanha segue pela rede (distribuição automática)', () => {
-  const c = coberturaDoAnunciante({ id: 7, pontosIncluidos: 3, escolhidos: [M] }, REDE, [], []);
-  assert.deepStrictEqual(c.pontos, pontosDoAnunciante({ id: 7, pontosIncluidos: 3 }, REDE));
-  assert.strictEqual(c.pontos.length, 3, 'nenhuma hora fica esperando um evento');
-  assert.deepStrictEqual(c.pool, []);
-});
-
-test('sem a opção Mostraí Móvel, a cobertura dos fixos é a de sempre', () => {
-  for (const escolhidos of [[2, 5], [1, 2, 3, 4, 5], [99], undefined]) {
-    const conta = { id: 7, pontosIncluidos: 3, escolhidos };
-    const c = coberturaDoAnunciante(conta, REDE, [], [9, 10]);
-    assert.deepStrictEqual(c.pontos, pontosDoAnunciante(conta, REDE), JSON.stringify(escolhidos));
-    assert.strictEqual(c.posicoes, c.pontos.length);
-    assert.deepStrictEqual(c.pool, []);
-  }
-  // Plano sem teto: a rede inteira, unidades ativas inclusive, sem pool.
-  assert.deepStrictEqual(
-    coberturaDoAnunciante({ id: 7, pontosIncluidos: null, escolhidos: [M] }, REDE, [], [10]).pontos,
-    REDE,
-  );
-});
-
-test('Mostraí Móvel acima do teto do plano é cortada pela ordem da escolha, como um ponto', () => {
-  const c = coberturaDoAnunciante({ id: 7, pontosIncluidos: 2, escolhidos: [1, 2, M] }, [...REDE, 11], [], [11]);
-  assert.deepStrictEqual(c.pontos, [1, 2], 'escolhida por último, fica de fora quando o plano encolhe');
-  assert.strictEqual(c.posicoes, 2);
-  const primeiro = coberturaDoAnunciante({ id: 7, pontosIncluidos: 2, escolhidos: [M, 1, 2] }, [...REDE, 11], [], [11]);
-  assert.deepStrictEqual(primeiro.pontos, [1, 11]);
 });
 
 // ---------------------------------------------------------------------------

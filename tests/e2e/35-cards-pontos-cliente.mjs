@@ -234,7 +234,7 @@ async function entrar(largura, altura, { vitrine = 'ok' } = {}) {
   await p.fill('#senha', 'Senha123!');
   await p.click('button[type="submit"]');
   await p.waitForURL(/painel\.html/, { timeout: 10000 });
-  await p.waitForSelector('#listaPontos .ponto-escolha[data-ponto-id]', { timeout: 10000 });
+  await p.waitForSelector('#listaPontos .ponto-escolha', { timeout: 10000 });
   return { p, ctx };
 }
 const card = (p, id) => p.locator(`.ponto-escolha[data-ponto-id="${id}"]`);
@@ -252,7 +252,7 @@ async function salvou(p, fazer) {
 // Recorte da página inteira: o cabeçalho fixo não se repete no meio da foto,
 // e as fotos com loading="lazy" já passaram pela tela.
 async function foto(p, seletor, arquivo) {
-  for (const c of await p.locator('#listaPontos .ponto-escolha[data-ponto-id]').all()) await c.scrollIntoViewIfNeeded();
+  for (const c of await p.locator('#listaPontos .ponto-escolha').all()) await c.scrollIntoViewIfNeeded();
   await p.waitForFunction(() => [...document.querySelectorAll('#listaPontos img')].every((i) => i.complete));
   await p.evaluate(() => {
     window.scrollTo(0, 0);
@@ -267,7 +267,7 @@ async function foto(p, seletor, arquivo) {
 // Nada vaza do card, o selo de estado não cobre o nome, a caixa de seleção
 // está inteira dentro do card.
 async function semVazamento(p) {
-  return p.$$eval('#listaPontos .ponto-escolha[data-ponto-id]:not([hidden])', (cards) => {
+  return p.$$eval('#listaPontos .ponto-escolha:not([hidden])', (cards) => {
     const problemas = [];
     const dentro = (r, c) => r.left >= c.left - 0.5 && r.right <= c.right + 0.5;
     const cruza = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
@@ -321,10 +321,10 @@ const { p, ctx } = await entrar(1366, 900);
 await p.evaluate(() => {
   window.__semReload = true;
 });
-check('um card por ponto da rede', (await p.$$('#listaPontos .ponto-escolha[data-ponto-id]')).length === NA_REDE, `${NA_REDE}`);
+check('um card por ponto da rede', (await p.$$('#listaPontos .ponto-escolha')).length === NA_REDE, `${NA_REDE}`);
 check(
   'o próprio ponto encabeça a lista',
-  (await p.$eval('#listaPontos .ponto-escolha[data-ponto-id]', (el) => el.dataset.pontoId)) === String(P.proprio),
+  (await p.$eval('#listaPontos .ponto-escolha', (el) => el.dataset.pontoId)) === String(P.proprio),
 );
 check('mesmo molde do admin (ponto-card com corpo)', await card(p, P.mercado).evaluate((el) => el.matches('.ponto-card.com-corpo')));
 check('3 cards por fileira no desktop', (await colunas(p)) === 3, String(await colunas(p)));
@@ -497,12 +497,12 @@ console.log('== busca ==');
 await p.fill('#buscaPontos', 'farm');
 check(
   'busca filtra os cards',
-  (await p.$$eval('#listaPontos .ponto-escolha[data-ponto-id]', (els) => els.filter((e) => !e.hidden).map((e) => e.dataset.pontoId))).join(',') ===
+  (await p.$$eval('#listaPontos .ponto-escolha', (els) => els.filter((e) => !e.hidden).map((e) => e.dataset.pontoId))).join(',') ===
     String(P.farmacia),
 );
 check('card filtrado some de verdade', await card(p, P.mercado).isHidden());
 await p.fill('#buscaPontos', '');
-check('limpar a busca volta todos', (await p.$$('#listaPontos .ponto-escolha[data-ponto-id]:not([hidden])')).length === NA_REDE);
+check('limpar a busca volta todos', (await p.$$('#listaPontos .ponto-escolha:not([hidden])')).length === NA_REDE);
 
 await salvou(p, () => farmacia.locator('input').click());
 await salvou(p, () => proprio.locator('input').click());
@@ -542,11 +542,11 @@ for (const [nome, largura, altura, esperadas] of [
 console.log('== vitrine fora do ar: a escolha continua ==');
 {
   const t = await entrar(1366, 900, { vitrine: 'trava' });
-  check('vitrine que não responde: a lista aparece mesmo assim', (await t.p.$$('#listaPontos .ponto-escolha[data-ponto-id]')).length === NA_REDE);
+  check('vitrine que não responde: a lista aparece mesmo assim', (await t.p.$$('#listaPontos .ponto-escolha')).length === NA_REDE);
   check('vitrine que não responde: placeholder no lugar da foto', (await t.p.$$('#listaPontos img')).length === 0);
   await t.ctx.close();
   const s = await entrar(1366, 900, { vitrine: 'falha' });
-  check('cards desenhados mesmo assim', (await s.p.$$('#listaPontos .ponto-escolha[data-ponto-id]')).length === NA_REDE);
+  check('cards desenhados mesmo assim', (await s.p.$$('#listaPontos .ponto-escolha')).length === NA_REDE);
   check('sem vitrine: placeholder, sem foto nem segmento', (await s.p.$$('#listaPontos img')).length === 0 && (await s.p.$$('#listaPontos .ponto-segmento')).length === 0);
   await salvou(s.p, () => card(s.p, P.mercado).locator('input').click());
   check('sem vitrine: marcar salva igual', escolhidos() === String(P.mercado));

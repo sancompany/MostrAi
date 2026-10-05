@@ -538,6 +538,7 @@ async function buscarVitrineDosPontos() {
 // atingido") são escolhidas pelo CSS a partir do estado do input — nenhum
 // caminho de código precisa lembrar de repintá-las.
 function htmlPontoEscolha(p, vitrine = {}) {
+  if (p.tipo === 'movel' && p.movel) return htmlPontoMovelEscolha(p, vitrine);
   const instalando = p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal';
   // Ponto em instalação nunca está "cheio": ele não vendeu hora nenhuma
   // ainda. Bloquear ele por ocupação seria bloquear por um zero que
@@ -601,37 +602,67 @@ function htmlPontoEscolha(p, vitrine = {}) {
     </div>`;
 }
 
-// MOSTRAÍ MÓVEL (migration 115): a opção virtual — UMA posição do plano que
-// acompanha as telas móveis ativas da rede. Sempre aparece, mesmo com 0
-// unidades em operação, e nunca é desabilitada por isso: a escolha é
-// preferência, o "em operação" é a realidade da hora (e com 0 a campanha
-// segue pela rede, sem segurar horas). O mesmo molde e a mesma seleção no pé
-// do card de ponto (input, `.cheio`, `data-busca`) — conta no limite como
-// qualquer escolha. Sem endereço, sem equipamento, sem agenda.
-function htmlMostraiMovel(m) {
-  const M = window.MOSTRAI_MOVEL;
-  const id = 'ponto-escolha-mostrai-movel';
-  const n = Number(m?.unidadesEmOperacao) || 0;
-  const status =
-    n === 0
-      ? `<span class="ponto-movel-evento ponto-movel-sem-evento" id="${id}-status">${esc(M.emOperacao(0))} ${esc(M.semOperacao)}</span>`
-      : `<span class="ponto-movel-evento" id="${id}-status"><span class="ponto-movel-evento-nome">${esc(M.emOperacao(n))}</span></span>`;
-  return `<div class="ponto-card com-corpo ponto-escolha ponto-movel mostrai-movel" data-mostrai-movel data-busca="${esc(`${M.nome} ${M.subtitulo} movel evento`.toLowerCase())}">
+// Ponto MÓVEL (migrations 112 e 114): card próprio, compacto — o mesmo
+// molde e a mesma seleção no pé (input, `.cheio`, `data-ponto-id`,
+// `data-busca`), mas o que importa é outro: o selo, o nome, onde ele está
+// agora (a alocação em curso) e o próximo evento. Local atual e próximo
+// evento vêm decididos do servidor (src/pontos/movel.js). Quem marca escolhe
+// o PONTO: a campanha acompanha ele enquanto estiver alocado. Sem alocação
+// ele nem aparece na lista — só para quem já o tinha escolhido, avisando que
+// não veicula agora (e pode ser desmarcado). Hospedado num comércio: o card
+// diz só o NOME do lugar — nunca a conta, o período ou o benefício.
+function htmlPontoMovelEscolha(p, vitrine = {}) {
+  const { localAtual, proximoEvento } = p.movel || {};
+  const instalando = p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal';
+  const semAlocacao = !localAtual;
+  const fechado = !p.escolhido && (semAlocacao || (!instalando && p.ocupacao >= 100) || p.bloqueado);
+  const estado = semAlocacao ? window.PONTO_MOVEL.semAlocacao : window.ROTULOS.ponto[p.status] || p.status;
+  const classeEstado = semAlocacao ? 'badge-neutro' : window.ROTULOS.pontoClasse[p.status] || 'badge-neutro';
+  const emEvento = localAtual?.origem === 'evento';
+  const id = `ponto-escolha-${p.id}`;
+  const linha = (classe, icone, texto) =>
+    `<span class="ponto-linha ${classe}">${iconePonto(icone)}<span>${texto}</span></span>`;
+  const evento = proximoEvento
+    ? `<span class="ponto-movel-evento" id="${id}-evento">
+        <span class="ponto-movel-evento-rotulo">${iconePonto('evento')}Próximo evento</span>
+        <span class="ponto-movel-evento-nome">${esc(proximoEvento.nome)}</span>
+        <span class="ponto-movel-evento-meta">${esc(window.periodoDoEvento(proximoEvento.dataInicio, proximoEvento.dataFim))} · ${esc(proximoEvento.local)}</span>
+        ${proximoEvento.publicoEstimado ? `<span class="ponto-movel-evento-meta">${esc(window.publicoEstimadoTexto(proximoEvento.publicoEstimado))}</span>` : ''}
+      </span>`
+    : `<span class="ponto-movel-evento ponto-movel-sem-evento" id="${id}-evento">${esc(emEvento ? window.PONTO_MOVEL.semOutroEvento : window.PONTO_MOVEL.semEvento)}</span>`;
+  const onde = localAtual
+    ? `${localAtual.nome}${localAtual.endereco && localAtual.endereco !== localAtual.nome ? `, ${localAtual.endereco}` : ''}`
+    : '';
+  const mapa = onde ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(onde)}` : null;
+  const busca = `${p.nome} ${localAtual?.nome || ''}`.toLowerCase();
+  return `<div class="ponto-card com-corpo ponto-escolha ponto-movel${fechado ? ' cheio' : ''}" data-ponto-id="${p.id}" data-busca="${esc(busca)}">
       <label class="ponto-marcar">
-        <span class="ponto-card-media ponto-movel-media"><span class="selo-movel" id="${id}-selo">${iconePonto('movel')}${esc(M.selo)}</span></span>
+        <span class="ponto-card-media ponto-movel-media">${vitrine.foto_instalacao_url ? `<img src="${esc(vitrine.foto_instalacao_url)}" alt="" loading="lazy" data-foto>` : ''}<span class="selo-movel" id="${id}-selo">${iconePonto('movel')}${esc(window.PONTO_MOVEL.selo)}</span></span>
         <span class="ponto-card-corpo">
           <span class="ponto-card-topo">
-            <span class="ponto-nome" id="${id}-nome">${esc(M.nome)}</span>
+            <span class="ponto-nome" id="${id}-nome" title="${esc(p.nome)}">${esc(p.nome)}</span>
+            <span class="ponto-estado badge ${classeEstado}" id="${id}-estado">${esc(estado)}</span>
           </span>
-          <span class="ponto-linha ponto-movel-tipo">${iconePonto('evento')}<span>${esc(M.subtitulo)}</span></span>
-          <span class="ponto-movel-explica">${esc(M.texto)}</span>
-          ${status}
+          ${
+            semAlocacao
+              ? linha('ponto-local-atual', 'endereco', esc(window.PONTO_MOVEL.semAlocacaoEscolhido))
+              : linha(
+                  'ponto-local-atual',
+                  'endereco',
+                  emEvento
+                    ? `Agora em: <b>${esc(localAtual.nome)}</b> · ${esc(localAtual.evento.nome)}`
+                    : `Agora em: <b>${esc(localAtual.nome)}</b>`,
+                )
+          }
+          ${evento}
+          <span class="ponto-movel-explica">${esc(window.PONTO_MOVEL.explica)}</span>
         </span>
         <span class="ponto-escolha-acao">
-          <input type="checkbox" value="${M.valor}" ${m?.escolhido ? 'checked' : ''} aria-labelledby="${id}-nome ${id}-selo" aria-describedby="${id}-status ${id}-acao">
-          <span class="ponto-acao-texto" id="${id}-acao"><span class="acao-livre">Selecionar</span><span class="acao-marcado">Selecionado</span><span class="acao-limite">Limite do plano atingido</span><span class="acao-fechado">Indisponível para escolha</span></span>
+          <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${fechado ? 'disabled' : ''} aria-labelledby="${id}-nome ${id}-selo" aria-describedby="${id}-estado ${id}-evento ${id}-acao">
+          <span class="ponto-acao-texto" id="${id}-acao"><span class="acao-livre">Selecionar ponto</span><span class="acao-marcado">Selecionado</span><span class="acao-limite">Limite do plano atingido</span><span class="acao-fechado">Indisponível para escolha</span></span>
         </span>
       </label>
+      ${mapa ? `<a class="ponto-mapa" href="${mapa}" target="_blank" rel="noopener" title="Ver no mapa" aria-label="Ver onde ${esc(p.nome)} está agora no mapa">${iconePonto('endereco')}Ver no mapa</a>` : ''}
     </div>`;
 }
 
@@ -647,10 +678,7 @@ function pintarResumoPontos(dados, marcados) {
     : `${n} ${n === 1 ? 'ponto selecionado' : 'pontos selecionados'}`;
   contador.className = n > 0 ? 'badge badge-ok' : 'badge badge-neutro';
   const modo = document.getElementById('modoPontos');
-  // Locais físicos no ar agora (as unidades móveis contam uma a uma); a
-  // escolha da Mostraí Móvel com 0 unidades ativas não entra aqui, e isso
-  // não é inconsistência: o contador mede ESCOLHAS, isto mede a realidade.
-  const veiculando = dados.cobertura?.pontosNoAr ?? dados.cobertura?.veiculando;
+  const veiculando = dados.cobertura?.veiculando;
   const hoje =
     veiculando != null
       ? ` Hoje sua campanha ${veiculando === 1 ? 'roda em 1 ponto no ar' : `roda em ${veiculando} pontos no ar`}.`
@@ -704,23 +732,14 @@ async function desenharPontos() {
   }
   pintarCompensacao(dados.cobertura);
 
-  // A Mostraí Móvel vem SEMPRE — logo depois do próprio ponto (que continua
-  // primeiro), antes dos demais. Com a rede sem nenhum ponto fixo ainda, ela
-  // é a escolha que existe (e a frase abaixo diz o resto).
+  if (!dados.pontos.length) {
+    lista.innerHTML =
+      '<div class="empty-state dashboard-empty">A rede ainda não tem pontos disponíveis para seleção. Sua cobertura aparecerá aqui conforme eles entrarem no ar.</div>';
+    pintarResumoPontos(dados, []);
+    return;
+  }
   const fotos = await vitrine;
-  const card = (p) => htmlPontoEscolha(p, fotos.get(p.id));
-  lista.innerHTML =
-    dados.pontos
-      .filter((p) => p.seuPonto)
-      .map(card)
-      .join('') +
-    htmlMostraiMovel(dados.mostraiMovel) +
-    (dados.pontos.length
-      ? dados.pontos
-          .filter((p) => !p.seuPonto)
-          .map(card)
-          .join('')
-      : '<div class="empty-state dashboard-empty">Ainda não há outros pontos disponíveis para seleção. Eles aparecerão aqui conforme entrarem no ar.</div>');
+  lista.innerHTML = dados.pontos.map((p) => htmlPontoEscolha(p, fotos.get(p.id))).join('');
   // Logo quadrado ou foto em pé entra inteira, como no admin e em Meus pontos.
   lista.querySelectorAll('img[data-foto]').forEach(candidaturaAjustarFoto);
 
@@ -741,10 +760,7 @@ async function desenharPontos() {
     };
   }
 
-  // Ids de ponto e a opção Mostraí Móvel (`window.MOSTRAI_MOVEL.valor`) — as
-  // duas contam no limite do plano, uma posição cada.
-  const valorDe = (i) => (i.value === window.MOSTRAI_MOVEL.valor ? i.value : Number(i.value));
-  const marcados = () => [...lista.querySelectorAll('input:checked')].map(valorDe);
+  const marcados = () => [...lista.querySelectorAll('input:checked')].map((i) => Number(i.value));
   // Passar do limite não é erro de servidor: é uma caixa que não devia ter
   // deixado marcar. Desligar as outras é mais honesto que aceitar e recusar
   // depois do clique em salvar. O próprio ponto conta igual.
@@ -769,7 +785,7 @@ async function desenharPontos() {
   let salvando = null;
   let pendente = null;
   const voltarAoSalvo = () => {
-    for (const i of lista.querySelectorAll('input')) i.checked = salvo.includes(valorDe(i));
+    for (const i of lista.querySelectorAll('input')) i.checked = salvo.includes(Number(i.value));
     pintarResumoPontos(dados, marcados());
     travarNoLimite();
   };

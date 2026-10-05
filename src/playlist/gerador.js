@@ -2,8 +2,7 @@ const pool = require('../db/pool');
 const vigencia = require('../lib/vigencia');
 const {
   montarHoraDeTv,
-  coberturaDoAnunciante,
-  fracaoNoPool,
+  pontosDoAnunciante,
   dividirCota,
   duracaoValida,
   segundosCompensados,
@@ -23,7 +22,6 @@ const basicoRepo = require('../pontos/basico');
 const hospedagem = require('../pontos/hospedagem');
 const { operacaoDoPonto, minutosOperando } = require('../lib/operacao-tela');
 const { inventarioSql } = require('../lib/contexto-do-ponto');
-const { escolhasSql, lerEscolhas } = require('../lib/mostrai-movel');
 
 // Quem chega no meio da hora (ponto escolhido agora, criativo aprovado
 // agora) não disputa vaga com quem já estava programado — só pede a fatia
@@ -193,9 +191,11 @@ async function anunciantesElegiveis(
            array_agg(c.duracao_segundos ORDER BY c.created_at DESC) AS duracoes,
            array_agg(c.id ORDER BY c.created_at DESC) AS criativo_ids,
            array_agg(c.conteudo_sha256 ORDER BY c.created_at DESC) AS hashes,
-           -- Pontos escolhidos e a opção Mostraí Móvel, na ordem da escolha
-           -- (src/lib/mostrai-movel.js).
-           ${escolhasSql('a')} AS pontos_escolhidos
+           COALESCE(
+             (SELECT array_agg(ap.ponto_id ORDER BY ap.escolhido_em)
+                FROM anunciantes_pontos ap WHERE ap.anunciante_id = a.id),
+             ARRAY[]::int[]
+           ) AS pontos_escolhidos
     FROM anunciantes a
     -- Só o plano COMERCIAL dentro da validade (Essencial/Pro/Prime — pago,
     -- benefício por créditos ou cortesia legada). Inicial/Básico deixaram de
@@ -237,7 +237,6 @@ async function anunciantesElegiveis(
     const limite = limiteDeCriativos(r.conta_propria, r.limite_criativos, r.urls.length);
     return {
       ...r,
-      pontos_escolhidos: lerEscolhas(r.pontos_escolhidos),
       criativos: r.urls.slice(0, limite).map((url, i) => ({
         url,
         duracaoSegundos: r.duracoes[i],
@@ -292,24 +291,12 @@ function quantasInsercoes(conta, segundos, duracaoSegundos) {
   return Number(conta.frequencia_hora) || 0;
 }
 
-// `moveis`: as unidades móveis entre eles — o pool da opção Mostraí Móvel
-// nesta hora (migration 115). Móvel sem alocação já não está aqui.
 async function pontosEmOperacao() {
   const { rows } = await pool.query(
-    `SELECT p.id, p.tipo FROM pontos p WHERE p.status = 'em_operacao' AND ${inventarioSql('p')} ORDER BY p.id`,
+    `SELECT p.id FROM pontos p WHERE p.status = 'em_operacao' AND ${inventarioSql('p')} ORDER BY p.id`,
   );
-  return { pontos: rows.map((r) => r.id), moveis: rows.filter((r) => r.tipo === 'movel').map((r) => r.id) };
+  return rows.map((r) => r.id);
 }
-
-// A cobertura da conta (pontos, posições do plano e pool móvel) — uma conta
-// só para a geração, a obrigação sem sinal e a fatia da dona.
-const coberturaDaConta = (conta, noAr, bloqueados) =>
-  coberturaDoAnunciante(
-    { id: conta.id, pontosIncluidos: conta.pontos_incluidos, escolhidos: conta.pontos_escolhidos },
-    noAr.pontos,
-    bloqueados,
-    noAr.moveis,
-  );
 
 // Por quantos pontos o Saldo de Veiculação de uma conta sai na mesma hora: a
 // fatia comercial e os pontos do Básico, sem contar duas vezes o próprio
@@ -324,22 +311,20 @@ function pontosQuePuxamOSaldo(fatiaComercial, pontosDoBasico) {
 // plano dentro da validade. Sem plano válido, nenhuma.
 async function coberturaComercialDaConta(contaId, pontosNoAr, pontosBloqueados) {
   const { rows } = await pool.query(
-    `SELECT p.pontos_incluidos, ${escolhasSql('a')} AS pontos_escolhidos
+    `SELECT p.pontos_incluidos,
+            COALESCE((SELECT array_agg(ap.ponto_id ORDER BY ap.escolhido_em)
+                        FROM anunciantes_pontos ap WHERE ap.anunciante_id = a.id), ARRAY[]::int[]) AS pontos_escolhidos
        FROM anunciantes a
        JOIN planos p ON p.id = a.plano_id AND ${vigencia.vigenteSql('a.data_expiracao')}
       WHERE a.id = $1`,
     [contaId],
   );
   if (!rows[0]) return [];
-  return coberturaDaConta(
-    {
-      id: contaId,
-      pontos_incluidos: rows[0].pontos_incluidos,
-      pontos_escolhidos: lerEscolhas(rows[0].pontos_escolhidos),
-    },
+  return pontosDoAnunciante(
+    { id: contaId, pontosIncluidos: rows[0].pontos_incluidos, escolhidos: rows[0].pontos_escolhidos },
     pontosNoAr,
     pontosBloqueados,
-  ).pontos;
+  );
 }
 
 // Quem reveza entre peças de durações diferentes ocupa, ao longo da hora, a
@@ -464,12 +449,7 @@ function minutosAbertosNaHora(dispositivo, de, ate) {
 // base (T1) e além dela (T2, compensação da RN-49 até o teto) e a obrigação
 // por hora cheia (RN-49 sem teto — `segundosDeObrigacao`). Um lugar só, usado
 // pela geração e pela obrigação da hora sem sinal: as duas nunca divergem.
-//
-// `fracao` (Mostraí Móvel, migration 115): numa unidade do pool móvel, a
-// parcela da POSIÇÃO se divide entre as unidades do pool — cada uma pede
-// a sua parte (arredondada para cima: nunca zera uma unidade) e deve a sua
-// parte da obrigação. 4 unidades ativas = 1 posição repartida, não 4.
-function numerosDaConta(conta, pontosCobertos, telasDoPonto, fracao = 1) {
+function numerosDaConta(conta, pontosCobertos, telasDoPonto) {
   const duracaoSegundos = duracaoMedia(conta.criativos);
   // RN-49: enquanto a rede for menor que o plano, o tempo dos pontos que
   // faltam volta pros que veiculam (até o teto por tela).
@@ -477,21 +457,15 @@ function numerosDaConta(conta, pontosCobertos, telasDoPonto, fracao = 1) {
   // O plano compra SEGUNDOS da hora; quantas inserções isso vira depende
   // da peça que o cliente subiu (RN-39). `frequencia_hora * duração` é a
   // ponte pra plano legado sem `segundos_por_hora`.
-  const partes = Math.max(1, fracao);
-  const total = Math.ceil(quantasInsercoes(conta, segundos, duracaoSegundos) / partes);
-  const base = Math.min(
-    total,
-    Math.ceil(quantasInsercoes(conta, Number(conta.segundos_por_hora) || 0, duracaoSegundos) / partes),
-  );
+  const total = quantasInsercoes(conta, segundos, duracaoSegundos);
+  const base = Math.min(total, quantasInsercoes(conta, Number(conta.segundos_por_hora) || 0, duracaoSegundos));
   const obrigacaoHoraCheia = {
     segundosPorHora: conta.segundos_por_hora,
     frequenciaHora: conta.frequencia_hora,
     pontosIncluidos: conta.pontos_incluidos,
     pontosCobertos,
     duracaoSegundos,
-    // A obrigação da posição móvel se reparte como a de um ponto com várias
-    // telas: dividida pelas unidades do pool.
-    telasDoPonto: Math.max(1, Number(telasDoPonto) || 1) * partes,
+    telasDoPonto,
   };
   return { duracaoSegundos, base, compensacao: total - base, total, obrigacaoHoraCheia };
 }
@@ -678,13 +652,17 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   // pra essa conta em `anunciantes_pontos`), então aplicar o filtro aqui é
   // exatamente o que impede um anunciante NOVO, sem escolha própria ainda,
   // de cair de primeira num ponto que já parou de aceitar gente.
-  //
-  // Mostraí Móvel (migration 115): a escolha virtual vale pelo pool das
-  // unidades alocadas nesta hora, e o pool inteiro é UMA posição do plano —
-  // `posicoes` é a régua da RN-49, e cada unidade do pool recebe só a sua
-  // fração da parcela (`fracaoNoPool`), nunca a parcela inteira.
-  const cobertura = new Map(todos.map((a) => [a.id, coberturaDaConta(a, pontosNoAr, pontosBloqueados)]));
-  const anunciantes = todos.filter((a) => cobertura.get(a.id).pontos.includes(dispositivo.ponto_id));
+  const cobertura = new Map(
+    todos.map((a) => [
+      a.id,
+      pontosDoAnunciante(
+        { id: a.id, pontosIncluidos: a.pontos_incluidos, escolhidos: a.pontos_escolhidos },
+        pontosNoAr,
+        pontosBloqueados,
+      ),
+    ]),
+  );
+  const anunciantes = todos.filter((a) => cobertura.get(a.id).includes(dispositivo.ponto_id));
   const porId = Object.fromEntries(anunciantes.map((a) => [a.id, a]));
 
   // Frequência é por hora direto agora (migration 037) — sem conversão por
@@ -696,8 +674,8 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   // base (T1); `compensacao` (RN-49 além da base) e `deficit` (reposição da
   // hora anterior) são T2; `banco` é T3.
   const entrada = anunciantes.map((a) => {
-    const cob = cobertura.get(a.id);
-    const n = numerosDaConta(a, cob.posicoes, dispositivo.telas_do_ponto, fracaoNoPool(cob, dispositivo.ponto_id));
+    const cobertos = cobertura.get(a.id).length;
+    const n = numerosDaConta(a, cobertos, dispositivo.telas_do_ponto);
     // Saldo de Veiculação (banco de horas): quem tem saldo DISPONÍVEL (dívida
     // de mês anterior ainda não devolvida, menos o que outra hora já
     // programou e ainda não liquidou) pede exibições a mais — mas só no tempo
@@ -727,7 +705,7 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
     const vigenteNaHora = a.plano_vigente !== false;
     const atrasoNestePonto = Math.max(
       0,
-      (bancoDaConta?.segundos || 0) / pontosQuePuxamOSaldo(cobertura.get(a.id).pontos, basicosPorConta.get(a.id)) -
+      (bancoDaConta?.segundos || 0) / pontosQuePuxamOSaldo(cobertura.get(a.id), basicosPorConta.get(a.id)) -
         (vigenteNaHora ? deficits[a.id] || 0 : 0) * duracaoValida(n.duracaoSegundos),
     );
     const prioridadeBanco = aberta
@@ -781,7 +759,7 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
       // Este ponto conta sempre: está puxando o saldo agora, mesmo antes de
       // o status dele chegar a "em operação".
       const comercialDaDona =
-        cobertura.get(basico.conta_id)?.pontos ??
+        cobertura.get(basico.conta_id) ??
         (aberta && saldo ? await coberturaComercialDaConta(basico.conta_id, pontosNoAr, pontosBloqueados) : []);
       const pontosDoBasico = [...(basicosPorConta.get(basico.conta_id) || []), dispositivo.ponto_id];
       const banco = aberta
@@ -1157,9 +1135,13 @@ async function obrigacoesDaTela(dispositivo, { desde = new Date(Date.now() - 62 
   ]);
   const contas = [];
   for (const a of todos) {
-    const cob = coberturaDaConta(a, pontosNoAr, pontosBloqueados);
-    if (!cob.pontos.includes(dispositivo.ponto_id)) continue;
-    const n = numerosDaConta(a, cob.posicoes, dispositivo.telas_do_ponto, fracaoNoPool(cob, dispositivo.ponto_id));
+    const cobertura = pontosDoAnunciante(
+      { id: a.id, pontosIncluidos: a.pontos_incluidos, escolhidos: a.pontos_escolhidos },
+      pontosNoAr,
+      pontosBloqueados,
+    );
+    if (!cobertura.includes(dispositivo.ponto_id)) continue;
+    const n = numerosDaConta(a, cobertura.length, dispositivo.telas_do_ponto);
     contas.push({
       anuncianteId: a.id,
       dataExpiracao: a.data_expiracao,

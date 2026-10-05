@@ -1,8 +1,7 @@
 const pool = require('../db/pool');
 const pontosRepo = require('../pontos/repository');
 const concorrencia = require('../categorias/concorrencia');
-const { coberturaDoAnunciante } = require('../lib/pacing');
-const { escolhasSql, lerEscolhas } = require('../lib/mostrai-movel');
+const { pontosDoAnunciante } = require('../lib/pacing');
 const { cabeNoTeto } = require('../pontos/basico');
 const { operacaoDoPonto, minutosOperando } = require('../lib/operacao-tela');
 const { horarioEmVigorSql, categoriaEmVigorSql, casaEmVigorSql, inventarioSql } = require('../lib/contexto-do-ponto');
@@ -125,27 +124,25 @@ function prazoDaJanela(relogio, janela, horasDeRodizio) {
 // valem em qualquer ponto no ar — só a trava de ramo filtra.
 async function coberturaDaConta(conta, plano, db = pool, basicos = [], { redeInteira = false } = {}) {
   const [{ rows: escolhas }, { rows: noAr }, bloqueados, concorrentes] = await Promise.all([
-    // Pontos e a opção Mostraí Móvel, na ordem da escolha (migration 115).
-    db.query(`SELECT ${escolhasSql('a')} AS escolhas FROM anunciantes a WHERE a.id = $1`, [conta.id]),
+    db.query('SELECT ponto_id FROM anunciantes_pontos WHERE anunciante_id = $1 ORDER BY escolhido_em', [conta.id]),
     db.query(
       // Ramo, casa e horário EM VIGOR — os mesmos que o gerador usa na tela
       // (src/lib/contexto-do-ponto.js): no ponto móvel mudam com a
       // hospedagem ou o evento em curso.
-      `SELECT p.id, p.tipo, ${horarioEmVigorSql('p')} AS horario_semanal, ${categoriaEmVigorSql('p')} AS categoria_id,
+      `SELECT p.id, ${horarioEmVigorSql('p')} AS horario_semanal, ${categoriaEmVigorSql('p')} AS categoria_id,
               ${casaEmVigorSql('p')} AS casa_id
          FROM pontos p WHERE p.status = 'em_operacao' AND ${inventarioSql('p')} ORDER BY p.id`,
     ),
     pontosRepo.idsBloqueadosParaEscolha(),
     concorrencia.concorrentesDe(conta.categoria_id, db),
   ]);
-  const escolhidos = lerEscolhas(escolhas[0]?.escolhas);
+  const escolhidos = escolhas.map((r) => r.ponto_id);
   const ids = plano
-    ? coberturaDoAnunciante(
+    ? pontosDoAnunciante(
         { id: conta.id, pontosIncluidos: plano.pontos_incluidos, escolhidos },
         noAr.map((p) => p.id),
         bloqueados,
-        noAr.filter((p) => p.tipo === 'movel').map((p) => p.id),
-      ).pontos
+      )
     : [];
   const naFatia = new Set(redeInteira ? noAr.map((p) => p.id) : ids);
   const proprios = new Set(basicos.map((b) => b.ponto_id));

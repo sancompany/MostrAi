@@ -51,8 +51,6 @@
 // que a vitrine imprime passa a ser o número que a tela entrega, com a rede
 // vazia ou cheia.
 
-const { MOSTRAI_MOVEL } = require('./mostrai-movel');
-
 const SEGUNDOS_DA_HORA = 3600;
 
 // Duração da peça institucional que preenche o inventário vago. Não é vídeo:
@@ -346,54 +344,6 @@ function pontosDoAnunciante(conta, pontosEmOperacao, pontosBloqueados = []) {
     .slice(0, conta.pontosIncluidos);
 }
 
-// MOSTRAÍ MÓVEL (migration 115): a cobertura com a escolha virtual.
-//
-// Para o anunciante, "Mostraí Móvel" é UMA posição do plano, nunca um
-// equipamento. Ela vale pelo POOL das unidades móveis no inventário agora
-// (`moveisNoAr`: alocadas, em operação — src/lib/contexto-do-ponto.js), que
-// é refeito a cada hora: unidade que entra numa alocação entra no pool,
-// unidade que sai deixa o pool, e ninguém edita a campanha.
-//
-//   pontos   — onde a conta pode tocar nesta hora (os fixos escolhidos e as
-//              unidades do pool);
-//   posicoes — quantas posições do plano essa cobertura usa: o pool inteiro
-//              é UMA, tenha 1 ou 10 unidades. É o denominador da RN-49
-//              (`segundosCompensados`), então 4 unidades ativas nunca viram
-//              4 obrigações;
-//   pool     — as unidades que DIVIDEM a parcela da posição móvel (a fração
-//              de cada uma: `fracaoNoPool`).
-//
-// Pool vazio: a posição móvel não está no ar agora — exatamente como um
-// ponto escolhido fora de operação: não conta, e o tempo dela volta para as
-// outras posições pela RN-49. Se era a ÚNICA escolha, a conta cai na
-// distribuição automática pela rede (`pontosDoAnunciante` sem escolha):
-// selecionar a Mostraí Móvel nunca segura horas esperando um evento.
-//
-// O resto é o de sempre: plano sem teto cobre a rede inteira (o pool não se
-// aplica), e escolha acima do teto é cortada na ordem em que foi feita.
-function coberturaDoAnunciante(conta, pontosEmOperacao, pontosBloqueados = [], moveisNoAr = []) {
-  const semPool = (pontos) => ({ pontos, posicoes: pontos.length, pool: [] });
-  if (!conta.pontosIncluidos) return semPool([...pontosEmOperacao]);
-  const operando = new Set(pontosEmOperacao);
-  const frota = moveisNoAr.filter((id) => operando.has(id));
-  const ativas = (conta.escolhidos || [])
-    .filter((e) => (e === MOSTRAI_MOVEL ? frota.length > 0 : operando.has(e)))
-    .slice(0, conta.pontosIncluidos);
-  if (!ativas.length) {
-    return semPool(pontosDoAnunciante({ ...conta, escolhidos: [] }, pontosEmOperacao, pontosBloqueados));
-  }
-  const fixos = ativas.filter((e) => e !== MOSTRAI_MOVEL);
-  if (fixos.length === ativas.length) return semPool(fixos);
-  const pool = frota.filter((id) => !fixos.includes(id));
-  return { pontos: [...fixos, ...pool], posicoes: ativas.length, pool };
-}
-
-// Por quantas unidades a parcela da conta se divide NESTE ponto: o tamanho
-// do pool quando o ponto é uma unidade dele, 1 nos demais.
-function fracaoNoPool(cobertura, pontoId) {
-  return cobertura.pool.includes(pontoId) ? cobertura.pool.length : 1;
-}
-
 // COMPENSAÇÃO DE COBERTURA — RN-49, decidida pelo dono em 17/09/2026.
 //
 // O plano vende N pontos. Enquanto a rede tiver menos que N, o anunciante
@@ -527,8 +477,6 @@ function dividirCota(cotaDoPonto, telasAtivas) {
 module.exports = {
   montarHoraDeTv,
   pontosDoAnunciante,
-  coberturaDoAnunciante,
-  fracaoNoPool,
   contarPorAnunciante,
   dividirCota,
   duracaoValida,
