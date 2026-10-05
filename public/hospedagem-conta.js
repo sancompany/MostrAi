@@ -288,15 +288,29 @@
     window.ligarEventosDaConta?.({ 'hosting.updated': () => carregar().catch(() => {}) });
   }
 
-  async function carregar() {
-    const r = await fetch(`${API_BASE_URL}/anunciantes/me/hospedagem`, { credentials: 'include' });
-    if (!r.ok) throw new Error('hospedagem indisponível');
-    dados = await r.json();
-    render();
+  // No resync o painel remonta (montarHospedagem) e o evento
+  // `hosting.updated` também recarrega: as duas chamadas simultâneas
+  // dividem a mesma busca.
+  let emCurso = null;
+  let carregadoEm = 0;
+  function carregar() {
+    emCurso ??= (async () => {
+      const r = await fetch(`${API_BASE_URL}/anunciantes/me/hospedagem`, { credentials: 'include' });
+      if (!r.ok) throw new Error('hospedagem indisponível');
+      dados = await r.json();
+      carregadoEm = Date.now();
+      render();
+    })().finally(() => {
+      emCurso = null;
+    });
+    return emCurso;
   }
 
+  // Remontar logo depois de uma carga (o resync acabou de buscar pelo
+  // evento) reaproveita o que chegou; o evento `hosting.updated` sempre busca.
   window.montarHospedagem = function montarHospedagem() {
     ligar();
+    if (dados && Date.now() - carregadoEm < 3000) return Promise.resolve(render());
     return carregar().catch(() => {
       // Módulo complementar: se falhar, some — o resto do painel segue.
       dados = null;

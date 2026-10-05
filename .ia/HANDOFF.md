@@ -1,6 +1,23 @@
 # Current Handoff
 
 ## Updated
+2026-10-05 — **Finalização definitiva do Ponto Móvel V1** (pedido do dono;
+branch `claude/busy-noether-hheir2`). Sobre a V2: termo de hospedagem
+versionado e imutável com aceite eletrônico (`src/pontos/hospedagem-termo.js`;
+`iniciar` exige aceite dos dados atuais e a entrega do equipamento; o aceite
+amarra os dados que o anfitrião leu — `dadosHash`; prorrogação pede aceite
+novo sem travar), entrega/retirada (`hospedagem_movimentacoes`; retirada
+avulsa só depois de encerrar), conectividade ≠ operação (§8: Admin vê
+cadastro/conexão/operação; anunciante e dono só "Sem comunicação com a
+Mostraí", sem horário de sinal), T12 (métrica da Mídia Mostraí desconta o
+que a agenda decidiu, `src/midias/metricas.js`). T9 reavaliada: **não bloqueia
+o merge** (fica a confirmação do dono). T13 nova: o texto do termo é minuta
+sem revisão jurídica. Revisão focal §29 (3 lentes) + re-revisão das
+correções: sem HIGH/MEDIUM abertos. LOW aceitos (docs/PENDENCIAS.md T14).
+**Atenção para bancos de dev:** as seções 10–11 foram acrescentadas à
+migration 113 antes dela ir para produção — banco local que já rodou a 113
+antiga precisa ser recriado (`migrate.js` rastreia só pelo nome do arquivo).
+Produção estava em 112 (0 pontos/móveis/telas). Review-Master segue PAUSADA.
 2026-10-02 — **Ponto Móvel V2: hospedagem temporária, saldo em horas e tempo
 operacional real** (pedido do dono; branch `claude/busy-noether-hheir2`,
 evolui a 112 com a migration 113). Móvel nasce só pelo Admin
@@ -13,8 +30,8 @@ benefício idempotente no livro `saldo_hospedagem_lancamentos`, camada T3b no
 gerador, atribuição posicional das confirmações (`src/lib/partes-da-hora.js`),
 contexto do ponto em `src/lib/contexto-do-ponto.js`. Site `/hospedar.html`,
 painel `public/hospedagem-conta.js`, Admin Rede › Pontos móveis. RN-71/RN-72,
-ADR-037, PENDENCIAS §T (**T9 bloqueia o merge: decisão do dono sobre a regra
-de criativos do saldo**; T10: Player em `sancompany/playlist.mostrai` precisa
+ADR-037, PENDENCIAS §T (T9 — regra de criativos do saldo, decisão do dono;
+05/10: não bloqueia mais o merge; T10: Player em `sancompany/playlist.mostrai` precisa
 de PR e OTA). Testes: `tests/hospedagem.test.js`, `tests/ponto-movel.test.js`,
 e2e 46 e 47. **A Review-Master continua PAUSADA.**
 Revisão §85 em 3 rodadas dos 3 ciclos (regras; segurança/concorrência;

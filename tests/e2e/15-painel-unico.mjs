@@ -134,7 +134,7 @@ check('ambos: benefício do ponto em Meus pontos', (await s.p.textContent('#pont
 const chips = await s.p.textContent('#resumoConta');
 check('ambos: resumo com plano, pontos, criativos e créditos', /Plano[\s\S]*Essencial[\s\S]*Pontos[\s\S]*1 de 1[\s\S]*Criativos[\s\S]*Créditos[\s\S]*5/.test(chips), chips);
 const alertas = await s.p.textContent('#alertasConta');
-check('ambos: alerta da tela sem comunicação', new RegExp(`${telaAmbos} \\(Padaria Grade\\)[\\s\\S]*sem comunicação`).test(alertas), alertas);
+check('ambos: alerta da tela sem comunicação', new RegExp(`${telaAmbos} \\(Padaria Grade\\)[\\s\\S]*sem comunicação`, 'i').test(alertas), alertas);
 check('ambos: alerta de criativo faltando', /Falta o seu criativo/.test(alertas));
 check('ambos: aviso "Falta o seu vídeo" não repete dentro da campanha', !(await s.p.textContent('#dashboardAnuncios')).includes('Falta o seu vídeo'));
 const campanha = await box(s.p, '#dashboardAnuncios');

@@ -5826,4 +5826,16 @@ conversão fixo ⇄ móvel da seção S.
       Rede → Pontos móveis → Termo de hospedagem (versão nova; a minuta fica
       no histórico, nunca é editada). O sistema (versão, aceite, hashes,
       IP/navegador, data, imutabilidade) está pronto.
+- T14 [ ] LOW aceitos na revisão focal da finalização V1 (05/10/2026), sem
+      efeito em regra nem em dinheiro:
+      (a) o Admin mostra como "aceite do início" o último aceite feito antes
+      do início com a mesma data de início — num vai-e-volta de período
+      antes de iniciar pode mostrar um aceite que não era o vigente naquela
+      hora (o gate usa o aceite exato; só a exibição aproxima). Corrigir
+      gravando o id do aceite no `iniciar` se aparecer caso real;
+      (b) o IP do aceite é o que chega ao servidor com `trust proxy 1` —
+      atrás da Cloudflare pode ser o da borda dela (vale também para o
+      limitador de tentativas); confirmar a cadeia de proxies em produção;
+      (c) foto de entrega/retirada fica no bucket público (nome aleatório,
+      não adivinhável); bucket privado com URL assinada é a evolução.
 
