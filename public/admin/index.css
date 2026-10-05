@@ -4240,14 +4240,6 @@ button.pend-bloco:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 1px;
 }
-.upload-foto-miniatura {
-  flex: none;
-  width: var(--h-controle);
-  height: var(--h-controle);
-  object-fit: cover;
-  border: 1px solid var(--border);
-  border-radius: var(--r-controle);
-}
 .upload-foto-nome {
   flex: 1;
   min-width: 0;
@@ -4260,6 +4252,25 @@ button.pend-bloco:focus-visible {
 .upload-foto-nome.escolhida {
   color: var(--text);
 }
-.upload-foto [data-foto-remover] {
+.upload-foto-remover {
   flex: none;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--borda-forte);
+  border-radius: var(--r-controle);
+  background: var(--card);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.upload-foto-remover:hover {
+  color: var(--err-texto);
+  border-color: rgba(220, 38, 38, 0.35);
+  background: var(--err-tint);
+}
+.upload-foto-remover:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
 }
