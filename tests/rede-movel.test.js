@@ -627,3 +627,38 @@ test('scheduler: entrada no meio da hora espera a próxima; duas telas no pool d
   await gerador.gerarPlaylistDaHora(await dispositivosRepo.buscarComPonto(b), H1);
   assert.strictEqual(await obrigacao(b, H1), ob, 'B continua com a parcela dela');
 });
+
+test('scheduler: o pool da hora fica congelado — tela que muda de status no meio da hora não dá 1,5× a cota', async () => {
+  // Revisão do PR #118 (Codex P1): A e B no pool; B gera primeiro (metade);
+  // B vai para reparo; A gera em seguida e NÃO pode levar a cota inteira.
+  const rede = await redeComTelas(2);
+  const [a, b] = rede.telas;
+  const conta = await contaComPlanoEPeca(rede.id);
+  await eventoEmAndamento(rede.id, [a, b]);
+  const H = horaCheia();
+  const obrigacao = async (tela) => {
+    const { rows } = await pool.query(
+      `SELECT segundos_obrigacao FROM exibicoes_contador
+        WHERE dispositivo_id = $1 AND anunciante_id = $2 AND janela_hora = $3`,
+      [tela, conta.id, H],
+    );
+    return rows[0] ? Number(rows[0].segundos_obrigacao) : 0;
+  };
+  await gerador.gerarPlaylistDaHora(await dispositivosRepo.buscarComPonto(b), H);
+  const ob = await obrigacao(b);
+  assert.ok(ob > 0, 'B recebeu a parcela dela');
+  await pool.query(`UPDATE dispositivos SET status = 'reparo' WHERE id = $1`, [b]);
+  await gerador.gerarPlaylistDaHora(await dispositivosRepo.buscarComPonto(a), H);
+  const oa = await obrigacao(a);
+  assert.ok(oa > 0 && Math.abs(oa - ob) <= 1, `A fica com a metade dela, não com a cota inteira (${oa}, ${ob})`);
+  const { rows } = await pool.query('SELECT telas FROM rede_movel_pool_hora WHERE ponto_id = $1 AND hora = $2', [
+    rede.id,
+    H,
+  ]);
+  assert.deepStrictEqual(
+    rows[0].telas,
+    [a, b].sort((x, y) => x - y),
+    'pool congelado na primeira geração da hora',
+  );
+  await pool.query(`UPDATE dispositivos SET status = 'ativo' WHERE id = $1`, [b]);
+});

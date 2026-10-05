@@ -53,27 +53,29 @@ function inicioDoDiaSP(agora) {
   return new Date(`${dia}T00:00:00-03:00`);
 }
 
-// Minutos abertos por ponto, com cache por hora cheia: a mesma hora de um
-// ponto serve a todas as mídias e a todas as telas dele.
-function criarRelogio(pontos) {
-  const operacoes = new Map(pontos.map((p) => [p.id, operacaoDoPonto(p.horario_semanal)]));
+// Minutos abertos POR TELA, com cache por hora cheia: a mesma hora de uma
+// tela serve a todas as mídias. Por tela, não por ponto: duas telas da
+// mesma rede móvel podem estar em alocações com horários diferentes
+// (migration 115 — o horário em vigor é o da alocação de cada uma).
+function criarRelogio(telas) {
+  const operacoes = new Map(telas.map((t) => [t.id, operacaoDoPonto(t.horario_semanal)]));
   const cache = new Map();
-  const daHora = (pontoId, hora) => {
-    const chave = `${pontoId}|${hora}`;
+  const daHora = (telaId, hora) => {
+    const chave = `${telaId}|${hora}`;
     if (!cache.has(chave)) {
-      cache.set(chave, minutosOperando(operacoes.get(pontoId), new Date(hora), new Date(hora + HORA_MS)));
+      cache.set(chave, minutosOperando(operacoes.get(telaId), new Date(hora), new Date(hora + HORA_MS)));
     }
     return cache.get(chave);
   };
   // Minutos abertos em [de, ate): horas inteiras pelo cache, bordas na hora.
-  return function minutosAbertos(pontoId, de, ate) {
+  return function minutosAbertos(telaId, de, ate) {
     let total = 0;
     let t = de;
     while (t < ate) {
       const hora = Math.floor(t / HORA_MS) * HORA_MS;
       const fimHora = hora + HORA_MS;
-      if (t === hora && ate >= fimHora) total += daHora(pontoId, hora);
-      else total += minutosOperando(operacoes.get(pontoId), new Date(t), new Date(Math.min(ate, fimHora)));
+      if (t === hora && ate >= fimHora) total += daHora(telaId, hora);
+      else total += minutosOperando(operacoes.get(telaId), new Date(t), new Date(Math.min(ate, fimHora)));
       t = fimHora;
     }
     return total;
@@ -105,7 +107,7 @@ function teoricaNaHora({ midia, intervalos, tela, minutosAbertos, hora, ate }) {
   for (const [a, b] of intervalos) {
     const ini = Math.max(a, hora, desdeTela);
     const fim = Math.min(b, hora + HORA_MS, ate);
-    if (fim > ini) minutos += minutosAbertos(tela.ponto_id, ini, fim);
+    if (fim > ini) minutos += minutosAbertos(tela.id, ini, fim);
   }
   return (freq * minutos) / 60;
 }
@@ -122,7 +124,7 @@ function esperadasNoPeriodo({ midia, intervalos, telas, minutosAbertos, de, ate 
     for (const [a, b] of intervalos) {
       const ini = Math.max(a, de, desdeTela);
       const fim = Math.min(b, ate);
-      if (fim > ini) minutos += minutosAbertos(tela.ponto_id, ini, fim);
+      if (fim > ini) minutos += minutosAbertos(tela.id, ini, fim);
     }
     const esperadas = (freq * minutos) / 60;
     porTela.set(tela.id, esperadas);
@@ -142,7 +144,7 @@ function estadoDaAtiva({ midia, intervalos, telas, minutosAbertos, porHora, agen
   const atual = intervalos.at(-1);
   const inicioAtivo = atual ? atual[0] : agoraMs;
   const prazoFechado = agoraMs - MARGEM_COMPROVANTE_MS;
-  const abertaNaHora = (hora) => telas.some((t) => minutosAbertos(t.ponto_id, hora, hora + HORA_MS) >= 60);
+  const abertaNaHora = (hora) => telas.some((t) => minutosAbertos(t.id, hora, hora + HORA_MS) >= 60);
 
   if (midia.aprovacao_status !== 'aprovado' || !midia.arquivo_normalizado_url) {
     return { estado: ESTADOS.AGUARDANDO, motivo: 'arquivo_nao_aprovado', prazoPrimeiraExibicao: null };
@@ -255,10 +257,7 @@ async function metricasDasMidias(midias, { agora = new Date(), detalhe = false, 
     ),
   ]);
 
-  const pontos = [
-    ...new Map(telasRede.map((t) => [t.ponto_id, { id: t.ponto_id, horario_semanal: t.horario_semanal }])).values(),
-  ];
-  const minutosAbertos = criarRelogio(pontos);
+  const minutosAbertos = criarRelogio(telasRede);
 
   for (const midia of midias) {
     const m = midia.id;

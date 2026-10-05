@@ -295,7 +295,8 @@ function quantasInsercoes(conta, segundos, duracaoSegundos) {
 
 // A rede móvel conta como UM ponto em operação na hora `hora` quando o pool
 // dela naquela hora não é vazio (alguma tela estava alocada no início da
-// hora — `rede_movel_pool`, migration 115): todas as telas da mesma hora
+// hora — o pool congelado da hora, ou `rede_movel_pool` enquanto nenhuma
+// tela dela gerou a hora; migration 115): todas as telas da mesma hora
 // veem a mesma resposta. Pool vazio = a rede sai da conta da hora e a
 // cobertura de quem a escolheu volta para os pontos no ar (RN-49) ou para
 // a distribuição automática — e volta sozinha quando houver tela alocada.
@@ -303,7 +304,9 @@ async function pontosEmOperacao(hora = new Date()) {
   const { rows } = await pool.query(
     `SELECT p.id FROM pontos p
       WHERE p.status = 'em_operacao'
-        AND (p.tipo <> 'movel' OR cardinality(rede_movel_pool(p.id, $1::timestamptz)) > 0)
+        AND (p.tipo <> 'movel' OR cardinality(COALESCE(
+              (SELECT c.telas FROM rede_movel_pool_hora c WHERE c.ponto_id = p.id AND c.hora = $1::timestamptz),
+              rede_movel_pool(p.id, $1::timestamptz))) > 0)
       ORDER BY p.id`,
     [hora],
   );
@@ -311,9 +314,24 @@ async function pontosEmOperacao(hora = new Date()) {
 }
 
 // O pool da rede móvel na hora: as telas que dividem a parcela da rede.
+// CONGELADO na primeira geração da hora (`rede_movel_pool_hora`, migration
+// 115): o status da tela no cadastro é o de agora, e uma tela que muda de
+// status no meio da hora não pode encolher o pool que as outras já usaram
+// (a soma passaria da cota da rede). Dois comandos de propósito: o
+// INSERT … ON CONFLICT espera quem estiver congelando ao mesmo tempo, e o
+// SELECT seguinte (outro snapshot) já enxerga a linha que ficou.
 async function poolDaRede(redeId, hora) {
-  const { rows } = await pool.query('SELECT rede_movel_pool($1, $2::timestamptz) AS telas', [redeId, hora]);
-  return rows[0].telas || [];
+  await pool.query(
+    `INSERT INTO rede_movel_pool_hora (ponto_id, hora, telas)
+     VALUES ($1, $2::timestamptz, rede_movel_pool($1, $2::timestamptz))
+     ON CONFLICT (ponto_id, hora) DO NOTHING`,
+    [redeId, hora],
+  );
+  const { rows } = await pool.query('SELECT telas FROM rede_movel_pool_hora WHERE ponto_id = $1 AND hora = $2', [
+    redeId,
+    hora,
+  ]);
+  return rows[0]?.telas || [];
 }
 
 // A parte DESTA TELA da parcela de uma conta na rede móvel: base e total

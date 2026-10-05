@@ -194,6 +194,23 @@ CREATE OR REPLACE FUNCTION rede_movel_pool(rede integer, hora timestamptz) RETUR
                         AND e.iniciado_em <= hora AND (e.encerrado_em IS NULL OR e.encerrado_em > hora)))
 $$ LANGUAGE sql STABLE;
 
+-- O pool CONGELADO da hora (revisão do PR #118): o status da tela no
+-- cadastro é o estado de agora, não o do início da hora — tela que vai para
+-- reparo no meio da hora sumiria do pool, e a outra tela pegaria a parcela
+-- inteira enquanto a primeira já tinha a metade dela congelada (1,5× a cota
+-- da rede). A primeira tela da rede que gera a playlist da hora congela o
+-- pool (src/playlist/gerador.js#poolDaRede); as demais leem o mesmo.
+-- Mudança de status vale a partir da próxima hora. (Uma linha por rede por
+-- hora — sem expurgo, é pequena.)
+CREATE TABLE rede_movel_pool_hora (
+  ponto_id integer NOT NULL REFERENCES pontos(id) ON DELETE CASCADE,
+  hora timestamptz NOT NULL,
+  telas integer[] NOT NULL,
+  congelado_em timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (ponto_id, hora)
+);
+ALTER TABLE rede_movel_pool_hora ENABLE ROW LEVEL SECURITY;
+
 -- ---------------------------------------------------------------------------
 -- 6. Termo de hospedagem FÍSICO (assinado em papel)
 -- ---------------------------------------------------------------------------
