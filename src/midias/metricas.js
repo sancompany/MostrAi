@@ -1,4 +1,4 @@
-const { horarioEmVigorSql } = require('../lib/contexto-do-ponto');
+const { horarioEmVigorSql, inventarioSql } = require('../lib/contexto-do-ponto');
 const pool = require('../db/pool');
 const { operacaoDoPonto, minutosOperando } = require('../lib/operacao-tela');
 const { situacaoDerivada } = require('./repository');
@@ -217,12 +217,13 @@ async function metricasDasMidias(midias, { agora = new Date(), detalhe = false, 
     ),
     // Só tela ativa, com primeiro sinal, em ponto em operação.
     db.query(
-      // Horário em vigor: o móvel fora da base (hospedagem, evento) segue o
-      // do contexto, como o gerador e o Player (src/lib/contexto-do-ponto.js).
+      // Horário em vigor: o móvel alocado (hospedagem, evento) segue o da
+      // alocação, como o gerador e o Player (src/lib/contexto-do-ponto.js); o
+      // móvel sem alocação não é inventário e fica de fora.
       `SELECT d.id, d.ponto_id, d.apelido, d.numero, p.nome AS ponto_nome, ${horarioEmVigorSql('p')} AS horario_semanal,
                 COALESCE(d.primeiro_sinal_em, d.provisionado_em) AS desde
            FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
-          WHERE d.status = 'ativo' AND p.status = 'em_operacao'
+          WHERE d.status = 'ativo' AND p.status = 'em_operacao' AND ${inventarioSql('p')}
           ORDER BY p.nome, d.numero`,
     ),
     db.query('SELECT midia_id, ponto_id FROM midias_proprias_pontos WHERE midia_id = ANY($1::int[])', [ids]),

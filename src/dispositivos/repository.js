@@ -3,6 +3,7 @@ const pool = require('../db/pool');
 const cofre = require('../lib/cofre');
 const { saudeDaTela, situacaoConfig, situacaoFila, alertasDaTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
 const {
+  alocadoSql,
   horarioEmVigorSql,
   categoriaEmVigorSql,
   casaEmVigorSql,
@@ -48,11 +49,13 @@ const INSTALACAO_REPETICAO_MIN = 5;
 // escolhem campo a campo o que pode sair. É o caminho quente do Player (toda
 // requisição autenticada, heartbeat a cada 15 s): nada além do necessário.
 // Horário, ramo e "casa" são os EM VIGOR (src/lib/contexto-do-ponto.js): no
-// ponto móvel mudam com a hospedagem ou o evento em curso (migrations 112 e
-// 113). `casa_conta_id` é a conta cujo comércio recebe a tela agora (a dona
-// do fixo; a base ou o anfitrião do móvel) — nunca dona do móvel, só quem a
+// ponto móvel mudam com a hospedagem ou o evento em curso (migrations 112 a
+// 114). `casa_conta_id` é a conta cujo comércio recebe a tela agora (a dona
+// do fixo; o anfitrião do móvel hospedado) — nunca dona do móvel, só quem a
 // trava de ramo protege (gerador.js#anunciantesElegiveis). `categoria_id` é o
-// ramo em vigor, não necessariamente o gravado no ponto.
+// ramo em vigor, não necessariamente o gravado no ponto. `movel_alocado`:
+// o móvel está em hospedagem ou evento agora — sem isso ele não é inventário
+// e o gerador só toca o institucional (migration 114).
 const SELECT_TELA = `
   SELECT d.*,
          p.nome AS ponto_nome, p.cidade AS ponto_cidade, p.status AS ponto_status,
@@ -60,6 +63,7 @@ const SELECT_TELA = `
          p.anunciante_id AS dono_conta_id, ${casaEmVigorSql('p')} AS casa_conta_id, p.tipo AS ponto_tipo,
          ${anfitriaEmVigorSql('p')} AS anfitria_conta_id,
          ${categoriaEmVigorSql('p')} AS categoria_id, p.cota_autoanuncio_slots_hora,
+         ${alocadoSql('p')} AS movel_alocado,
          (SELECT COUNT(*)::int FROM dispositivos x WHERE x.ponto_id = d.ponto_id AND x.status = 'ativo') AS telas_do_ponto
     FROM dispositivos d
     JOIN pontos p ON p.id = d.ponto_id`;

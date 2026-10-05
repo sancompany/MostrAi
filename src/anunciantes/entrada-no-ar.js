@@ -4,7 +4,7 @@ const concorrencia = require('../categorias/concorrencia');
 const { pontosDoAnunciante } = require('../lib/pacing');
 const { cabeNoTeto } = require('../pontos/basico');
 const { operacaoDoPonto, minutosOperando } = require('../lib/operacao-tela');
-const { horarioEmVigorSql, categoriaEmVigorSql, casaEmVigorSql } = require('../lib/contexto-do-ponto');
+const { horarioEmVigorSql, categoriaEmVigorSql, casaEmVigorSql, inventarioSql } = require('../lib/contexto-do-ponto');
 
 // Primeira entrada no ar (estação de distribuição, 27/09/2026): entre
 // "Aprovado" e "rodando" não pode haver limbo. O estado de cada peça é
@@ -131,7 +131,7 @@ async function coberturaDaConta(conta, plano, db = pool, basicos = [], { redeInt
       // hospedagem ou o evento em curso.
       `SELECT p.id, ${horarioEmVigorSql('p')} AS horario_semanal, ${categoriaEmVigorSql('p')} AS categoria_id,
               ${casaEmVigorSql('p')} AS casa_id
-         FROM pontos p WHERE p.status = 'em_operacao' ORDER BY p.id`,
+         FROM pontos p WHERE p.status = 'em_operacao' AND ${inventarioSql('p')} ORDER BY p.id`,
     ),
     pontosRepo.idsBloqueadosParaEscolha(),
     concorrencia.concorrentesDe(conta.categoria_id, db),

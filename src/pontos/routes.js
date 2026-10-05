@@ -52,9 +52,16 @@ router.get('/pontos/config', async (_req, res) => {
 router.get('/anunciantes/me/meus-pontos', exigirAnuncianteLogado, async (req, res) => {
   const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
-  const estabelecimentos = await meusPontosDaConta(conta.id);
+  const { possuiDireitoAtivoDeVeiculacao } = require('../anunciantes/acesso-painel');
+  const [estabelecimentos, direito] = await Promise.all([
+    meusPontosDaConta(conta.id),
+    possuiDireitoAtivoDeVeiculacao(conta),
+  ]);
   res.json({
     ehPonto: estabelecimentos.some((e) => e.tipo === 'ponto'),
+    // Ação secundária "Hospedar um Ponto Móvel": só para quem tem direito
+    // ativo de veiculação (a mesma régua do POST do interesse).
+    podeHospedarMovel: direito.possui,
     estabelecimentos,
   });
 });
@@ -221,6 +228,12 @@ router.patch('/admin/pontos/:id/endereco', async (req, res) => {
   if (!id) return res.status(404).json({ erro: 'ponto não encontrado' });
   const problema = problemaNoEndereco(req.body);
   if (problema) return res.status(400).json(problema);
+  // O ponto móvel não tem endereço próprio (migration 114): o endereço é o
+  // da hospedagem ou do evento em que ele está alocado.
+  const alvo = await repo.buscarPorId(id);
+  if (alvo?.tipo === 'movel') {
+    return res.status(409).json({ erro: 'o ponto móvel não tem endereço próprio — o endereço é o da alocação' });
+  }
   try {
     const { ponto, mudou } = await alterarEnderecoDoPonto(id, soPartes(req.body), {
       origem: 'admin',
@@ -261,13 +274,16 @@ router.patch('/admin/pontos/:id', async (req, res) => {
       return res.status(400).json({ erro: 'endereço do ponto muda por PATCH /admin/pontos/:id/endereco' });
     }
     const antes = await repo.buscarPorId(req.params.id);
-    // Ponto móvel é da Mostraí (migration 112): não tem dona, e a conta da
-    // base muda por "Alterar base" (PUT /admin/pontos/:id/base). O CHECK do
-    // banco já recusaria; aqui a recusa sai com o motivo certo.
+    // Ponto móvel é da Mostraí (migrations 112 e 114): não tem dona, e
+    // horário e ramo são da ALOCAÇÃO (hospedagem ou evento), nunca do ponto.
+    // O CHECK do banco já recusaria a dona; aqui a recusa sai com o motivo.
     if (antes?.tipo === 'movel' && resto.anunciante_id !== undefined) {
       return res
         .status(400)
-        .json({ erro: 'ponto móvel é da Mostraí e não tem dono — a conta da base muda em "Alterar base"' });
+        .json({ erro: 'ponto móvel é da Mostraí e não tem dono — o local vem da alocação (hospedagem ou evento)' });
+    }
+    if (antes?.tipo === 'movel' && (resto.horario_semanal !== undefined || resto.categoria_id !== undefined)) {
+      return res.status(400).json({ erro: 'horário e ramo do ponto móvel são definidos em cada hospedagem ou evento' });
     }
     const ponto = Object.keys(resto).length
       ? await repo.atualizar(req.params.id, resto)

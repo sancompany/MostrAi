@@ -109,4 +109,26 @@ async function acessoDoPainel(conta, { basicos = null, db = pool } = {}) {
   };
 }
 
-module.exports = { acessoDoPainel, situacaoDosPontos, STATUS_DE_PONTO_DA_REDE };
+// DIREITO ATIVO DE VEICULAÇÃO — a régua ÚNICA de quem pode manifestar
+// interesse em hospedar um Ponto Móvel (V1.1, 05/10/2026, pedido do dono).
+// Vale: plano vigente — pago, benefício de mídia ou benefício por créditos
+// (os três gravam `plano_id` com a validade, src/financeiro/
+// plano-administrativo.js) —, Plano Básico ativo, ou saldo de hospedagem
+// utilizável. Não vale: só cadastro, plano vencido, conta suspensa ou
+// excluída, a conta própria da Mostraí. Nunca cria plano nenhum: só lê.
+// `origem` diz de onde veio o direito (o Admin vê junto do interesse).
+async function possuiDireitoAtivoDeVeiculacao(conta, { db = pool, agora = new Date() } = {}) {
+  if (!conta || conta.excluido_em) return { possui: false, motivo: 'sem_conta' };
+  if (conta.suspenso) return { possui: false, motivo: 'suspensa' };
+  if (conta.conta_propria) return { possui: false, motivo: 'conta_propria' };
+  if (planoVigenteId(conta, agora)) {
+    return { possui: true, origem: conta.plano_cortesia ? 'beneficio' : 'plano', validoAte: conta.data_expiracao };
+  }
+  const ativos = await basicoRepo.ativosDaConta(conta.id, db);
+  if (ativos.length) return { possui: true, origem: 'basico' };
+  const { saldoSegundos } = await hospedagemDaConta(conta.id, db);
+  if (saldoSegundos > 0) return { possui: true, origem: 'saldo_hospedagem', saldoSegundos };
+  return { possui: false, motivo: conta.plano_id ? 'plano_vencido' : 'sem_direito' };
+}
+
+module.exports = { acessoDoPainel, situacaoDosPontos, STATUS_DE_PONTO_DA_REDE, possuiDireitoAtivoDeVeiculacao };

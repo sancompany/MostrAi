@@ -5834,7 +5834,11 @@ conversão fixo ⇄ móvel da seção S.
       hospedagem real, o jurídico revisa e o Admin publica a versão final em
       Rede → Pontos móveis → Termo de hospedagem (versão nova; a minuta fica
       no histórico, nunca é editada). O sistema (versão, aceite, hashes,
-      IP/navegador, data, imutabilidade) está pronto.
+      IP/navegador, data, imutabilidade) está pronto. V1.1 (migration 114):
+      a vigente passou a ser a `minuta-2` (mesmo status: sem revisão
+      jurídica; a `minuta-1` não foi editada). O aceite agora vincula local,
+      endereço, início e fim com hora, horário de funcionamento, percentual
+      e equipamento.
 - T14 [ ] LOW aceitos na revisão focal da finalização V1 (05/10/2026), sem
       efeito em regra nem em dinheiro:
       (a) o Admin mostra como "aceite do início" o último aceite feito antes
@@ -5847,6 +5851,32 @@ conversão fixo ⇄ móvel da seção S.
       limitador de tentativas); confirmar a cadeia de proxies em produção;
       (c) foto de entrega/retirada fica no bucket público (nome aleatório,
       não adivinhável); bucket privado com URL assinada é a evolução.
+
+#### Ponto Móvel V1.1 — sem base, alocação administrada (05/10/2026, migration 114)
+Feito: o móvel não tem base; criação pede só nome/foto/nota; sem alocação
+= "Sem alocação", `localAtual` nulo, fora do inventário (escolha de pontos,
+cobertura, "Onde estamos", capacidade, métricas) e playlist só
+institucional; hospedagem e evento com início/fim (data e hora, Matão) e
+horário de funcionamento próprio; agenda única por instante; benefício =
+sessões ∩ período ∩ horário; interesse só de conta com direito ativo de
+veiculação (`possuiDireitoAtivoDeVeiculacao`), com os dados da conta e o
+local (conta / ponto / outro endereço); CTA secundário em Meus pontos;
+`/hospedar.html` em três estados. Ficou para depois (nada disto bloqueia):
+- V11.1 [ ] Remover fisicamente `pontos.base_*` e `pontos_moveis_bases`
+      (deprecated desde a 114; 0 linhas em produção).
+- V11.2 [ ] Agenda visual (calendário/timeline) no Admin; filtros novos na
+      lista de interesses; prioridade/ranking de interessados.
+- V11.3 [ ] Notificar a conta quando o Admin muda o andamento do interesse
+      (hoje só SSE para o painel aberto).
+- V11.4 [ ] DOC — consolidar a documentação do Ponto Móvel pós-V1.1
+      (`docs/teia.md`, `docs/furos.md`, `.ia/BUSINESS_RULES.md` e os
+      relatórios antigos ainda citam a base; `funcional.md` RN-71/72,
+      `api.md` e o contrato do Player já estão corretos).
+- V11.5 [ ] Encerrar a hospedagem antes do fim conta o tempo até ali; uma
+      hospedagem já ATIVA não muda horário nem local (só prorroga o fim) —
+      se precisar, encerrar e agendar outra.
+- V11.6 [ ] Mapa / roteirização / otimização de frota (ideias, sem data).
+
       (d) (Codex, PR #114) um ajuste NEGATIVO do Admin feito no mesmo
       instante em que o gerador reserva a hora da conta pode deixar a rede
       entregar alguns segundos além do saldo (no máximo a reserva de uma

@@ -1,6 +1,18 @@
 # Current Handoff
 
 ## Updated
+2026-10-05 — **Ponto Móvel V1.1: sem base, alocação administrada**
+(migration 114). O móvel é equipamento: só tem local, contexto, horário e
+inventário enquanto ALOCADO (hospedagem ativa ou evento em andamento);
+sem alocação = "Sem alocação", fora do inventário, playlist só
+institucional (`src/lib/contexto-do-ponto.js#inventarioSql`,
+`gerador.js#playlistSoInstitucional`). Alocação com início/fim (data e
+hora, Matão) e horário próprio (`src/pontos/alocacao.js`); benefício =
+sessões ∩ período ∩ horário (`hospedagem.js#tempoValido`). Interesse só
+de conta com direito ativo (`acesso-painel.js#possuiDireitoAtivoDeVeiculacao`).
+`base_*` ficam deprecated (não ler para decidir nada). Pendências V11.x em
+`docs/PENDENCIAS.md` (seção T). Não desfazer sem contexto.
+
 2026-10-05 — **Finalização definitiva do Ponto Móvel V1** (pedido do dono;
 branch `claude/busy-noether-hheir2`). Sobre a V2: termo de hospedagem
 versionado e imutável com aceite eletrônico (`src/pontos/hospedagem-termo.js`;

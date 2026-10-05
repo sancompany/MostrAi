@@ -62,6 +62,6 @@ fetch(`${API_BASE_URL}/hospedagem/condicao`)
     if (!c) return;
     const pct = `${String(c.percentual).replace('.', ',')}%`;
     document.getElementById('hospedarHomeTexto').textContent =
-      `A tela fica alguns dias no seu comércio, sem custo. No fim, ${pct} do tempo em que ela funcionou vira horas de mídia gratuitas para você na rede.`;
+      `Para quem já anuncia na Mostraí: a tela fica um período combinado no seu comércio, sem custo. No fim, ${pct} do tempo de operação válido dela volta para você em horas de mídia na rede (${c.exemplo.horasDeOperacao} h de operação → ${Math.floor(c.exemplo.segundosDeMidia / 3600)} h de mídia).`;
   })
   .catch(() => {});

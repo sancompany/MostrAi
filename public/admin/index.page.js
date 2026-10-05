@@ -3186,9 +3186,11 @@ function resumoDasTelas(telas) {
 function montarPontoCard(p, telas) {
   const segmento = p.categoria_nome || p.categoria_livre || p.segmento;
   const problema = telas.some((t) => t.alertas.some((a) => a.nivel === 'alerta'));
-  // Ponto móvel (migration 112): no lugar do endereço, base e onde está agora.
+  // Ponto móvel (migration 114): sem base — onde está agora, ou "Sem alocação".
   const local = p.movel
-    ? `Base: ${esc(p.movel.base.nome)}${p.movel.localAtual.origem !== 'base' ? `<br>Agora em: ${esc(p.movel.localAtual.nome)}` : ''}`
+    ? p.movel.localAtual
+      ? `Agora em: ${esc(p.movel.localAtual.nome)}`
+      : esc(window.PONTO_MOVEL.semAlocacao)
     : `${esc(p.cidade)}${p.uf ? `/${esc(p.uf)}` : ''}${p.endereco ? ` · ${esc(p.endereco)}` : ''}`;
   return cardEntidade({
     href: `#rede/pontos/${p.id}`,
@@ -3196,7 +3198,9 @@ function montarPontoCard(p, telas) {
     foto: fotoOuPlaceholder(p.foto_instalacao_url, p.nome),
     nome: esc(p.nome),
     badge: `<span class="badge ${PONTO_STATUS_CLASSE[p.status]}">${PONTO_STATUS[p.status] || p.status}</span>${p.movel ? ` <span class="badge badge-info">${esc(window.PONTO_MOVEL.selo)}</span>` : ''}`,
-    meta: `${local}${segmento ? `<br>${esc(segmento)}` : ''}<br><span class="u-dim">${esc(resumoHorarioSemanal(p.horario_semanal) || 'Aberto 24 horas')}</span>`,
+    meta: p.movel
+      ? local
+      : `${local}${segmento ? `<br>${esc(segmento)}` : ''}<br><span class="u-dim">${esc(resumoHorarioSemanal(p.horario_semanal) || 'Aberto 24 horas')}</span>`,
     rodape: `<span class="${problema ? 'txt-alerta' : ''}">${esc(resumoDasTelas(telas))}</span>${
       p.endereco_a_conferir ? '<br><span class="txt-alerta">Endereço alterado — conferir</span>' : ''
     }`,
@@ -3386,14 +3390,14 @@ async function renderPontoDetalhe(el, pontoId) {
       <div class="ponto-detalhe-grid">
         <div class="pilha">
           <section class="panel ponto-ficha" id="pontoInformacoes"></section>
-          ${ponto.tipo === 'movel' ? '<section class="panel" id="pontoMovel"><p class="carregando">Carregando...</p></section>' : ''}
-          <section class="panel" id="pontoEndereco"></section>
+          ${ponto.tipo === 'movel' ? '<section class="panel" id="pontoMovel"><p class="carregando">Carregando...</p></section>' : '<section class="panel" id="pontoEndereco"></section>'}
           <section class="panel" id="pontoCapacidade" hidden></section>
         </div>
         <section class="panel" id="pontoTelas"></section>
       </div>`;
     renderPontoInformacoes(el.querySelector('#pontoInformacoes'), ponto, telas, montar);
-    renderPontoEndereco(el.querySelector('#pontoEndereco'), ponto, pendencias, montar);
+    // O ponto móvel não tem endereço próprio (migration 114): o local é o da alocação.
+    if (ponto.tipo !== 'movel') renderPontoEndereco(el.querySelector('#pontoEndereco'), ponto, pendencias, montar);
     renderPontoTelas(el.querySelector('#pontoTelas'), ponto, telas);
     if (ponto.tipo === 'movel') {
       blocoIndependente(
@@ -3412,11 +3416,12 @@ async function renderPontoDetalhe(el, pontoId) {
   definirVistaRede(montar);
 }
 
-// ---------- Ponto móvel: base e eventos (migration 112) ----------
-// Local atual e próximo evento vêm decididos do servidor
-// (GET /admin/pontos/:id/movel). Ações: alterar base, cadastrar evento,
-// iniciar (o ponto chegou ao evento), encerrar (volta para a base) e
-// cancelar. Encerrados, cancelados e bases anteriores ficam no histórico.
+// ---------- Ponto móvel: alocações (migrations 112 a 114) ----------
+// O móvel não tem base: só tem local enquanto está ALOCADO (hospedagem ou
+// evento), com período de data e hora e o horário de funcionamento da
+// alocação. Agora/próximo vêm decididos do servidor (GET
+// /admin/pontos/:id/movel). Ações: agendar hospedagem, cadastrar evento,
+// iniciar (o ponto chegou), encerrar (fica sem alocação) e cancelar.
 const ESTADO_EVENTO = {
   programado: ['Programado', 'badge-neutro'],
   em_andamento: ['Em andamento', 'badge-ok'],
@@ -3427,7 +3432,8 @@ const ESTADO_EVENTO = {
 function linhaDoEvento(e, comAcoes) {
   const [rotulo, classe] = ESTADO_EVENTO[e.estado] || [e.estado, 'badge-neutro'];
   const detalhes = [
-    window.periodoDoEvento(e.dataInicio, e.dataFim),
+    esc(window.periodoComHora(e.inicio, e.fim) || window.periodoDoEvento(e.dataInicio, e.dataFim)),
+    e.horario ? `horário: ${esc(e.horario)}` : '',
     esc(e.local),
     `organização: ${esc(e.organizacao)}`,
     window.publicoEstimadoTexto(e.publicoEstimado),
@@ -3444,7 +3450,7 @@ function linhaDoEvento(e, comAcoes) {
   const acoes = !comAcoes
     ? ''
     : e.estado === 'em_andamento'
-      ? `<button type="button" class="btn primary mini" data-evento-acao="encerrar" data-evento="${e.id}">Encerrar e voltar para a base</button>`
+      ? `<button type="button" class="btn primary mini" data-evento-acao="encerrar" data-evento="${e.id}">Encerrar evento</button>`
       : e.estado === 'programado'
         ? `<button type="button" class="btn ghost mini" data-evento-acao="iniciar" data-evento="${e.id}">Iniciar (chegou ao evento)</button>
            <button type="button" class="btn perigo-sutil mini" data-evento-acao="cancelar" data-evento="${e.id}">Cancelar</button>`
@@ -3452,7 +3458,7 @@ function linhaDoEvento(e, comAcoes) {
   return `<li class="evento-movel" data-evento-id="${e.id}">
       <div class="evento-movel-topo"><b>${esc(e.nome)}</b> <span class="badge ${classe}">${rotulo}</span></div>
       <p class="u-m-0 u-fs-85">${detalhes.join(' · ')}</p>
-      ${e.estado === 'em_andamento' && e.terminou ? '<p class="aviso-linha u-mt-4">A data de fim já passou — encerre para o ponto voltar para a base.</p>' : ''}
+      ${e.estado === 'em_andamento' && e.terminou ? '<p class="aviso-linha u-mt-4">O fim já passou — o sistema encerra sozinho em instantes.</p>' : ''}
       ${e.observacao ? `<p class="u-dim u-fs-85 u-m-0">${esc(e.observacao)}</p>` : ''}
       ${auditoria.length ? `<p class="u-dim u-fs-85 u-m-0">${auditoria.join(' · ')}</p>` : ''}
       ${acoes ? `<div class="acoes u-mt-8">${acoes}</div>` : ''}
@@ -3478,10 +3484,12 @@ const ESTADO_HOSPEDAGEM = {
 function linhaDaHospedagem(h, comAcoes) {
   const [rotulo, classe] = ESTADO_HOSPEDAGEM[h.estado] || [h.estado, 'badge-neutro'];
   const detalhes = [
-    window.periodoDoEvento(h.dataInicio, h.dataFim),
+    esc(window.periodoComHora(h.inicio, h.fim) || window.periodoDoEvento(h.dataInicio, h.dataFim)),
+    h.horario ? `horário: ${esc(h.horario)}` : '',
     `<a href="#contas/contas/${h.conta.id}">${esc(h.conta.nome)}</a>`,
+    h.categoria ? `concorrência: ${esc(h.categoria.nome)}` : 'sem restrição de ramo',
     `percentual congelado: ${percentualBR(h.percentual)}`,
-  ];
+  ].filter(Boolean);
   const numeros =
     h.estado === 'ativa' || h.estado === 'encerrada'
       ? `<p class="u-m-0 u-fs-85">Tempo operacional válido: <b>${horasDeMidia(h.tempoSegundos)}</b> · ${h.estimado ? 'benefício estimado' : 'benefício'}: <b>${horasDeMidia(h.beneficioSegundos)}</b></p>`
@@ -3501,7 +3509,7 @@ function linhaDaHospedagem(h, comAcoes) {
   if (h.estado !== 'cancelada') {
     documentos.push(
       h.aceite
-        ? `Termo aceito por <b>${esc(h.aceite.responsavel)}</b> em ${dataHora(h.aceite.aceitoEm)} (versão ${esc(h.aceite.termoVersao)})${h.aceitesAnteriores ? ` · ${h.aceitesAnteriores} aceite(s) de outro período` : ''}${
+        ? `Termo aceito por <b>${esc(h.aceite.responsavel)}</b> em ${dataHora(h.aceite.aceitoEm)} (versão ${esc(h.aceite.termoVersao)})${h.aceitesAnteriores ? ` · ${h.aceitesAnteriores} aceite(s) anterior(es)` : ''}${
             h.prorrogacaoSemAceite
               ? h.estado === 'ativa'
                 ? ' <span class="badge badge-pendente">Prorrogação aguardando o aceite do anfitrião</span>'
@@ -3509,7 +3517,7 @@ function linhaDaHospedagem(h, comAcoes) {
               : ''
           }`
         : h.estado === 'programada'
-          ? `<span class="badge badge-pendente">Aguardando o anfitrião aceitar o termo</span>${h.aceitesAnteriores ? ` · ${h.aceitesAnteriores} aceite(s) de outro período (o período mudou)` : ''}`
+          ? `<span class="badge badge-pendente">Aguardando o anfitrião aceitar o termo</span>${h.aceitesAnteriores ? ` · ${h.aceitesAnteriores} aceite(s) anterior(es) (a hospedagem mudou)` : ''}`
           : 'Sem aceite registrado',
     );
   }
@@ -3526,7 +3534,7 @@ function linhaDaHospedagem(h, comAcoes) {
          <button type="button" class="btn ghost mini" data-hosp-acao="periodo" data-hosp="${h.id}">Prorrogar</button>`
       : h.estado === 'programada'
         ? `<button type="button" class="btn ghost mini" data-hosp-acao="iniciar" data-hosp="${h.id}" ${h.aceite ? '' : 'disabled title="O anfitrião ainda não aceitou o termo"'}>Iniciar (a tela chegou)</button>
-           <button type="button" class="btn ghost mini" data-hosp-acao="periodo" data-hosp="${h.id}">Alterar período</button>
+           <button type="button" class="btn ghost mini" data-hosp-acao="periodo" data-hosp="${h.id}">Alterar período e horário</button>
            <button type="button" class="btn perigo-sutil mini" data-hosp-acao="cancelar" data-hosp="${h.id}">Cancelar</button>`
         : h.estado === 'encerrada' && !h.retirada
           ? `<button type="button" class="btn ghost mini" data-hosp-acao="retirada" data-hosp="${h.id}">Registrar retirada</button>`
@@ -3548,8 +3556,10 @@ function linhaDaHospedagem(h, comAcoes) {
   return `<li class="evento-movel" data-hospedagem-id="${h.id}">
       <div class="evento-movel-topo"><b>Hospedagem · ${esc(h.local)}</b> <span class="badge ${classe}">${rotulo}</span></div>
       <p class="u-m-0 u-fs-85">${detalhes.join(' · ')}</p>
+      ${h.endereco ? `<p class="u-dim u-fs-85 u-m-0">${esc(h.endereco)}</p>` : ''}
+      ${h.observacao ? `<p class="u-dim u-fs-85 u-m-0">Obs.: ${esc(h.observacao)}</p>` : ''}
       ${numeros}
-      ${h.estado === 'ativa' && h.terminou ? '<p class="aviso-linha u-mt-4">A data de fim já passou — o sistema encerra sozinho em instantes.</p>' : ''}
+      ${h.estado === 'ativa' && h.terminou ? '<p class="aviso-linha u-mt-4">O fim já passou — o sistema encerra sozinho em instantes.</p>' : ''}
       ${documentos.map((d) => `<p class="u-fs-85 u-m-0">${d}</p>`).join('')}
       ${auditoria.length ? `<p class="u-dim u-fs-85 u-m-0">${auditoria.join(' · ')}</p>` : ''}
       ${todasAcoes ? `<div class="acoes u-mt-8">${todasAcoes}</div>` : ''}
@@ -3637,14 +3647,14 @@ function acaoComEquipamento(ponto, h, acao, remontar) {
   const cfg = {
     iniciar: {
       titulo: `A tela chegou a “${h.local}”?`,
-      intro: `<p>O local atual passa a ser <b>${esc(h.local)}</b> e a trava de concorrente passa a proteger o ramo do anfitrião. O tempo operacional começa a contar agora. Registre a entrega do equipamento.</p>`,
+      intro: `<p>O local atual passa a ser <b>${esc(h.local)}</b>, a TV recebe o horário da hospedagem e a trava de concorrente passa a proteger o ramo dela. O tempo operacional começa a contar agora (só dentro do período e do horário). Registre a entrega do equipamento.</p>`,
       tipo: 'entrega',
       opcional: false,
       botao: 'Iniciar hospedagem',
     },
     encerrar: {
       titulo: `Encerrar a hospedagem em “${h.local}”?`,
-      intro: `<p>Conta só o tempo real em que a tela operou até agora. O benefício (${percentualBR(h.percentual)} desse tempo) vai para o saldo de hospedagem de <b>${esc(h.conta.nome)}</b> uma única vez, e o ponto volta para a base.</p>
+      intro: `<p>Conta só o tempo real em que a tela operou até agora. O benefício (${percentualBR(h.percentual)} desse tempo) vai para o saldo de hospedagem de <b>${esc(h.conta.nome)}</b> uma única vez, e o ponto fica sem alocação.</p>
         <p class="u-dim">Tempo comprovado até agora: <b>${horasDeMidia(h.tempoSegundos)}</b>. O que a tela contou sem internet e mandar depois (segmento com até 8 dias de atraso) ainda soma — entra só a diferença.</p>`,
       tipo: 'retirada',
       opcional: !h.retirada,
@@ -3706,73 +3716,129 @@ function acaoComEquipamento(ponto, h, acao, remontar) {
   });
 }
 
+// Horário de funcionamento de uma ALOCAÇÃO (hospedagem ou evento —
+// migration 114): obrigatório, nunca 24 h automático. Sem horário gravado o
+// editor abre com 08:00–18:00 em todos os dias; "24 horas" é escolha
+// explícita (por dia ou pelo botão). Mesma semântica do horário do ponto
+// (fechar depois da meia-noite vale; a madrugada fica com o dia em que abriu).
+function camposHorarioAlocacao(horario) {
+  const modoDe = (v) => (!horario ? 'faixa' : v === null || v === undefined ? 'fechado' : eh24h(v) ? '24h' : 'faixa');
+  const linha = (d) => {
+    const v = horario ? horario[d.id] : undefined;
+    const modo = modoDe(v);
+    const abre = modo === 'faixa' && v ? v.abre : '08:00';
+    const fecha = modo === 'faixa' && v ? v.fecha : '18:00';
+    const opcao = (valor, rotulo) => `<option value="${valor}" ${modo === valor ? 'selected' : ''}>${rotulo}</option>`;
+    return `<div class="horario-editor-linha" data-dia="${d.id}" data-modo="${modo}">
+      <span>${d.rotulo}</span>
+      <select aria-label="${d.rotulo}">${opcao('faixa', 'Horário')}${opcao('24h', '24 horas')}${opcao('fechado', 'Fechado')}</select>
+      <span class="horario-editor-faixa">
+        <input type="time" data-abre value="${abre}" aria-label="${d.rotulo}, abre">
+        <span aria-hidden="true">às</span>
+        <input type="time" data-fecha value="${fecha}" aria-label="${d.rotulo}, fecha">
+      </span>
+    </div>`;
+  };
+  return `<fieldset class="horario-editor" data-horario-alocacao><legend>Horário de funcionamento</legend>
+      ${DIAS_HORARIO.map(linha).join('')}
+      <button type="button" class="btn ghost mini" data-tudo-24h>Aberto 24 horas todos os dias</button>
+      <p class="campo-ajuda u-m-0">A TV exibe só dentro deste horário, e o benefício conta só o tempo válido dentro dele e do período.</p>
+    </fieldset>`;
+}
+function ligarHorarioAlocacao(raiz) {
+  const bloco = raiz.querySelector('[data-horario-alocacao]');
+  if (!bloco) return;
+  bloco.addEventListener('change', (e) => {
+    if (e.target.tagName === 'SELECT') e.target.closest('.horario-editor-linha').dataset.modo = e.target.value;
+  });
+  bloco.querySelector('[data-tudo-24h]').addEventListener('click', () => {
+    for (const l of bloco.querySelectorAll('.horario-editor-linha')) {
+      l.dataset.modo = '24h';
+      l.querySelector('select').value = '24h';
+    }
+  });
+}
+// { horario } ou { erro } (o servidor confere de novo).
+function lerHorarioAlocacao(raiz) {
+  const horario = {};
+  for (const l of raiz.querySelectorAll('[data-horario-alocacao] .horario-editor-linha')) {
+    const modo = l.querySelector('select').value;
+    const abre = l.querySelector('[data-abre]').value;
+    const fecha = l.querySelector('[data-fecha]').value;
+    if (modo === 'faixa' && (!abre || !fecha)) {
+      return { erro: `Preencha abertura e fechamento de ${l.firstElementChild.textContent}.` };
+    }
+    horario[l.dataset.dia] =
+      modo === 'fechado' ? null : modo === '24h' ? { abre: '00:00', fecha: '24:00' } : { abre, fecha };
+  }
+  if (!Object.values(horario).some(Boolean)) return { erro: 'Abra pelo menos um dia no horário de funcionamento.' };
+  return { horario };
+}
+
+// "AGORA" e "PRÓXIMO" de um móvel (o servidor decide, src/pontos/movel.js).
+function textoAgora(agora) {
+  if (!agora) return `<b>${esc(window.PONTO_MOVEL.semAlocacao)}</b>`;
+  const quem = agora.tipo === 'hospedagem' ? `Hospedado · ${esc(agora.nome)}` : `Em evento · ${esc(agora.nome)}`;
+  return `<b>${quem}</b><span class="dado-sub">até ${esc(window.instanteMatao(agora.fim))}${agora.conta ? ` · ${esc(agora.conta)}` : ''}</span>`;
+}
+function textoProximo(proximo) {
+  if (!proximo) return naoInformado('Nenhum compromisso agendado');
+  return `${proximo.tipo === 'hospedagem' ? 'Hospedagem' : 'Evento'} · ${esc(proximo.nome)}<span class="dado-sub">${esc(window.periodoComHora(proximo.inicio, proximo.fim))}${proximo.conta ? ` · ${esc(proximo.conta)}` : ''}</span>`;
+}
+
+// Ficha do móvel por seções: Situação atual, Agenda, Hospedagens, Eventos e
+// Histórico (Equipamento e Tela ficam no bloco de cima e no de telas).
 async function renderPontoMovel(el, ponto, remontar) {
   const f = await pegar(`/admin/pontos/${ponto.id}/movel`);
-  // Agenda única (migration 113): hospedagem e evento ocupam o mesmo
-  // calendário — em curso primeiro, depois os programados pela data.
+  const emCurso = (x) => x.estado === 'ativa' || x.estado === 'em_andamento';
+  const hospAgenda = f.hospedagens.filter((h) => h.estado === 'ativa' || h.estado === 'programada');
+  const evAgenda = f.eventos.filter((e) => e.estado === 'em_andamento' || e.estado === 'programado');
   const agenda = [
-    ...f.hospedagens.filter((h) => h.estado === 'ativa' || h.estado === 'programada').map((h) => ({ tipo: 'h', h })),
-    ...f.eventos.filter((e) => e.estado === 'em_andamento' || e.estado === 'programado').map((e) => ({ tipo: 'e', e })),
-  ].sort((a, b) => {
-    const emCurso = (x) => (x.tipo === 'h' ? x.h.estado === 'ativa' : x.e.estado === 'em_andamento');
-    if (emCurso(a) !== emCurso(b)) return emCurso(a) ? -1 : 1;
-    const ini = (x) => (x.tipo === 'h' ? x.h.dataInicio : x.e.dataInicio);
-    return String(ini(a)).localeCompare(String(ini(b)));
-  });
+    ...hospAgenda.map((h) => ({ tipo: 'h', h, x: h })),
+    ...evAgenda.map((e) => ({ tipo: 'e', e, x: e })),
+  ].sort((a, b) =>
+    emCurso(a.x) !== emCurso(b.x) ? (emCurso(a.x) ? -1 : 1) : new Date(a.x.inicio) - new Date(b.x.inicio),
+  );
   const passadas = f.hospedagens.filter((h) => h.estado === 'encerrada' || h.estado === 'cancelada');
   const passados = f.eventos.filter((e) => e.estado === 'encerrado' || e.estado === 'cancelado');
-  const local =
-    f.localAtual.origem === 'evento'
-      ? `<b>${esc(f.localAtual.nome)}</b><span class="dado-sub">Em evento: ${esc(f.localAtual.evento.nome)}</span>`
-      : f.localAtual.origem === 'hospedagem'
-        ? `<b>${esc(f.localAtual.nome)}</b><span class="dado-sub">Hospedado</span>`
-        : `<b>${esc(f.localAtual.nome)}</b><span class="dado-sub">Na base</span>`;
-  const proximo = f.proximoEvento
-    ? `${esc(f.proximoEvento.nome)}<span class="dado-sub">${[window.periodoDoEvento(f.proximoEvento.dataInicio, f.proximoEvento.dataFim), esc(f.proximoEvento.local)].join(' · ')}</span>`
-    : naoInformado(f.localAtual.origem === 'evento' ? window.PONTO_MOVEL.semOutroEvento : window.PONTO_MOVEL.semEvento);
-  const conta = f.base.conta?.id
-    ? `<a href="#contas/contas/${f.base.conta.id}">${esc(f.base.conta.nome || `Conta #${f.base.conta.id}`)}</a>`
-    : naoInformado('Sem conta (base da Mostraí)');
   const tela = f.tela
     ? `<a href="#rede/pontos/${ponto.id}/telas/${f.tela.id}">${esc(f.tela.nome)}</a>`
     : naoInformado('Aguardando tela');
   el.innerHTML = `
-    <div class="secao-topo"><h3>Ponto móvel</h3>
+    <div class="secao-topo"><h3>Situação atual</h3>
       <div class="secao-acoes">
-        <button type="button" class="btn ghost mini" data-alterar-base>Alterar base</button>
         <button type="button" class="btn ghost mini" data-novo-evento>Cadastrar evento</button>
-        <button type="button" class="btn primary mini" data-nova-hospedagem>Programar hospedagem</button>
+        <button type="button" class="btn primary mini" data-nova-hospedagem>Agendar hospedagem</button>
       </div></div>
     <dl class="dados dados-2">
-      <div><dt>Local atual</dt><dd data-local-atual>${local}</dd></div>
-      <div><dt>Próximo evento</dt><dd data-proximo-evento>${proximo}</dd></div>
-      <div><dt>Base</dt><dd>${esc(f.base.nome)}<span class="dado-sub">desde ${data(f.base.desde)}</span></dd></div>
-      <div><dt>Conta da base</dt><dd>${conta}<span class="dado-sub">Custodiante — não é dona do ponto</span></dd></div>
+      <div><dt>Agora</dt><dd data-local-atual>${textoAgora(f.agora)}</dd></div>
+      <div><dt>Próximo</dt><dd data-proximo>${textoProximo(f.proximo)}</dd></div>
       <div><dt>Tela</dt><dd>${tela}<span class="dado-sub">1 ponto móvel = 1 tela</span></dd></div>
-      ${f.notaInterna ? `<div><dt>Nota interna</dt><dd>${esc(f.notaInterna)}</dd></div>` : ''}
+      <div><dt>Inventário</dt><dd>${f.alocado ? 'Sim — alocado' : 'Não'}<span class="dado-sub">${f.alocado ? 'Contexto, horário e campanhas da alocação em curso' : 'Sem alocação: só institucional, fora de "Onde estamos" e da escolha de pontos'}</span></dd></div>
     </dl>
     <h4 class="u-mt-16">Agenda</h4>
     ${
       agenda.length
         ? `<ul class="lista-eventos-movel" data-agenda>${agenda.map((x) => (x.tipo === 'h' ? linhaDaHospedagem(x.h, true) : linhaDoEvento(x.e, true))).join('')}</ul>`
-        : '<p class="u-dim u-fs-85">Nada na agenda: o ponto está na base.</p>'
+        : '<p class="u-dim u-fs-85" data-agenda-vazia>Nenhum compromisso agendado: o ponto está sem alocação.</p>'
     }
+    <h4 class="u-mt-16">Hospedagens</h4>
+    ${passadas.length ? `<ul class="lista-eventos-movel" data-hospedagens>${passadas.map((h) => linhaDaHospedagem(h, true)).join('')}</ul>` : '<p class="u-dim u-fs-85">Nenhuma hospedagem encerrada ainda.</p>'}
+    <h4 class="u-mt-16">Eventos</h4>
+    ${passados.length ? `<ul class="lista-eventos-movel" data-eventos>${passados.map((e) => linhaDoEvento(e, false)).join('')}</ul>` : '<p class="u-dim u-fs-85">Nenhum evento encerrado ainda.</p>'}
     ${
-      passadas.length || passados.length || f.basesAnteriores.length
-        ? `<details class="u-mt-8"><summary>Histórico (${passadas.length} ${passadas.length === 1 ? 'hospedagem' : 'hospedagens'}, ${passados.length} ${passados.length === 1 ? 'evento' : 'eventos'}, ${f.basesAnteriores.length} ${f.basesAnteriores.length === 1 ? 'base anterior' : 'bases anteriores'})</summary>
-            ${passadas.length ? `<ul class="lista-eventos-movel">${passadas.map((h) => linhaDaHospedagem(h, true)).join('')}</ul>` : ''}
-            ${passados.length ? `<ul class="lista-eventos-movel">${passados.map((e) => linhaDoEvento(e, false)).join('')}</ul>` : ''}
+      f.basesAnteriores.length
+        ? `<details class="u-mt-8"><summary>Histórico do modelo antigo (${f.basesAnteriores.length} ${f.basesAnteriores.length === 1 ? 'base' : 'bases'})</summary>
             ${f.basesAnteriores
               .map(
                 (b) =>
-                  `<p class="u-fs-85 u-m-0">Base <b>${esc(b.nome)}</b>${b.conta?.nome ? ` (${esc(b.conta.nome)})` : ''} · ${data(b.desde)} a ${data(b.ate)}${b.endereco ? `<span class="dado-sub">${esc(b.endereco)}</span>` : ''}</p>`,
+                  `<p class="u-fs-85 u-m-0">Base <b>${esc(b.nome)}</b>${b.conta?.nome ? ` (${esc(b.conta.nome)})` : ''} · ${data(b.desde)} a ${data(b.ate)}</p>`,
               )
               .join('')}
           </details>`
         : ''
     }`;
   el.querySelector('[data-novo-evento]').addEventListener('click', () => cadastrarEventoMovel(ponto, remontar));
-  el.querySelector('[data-alterar-base]').addEventListener('click', () => alterarBaseMovel(ponto, f, remontar));
   el.querySelector('[data-nova-hospedagem]').addEventListener('click', () =>
     programarHospedagem({ pontoId: ponto.id, aoSalvar: remontar }),
   );
@@ -3818,37 +3884,61 @@ async function acaoNaHospedagem(ponto, h, acao, remontar) {
   remontar();
 }
 
+// Programada: período (data e hora), horário, local e endereço — o que
+// mudar pede aceite novo do anfitrião. Em andamento: só prorrogar o fim.
 function alterarPeriodoDaHospedagem(ponto, h, remontar) {
   const ativa = h.estado === 'ativa';
   const { dlg, fechar } = abrirModal({
-    titulo: ativa ? `Prorrogar — ${h.local}` : `Período — ${h.local}`,
+    titulo: ativa ? `Prorrogar — ${h.local}` : `Período e horário — ${h.local}`,
+    largo: !ativa,
     corpo: `<form id="formPeriodoHosp" class="modal-form" novalidate>
         <div class="campos">
-          <div class="campo-grupo"><label for="hpInicio">Início</label><input id="hpInicio" type="date" name="data_inicio" value="${esc(String(h.dataInicio).slice(0, 10))}" ${ativa ? 'disabled' : 'required'}></div>
-          <div class="campo-grupo"><label for="hpFim">Fim</label><input id="hpFim" type="date" name="data_fim" value="${esc(String(h.dataFim).slice(0, 10))}" required></div>
+          <div class="campo-grupo"><label for="hpInicio">Início (data e hora)</label><input id="hpInicio" type="datetime-local" name="inicio" value="${esc(h.inicioLocal || '')}" ${ativa ? 'disabled' : 'required'}></div>
+          <div class="campo-grupo"><label for="hpFim">Fim (data e hora)</label><input id="hpFim" type="datetime-local" name="fim" value="${esc(h.fimLocal || '')}" required></div>
         </div>
-        <p class="campo-ajuda">O percentual continua o congelado na confirmação (${percentualBR(h.percentual)}). A agenda não pode conflitar com outra hospedagem ou evento.</p>
-        ${h.aceite ? `<p class="aviso-linha">${ativa ? 'O anfitrião precisa aceitar o termo para o novo período (o painel dele pede).' : 'O aceite atual vale só para o período atual — mudar o período pede um aceite novo antes de iniciar.'}</p>` : ''}
+        ${
+          ativa
+            ? `<p class="campo-ajuda">Em andamento: só o fim pode mudar, para depois. Para terminar antes, use Encerrar. Horário em vigor: ${esc(h.horario || '—')}.</p>`
+            : `<div class="campos">
+                 <div class="campo-grupo"><label for="hpLocal">Local</label><input id="hpLocal" name="local" maxlength="160" value="${esc(h.local)}" required></div>
+                 <div class="campo-grupo"><label for="hpEndereco">Endereço</label><input id="hpEndereco" name="endereco" maxlength="300" value="${esc(h.endereco || '')}" required></div>
+               </div>
+               ${camposHorarioAlocacao(h.horarioOperacao)}`
+        }
+        <p class="campo-ajuda">Horário de Matão. O percentual continua o congelado na confirmação (${percentualBR(h.percentual)}). A agenda não pode conflitar com outra hospedagem ou evento.</p>
+        ${h.aceite ? `<p class="aviso-linha">${ativa ? 'O anfitrião precisa aceitar o termo para o novo período (o painel dele pede).' : 'Mudar período, horário, local ou endereço pede um aceite novo do anfitrião antes de iniciar. O aceite anterior fica no histórico.'}</p>` : ''}
         <p class="form-msg" data-msg role="status"></p>
       </form>`,
     rodape:
       '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formPeriodoHosp" class="btn primary">Salvar</button>',
   });
   const form = dlg.querySelector('form');
+  ligarHorarioAlocacao(form);
   let enviando = false;
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     if (enviando) return;
+    let corpo = { fim: form.fim.value };
+    if (!ativa) {
+      const lido = lerHorarioAlocacao(form);
+      if (lido.erro) return erroNoModal(dlg, lido.erro);
+      corpo = {
+        inicio: form.inicio.value,
+        fim: form.fim.value,
+        horario_operacao: lido.horario,
+        local: form.local.value,
+        endereco: form.endereco.value,
+      };
+    }
     enviando = true;
     try {
-      const corpo = { data_fim: form.data_fim.value, ...(ativa ? {} : { data_inicio: form.data_inicio.value }) };
       const r = await api(`/admin/pontos/${ponto.id}/hospedagens/${h.id}/periodo`, {
         method: 'PUT',
         body: JSON.stringify(corpo),
       });
       if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível salvar.');
       fechar();
-      toast('Período salvo.');
+      toast(ativa ? 'Hospedagem prorrogada.' : 'Hospedagem atualizada.');
       remontar();
     } finally {
       enviando = false;
@@ -3856,53 +3946,63 @@ function alterarPeriodoDaHospedagem(ponto, h, remontar) {
   });
 }
 
-// Programar hospedagem: móvel → conta anfitriã → local → início/fim →
-// revisão do percentual → confirmar. O percentual que o Admin VÊ vai junto
-// (`percentual_esperado`): se o global mudar no meio, o servidor recusa em
-// vez de vincular um número que ninguém revisou. De um interesse, chega com
-// a conta e o endereço já preenchidos.
+// Agendar hospedagem (o Admin orquestra tudo): móvel → conta anfitriã →
+// local e endereço → início e fim (data e hora) → horário de funcionamento →
+// ramo (padrão: o da conta) → observação → revisão do percentual →
+// confirmar. O percentual que o Admin VÊ vai junto (`percentual_esperado`):
+// se o global mudar no meio, o servidor recusa. Nasce programada — nunca
+// começa sozinha. De um interesse, chega com a conta, o local e o endereço.
 async function programarHospedagem({ pontoId = null, interesse = null, aoSalvar }) {
-  const [contas, { moveis, percentual }] = await Promise.all([
+  const [contas, { moveis, percentual }, categorias] = await Promise.all([
     pegar('/admin/anunciantes').then((l) => l.filter((a) => !a.excluido_em && !a.conta_propria)),
     pegar('/admin/pontos-moveis'),
+    pegar('/categorias').catch(() => []),
   ]);
   const rotulo = (a) => `${a.nome_empresa} (#${a.id})`;
   const contaInicial = interesse?.conta ? contas.find((a) => a.id === interesse.conta.id) : null;
+  const categoriaInicial = interesse?.categoriaId ?? contaInicial?.categoria_id ?? null;
   const opcoesMovel = moveis
-    .map((m) => `<option value="${m.id}" ${m.id === pontoId ? 'selected' : ''}>${esc(m.nome)}</option>`)
+    .map(
+      (m) =>
+        `<option value="${m.id}" ${m.id === pontoId ? 'selected' : ''}>${esc(m.nome)}${m.alocado ? ' — alocado agora' : ''}${m.proximo ? ` · próximo: ${esc(window.periodoComHora(m.proximo.inicio, m.proximo.fim))}` : ''}</option>`,
+    )
     .join('');
   const { dlg, fechar } = abrirModal({
-    titulo: 'Programar hospedagem',
+    titulo: 'Agendar hospedagem',
     largo: true,
     corpo: `<form id="formHospedagem" class="modal-form" novalidate>
-        <p class="campo-ajuda">Hospedagem temporária: o comércio recebe o ponto móvel por alguns dias, sem pagar nada e sem virar dono. No fim, ganha horas de mídia gratuitas.</p>
+        <p class="campo-ajuda">O comércio recebe o ponto móvel por um período combinado, sem pagar nada e sem virar dono. A agenda é única: não pode cruzar outra hospedagem nem evento do mesmo móvel.</p>
         <div class="campos">
           <div class="campo-grupo"><label for="hoMovel">Ponto móvel</label><select id="hoMovel" name="ponto" required>${opcoesMovel}</select></div>
           <div class="campo-grupo"><label for="hoConta">Conta anfitriã</label><input id="hoConta" name="conta" list="contasAnfitrias" required autocomplete="off" value="${contaInicial ? esc(rotulo(contaInicial)) : ''}" placeholder="Busque pelo nome"></div>
         </div>
         <datalist id="contasAnfitrias">${contas.map((a) => `<option value="${esc(rotulo(a))}"></option>`).join('')}</datalist>
-        ${interesse && !interesse.conta ? '<p class="aviso-linha">Este interesse não tem conta. Crie a conta do comércio em Contas (com os dados do interesse) e escolha-a aqui.</p>' : ''}
         <div class="campos">
-          <div class="campo-grupo"><label for="hoLocal">Local (como aparece para o anunciante)</label><input id="hoLocal" name="local" maxlength="160" value="${esc(interesse?.empresa || contaInicial?.nome_empresa || '')}" required></div>
+          <div class="campo-grupo"><label for="hoLocal">Local (como aparece para o anunciante)</label><input id="hoLocal" name="local" maxlength="160" value="${esc(interesse?.localNome || interesse?.empresa || contaInicial?.nome_empresa || '')}" required></div>
           <div class="campo-grupo"><label for="hoEndereco">Endereço</label><input id="hoEndereco" name="endereco" maxlength="300" value="${esc(interesse?.endereco || '')}" placeholder="Vazio = o endereço da conta"></div>
         </div>
         <div class="campos">
-          <div class="campo-grupo"><label for="hoInicio">Início</label><input id="hoInicio" type="date" name="data_inicio" required></div>
-          <div class="campo-grupo"><label for="hoFim">Fim</label><input id="hoFim" type="date" name="data_fim" required></div>
+          <div class="campo-grupo"><label for="hoInicio">Início (data e hora)</label><input id="hoInicio" type="datetime-local" name="inicio" required></div>
+          <div class="campo-grupo"><label for="hoFim">Fim (data e hora)</label><input id="hoFim" type="datetime-local" name="fim" required></div>
         </div>
-        <p class="aviso-bloco u-mt-8" data-revisao-percentual><b>Esta hospedagem ficará vinculada a ${percentualBR(percentual)}.</b> O percentual fica congelado: mudar o global depois não altera esta hospedagem.</p>
+        ${camposHorarioAlocacao(null)}
+        <div class="campos">
+          <div class="campo-grupo"><label for="hoCategoria">Contexto de concorrência</label><select id="hoCategoria" name="categoria_id">
+            <option value="">Nenhum — sem restrição de ramo</option>
+            ${categorias.map((c) => `<option value="${c.id}" ${c.id === categoriaInicial ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}
+          </select><span class="campo-ajuda">Padrão: o ramo do anfitrião. Enquanto hospedado, anúncio deste ramo (e dos concorrentes) não entra na tela.</span></div>
+          <div class="campo-grupo"><label for="hoObs">Observação (interna)</label><textarea id="hoObs" name="observacao" maxlength="500" rows="2"></textarea></div>
+        </div>
+        <p class="aviso-bloco u-mt-8" data-revisao-percentual><b>Esta hospedagem ficará vinculada a ${percentualBR(percentual)}.</b> O percentual fica congelado: mudar o global depois não altera esta hospedagem. ${esc(exemploDoPercentual(percentual))}</p>
+        <p class="campo-ajuda">Horário de Matão. Agendar não inicia: o anfitrião aceita o termo pelo painel (com estes dados), e você inicia quando a tela chegar, registrando a entrega.</p>
         <p class="form-msg" data-msg role="status"></p>
       </form>`,
     rodape:
-      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formHospedagem" class="btn primary">Confirmar hospedagem</button>',
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formHospedagem" class="btn primary">Confirmar agendamento</button>',
   });
   if (!moveis.length) erroNoModal(dlg, 'Nenhum ponto móvel cadastrado ainda — crie um em Rede › Pontos móveis.');
   const form = dlg.querySelector('form');
-  const inicio = form.querySelector('[name="data_inicio"]');
-  inicio.addEventListener('change', () => {
-    const fim = form.querySelector('[name="data_fim"]');
-    if (!fim.value || fim.value < inicio.value) fim.value = inicio.value;
-  });
+  ligarHorarioAlocacao(form);
   const contaEscolhida = () => {
     const m = /\(#(\d+)\)$/.exec(form.querySelector('[name="conta"]').value.trim());
     return m ? contas.find((a) => a.id === Number(m[1])) : null;
@@ -3911,6 +4011,7 @@ async function programarHospedagem({ pontoId = null, interesse = null, aoSalvar 
     const c = contaEscolhida();
     const localInput = form.querySelector('[name="local"]');
     if (c && !localInput.value) localInput.value = c.nome_empresa;
+    if (c?.categoria_id && !form.categoria_id.value) form.categoria_id.value = String(c.categoria_id);
   });
   let enviando = false;
   form.addEventListener('submit', async (ev) => {
@@ -3926,6 +4027,8 @@ async function programarHospedagem({ pontoId = null, interesse = null, aoSalvar 
       vazio.focus();
       return erroNoModal(dlg, 'Preencha local, início e fim.');
     }
+    const lido = lerHorarioAlocacao(form);
+    if (lido.erro) return erroNoModal(dlg, lido.erro);
     enviando = true;
     try {
       const destino = Number(form.ponto.value);
@@ -3933,8 +4036,11 @@ async function programarHospedagem({ pontoId = null, interesse = null, aoSalvar 
         conta_id: conta.id,
         local: form.local.value,
         endereco: form.endereco.value,
-        data_inicio: form.data_inicio.value,
-        data_fim: form.data_fim.value,
+        inicio: form.inicio.value,
+        fim: form.fim.value,
+        horario_operacao: lido.horario,
+        categoria_id: form.categoria_id.value,
+        observacao: form.observacao.value,
         percentual_esperado: percentual,
         ...(interesse ? { interesse_id: interesse.id } : {}),
       };
@@ -3942,10 +4048,10 @@ async function programarHospedagem({ pontoId = null, interesse = null, aoSalvar 
       if (!r.ok) {
         const d = await r.json().catch(() => ({}));
         if (d.campo) form.querySelector(`[name="${d.campo}"]`)?.focus();
-        return erroNoModal(dlg, d.erro || 'Não foi possível confirmar a hospedagem.');
+        return erroNoModal(dlg, d.erro || 'Não foi possível agendar a hospedagem.');
       }
       fechar();
-      toast(`Hospedagem programada (${percentualBR(percentual)}).`);
+      toast(`Hospedagem agendada (${percentualBR(percentual)}). Aguardando o aceite do termo.`);
       aoSalvar?.();
     } finally {
       enviando = false;
@@ -3958,13 +4064,13 @@ async function acaoNoEventoMovel(ponto, evento, acao, remontar) {
   const textos = {
     iniciar: {
       titulo: `O ponto chegou a “${evento.nome}”?`,
-      texto: `<p>O local atual passa a ser <b>${esc(evento.local)}</b> — é o que o anunciante vê. A base continua a mesma. Evento é autorização para operar fora do horário da base: a tela exibe sempre que estiver ligada.</p>`,
+      texto: `<p>O local atual passa a ser <b>${esc(evento.local)}</b> — é o que o anunciante vê. A TV recebe o horário do evento (${esc(evento.horario || '—')}) e o ponto entra no inventário.</p>`,
       botao: 'Iniciar evento',
     },
     encerrar: {
       titulo: `Encerrar “${evento.nome}”?`,
-      texto: '<p>O ponto volta para a base: o local atual passa a ser a base de novo.</p>',
-      botao: 'Encerrar e voltar para a base',
+      texto: '<p>O ponto fica sem alocação: sai do inventário e a tela, se ligada, toca só o institucional.</p>',
+      botao: 'Encerrar evento',
     },
     cancelar: {
       titulo: `Cancelar “${evento.nome}”?`,
@@ -3979,22 +4085,22 @@ async function acaoNoEventoMovel(ponto, evento, acao, remontar) {
   toast(
     {
       iniciar: 'Evento iniciado.',
-      encerrar: 'Evento encerrado: o ponto voltou para a base.',
+      encerrar: 'Evento encerrado: o ponto ficou sem alocação.',
       cancelar: 'Evento cancelado.',
     }[acao],
   );
   remontar();
 }
 
-// Cadastro leve (pedido do dono): nome, organização, local e datas; o fim
-// pode ficar em branco (um dia só); público estimado e observação opcionais.
-// Contexto de concorrência (migration 113): o ramo que a trava de
-// concorrente protege DURANTE o evento — nenhum por padrão; nunca herda o
-// da base.
+// Cadastro leve (pedido do dono): nome, organização, local, início e fim
+// (data e hora) e o horário de funcionamento do evento (obrigatório); público
+// estimado e observação opcionais. Contexto de concorrência: o ramo que a
+// trava protege DURANTE o evento — nenhum por padrão.
 async function cadastrarEventoMovel(ponto, remontar) {
   const categorias = await pegar('/categorias').catch(() => []);
   const { dlg, fechar } = abrirModal({
     titulo: `Novo evento — ${ponto.nome}`,
+    largo: true,
     corpo: `<form id="formEventoMovel" class="modal-form" novalidate>
         <div class="campo-grupo"><label for="evNome">Nome do evento</label><input id="evNome" name="nome" maxlength="120" required></div>
         <div class="campos">
@@ -4002,27 +4108,24 @@ async function cadastrarEventoMovel(ponto, remontar) {
           <div class="campo-grupo"><label for="evLocal">Local</label><input id="evLocal" name="local" maxlength="160" required placeholder="Ginásio Municipal"></div>
         </div>
         <div class="campos">
-          <div class="campo-grupo"><label for="evInicio">Início</label><input id="evInicio" type="date" name="data_inicio" required></div>
-          <div class="campo-grupo"><label for="evFim">Fim (opcional)</label><input id="evFim" type="date" name="data_fim"></div>
+          <div class="campo-grupo"><label for="evInicio">Início (data e hora)</label><input id="evInicio" type="datetime-local" name="inicio" required></div>
+          <div class="campo-grupo"><label for="evFim">Fim (data e hora)</label><input id="evFim" type="datetime-local" name="fim" required></div>
           <div class="campo-grupo"><label for="evPublico">Público estimado (opcional)</label><input id="evPublico" type="number" name="publico_estimado" min="1" step="1" inputmode="numeric"></div>
         </div>
+        ${camposHorarioAlocacao(null)}
         <div class="campo-grupo"><label for="evCategoria">Contexto de concorrência</label><select id="evCategoria" name="categoria_id">
           <option value="">Nenhum — sem restrição de ramo</option>
           ${categorias.map((c) => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}
-        </select><span class="campo-ajuda">Durante o evento, anúncio deste ramo (e dos concorrentes dele) não entra na tela. O ramo da base não vale no evento.</span></div>
+        </select><span class="campo-ajuda">Durante o evento, anúncio deste ramo (e dos concorrentes dele) não entra na tela.</span></div>
         <div class="campo-grupo"><label for="evObs">Observação (opcional)</label><textarea id="evObs" name="observacao" maxlength="500" rows="2"></textarea></div>
-        <p class="campo-ajuda">O público é a estimativa do evento: aparece como “~N pessoas” e nunca vira exibição nem alcance.</p>
+        <p class="campo-ajuda">Horário de Matão. O público é a estimativa do evento: aparece como “~N pessoas” e nunca vira exibição nem alcance.</p>
         <p class="form-msg" data-msg role="status"></p>
       </form>`,
     rodape:
       '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formEventoMovel" class="btn primary">Cadastrar evento</button>',
   });
   const form = dlg.querySelector('form');
-  const inicio = form.querySelector('[name="data_inicio"]');
-  inicio.addEventListener('change', () => {
-    const fim = form.querySelector('[name="data_fim"]');
-    if (!fim.value || fim.value < inicio.value) fim.value = inicio.value;
-  });
+  ligarHorarioAlocacao(form);
   let enviando = false;
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -4030,11 +4133,23 @@ async function cadastrarEventoMovel(ponto, remontar) {
     const vazio = [...form.querySelectorAll('[required]')].find((c) => !c.value.trim());
     if (vazio) {
       vazio.focus();
-      return erroNoModal(dlg, 'Preencha nome, organização, local e início.');
+      return erroNoModal(dlg, 'Preencha nome, organização, local, início e fim.');
     }
+    const lido = lerHorarioAlocacao(form);
+    if (lido.erro) return erroNoModal(dlg, lido.erro);
     enviando = true;
     try {
-      const corpo = Object.fromEntries(new FormData(form));
+      const corpo = {
+        nome: form.nome.value,
+        organizacao: form.organizacao.value,
+        local: form.local.value,
+        inicio: form.inicio.value,
+        fim: form.fim.value,
+        publico_estimado: form.publico_estimado.value,
+        categoria_id: form.categoria_id.value,
+        observacao: form.observacao.value,
+        horario_operacao: lido.horario,
+      };
       const r = await api(`/admin/pontos/${ponto.id}/eventos`, { method: 'POST', body: JSON.stringify(corpo) });
       if (!r.ok) {
         const d = await r.json().catch(() => ({}));
@@ -4050,102 +4165,37 @@ async function cadastrarEventoMovel(ponto, remontar) {
   });
 }
 
-// Definir/alterar a base: a conta custodiante (nunca dona), o nome do lugar
-// e o endereço. Escolher a conta preenche nome e endereço com os dela, para
-// ajustar. Mesma conta e mesmo nome = só correção de endereço.
-async function alterarBaseMovel(ponto, ficha, remontar) {
-  const contas = (await pegar('/admin/anunciantes')).filter((a) => !a.excluido_em);
-  const rotulo = (a) => `${a.nome_empresa} (#${a.id})`;
-  const atual = contas.find((a) => a.id === ficha.base.conta?.id);
-  const { dlg, fechar } = abrirModal({
-    titulo: `Base de ${ponto.nome}`,
-    largo: true,
-    corpo: `<div class="form-ponto"><form id="formBaseMovel" class="form-ponto-form dlg-endereco-form" novalidate>
-        <p class="dlg-endereco-nota">A base é onde o ponto fica quando não está hospedado nem em evento. A conta da base (opcional) é custodiante: não vira dona, não ganha crédito nem Plano Básico.</p>
-        <div class="campos">
-          <div class="campo-grupo"><label for="baseConta">Conta da base (opcional)</label><input id="baseConta" name="conta" list="contasDaBase" autocomplete="off" value="${atual ? esc(rotulo(atual)) : ''}" placeholder="Vazio = base da própria Mostraí"></div>
-          <div class="campo-grupo"><label for="baseNome">Nome da base</label><input id="baseNome" name="base_nome" maxlength="120" required value="${esc(ficha.base.nome)}"></div>
-        </div>
-        <datalist id="contasDaBase">${contas.map((a) => `<option value="${esc(rotulo(a))}"></option>`).join('')}</datalist>
-        <div data-endereco-base>${window.camposEndereco('base_', { valores: ponto })}</div>
-        <p class="form-msg" data-msg role="status"></p>
-      </form></div>`,
-    rodape:
-      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formBaseMovel" class="btn primary">Salvar base</button>',
-  });
-  const form = dlg.querySelector('form');
-  window.ligarCep(form);
-  const contaEscolhida = () => {
-    const m = /\(#(\d+)\)$/.exec(form.querySelector('[name="conta"]').value.trim());
-    return m ? contas.find((a) => a.id === Number(m[1])) : null;
-  };
-  form.querySelector('[name="conta"]').addEventListener('change', () => {
-    const c = contaEscolhida();
-    if (!c || c.id === ficha.base.conta?.id) return;
-    form.querySelector('[name="base_nome"]').value = c.nome_empresa;
-    const valores = c.logradouro ? c : { ...c, logradouro: c.endereco || '', numero: '' };
-    form.querySelector('[data-endereco-base]').innerHTML = window.camposEndereco('base_', { valores });
-    window.ligarCep(form);
-  });
-  let enviando = false;
-  form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    if (enviando) return;
-    const conta = contaEscolhida();
-    if (!conta && form.querySelector('[name="conta"]').value.trim()) {
-      form.querySelector('[name="conta"]').focus();
-      return erroNoModal(dlg, 'Escolha a conta da base na lista (ou deixe vazio).');
-    }
-    const vazio = [...form.querySelectorAll('input[required]')].find((c) => !c.value.trim());
-    if (vazio) {
-      vazio.focus();
-      return erroNoModal(dlg, 'Preencha o nome e o endereço da base (só o complemento é opcional).');
-    }
-    enviando = true;
-    try {
-      const corpo = {
-        base_conta_id: conta ? conta.id : null,
-        base_nome: form.querySelector('[name="base_nome"]').value,
-        ...window.enderecoDoForm(form),
-      };
-      const r = await api(`/admin/pontos/${ponto.id}/base`, { method: 'PUT', body: JSON.stringify(corpo) });
-      if (!r.ok) {
-        const d = await r.json().catch(() => ({}));
-        if (d.campo) form.querySelector(`[name="${d.campo}"]`)?.focus();
-        return erroNoModal(dlg, d.erro || 'Não foi possível salvar a base.');
-      }
-      const d = await r.json();
-      fechar();
-      toast(d.baseNova ? 'Base alterada.' : 'Endereço da base salvo.');
-      remontar();
-    } finally {
-      enviando = false;
-    }
-  });
-}
-
-// ---------- Rede → Pontos móveis (migration 113) ----------
-// Os equipamentos da Mostraí, o percentual do benefício por hospedagem e os
-// interesses que chegam do site e do painel. Tudo vem decidido do servidor
-// (GET /admin/pontos-moveis, /admin/hospedagem/percentual,
-// /admin/hospedagem/interesses).
+// ---------- Rede → Pontos móveis (migrations 113 e 114) ----------
+// Os equipamentos da Mostraí (AGORA e PRÓXIMO de cada um), o percentual do
+// benefício por hospedagem, o termo e os interesses que chegam do painel.
+// Tudo vem decidido do servidor (GET /admin/pontos-moveis,
+// /admin/hospedagem/percentual, /admin/hospedagem/interesses).
 const STATUS_INTERESSE = {
-  nova: ['Nova', 'badge-pendente'],
+  nova: ['Recebido', 'badge-pendente'],
   em_contato: ['Em contato', 'badge-info'],
-  agendada: ['Agendada', 'badge-ok'],
-  recusada: ['Recusada', 'badge-neutro'],
+  aprovada: ['Aprovado para agendamento', 'badge-ok'],
+  agendada: ['Agendado', 'badge-ok'],
+  recusada: ['Recusado', 'badge-neutro'],
+};
+const ORIGEM_DO_DIREITO = {
+  plano: 'plano vigente',
+  beneficio: 'benefício de mídia',
+  basico: 'Plano Básico',
+  saldo_hospedagem: 'saldo de hospedagem',
+};
+const SEM_DIREITO = {
+  sem_direito: 'sem direito ativo',
+  plano_vencido: 'plano vencido',
+  suspensa: 'conta suspensa',
+  sem_conta: 'sem conta',
+  conta_propria: 'conta própria',
 };
 
-// "Com 20%: 30 h de operação geram 6 h de mídia."
+// "Com 20%: 30 h de operação válida geram 6 h de mídia."
 const exemploDoPercentual = (p) =>
-  `Com ${percentualBR(p)}: 30 h de operação geram ${horasDeMidia(Math.floor((30 * 3600 * Math.round(p * 100)) / 10000))} de mídia.`;
+  `Com ${percentualBR(p)}: 30 h de operação válida geram ${horasDeMidia(Math.floor((30 * 3600 * Math.round(p * 100)) / 10000))} de mídia.`;
 
 function cardDoMovel(m) {
-  const local = m.localAtual
-    ? m.localAtual.origem === 'base'
-      ? `Na base: ${esc(m.localAtual.nome)}`
-      : `${m.localAtual.origem === 'hospedagem' ? 'Hospedado em' : 'Em evento em'}: <b>${esc(m.localAtual.nome)}</b>`
-    : '';
   const tela = m.tela
     ? `${esc(m.tela.nome)}${m.tela.status !== 'ativo' ? ` (${esc(m.tela.status)})` : ''}`
     : 'Aguardando tela';
@@ -4166,19 +4216,20 @@ function cardDoMovel(m) {
   const estadoTela = m.tela
     ? `Conexão: ${CONECTIVIDADE[m.tela.conectividade] || esc(m.tela.conectividade)}${m.tela.ultimoSinal ? ` (último sinal ${dataHora(m.tela.ultimoSinal)})` : ''} · Operação: ${OPERACAO[m.tela.operacao] || esc(m.tela.operacao)}`
     : '';
-  const compromisso = m.proximoCompromisso
-    ? `${m.proximoCompromisso.tipo === 'hospedagem' ? 'Hospedagem' : 'Evento'}: ${esc(m.proximoCompromisso.nome)} · ${esc(window.periodoDoEvento(m.proximoCompromisso.dataInicio, m.proximoCompromisso.dataFim))}`
-    : 'Nenhum compromisso na agenda';
+  const agora = m.agora
+    ? `${m.agora.tipo === 'hospedagem' ? 'Hospedado' : 'Em evento'} · <b>${esc(m.agora.nome)}</b> até ${esc(window.instanteMatao(m.agora.fim))}`
+    : `<b>${esc(window.PONTO_MOVEL.semAlocacao)}</b>`;
+  const proximo = m.proximo
+    ? `${m.proximo.tipo === 'hospedagem' ? 'Hospedagem' : 'Evento'} · ${esc(m.proximo.nome)} · ${esc(window.periodoComHora(m.proximo.inicio, m.proximo.fim))}`
+    : 'Nenhum compromisso agendado';
   return `<a class="item-linha movel-card" href="#rede/pontos/${m.id}" data-movel-id="${m.id}">
       ${fotoOuPlaceholder(m.foto, m.nome)}
       <span class="movel-card-corpo">
-        <b>${esc(m.nome)}</b> <span class="badge ${PONTO_STATUS_CLASSE[m.status] || 'badge-neutro'}">${PONTO_STATUS[m.status] || esc(m.status)}</span>
-        <span class="item-meta">${local}</span>
-        <span class="item-meta">Base: ${esc(m.base.nome)}${m.base.conta ? ` (${esc(m.base.conta.nome)})` : ''} · Tela: ${tela}</span>
+        <b>${esc(m.nome)}</b> <span class="badge ${m.alocado ? PONTO_STATUS_CLASSE[m.status] || 'badge-neutro' : 'badge-neutro'}">${m.alocado ? PONTO_STATUS[m.status] || esc(m.status) : esc(window.PONTO_MOVEL.semAlocacao)}</span>
+        <span class="item-meta" data-agora><span class="u-dim">AGORA</span> ${agora}</span>
+        <span class="item-meta" data-proximo><span class="u-dim">PRÓXIMO</span> ${proximo}</span>
+        <span class="item-meta">Tela: ${tela}</span>
         ${estadoTela ? `<span class="item-meta">${estadoTela}</span>` : ''}
-        ${m.hospedagemAtual ? `<span class="item-meta">Anfitrião: ${esc(m.hospedagemAtual.conta)} até ${data(m.hospedagemAtual.dataFim)}</span>` : ''}
-        <span class="item-meta">Próximo: ${compromisso}</span>
-        ${m.proximoEvento ? `<span class="item-meta">Próximo evento: ${esc(m.proximoEvento.nome)}</span>` : ''}
       </span>
     </a>`;
 }
@@ -4186,17 +4237,35 @@ function cardDoMovel(m) {
 function linhaDoInteresse(i) {
   const [rotulo, classe] = STATUS_INTERESSE[i.status] || [i.status, 'badge-neutro'];
   const wpp = String(i.telefone || '').replace(/\D/g, '');
-  const aberto = i.status === 'nova' || i.status === 'em_contato';
+  const aberto = i.status === 'nova' || i.status === 'em_contato' || i.status === 'aprovada';
+  const direito = i.direito?.possui
+    ? `<span class="badge badge-ok">Com direito</span><span class="dado-sub">${esc(ORIGEM_DO_DIREITO[i.direito.origem] || i.direito.origem)}</span>`
+    : `<span class="badge badge-err">Sem direito</span><span class="dado-sub">${esc(SEM_DIREITO[i.direito?.motivo] || '—')}</span>`;
+  const local =
+    i.localTipo === 'ponto'
+      ? `Ponto da conta: ${esc(i.localNome || '')}`
+      : i.localTipo === 'outro'
+        ? `Outro endereço${i.localNome ? `: ${esc(i.localNome)}` : ''}`
+        : 'Endereço da conta';
+  const hist = i.historico || { interessesAnteriores: 0, hospedagens: [] };
+  const historico = [
+    hist.hospedagens.length ? `${hist.hospedagens.length} hospedagem(ns)` : 'nenhuma hospedagem',
+    hist.interessesAnteriores ? `${hist.interessesAnteriores} interesse(s) anterior(es)` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
   return `<tr data-interesse-id="${i.id}">
-      <td><b>${esc(i.empresa)}</b><span class="dado-sub">${esc(i.responsavel)}${i.conta ? ` · <a href="#contas/contas/${i.conta.id}">conta #${i.conta.id}</a>` : ' · sem conta'}</span></td>
+      <td><b>${esc(i.empresa)}</b><span class="dado-sub">${esc(i.responsavel)}${i.conta ? ` · <a href="#contas/contas/${i.conta.id}">conta #${i.conta.id}</a>` : ' · sem conta'}</span><span class="dado-sub">${esc(historico)}</span></td>
+      <td>${direito}</td>
       <td>${wpp ? `<a href="https://wa.me/55${wpp}" target="_blank" rel="noopener">${esc(i.telefone)}</a>` : ''}${i.email ? `<span class="dado-sub">${esc(i.email)}</span>` : ''}</td>
-      <td>${esc(i.endereco)}${i.segmento ? `<span class="dado-sub">${esc(i.segmento)}</span>` : ''}</td>
-      <td>${[i.disponibilidade, i.observacao].filter(Boolean).map(esc).join('<br>') || '<span class="u-dim">—</span>'}${i.notaInterna ? `<span class="dado-sub">Nota: ${esc(i.notaInterna)}</span>` : ''}</td>
-      <td class="u-nowrap"><span class="badge ${classe}">${rotulo}</span><span class="dado-sub">${data(i.criadoEm)} · ${i.origem === 'painel' ? 'painel' : 'site'}</span></td>
+      <td>${local}<span class="dado-sub">${esc(i.endereco || '')}</span>${i.segmento ? `<span class="dado-sub">${esc(i.segmento)}</span>` : ''}</td>
+      <td>${i.observacao ? esc(i.observacao) : '<span class="u-dim">—</span>'}${i.notaInterna ? `<span class="dado-sub">Nota: ${esc(i.notaInterna)}</span>` : ''}</td>
+      <td class="u-nowrap"><span class="badge ${classe}">${rotulo}</span><span class="dado-sub">${data(i.criadoEm)}</span></td>
       <td class="u-nowrap">${
         aberto
           ? `${i.status === 'nova' ? `<button type="button" class="btn ghost mini" data-interesse-acao="em_contato" data-interesse="${i.id}">Em contato</button>` : ''}
-             <button type="button" class="btn primary mini" data-interesse-acao="agendar" data-interesse="${i.id}">Agendar</button>
+             ${i.status !== 'aprovada' ? `<button type="button" class="btn ghost mini" data-interesse-acao="aprovada" data-interesse="${i.id}">Aprovar</button>` : ''}
+             <button type="button" class="btn primary mini" data-interesse-acao="agendar" data-interesse="${i.id}">Agendar hospedagem</button>
              <button type="button" class="btn perigo-sutil mini" data-interesse-acao="recusada" data-interesse="${i.id}">Recusar</button>`
           : ''
       }<button type="button" class="btn ghost mini" data-interesse-acao="nota" data-interesse="${i.id}">Nota</button></td>
@@ -4210,14 +4279,30 @@ async function renderPontosMoveis(el) {
     pegar('/admin/hospedagem/interesses'),
     pegar('/admin/hospedagem/termos'),
   ]);
-  const abertos = interesses.filter((i) => i.status === 'nova' || i.status === 'em_contato');
+  const abertos = interesses.filter((i) => i.status === 'nova' || i.status === 'em_contato' || i.status === 'aprovada');
   const vigente = termos.find((t) => t.vigente);
   el.innerHTML = `
-    <section class="panel" data-beneficio-hospedagem>
+    <section class="panel">
+      <div class="secao-topo"><h3>Pontos móveis</h3>
+        <div class="secao-acoes"><button type="button" class="btn primary mini" data-criar-movel>Criar ponto móvel</button></div></div>
+      <p class="u-dim u-fs-85 u-mt-4">Equipamentos da Mostraí. Só têm local, horário e inventário enquanto estão alocados (hospedagem ou evento).</p>
+      ${moveis.length ? `<div class="lista-moveis">${moveis.map(cardDoMovel).join('')}</div>` : vazio('Nenhum ponto móvel ainda. Ele nasce aqui — nunca de candidatura.')}
+    </section>
+    <section class="panel u-mt-16">
+      <div class="secao-topo"><h3>Interesses em hospedar</h3><span class="secao-nota">${abertos.length} em aberto</span></div>
+      <p class="u-dim u-fs-85 u-mt-4">Só contas com direito ativo de veiculação enviam interesse. Interesse não reserva equipamento: a agenda é sua.</p>
+      ${
+        interesses.length
+          ? `<div class="tabela-rolagem"><table class="mini-table"><thead><tr><th>Conta</th><th>Direito hoje</th><th>Contato</th><th>Local</th><th>Observação</th><th>Situação</th><th></th></tr></thead>
+              <tbody>${interesses.map(linhaDoInteresse).join('')}</tbody></table></div>`
+          : vazio('Nenhum interesse recebido ainda.')
+      }
+    </section>
+    <section class="panel u-mt-16" data-beneficio-hospedagem>
       <div class="secao-topo"><h3>BENEFÍCIO POR HOSPEDAGEM</h3>
         <div class="secao-acoes"><button type="button" class="btn ghost mini" data-alterar-percentual>Alterar percentual</button></div></div>
       <p class="u-m-0"><b class="u-fs-130" data-percentual-atual>${percentualBR(percentual)}</b></p>
-      <p class="u-m-0">Percentual do tempo operacional válido do Ponto Móvel que retorna ao comércio anfitrião como horas gratuitas de veiculação na rede.</p>
+      <p class="u-m-0">Percentual do tempo operacional válido (dentro do período e do horário da hospedagem) que retorna ao comércio anfitrião como horas de veiculação na rede.</p>
       <p class="u-dim u-fs-85 u-mt-4" data-exemplo-percentual>${esc(exemploDoPercentual(percentual))}</p>
       ${
         historico.length
@@ -4235,7 +4320,7 @@ async function renderPontosMoveis(el) {
         vigente
           ? `<p class="u-m-0">Versão vigente: <b>${esc(vigente.versao)}</b> · publicada ${esc(dataHora(vigente.publicadoEm))} por ${esc(vigente.publicadoPor)}</p>
              ${vigente.minuta ? '<p class="aviso-linha u-mt-4">Minuta operacional, sem revisão jurídica — publique a versão revisada antes de usar com anfitriões.</p>' : ''}
-             <p class="u-dim u-fs-85 u-mt-4">O anfitrião aceita esta versão pelo painel; sem aceite (para o período e o percentual da hospedagem) ela não inicia. Versões antigas e os aceites delas ficam no histórico.</p>
+             <p class="u-dim u-fs-85 u-mt-4">O anfitrião aceita esta versão pelo painel, com o local, o endereço, o período, o horário, o percentual e o equipamento da hospedagem; sem esse aceite ela não inicia. Versões antigas e os aceites delas ficam no histórico.</p>
              <details class="u-mt-8"><summary>Ler o texto vigente</summary><div class="termo-texto">${esc(vigente.texto)}</div></details>
              ${
                termos.length > 1
@@ -4246,20 +4331,6 @@ async function renderPontosMoveis(el) {
                  : ''
 }`
           : vazio('Nenhum termo publicado — nenhuma hospedagem consegue iniciar.')
-      }
-    </section>
-    <section class="panel u-mt-16">
-      <div class="secao-topo"><h3>Pontos móveis</h3>
-        <div class="secao-acoes"><button type="button" class="btn primary mini" data-criar-movel>Criar ponto móvel</button></div></div>
-      ${moveis.length ? `<div class="lista-moveis">${moveis.map(cardDoMovel).join('')}</div>` : vazio('Nenhum ponto móvel ainda. Ele nasce aqui — nunca de candidatura.')}
-    </section>
-    <section class="panel u-mt-16">
-      <div class="secao-topo"><h3>Interesses em hospedar</h3><span class="secao-nota">${abertos.length} em aberto</span></div>
-      ${
-        interesses.length
-          ? `<div class="tabela-rolagem"><table class="mini-table"><thead><tr><th>Empresa</th><th>Contato</th><th>Endereço</th><th>Quando / observação</th><th>Situação</th><th></th></tr></thead>
-              <tbody>${interesses.map(linhaDoInteresse).join('')}</tbody></table></div>`
-          : vazio('Nenhum interesse recebido ainda.')
       }
     </section>`;
   ajustarFotos(el);
@@ -4360,59 +4431,33 @@ function alterarPercentual(atual, aoSalvar) {
   });
 }
 
-// O móvel nasce aqui e só aqui: nome (opcional), foto, base (nome +
-// endereço; conta opcional) e nota interna. Tipo automático, nunca dono; a
-// Tela 1 nasce junto.
+// O móvel nasce aqui e só aqui, como EQUIPAMENTO (migration 114): nome
+// (opcional), foto e nota interna. Sem base, endereço, ramo ou horário —
+// isso é da alocação. Tipo automático, nunca dono; a Tela 1 nasce junto.
+// Nasce sem alocação.
 async function criarPontoMovel(aoSalvar) {
-  const contas = (await pegar('/admin/anunciantes')).filter((a) => !a.excluido_em);
-  const rotulo = (a) => `${a.nome_empresa} (#${a.id})`;
   const { dlg, fechar } = abrirModal({
     titulo: 'Criar ponto móvel',
-    largo: true,
-    corpo: `<div class="form-ponto"><form id="formCriarMovel" class="form-ponto-form dlg-endereco-form" novalidate>
-        <p class="dlg-endereco-nota">Equipamento da Mostraí: 1 ponto móvel = 1 tela (a Tela 1 nasce junto). Não tem dono e nunca vira ponto fixo.</p>
-        <div class="campos">
-          <div class="campo-grupo"><label for="cmNome">Nome (opcional)</label><input id="cmNome" name="nome" maxlength="120" placeholder="Vazio = Mostraí Móvel #NN"></div>
-          <div class="campo-grupo"><label for="cmFoto">Foto do equipamento (opcional)</label><input id="cmFoto" name="foto" type="file" accept="image/*"></div>
-        </div>
-        <div class="campos">
-          <div class="campo-grupo"><label for="cmBase">Nome da base</label><input id="cmBase" name="base_nome" maxlength="120" required placeholder="Depósito Mostraí, Academia X…"></div>
-          <div class="campo-grupo"><label for="cmConta">Conta da base (opcional)</label><input id="cmConta" name="conta" list="contasCriarMovel" autocomplete="off" placeholder="Vazio = base da própria Mostraí"></div>
-        </div>
-        <datalist id="contasCriarMovel">${contas.map((a) => `<option value="${esc(rotulo(a))}"></option>`).join('')}</datalist>
-        <div>${window.camposEndereco('cm_', { cidadePadrao: 'Matão', ufPadrao: 'SP' })}</div>
+    corpo: `<form id="formCriarMovel" class="modal-form" novalidate>
+        <p class="campo-ajuda">Equipamento da Mostraí: 1 ponto móvel = 1 tela (a Tela 1 nasce junto). Não tem dono, não tem base e nunca vira ponto fixo. Local, horário e contexto vêm de cada hospedagem ou evento.</p>
+        <div class="campo-grupo"><label for="cmNome">Nome (opcional)</label><input id="cmNome" name="nome" maxlength="120" placeholder="Vazio = Mostraí Móvel #NN"></div>
+        <div class="campo-grupo"><label for="cmFoto">Foto do equipamento (opcional)</label><input id="cmFoto" name="foto" type="file" accept="image/jpeg,image/png,image/webp"></div>
         <div class="campo-grupo"><label for="cmNota">Nota interna (opcional)</label><textarea id="cmNota" name="observacoes" maxlength="500" rows="2"></textarea></div>
         <p class="form-msg" data-msg role="status"></p>
-      </form></div>`,
+      </form>`,
     rodape:
       '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formCriarMovel" class="btn primary">Criar ponto móvel</button>',
   });
   const form = dlg.querySelector('form');
-  window.ligarCep(form);
   let enviando = false;
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     if (enviando) return;
-    const textoConta = form.conta.value.trim();
-    const m = /\(#(\d+)\)$/.exec(textoConta);
-    if (textoConta && !m) {
-      form.conta.focus();
-      return erroNoModal(dlg, 'Escolha a conta da base na lista (ou deixe vazio).');
-    }
-    const vazio = [...form.querySelectorAll('input[required]')].find((c) => !c.value.trim());
-    if (vazio) {
-      vazio.focus();
-      return erroNoModal(dlg, 'Preencha o nome e o endereço da base (só o complemento é opcional).');
-    }
     enviando = true;
+    const botao = dlg.querySelector('[type="submit"]');
+    if (botao) botao.disabled = true;
     try {
-      const corpo = {
-        nome: form.nome.value,
-        base_nome: form.base_nome.value,
-        base_conta_id: m ? Number(m[1]) : null,
-        observacoes: form.observacoes.value,
-        ...window.enderecoDoForm(form),
-      };
+      const corpo = { nome: form.nome.value, observacoes: form.observacoes.value };
       const r = await api('/admin/pontos-moveis', { method: 'POST', body: JSON.stringify(corpo) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) return erroNoModal(dlg, d.erro || 'Não foi possível criar o ponto móvel.');
@@ -4428,10 +4473,11 @@ async function criarPontoMovel(aoSalvar) {
         if (!f?.ok) toast('Ponto criado, mas a foto não subiu — troque pela ficha.', 'err');
       }
       fechar();
-      toast(`${d.nome} criado${d.telaId ? ' com a Tela 1' : ' (aguardando tela)'}.`);
+      toast(`${d.nome} criado${d.telaId ? ' com a Tela 1' : ' (aguardando tela)'} — sem alocação.`);
       aoSalvar();
     } finally {
       enviando = false;
+      if (botao) botao.disabled = false;
     }
   });
 }
@@ -4486,9 +4532,8 @@ function renderPontoEndereco(el, ponto, pendencias, remontar) {
   const alterado = pendencias.find((p) => p.tipo === 'ENDERECO_PONTO_ALTERADO');
   const suspeito = pendencias.find((p) => p.tipo === 'ENDERECO_SUSPEITO');
   const linha = window.linhaEndereco(ponto, { comCidade: true });
-  const movel = ponto.tipo === 'movel';
   el.innerHTML = `
-    <div class="secao-topo"><h3>${movel ? 'Endereço da base' : 'Endereço e localização'}</h3>
+    <div class="secao-topo"><h3>Endereço e localização</h3>
       <div class="secao-acoes"><button type="button" class="btn ghost mini" data-editar-endereco-ponto ${ponto.status === 'arquivado' ? 'disabled' : ''}>Editar endereço</button></div></div>
     ${
       alterado
@@ -4499,17 +4544,15 @@ function renderPontoEndereco(el, ponto, pendencias, remontar) {
     }
     <p class="u-m-0">${linha ? esc(linha) : naoInformado()}${ponto.cep ? ` · CEP ${esc(ponto.cep)}` : ''}</p>
     ${suspeito ? '<p class="aviso-linha u-mt-4">O Número parece conter um endereço, não o número do imóvel. O dono vê a pendência no painel.</p>' : ''}
-    ${window.htmlMapaDoEndereco(ponto, { titulo: movel ? 'Localização da base' : 'Localização atual' }) || '<p class="u-dim u-fs-85 u-mt-8">Sem logradouro e número separados ainda — o mapa aparece quando o endereço estiver completo.</p>'}
+    ${window.htmlMapaDoEndereco(ponto, { titulo: 'Localização atual' }) || '<p class="u-dim u-fs-85 u-mt-8">Sem logradouro e número separados ainda — o mapa aparece quando o endereço estiver completo.</p>'}
     <details class="u-mt-8" data-historico><summary>Histórico do endereço</summary><div data-historico-lista><p class="carregando">Carregando...</p></div></details>`;
   el.querySelector('[data-editar-endereco-ponto]').addEventListener('click', () =>
     editarEnderecoAdmin({
-      titulo: movel ? `Endereço da base — ${ponto.base_nome}` : `Endereço do ponto — ${ponto.nome}`,
+      titulo: `Endereço do ponto — ${ponto.nome}`,
       valores: ponto,
       rota: `/admin/pontos/${ponto.id}/endereco`,
       comMapa: true,
-      nota: movel
-        ? 'Correção do endereço da base atual. Para mudar de base, use "Alterar base".'
-        : 'Endereço físico do ponto. A troca fica no histórico; o endereço da conta não muda por aqui.',
+      nota: 'Endereço físico do ponto. A troca fica no histórico; o endereço da conta não muda por aqui.',
       aoSalvar: remontar,
     }),
   );
@@ -4607,11 +4650,11 @@ function textoBeneficioPonto(b) {
 // edita aqui, porque é o horário de todas as telas do ponto.
 // Estado do ponto é automático (src/pontos/repository.js
 // sincronizarStatusPonto): "Ativo" só com tela ativa que já deu sinal.
-// Ponto MÓVEL (migrations 112 e 113): é da Mostraí — sem proprietário de
-// conta e sem benefício; o horário é o da base (fora dela, em hospedagem ou
-// evento, a tela exibe enquanto estiver ligada). O tipo não muda depois de
-// criado. Base, hospedagens e eventos ficam no bloco próprio
-// (renderPontoMovel).
+// Ponto MÓVEL (migrations 112 a 114): aqui é o EQUIPAMENTO — da Mostraí,
+// sem proprietário, sem benefício, sem base, sem endereço e sem horário
+// próprios (horário e contexto são da alocação em curso). O tipo não muda
+// depois de criado. Situação, agenda, hospedagens e eventos ficam no bloco
+// próprio (renderPontoMovel).
 function renderPontoInformacoes(el, ponto, telas, remontar) {
   const movel = ponto.tipo === 'movel';
   const segmento = ponto.categoria_nome || ponto.categoria_livre || ponto.segmento;
@@ -4620,7 +4663,7 @@ function renderPontoInformacoes(el, ponto, telas, remontar) {
     .filter(Boolean)
     .sort()[0];
   const proprietario = movel
-    ? `Mostraí<span class="dado-sub">Ponto móvel: é da rede, não da base</span>`
+    ? `Mostraí<span class="dado-sub">Ponto móvel: equipamento da rede, sem dono</span>`
     : ponto.dono_nome
       ? ponto.anunciante_id
         ? `<a href="#contas/contas/${ponto.anunciante_id}">${esc(ponto.dono_nome)}</a>`
@@ -4638,24 +4681,36 @@ function renderPontoInformacoes(el, ponto, telas, remontar) {
       foto: fotoOuPlaceholder(ponto.foto_instalacao_url, ponto.nome),
       nome: esc(ponto.nome),
       badge: `<span class="badge ${PONTO_STATUS_CLASSE[ponto.status]}">${PONTO_STATUS[ponto.status] || ponto.status}</span>${movel ? ` <span class="badge badge-info">${esc(window.PONTO_MOVEL.selo)}</span>` : ''}`,
-      endereco: movel ? `Base: ${esc(ponto.base_nome)} · ${enderecoFicha(ponto)}` : enderecoFicha(ponto),
+      endereco: movel ? 'Equipamento da Mostraí · o local é o da alocação em curso' : enderecoFicha(ponto),
     })}
-    <dl class="dados dados-2">
+    ${
+      movel
+        ? `<dl class="dados dados-2" data-equipamento>
+            <div><dt>Equipamento</dt><dd>${esc(ponto.nome)}<span class="dado-sub">Ponto móvel nº ${esc(String(ponto.movel_numero ?? ''))}</span></dd></div>
+            <div><dt>Proprietário</dt><dd>${proprietario}</dd></div>
+            <div><dt>Benefício do ponto</dt><dd>Nenhum<span class="dado-sub">Nenhuma conta ganha crédito, Plano Básico ou cupom por ele</span></dd></div>
+            <div><dt>Criado em</dt><dd>${data(ponto.created_at)}</dd></div>
+            <div><dt>Primeiro sinal de tela</dt><dd>${primeiroSinal ? data(primeiroSinal) : naoInformado('Nenhuma tela deu sinal ainda')}</dd></div>
+            <div><dt>Horário de funcionamento</dt><dd>O da alocação em curso<span class="dado-sub">Cada hospedagem ou evento define o seu</span></dd></div>
+            ${ponto.observacoes ? `<div class="dados-largo"><dt>Nota interna</dt><dd>${esc(ponto.observacoes)}</dd></div>` : ''}
+          </dl>`
+        : `<dl class="dados dados-2">
       <div><dt>Segmento</dt><dd>${segmento ? esc(segmento) : naoInformado()}</dd></div>
       <div><dt>Proprietário</dt><dd>${proprietario}</dd></div>
       <div><dt>Responsável no local</dt><dd>${esc(ponto.responsavel_nome || '—')}${ponto.responsavel_contato ? `<span class="dado-sub">${esc(ponto.responsavel_contato)}</span>` : ''}</dd></div>
-      <div><dt>Benefício do ponto</dt><dd>${movel ? 'Nenhum<span class="dado-sub">Ponto da Mostraí: a base não ganha crédito nem Plano Básico por ele</span>' : textoBeneficioPonto(ponto.beneficio)}</dd></div>
+      <div><dt>Benefício do ponto</dt><dd>${textoBeneficioPonto(ponto.beneficio)}</dd></div>
       <div><dt>Aprovado em</dt><dd>${data(ponto.created_at)}</dd></div>
       <div><dt>Primeiro sinal de tela</dt><dd>${primeiroSinal ? data(primeiroSinal) : naoInformado('Nenhuma tela deu sinal ainda')}</dd></div>
       ${ponto.fluxo_estimado_mensal ? `<div><dt>Movimento estimado</dt><dd>${num(ponto.fluxo_estimado_mensal)} pessoas/mês</dd></div>` : ''}
-      <div class="dados-largo"><dt>${movel ? 'Horário na base<span class="dado-ajuda">Hospedado ou em evento, a tela exibe enquanto estiver ligada.</span>' : 'Horário de funcionamento<span class="dado-ajuda">As telas do ponto seguem este horário.</span>'}</dt>
+      <div class="dados-largo"><dt>Horário de funcionamento<span class="dado-ajuda">As telas do ponto seguem este horário.</span></dt>
         <dd>${ponto.horario_semanal ? horarioEmLinhas(ponto.horario_semanal) : 'Aberto 24 horas'}
           <div class="u-mt-8"><button type="button" class="btn ghost mini" data-editar-horario>Editar horário</button></div></dd></div>
       ${ponto.observacoes ? `<div class="dados-largo"><dt>Observações</dt><dd>${esc(ponto.observacoes)}</dd></div>` : ''}
-    </dl>
+    </dl>`
+    }
     ${acoes}`;
   ajustarFotos(el);
-  el.querySelector('[data-editar-horario]').addEventListener('click', () => editarHorarioPonto(ponto, remontar));
+  el.querySelector('[data-editar-horario]')?.addEventListener('click', () => editarHorarioPonto(ponto, remontar));
   el.querySelector('[data-excluir-ponto]')?.addEventListener('click', () => excluirPonto(ponto, telas));
   el.querySelector('#fotoMovel')?.addEventListener('change', (ev) => enviarFotoDoMovel(ponto, ev.target, remontar));
 }

@@ -1,28 +1,32 @@
 const crypto = require('node:crypto');
 const pool = require('../db/pool');
-const { FUSO } = require('../lib/fuso-comercial');
 const { confirmadasHospedagemSql } = require('../lib/partes-da-hora');
 const movel = require('./movel');
 const agenda = require('./agenda');
+const alocacao = require('./alocacao');
 
 // HOSPEDAGEM TEMPORÁRIA DO PONTO MÓVEL (02/10/2026, pedido do dono;
-// migration 113). Um comércio recebe por alguns dias o ponto móvel da
+// migrations 113 e 114). Um comércio recebe por um período o ponto móvel da
 // Mostraí. Não é aluguel: não paga nada, não vira dono, ponto fixo, Básico,
 // crédito nem cupom. No ENCERRAMENTO, uma parte do TEMPO OPERACIONAL VÁLIDO
 // da tela (percentual global, congelado quando o Admin confirmou) volta para
 // ele em HORAS DE MÍDIA GRATUITAS na rede — o SALDO DE HOSPEDAGEM, em
 // segundos, num livro próprio (saldo_hospedagem_lancamentos).
 //
-//   programada → ativa (o Admin marca que a tela chegou) → encerrada
-//     (o Admin, ou o sistema no fim da data prevista: `encerrarVencidas`);
+//   programada → ativa (o Admin marca que a tela chegou — nunca sozinha) →
+//     encerrada (o Admin, ou o sistema no fim previsto: `encerrarVencidas`);
 //   programada → cancelada (não aconteceu: benefício 0).
+// O período é [inicio, fim) com data E hora, e a hospedagem tem o seu
+// HORÁRIO DE FUNCIONAMENTO (migration 114, src/pontos/alocacao.js) — é ele
+// que vai para a TV e é só dentro dele que o tempo vale.
 //
 // Regras que moram SÓ aqui (o navegador nunca decide):
 //   · o percentual é lido do banco na transação que confirma e gravado na
 //     linha — mudar o global depois não mexe nela;
 //   · o tempo válido é a UNIÃO dos intervalos de operação da tela
-//     (tela_operacao: heartbeat + o que o Player contou offline) dentro de
-//     [iniciada_em, encerrada_em] — nunca a duração do calendário;
+//     (tela_operacao: heartbeat + o que o Player contou offline) ∩ o
+//     período ∩ o horário de funcionamento, a partir de quando ela chegou —
+//     nunca a duração do calendário (27 h válidas × 20% = 5 h 24 min);
 //   · o encerramento não passa do fim previsto: o tempo além dele só conta
 //     se o Admin prorrogar antes;
 //   · o benefício nasce UMA vez, no encerramento, com a chave
@@ -31,11 +35,7 @@ const agenda = require('./agenda');
 
 const PERCENTUAL_PADRAO = 20;
 const CHAVE_PERCENTUAL = 'hospedagem_percentual';
-const SQL_HOJE = `(now() AT TIME ZONE '${FUSO}')::date`;
-// O fim previsto de uma hospedagem: a meia-noite (de Matão) que fecha o
-// último dia — as datas são inclusivas.
-const FIM_PREVISTO_SQL = (h) => `((${h}.data_fim + 1)::timestamp AT TIME ZONE '${FUSO}')`;
-const LIMITES = { local: 160, endereco: 300, motivo: 300, ajusteMaximoSegundos: 1000 * 3600 };
+const LIMITES = { local: 160, endereco: 300, motivo: 300, observacao: 500, ajusteMaximoSegundos: 1000 * 3600 };
 
 // COMO O SALDO VEICULA (um lugar só). Benefício não pago que já existia: a
 // regra do Plano Básico — 1 peça ativa de até 15 s, no ritmo de 140 s por
@@ -126,17 +126,36 @@ function beneficioDe(tempoSegundos, percentual) {
 // e por uma trocada no meio, se houver — mesmo já excluída) dentro de
 // [de, ate). O mesmo minuto visto pelo heartbeat e pelo Player conta uma
 // vez; minutos em que nada comprovou operação não contam.
-async function tempoOperacional(db, pontoId, de, ate) {
+async function intervalosDeOperacao(db, pontoId, de, ate) {
   const { rows } = await db.query(
-    `SELECT COALESCE(FLOOR(SUM(EXTRACT(EPOCH FROM upper(r) - lower(r)))), 0)::bigint AS segundos
+    `SELECT (EXTRACT(EPOCH FROM lower(r)) * 1000)::bigint AS a, (EXTRACT(EPOCH FROM upper(r)) * 1000)::bigint AS b
        FROM unnest((
          SELECT range_agg(tstzrange(GREATEST(o.inicio, $2::timestamptz), LEAST(o.fim, $3::timestamptz), '[)'))
            FROM tela_operacao o
           WHERE o.ponto_id = $1 AND o.fim > $2::timestamptz AND o.inicio < $3::timestamptz
-       )) AS r`,
+       )) AS r
+      ORDER BY 1`,
     [pontoId, de, ate],
   );
-  return Number(rows[0].segundos);
+  return rows.map((r) => [Number(r.a), Number(r.b)]);
+}
+
+async function tempoOperacional(db, pontoId, de, ate) {
+  return alocacao.somaSegundos(await intervalosDeOperacao(db, pontoId, de, ate));
+}
+
+// O TEMPO VÁLIDO de uma hospedagem até `ate`: o que a tela comprovou ∩ o
+// período ([inicio, fim), a partir de quando ela chegou) ∩ o horário de
+// funcionamento da hospedagem. É a base do benefício.
+async function tempoValido(db, h, ate) {
+  const de = Math.max(new Date(h.iniciada_em).getTime(), new Date(h.inicio).getTime());
+  const limite = Math.min(new Date(ate).getTime(), new Date(h.fim).getTime());
+  if (!(limite > de)) return 0;
+  const operou = await intervalosDeOperacao(db, h.ponto_id, new Date(de), new Date(limite));
+  if (!operou.length) return 0;
+  return alocacao.somaSegundos(
+    alocacao.intersectar(operou, alocacao.intervalosAbertos(h.horario_operacao, de, limite)),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -146,8 +165,9 @@ async function hospedagemDoPonto(c, pontoId, hospedagemId) {
   const id = /^\d{1,15}$/.test(String(hospedagemId)) ? String(hospedagemId) : null;
   const { rows } = id
     ? await c.query(
-        `SELECT *, (data_fim < ${SQL_HOJE}) AS terminou, (data_inicio > ${SQL_HOJE}) AS ainda_nao_comecou
-           FROM pontos_moveis_hospedagens WHERE id = $1 AND ponto_id = $2 FOR UPDATE`,
+        `SELECT h.*, (h.fim <= now()) AS terminou, (h.inicio > now()) AS ainda_nao_comecou,
+                (SELECT p.movel_numero FROM pontos p WHERE p.id = h.ponto_id) AS movel_numero
+           FROM pontos_moveis_hospedagens h WHERE h.id = $1 AND h.ponto_id = $2 FOR UPDATE`,
         [id, pontoId],
       )
     : { rows: [] };
@@ -161,22 +181,39 @@ const JA_ESTA = {
   cancelada: 'Essa hospedagem foi cancelada',
 };
 
-function periodo(corpo, hoje) {
-  const dataInicio = movel.dia(corpo?.data_inicio, 'data_inicio', 'Início');
-  const dataFim = movel.dia(corpo?.data_fim, 'data_fim', 'Fim');
-  if (dataFim < dataInicio) throw erro(400, 'O fim vem antes do início', 'data_fim');
-  if (dataFim < hoje) throw erro(400, 'Esse período já terminou — programe só o que ainda vai acontecer', 'data_fim');
-  return { dataInicio, dataFim };
+// Ramo informado pelo Admin (contexto de concorrência): vazio/ausente =
+// `undefined` (quem chama decide o padrão).
+function lerCategoria(valor) {
+  if (valor === undefined || valor === null || String(valor).trim() === '') return undefined;
+  const id = Number(String(valor).trim());
+  if (!Number.isInteger(id) || id <= 0) {
+    throw erro(400, 'Contexto de concorrência: escolha um ramo da lista', 'categoria_id');
+  }
+  return id;
 }
 
-// Confirmar a hospedagem: móvel → conta anfitriã → local → período →
-// percentual. `percentual_esperado` é o que o Admin VIU na revisão ("Esta
-// hospedagem ficará vinculada a 20%"); se o global mudou nesse meio-tempo, a
-// confirmação volta (409) em vez de vincular um número que ninguém viu.
+async function exigirCategoria(c, categoriaId) {
+  if (!categoriaId) return;
+  const { rows } = await c.query('SELECT 1 FROM categorias WHERE id = $1', [categoriaId]);
+  if (!rows[0]) throw erro(400, 'Contexto de concorrência: ramo não encontrado', 'categoria_id');
+}
+
+// Agendar a hospedagem (o Admin orquestra tudo): móvel → conta anfitriã →
+// local e endereço → período com data e hora → horário de funcionamento →
+// ramo (padrão: o da conta) → observação → percentual. `percentual_esperado`
+// é o que o Admin VIU na revisão ("Esta hospedagem ficará vinculada a 20%");
+// se o global mudou nesse meio-tempo, a confirmação volta (409) em vez de
+// vincular um número que ninguém viu. Nasce PROGRAMADA: nunca começa
+// sozinha — o Admin inicia quando a tela chega (com termo aceito e entrega).
 async function criar(pontoId, corpo, admin) {
   const contaId = Number(corpo?.conta_id);
   if (!Number.isInteger(contaId) || contaId <= 0) throw erro(400, 'Escolha a conta anfitriã', 'conta_id');
-  const { dataInicio, dataFim } = periodo(corpo, movel.hojeEmMatao());
+  const periodo = alocacao.lerPeriodo(corpo);
+  const horario = alocacao.lerHorario(corpo?.horario_operacao);
+  const categoriaInformada = lerCategoria(corpo?.categoria_id);
+  const observacao = movel.texto(corpo?.observacao, 'observacao', 'Observação', LIMITES.observacao, {
+    obrigatorio: false,
+  });
   const esperado = lerPercentual(corpo?.percentual_esperado);
   if (esperado === null) throw erro(400, 'Revise o percentual antes de confirmar', 'percentual_esperado');
   const interesseId = corpo?.interesse_id ? Number(corpo.interesse_id) : null;
@@ -197,27 +234,42 @@ async function criar(pontoId, corpo, admin) {
       );
       if (!conta || conta.excluido_em) throw erro(400, 'Conta anfitriã não encontrada', 'conta_id');
       if (conta.conta_propria) throw erro(400, 'A conta própria da Mostraí não hospeda o próprio ponto', 'conta_id');
-      const local = movel.texto(corpo?.local || conta.nome_empresa, 'local', 'Local', LIMITES.local);
+      let interesse = null;
+      if (interesseId) {
+        const { rows } = await c.query(
+          `SELECT i.id, i.conta_id, i.status, i.empresa, i.endereco, i.categoria_id,
+                  COALESCE(i.local_nome, p.nome) AS local_nome
+             FROM hospedagem_interesses i LEFT JOIN pontos p ON p.id = i.ponto_id
+            WHERE i.id = $1 FOR UPDATE OF i`,
+          [interesseId],
+        );
+        interesse = rows[0];
+        if (!interesse) throw erro(400, 'Interesse não encontrado', 'interesse_id');
+        if (interesse.status === 'agendada' || interesse.status === 'recusada') {
+          throw erro(409, `Esse interesse já foi ${interesse.status} — programe sem ele`, 'interesse_id');
+        }
+        if (interesse.conta_id && Number(interesse.conta_id) !== contaId) {
+          throw erro(400, 'Esse interesse é de outra conta', 'conta_id');
+        }
+      }
+      // Local e endereço: o que o Admin escreveu; senão os do interesse;
+      // senão os da conta.
+      const local = movel.texto(
+        corpo?.local || interesse?.local_nome || interesse?.empresa || conta.nome_empresa,
+        'local',
+        'Local',
+        LIMITES.local,
+      );
       const { linhaEndereco } = require('../lib/endereco');
       const endereco = movel.texto(
-        corpo?.endereco || linhaEndereco(conta, { comCidade: true }),
+        corpo?.endereco || interesse?.endereco || linhaEndereco(conta, { comCidade: true }),
         'endereco',
         'Endereço',
         LIMITES.endereco,
       );
-      if (interesseId) {
-        const { rows } = await c.query(
-          `SELECT id, conta_id, status FROM hospedagem_interesses WHERE id = $1 FOR UPDATE`,
-          [interesseId],
-        );
-        if (!rows[0]) throw erro(400, 'Interesse não encontrado', 'interesse_id');
-        if (rows[0].status === 'agendada' || rows[0].status === 'recusada') {
-          throw erro(409, `Esse interesse já foi ${rows[0].status} — programe sem ele`, 'interesse_id');
-        }
-        if (rows[0].conta_id && Number(rows[0].conta_id) !== contaId) {
-          throw erro(400, 'Esse interesse é de outra conta', 'conta_id');
-        }
-      }
+      const categoriaId =
+        categoriaInformada !== undefined ? categoriaInformada : (interesse?.categoria_id ?? conta.categoria_id);
+      await exigirCategoria(c, categoriaId);
       const percentual = await percentualAtual(c, { travar: true });
       if (percentual !== esperado) {
         throw erro(
@@ -226,14 +278,29 @@ async function criar(pontoId, corpo, admin) {
           'percentual_esperado',
         );
       }
-      await agenda.exigirLivre(c, pontoId, dataInicio, dataFim);
+      await agenda.exigirLivre(c, pontoId, periodo.inicio, periodo.fim);
       const { rows } = await c.query(
         `INSERT INTO pontos_moveis_hospedagens
            (ponto_id, conta_id, interesse_id, local, endereco, categoria_id, data_inicio, data_fim, percentual,
-            criado_por_admin)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            criado_por_admin, inicio, fim, horario_operacao, observacao)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING id`,
-        [pontoId, contaId, interesseId, local, endereco, conta.categoria_id, dataInicio, dataFim, percentual, admin],
+        [
+          pontoId,
+          contaId,
+          interesseId,
+          local,
+          endereco,
+          categoriaId || null,
+          periodo.dataInicio,
+          periodo.dataFim,
+          percentual,
+          admin,
+          periodo.inicio,
+          periodo.fim,
+          JSON.stringify(horario),
+          observacao,
+        ],
       );
       if (interesseId) {
         await c.query(
@@ -250,9 +317,10 @@ async function criar(pontoId, corpo, admin) {
   }
 }
 
-// "A tela chegou ao comércio": o local atual passa a ser o do anfitrião (e o
-// ramo dele vale na trava de concorrente). Só dentro do período — para
-// antecipar, o Admin muda o período antes (programada).
+// "A tela chegou ao comércio": o local atual passa a ser o do anfitrião (o
+// ramo da hospedagem vale na trava de concorrente e o horário dela vai para
+// a TV). Só dentro do período — para antecipar, o Admin muda o período antes
+// (programada).
 // "A tela chegou": exige o aceite do termo pelo anfitrião (para o período e
 // o percentual de agora) e a ENTREGA do equipamento registrada — já
 // registrada antes ou vinda no corpo, gravada na mesma transação.
@@ -265,19 +333,19 @@ async function iniciar(pontoId, hospedagemId, corpo = {}, admin = null) {
       if (h.estado !== 'programada') throw erro(409, JA_ESTA[h.estado]);
       if (h.terminou) throw erro(409, 'O período dessa hospedagem já passou — cancele ou programe de novo');
       if (h.ainda_nao_comecou) {
-        throw erro(409, 'Essa hospedagem começa só no dia marcado — para antecipar, altere o período antes');
+        throw erro(409, 'Essa hospedagem começa só no horário marcado — para antecipar, altere o período antes');
       }
       if (!(await termo.aceiteValido(c, h))) {
         throw erro(
           409,
-          'O anfitrião ainda não aceitou o termo desta hospedagem (com o período e o percentual de agora) — ele aceita pelo painel',
+          'O anfitrião ainda não aceitou o termo desta hospedagem (com o local, o período, o horário e o percentual de agora) — ele aceita pelo painel',
         );
       }
       if (!(await termo.movimentacaoDe(c, h.id, 'entrega'))) {
         if (!corpo?.entrega) throw erro(400, 'Registre a entrega do equipamento para iniciar', 'entrega');
         await termo.registrarMovimentacao(c, h, 'entrega', corpo.entrega, admin);
       }
-      await agenda.exigirLivre(c, pontoId, h.data_inicio, h.data_fim, {
+      await agenda.exigirLivre(c, pontoId, h.inicio, h.fim, {
         ignorar: { tipo: 'hospedagem', id: h.id },
         emCurso: true,
       });
@@ -292,16 +360,17 @@ async function iniciar(pontoId, hospedagemId, corpo = {}, admin = null) {
 
 // O coração: fecha a hospedagem e faz nascer o benefício, na MESMA
 // transação (a linha está travada). O fim é o agora, nunca depois do fim
-// previsto; o tempo é o que a tela comprovou nesse intervalo.
+// previsto (encerrar antes é permitido: conta até ali); o tempo é o válido
+// (`tempoValido`) nesse intervalo.
 async function encerrarNaTransacao(c, h, { encerramento, admin = null }) {
   const {
     rows: [fim],
   } = await c.query(
-    `SELECT GREATEST(h.iniciada_em, LEAST(now(), ${FIM_PREVISTO_SQL('h')})) AS encerrada_em
+    `SELECT GREATEST(h.iniciada_em, LEAST(now(), h.fim)) AS encerrada_em
        FROM pontos_moveis_hospedagens h WHERE h.id = $1`,
     [h.id],
   );
-  const tempo = await tempoOperacional(c, h.ponto_id, h.iniciada_em, fim.encerrada_em);
+  const tempo = await tempoValido(c, h, fim.encerrada_em);
   const beneficio = beneficioDe(tempo, h.percentual);
   await c.query(
     `UPDATE pontos_moveis_hospedagens
@@ -348,11 +417,11 @@ async function devolverInteresse(c, h) {
     `UPDATE hospedagem_interesses i
         SET status = CASE WHEN i.conta_id IS NOT NULL AND EXISTS (
                        SELECT 1 FROM hospedagem_interesses o
-                        WHERE o.conta_id = i.conta_id AND o.id <> i.id AND o.status IN ('nova', 'em_contato'))
+                        WHERE o.conta_id = i.conta_id AND o.id <> i.id AND o.status IN ('nova', 'em_contato', 'aprovada'))
                      THEN 'recusada' ELSE 'em_contato' END,
             nota_interna = CASE WHEN i.conta_id IS NOT NULL AND EXISTS (
                        SELECT 1 FROM hospedagem_interesses o
-                        WHERE o.conta_id = i.conta_id AND o.id <> i.id AND o.status IN ('nova', 'em_contato'))
+                        WHERE o.conta_id = i.conta_id AND o.id <> i.id AND o.status IN ('nova', 'em_contato', 'aprovada'))
                      THEN concat_ws(' · ', i.nota_interna, 'hospedagem cancelada; a conta já tem outro interesse aberto')
                      ELSE i.nota_interna END,
             atualizado_em = now()
@@ -397,38 +466,64 @@ async function cancelar(pontoId, hospedagemId) {
   });
 }
 
-// Alterar o período: programada muda início e fim; ativa só prorroga o fim
-// (o início já aconteceu). Sem conflito na agenda; o percentual continua o
-// congelado.
+// Alterar a hospedagem. PROGRAMADA: período, horário, local e endereço
+// (o que mudar pede aceite novo do anfitrião — o termo vincula tudo isso).
+// ATIVA: só prorrogar o fim (o início e o horário já estão valendo; para
+// terminar antes, Encerrar). Sem conflito na agenda; o percentual continua
+// o congelado.
 async function alterarPeriodo(pontoId, hospedagemId, corpo) {
   try {
     return await movel.emTransacao(async (c) => {
       await movel.travarMovel(c, pontoId);
       const h = await hospedagemDoPonto(c, pontoId, hospedagemId);
       if (h.estado !== 'programada' && h.estado !== 'ativa') throw erro(409, JA_ESTA[h.estado]);
-      const hoje = movel.hojeEmMatao();
-      const inicioAtual = String(h.data_inicio).slice(0, 10);
-      const fimAtual = String(h.data_fim).slice(0, 10);
-      let dataInicio = inicioAtual;
-      let dataFim;
+      let periodo;
+      let horario = h.horario_operacao;
+      let local = h.local;
+      let endereco = h.endereco;
       if (h.estado === 'ativa') {
-        dataFim = movel.dia(corpo?.data_fim, 'data_fim', 'Fim');
-        if (corpo?.data_inicio && corpo.data_inicio !== inicioAtual) {
-          throw erro(400, 'A hospedagem já começou — só o fim pode mudar', 'data_inicio');
+        const { instanteComercial } = require('../lib/fuso-comercial');
+        const inicioPedido = instanteComercial(corpo?.inicio, { campo: 'Início' });
+        if (inicioPedido && inicioPedido.getTime() !== new Date(h.inicio).getTime()) {
+          throw erro(400, 'A hospedagem já começou — só o fim pode mudar', 'inicio');
         }
-        if (dataFim <= fimAtual) {
-          throw erro(400, 'Para terminar antes, use Encerrar — aqui é só para prorrogar', 'data_fim');
+        if (corpo?.horario_operacao !== undefined || corpo?.local !== undefined || corpo?.endereco !== undefined) {
+          throw erro(400, 'A hospedagem já começou — só o fim pode mudar (prorrogar)', 'fim');
+        }
+        // O fim novo com hora (`fim`) ou só o último dia (`data_fim`, o dia inteiro).
+        const fimPedido =
+          corpo?.fim !== undefined || !corpo?.data_fim
+            ? corpo?.fim
+            : alocacao.lerPeriodo({ data_inicio: corpo.data_fim }, { exigirFuturo: false }).fim;
+        periodo = alocacao.lerPeriodo({ inicio: new Date(h.inicio), fim: fimPedido });
+        if (periodo.fim <= new Date(h.fim)) {
+          throw erro(400, 'Para terminar antes, use Encerrar — aqui é só para prorrogar', 'fim');
         }
       } else {
-        ({ dataInicio, dataFim } = periodo(corpo, hoje));
+        periodo = alocacao.lerPeriodo(corpo);
+        if (corpo?.horario_operacao !== undefined) horario = alocacao.lerHorario(corpo.horario_operacao);
+        if (corpo?.local !== undefined) local = movel.texto(corpo.local, 'local', 'Local', LIMITES.local);
+        if (corpo?.endereco !== undefined) {
+          endereco = movel.texto(corpo.endereco, 'endereco', 'Endereço', LIMITES.endereco);
+        }
       }
-      await agenda.exigirLivre(c, pontoId, dataInicio, dataFim, { ignorar: { tipo: 'hospedagem', id: h.id } });
-      await c.query(`UPDATE pontos_moveis_hospedagens SET data_inicio = $2, data_fim = $3 WHERE id = $1`, [
-        h.id,
-        dataInicio,
-        dataFim,
-      ]);
-      return { contaId: h.conta_id, dataInicio, dataFim };
+      await agenda.exigirLivre(c, pontoId, periodo.inicio, periodo.fim, { ignorar: { tipo: 'hospedagem', id: h.id } });
+      await c.query(
+        `UPDATE pontos_moveis_hospedagens
+            SET inicio = $2, fim = $3, data_inicio = $4, data_fim = $5, horario_operacao = $6, local = $7, endereco = $8
+          WHERE id = $1`,
+        [
+          h.id,
+          periodo.inicio,
+          periodo.fim,
+          periodo.dataInicio,
+          periodo.dataFim,
+          horario ? JSON.stringify(horario) : null,
+          local,
+          endereco,
+        ],
+      );
+      return { contaId: h.conta_id, inicio: periodo.inicio, fim: periodo.fim };
     });
   } catch (err) {
     throw agenda.traduzirErroDoBanco(err);
@@ -438,14 +533,14 @@ async function alterarPeriodo(pontoId, hospedagemId, corpo) {
 // ---------------------------------------------------------------------------
 // Encerramento automático (job)
 // ---------------------------------------------------------------------------
-// No fim da data prevista, se ninguém agiu: hospedagem ativa encerra (com o
-// benefício), programada que nunca começou é cancelada; o mesmo para evento
-// (sem benefício). Cada linha na própria transação, travada e conferida de
+// No fim previsto (data e hora), se ninguém agiu: hospedagem ativa encerra
+// (com o benefício), programada que nunca começou é cancelada; o mesmo para
+// evento (sem benefício). Cada linha na própria transação, travada e conferida de
 // novo — duas instâncias rodando juntas nunca encerram a mesma duas vezes.
 async function encerrarVencidas() {
   const { rows: vencidas } = await pool.query(
     `SELECT id, ponto_id, estado FROM pontos_moveis_hospedagens
-      WHERE estado IN ('programada', 'ativa') AND data_fim < ${SQL_HOJE}
+      WHERE estado IN ('programada', 'ativa') AND fim <= now()
      ORDER BY id`,
   );
   const resultado = { hospedagensEncerradas: 0, hospedagensCanceladas: 0, eventosEncerrados: 0, eventosCancelados: 0 };
@@ -486,7 +581,7 @@ async function encerrarVencidas() {
   }
   const { rows: eventos } = await pool.query(
     `SELECT id, ponto_id FROM pontos_moveis_eventos
-      WHERE estado IN ('programado', 'em_andamento') AND data_fim < ${SQL_HOJE} ORDER BY id`,
+      WHERE estado IN ('programado', 'em_andamento') AND fim <= now() ORDER BY id`,
   );
   for (const e of eventos) {
     try {
@@ -498,7 +593,7 @@ async function encerrarVencidas() {
                   encerrado_em = CASE WHEN estado = 'em_andamento' THEN now() END,
                   cancelado_em = CASE WHEN estado = 'programado' THEN now() END,
                   encerramento = 'automatico'
-            WHERE id = $1 AND estado IN ('programado', 'em_andamento') AND data_fim < ${SQL_HOJE}
+            WHERE id = $1 AND estado IN ('programado', 'em_andamento') AND fim <= now()
             RETURNING estado`,
           [e.id],
         );
@@ -561,7 +656,7 @@ async function apurarTardias() {
           rows: [h],
         } = await c.query(`SELECT * FROM pontos_moveis_hospedagens WHERE id = $1 FOR UPDATE`, [v.id]);
         if (h?.estado !== 'encerrada') return null;
-        const tempo = await tempoOperacional(c, h.ponto_id, h.iniciada_em, h.encerrada_em);
+        const tempo = await tempoValido(c, h, h.encerrada_em);
         if (tempo <= h.tempo_operacional_segundos) return null;
         const beneficio = Math.max(h.beneficio_segundos, beneficioDe(tempo, h.percentual));
         await c.query(
@@ -787,12 +882,13 @@ async function extratoDaConta(contaId) {
 // encerramento).
 async function hospedagensDaConta(contaId) {
   const { rows } = await pool.query(
-    `SELECT h.id, h.ponto_id, h.conta_id, h.local, h.endereco, h.data_inicio, h.data_fim, h.percentual, h.estado,
-            h.iniciada_em, h.encerrada_em, h.tempo_operacional_segundos, h.beneficio_segundos, p.nome AS ponto_nome
+    `SELECT h.id, h.ponto_id, h.conta_id, h.local, h.endereco, h.data_inicio, h.data_fim, h.inicio, h.fim,
+            h.horario_operacao, h.percentual, h.estado, h.iniciada_em, h.encerrada_em, h.tempo_operacional_segundos,
+            h.beneficio_segundos, p.nome AS ponto_nome, p.movel_numero
        FROM pontos_moveis_hospedagens h JOIN pontos p ON p.id = h.ponto_id
       WHERE h.conta_id = $1 AND h.estado IN ('programada', 'ativa', 'encerrada')
       ORDER BY CASE h.estado WHEN 'ativa' THEN 0 WHEN 'programada' THEN 1 ELSE 2 END,
-               CASE WHEN h.estado = 'programada' THEN h.data_inicio END, h.encerrada_em DESC NULLS LAST, h.id DESC
+               CASE WHEN h.estado = 'programada' THEN h.inicio END, h.encerrada_em DESC NULLS LAST, h.id DESC
       LIMIT 20`,
     [contaId],
   );
@@ -808,6 +904,10 @@ async function hospedagensDaConta(contaId) {
       // Ativa prorrogada depois do aceite: o novo período pede o acordo dela.
       prorrogacaoSemAceite: h.estado === 'ativa' && Boolean(doc?.prorrogacaoSemAceite),
       local: h.local,
+      endereco: h.endereco,
+      inicio: h.inicio,
+      fim: h.fim,
+      horario: h.horario_operacao ? resumoDoHorario(h.horario_operacao) : null,
       dataInicio: h.data_inicio,
       dataFim: h.data_fim,
       percentual: Number(h.percentual),
@@ -818,7 +918,7 @@ async function hospedagensDaConta(contaId) {
       beneficioSegundos: h.beneficio_segundos === null ? null : Number(h.beneficio_segundos),
     };
     if (h.estado === 'ativa') {
-      item.tempoSegundos = await tempoOperacional(pool, h.ponto_id, h.iniciada_em, new Date());
+      item.tempoSegundos = await tempoValido(pool, h, new Date());
       item.beneficioEstimadoSegundos = beneficioDe(item.tempoSegundos, h.percentual);
     }
     lista.push(item);
@@ -829,11 +929,13 @@ async function hospedagensDaConta(contaId) {
 // Admin: todas as hospedagens de um móvel (agenda + histórico).
 async function hospedagensDoPonto(pontoId, db = pool) {
   const { rows } = await db.query(
-    `SELECT h.*, a.nome_empresa AS conta_nome, (h.data_fim < ${SQL_HOJE}) AS terminou
+    `SELECT h.*, a.nome_empresa AS conta_nome, (h.fim <= now()) AS terminou, cat.nome AS categoria_nome,
+            (SELECT p.movel_numero FROM pontos p WHERE p.id = h.ponto_id) AS movel_numero
        FROM pontos_moveis_hospedagens h JOIN anunciantes a ON a.id = h.conta_id
+       LEFT JOIN categorias cat ON cat.id = h.categoria_id
       WHERE h.ponto_id = $1
       ORDER BY CASE h.estado WHEN 'ativa' THEN 0 WHEN 'programada' THEN 1 ELSE 2 END,
-               CASE WHEN h.estado = 'programada' THEN h.data_inicio END, h.data_inicio DESC, h.id DESC`,
+               CASE WHEN h.estado = 'programada' THEN h.inicio END, h.inicio DESC, h.id DESC`,
     [pontoId],
   );
   const documentos = await require('./hospedagem-termo').documentosDasHospedagens(rows);
@@ -841,13 +943,23 @@ async function hospedagensDoPonto(pontoId, db = pool) {
   for (const h of rows) {
     const ativa = h.estado === 'ativa';
     const doc = documentos.get(String(h.id));
-    const tempoAteAgora = ativa ? await tempoOperacional(db, h.ponto_id, h.iniciada_em, new Date()) : null;
+    const tempoAteAgora = ativa ? await tempoValido(db, h, new Date()) : null;
     lista.push({
       id: Number(h.id),
       conta: { id: h.conta_id, nome: h.conta_nome },
       interesseId: h.interesse_id ? Number(h.interesse_id) : null,
       local: h.local,
       endereco: h.endereco,
+      inicio: h.inicio,
+      fim: h.fim,
+      // Para o formulário de alteração: o período na parede de Matão e o
+      // horário como está gravado.
+      inicioLocal: alocacao.parede(h.inicio),
+      fimLocal: alocacao.parede(h.fim),
+      horarioOperacao: h.horario_operacao,
+      horario: h.horario_operacao ? resumoDoHorario(h.horario_operacao) : null,
+      categoria: h.categoria_id ? { id: h.categoria_id, nome: h.categoria_nome } : null,
+      observacao: h.observacao,
       dataInicio: h.data_inicio,
       dataFim: h.data_fim,
       percentual: Number(h.percentual),
@@ -908,6 +1020,7 @@ function duracaoLegivel(segundos) {
 }
 
 const formatarPercentual = (n) => `${String(Number(n)).replace('.', ',')}%`;
+const { resumo: resumoDoHorario } = require('../lib/horario-semanal');
 
 module.exports = {
   PERCENTUAL_PADRAO,
@@ -920,6 +1033,7 @@ module.exports = {
   historicoDoPercentual,
   beneficioDe,
   tempoOperacional,
+  tempoValido,
   criar,
   iniciar,
   encerrar,

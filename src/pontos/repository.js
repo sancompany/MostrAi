@@ -2,6 +2,7 @@ const pool = require('../db/pool');
 const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
 const { LIMITE_COMERCIAL } = require('../lib/capacidade');
 const { PARTES, colunasDoEndereco } = require('../lib/endereco');
+const { inventarioSql } = require('../lib/contexto-do-ponto');
 
 // Cinco status (migration 069 + `aguardando_primeiro_sinal` na 088) —
 // e AUTOMÁTICO: ninguém escreve aqui direto, `sincronizarStatusPonto` (mais
@@ -80,10 +81,9 @@ async function criar(dados, db = pool) {
     foto_instalacao_url,
     observacoes,
     candidatura_id,
-    // Ponto móvel (migration 112): sem dona, com base. Fixo é o padrão.
+    // Ponto móvel (migrations 112 e 114): sem dona, sem base e sem endereço
+    // próprio (o local é o da alocação). Fixo é o padrão.
     tipo,
-    base_conta_id,
-    base_nome,
     movel_numero,
   } = dados;
   const horarioValidado = validarHorarioSemanal(horario_semanal);
@@ -95,9 +95,9 @@ async function criar(dados, db = pool) {
         responsavel_nome, responsavel_contato, status, aceitou_termos_em,
         cota_autoanuncio_slots_hora, anunciante_id, fluxo_estimado_mensal,
         horario_semanal, foto_instalacao_url, observacoes, candidatura_id, logradouro, numero,
-        tipo, base_conta_id, base_nome, movel_numero, base_desde)
+        tipo, movel_numero)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,
-             $24,$25,$26,$27, CASE WHEN $24 = 'movel' THEN now() END)
+             $24,$25)
      RETURNING *`,
     [
       nome,
@@ -124,8 +124,6 @@ async function criar(dados, db = pool) {
       end.logradouro ?? null,
       end.numero ?? null,
       movel ? 'movel' : 'fixo',
-      movel ? base_conta_id : null,
-      movel ? base_nome : null,
       movel ? movel_numero : null,
     ],
   );
@@ -180,7 +178,7 @@ async function estabelecimentoJaCadastrado(
 async function listar() {
   const { rows } = await pool.query(
     `SELECT p.*, c.nome AS categoria_nome,
-            a.nome_empresa AS dono_nome, b.nome_empresa AS base_conta_nome,
+            a.nome_empresa AS dono_nome,
             (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id) AS telas,
             (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id AND d.status = 'ativo') AS telas_ativas,
             -- Mudou de endereço depois da instalação e a operação ainda não
@@ -190,7 +188,6 @@ async function listar() {
      FROM pontos p
      LEFT JOIN categorias c ON c.id = p.categoria_id
      LEFT JOIN anunciantes a ON a.id = p.anunciante_id
-     LEFT JOIN anunciantes b ON b.id = p.base_conta_id
      WHERE p.status <> 'arquivado'
      ORDER BY p.created_at DESC`,
   );
@@ -299,13 +296,23 @@ async function sincronizarStatusPonto(pontoId, db = pool) {
 // de verdade; este comentário já dizia "ativos + em construção/reparo" desde
 // antes, então entra na mesma lista — só `inativo` (tela(s) cadastrada(s),
 // nenhuma funcionando) é o caso realmente novo que faz sentido esconder.
+//
+// Ponto móvel (migration 114): só aparece ALOCADO, e onde está agora — o
+// nome e o endereço do local da hospedagem, ou o local do evento. Sem
+// alocação não é inventário e não aparece. Nunca a conta anfitriã, o
+// período, o percentual ou a agenda.
 async function listarPublicos() {
   const { rows } = await pool.query(
     `SELECT p.id, p.nome, p.cidade, p.endereco, p.bairro, p.status, p.foto_instalacao_url, c.nome AS categoria_nome,
-            p.tipo, p.base_nome
+            p.tipo,
+            COALESCE(h.local, ev.local) AS local_atual,
+            COALESCE(h.endereco, ev.local) AS local_endereco,
+            ev.nome AS evento_nome
      FROM pontos p
      LEFT JOIN categorias c ON c.id = p.categoria_id
-     WHERE p.status = ANY($1::text[])
+     LEFT JOIN pontos_moveis_hospedagens h ON h.ponto_id = p.id AND h.estado = 'ativa'
+     LEFT JOIN pontos_moveis_eventos ev ON ev.ponto_id = p.id AND ev.estado = 'em_andamento'
+     WHERE p.status = ANY($1::text[]) AND ${inventarioSql('p')}
      ORDER BY (p.status = 'em_operacao') DESC, p.nome`,
     [STATUS_NA_REDE],
   );
