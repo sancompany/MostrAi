@@ -5877,6 +5877,22 @@ local (conta / ponto / outro endereço); CTA secundário em Meus pontos;
       se precisar, encerrar e agendar outra.
 - V11.6 [ ] Mapa / roteirização / otimização de frota (ideias, sem data).
 
+**Mostraí Móvel como opção de seleção (migration 115, 05/10/2026 — RN-73).**
+Feito: a opção virtual sempre no catálogo, 1 posição do plano, pool das
+unidades alocadas resolvido a cada hora, parcela repartida no pool, sem
+unidade ativa o tempo volta para os fixos ou para a rede. Ficou para depois
+(nada disto bloqueia):
+- MM.1 [ ] Métricas do painel: identificar que uma exibição veio "via
+      Mostraí Móvel" (o dado já está lá — tela/ponto/alocação reais; falta
+      agrupar). Hoje aparece por unidade, como qualquer ponto.
+- MM.2 [ ] Ocupação/capacidade (`pontos/repository.js`, Mídia Mostraí,
+      bloqueio de 80%) não soma a demanda do pool nas unidades móveis —
+      com poucas contas é irrelevante; revisar quando a frota tiver
+      ocupação real.
+- MM.3 [ ] Distribuição dentro do pool é igual entre unidades (fração
+      arredondada para cima); ponderar por capacidade/horário de cada
+      unidade se o volume justificar.
+
       (d) (Codex, PR #114) um ajuste NEGATIVO do Admin feito no mesmo
       instante em que o gerador reserva a hora da conta pode deixar a rede
       entregar alguns segundos além do saldo (no máximo a reserva de uma

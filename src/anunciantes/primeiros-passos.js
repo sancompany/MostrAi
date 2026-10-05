@@ -148,7 +148,12 @@ async function primeirosPassosDaConta(conta) {
          FROM criativos WHERE anunciante_id = $1`,
       [conta.id],
     ),
-    pool.query('SELECT COUNT(*)::int AS n FROM anunciantes_pontos WHERE anunciante_id = $1', [conta.id]),
+    // A opção Mostraí Móvel (migration 115) é uma escolha como um ponto.
+    pool.query(
+      `SELECT ((SELECT COUNT(*) FROM anunciantes_pontos WHERE anunciante_id = $1)
+              + (SELECT COUNT(*) FROM anunciantes WHERE id = $1 AND mostrai_movel_escolhido_em IS NOT NULL))::int AS n`,
+      [conta.id],
+    ),
     pool.query(
       'SELECT COALESCE(SUM(vezes_confirmadas), 0)::int AS n FROM exibicoes_contador WHERE anunciante_id = $1',
       [conta.id],

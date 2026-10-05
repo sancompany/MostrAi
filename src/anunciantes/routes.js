@@ -12,7 +12,8 @@ const vigencia = require('../lib/vigencia');
 const planosRepo = require('../financeiro/planos-repository');
 const { conferirSenha } = require('../lib/senha');
 const { validarCpfOuCnpj } = require('../br/documento');
-const { pontosDoAnunciante, segundosCompensados, horasDeTelaPorMes } = require('../lib/pacing');
+const { coberturaDoAnunciante, segundosCompensados, horasDeTelaPorMes } = require('../lib/pacing');
+const { MOSTRAI_MOVEL } = require('../lib/mostrai-movel');
 const { entradaNoArDasPecas, ESTADOS: ESTADOS_ENTRADA } = require('./entrada-no-ar');
 const { resumo: resumoHorarioSemanal } = require('../lib/horario-semanal');
 const { cepValido, telefoneE164, data } = require('../br/formato');
@@ -28,7 +29,6 @@ const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas'
 const convitesRepo = require('../convites/repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
-const { situacaoDosMoveis } = require('../pontos/movel');
 const { horarioEmVigorSql, inventarioSql } = require('../lib/contexto-do-ponto');
 const basicoRepo = require('../pontos/basico');
 const { materializarPontoDaCandidatura } = require('../pontos/materializar');
@@ -734,33 +734,42 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
     [conta.id, pontosRepo.STATUS_NA_REDE],
   );
 
-  // Ponto móvel SEM ALOCAÇÃO (migration 114) não é inventário: fica fora da
-  // lista — só aparece para quem já o tinha escolhido (para poder tirar), e
-  // nunca conta como ponto no ar.
-  const lista = rows.filter((r) => r.inventario || r.escolhido);
+  // MOSTRAÍ MÓVEL (migration 115): o cliente nunca escolhe uma unidade
+  // móvel — escolhe a OPÇÃO Mostraí Móvel (`mostraiMovel`, abaixo), que
+  // existe sempre, mesmo com 0 unidades alocadas, e ocupa 1 posição do
+  // plano. As unidades ficam fora da lista de pontos; as alocadas continuam
+  // no inventário (`noAr`), para o pool e para a distribuição automática.
+  const lista = rows.filter((r) => r.tipo !== 'movel');
   // A conta do bônus é a MESMA do gerador da playlist, com as mesmas funções:
   // quantos pontos EM OPERAÇÃO entram na fatia dele hoje, e quantos segundos
   // por hora isso vira depois da RN-49. Refazer a conta aqui à mão daria um
   // número no painel diferente do que a tela executa.
-  const noAr = lista.filter((r) => r.status === 'em_operacao' && r.inventario).map((r) => r.id);
-  const bloqueados = lista.filter((r) => r.bloqueado).map((r) => r.id);
-  // Mesma ordem do gerador (`ORDER BY escolhido_em`): se o plano encolheu e
-  // sobrou escolha acima do teto, a fatia corta os mesmos pontos aqui e lá.
-  const escolhidos = lista
-    .filter((r) => r.escolhido)
-    .sort((a, b) => new Date(a.escolhido_em) - new Date(b.escolhido_em))
-    .map((r) => r.id);
-  const cobertos = pontosDoAnunciante(
-    { id: conta.id, pontosIncluidos: plano.pontos_incluidos, escolhidos },
+  const noArRows = rows.filter((r) => r.status === 'em_operacao' && r.inventario);
+  const noAr = noArRows.map((r) => r.id);
+  const moveisNoAr = noArRows.filter((r) => r.tipo === 'movel').map((r) => r.id);
+  // Todos os travados (G.7), unidades móveis inclusive — os mesmos que o
+  // gerador tira do sorteio automático (`idsBloqueadosParaEscolha`).
+  const bloqueados = rows.filter((r) => r.bloqueado).map((r) => r.id);
+  // Mesma ordem do gerador (`escolhasSql`, por `escolhido_em`): se o plano
+  // encolheu e sobrou escolha acima do teto, a fatia corta as mesmas
+  // escolhas aqui e lá — a opção Mostraí Móvel na posição em que entrou.
+  const {
+    rows: [movelEscolhido],
+  } = await pool.query('SELECT mostrai_movel_escolhido_em AS em FROM anunciantes WHERE id = $1', [conta.id]);
+  const escolhas = lista.filter((r) => r.escolhido).map((r) => ({ alvo: r.id, em: new Date(r.escolhido_em) }));
+  if (movelEscolhido?.em) escolhas.push({ alvo: MOSTRAI_MOVEL, em: new Date(movelEscolhido.em) });
+  escolhas.sort((a, b) => a.em - b.em);
+  const escolhidos = escolhas.filter((e) => e.alvo !== MOSTRAI_MOVEL).map((e) => e.alvo);
+  const cobertura = coberturaDoAnunciante(
+    { id: conta.id, pontosIncluidos: plano.pontos_incluidos, escolhidos: escolhas.map((e) => e.alvo) },
     noAr,
     bloqueados,
+    moveisNoAr,
   );
-  const naCobertura = new Set(cobertos);
-  // Ponto móvel: local atual (a alocação em curso) e próximo evento —
-  // decididos no servidor (src/pontos/movel.js), o card só mostra.
-  const moveis = await situacaoDosMoveis(lista.filter((r) => r.tipo === 'movel').map((r) => r.id));
+  const naCobertura = new Set(cobertura.pontos);
   const base = Number(plano.segundos_por_hora) || 0;
-  const efetivos = segundosCompensados(base, plano.pontos_incluidos, cobertos.length);
+  // Posições do plano no ar hoje (o pool móvel é UMA) — a régua da RN-49.
+  const efetivos = segundosCompensados(base, plano.pontos_incluidos, cobertura.posicoes);
 
   res.json({
     limite: plano.pontos_incluidos,
@@ -768,7 +777,14 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
     // Sem escolha nenhuma a Mostraí distribui sozinha (RN-44): a fatia
     // estável de `pontosDoAnunciante` entre os pontos no ar com espaço. O
     // painel explica isso em vez de mostrar "0 de N" como se faltasse algo.
-    modoAutomatico: escolhidos.length === 0,
+    modoAutomatico: escolhas.length === 0,
+    // A opção virtual: escolhida ou não, e quantas unidades estão em operação
+    // AGORA (alocadas, no ar). A escolha é preferência; o número é a
+    // realidade da hora — 0 não desabilita nada.
+    mostraiMovel: {
+      escolhido: Boolean(movelEscolhido?.em),
+      unidadesEmOperacao: moveisNoAr.length,
+    },
     // O que o plano compra, o que a rede entrega hoje, e a diferença — que é
     // o número que o dono pediu pra ficar escrito ("a hora que ele vai ganhar
     // a mais"), em vez de um bônus que ninguém consegue conferir.
@@ -779,10 +795,14 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
     // enquanto a vitrine falava em horas.
     cobertura: {
       contratados: plano.pontos_incluidos,
-      veiculando: cobertos.length,
+      // Posições do plano veiculando hoje (o pool móvel conta 1).
+      veiculando: cobertura.posicoes,
+      // Locais físicos em que a campanha pode tocar agora — "roda em N pontos
+      // no ar" (as unidades móveis do pool contam uma a uma).
+      pontosNoAr: cobertura.pontos.length,
       horas_contratadas: horasDeTelaPorMes(base, plano.pontos_incluidos),
-      horas_sem_compensacao: horasDeTelaPorMes(base, cobertos.length),
-      horas_hoje: horasDeTelaPorMes(efetivos, cobertos.length),
+      horas_sem_compensacao: horasDeTelaPorMes(base, cobertura.posicoes),
+      horas_hoje: horasDeTelaPorMes(efetivos, cobertura.posicoes),
       compensando: efetivos > base,
     },
     pontos: lista.map((r) => ({
@@ -811,13 +831,6 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
       // Entra na distribuição da campanha hoje (escolhido e no ar, ou
       // sorteado no modo automático). É a mesma conta do gerador.
       naCobertura: naCobertura.has(r.id),
-      // 'fixo' | 'movel'. Quem escolhe o móvel escolhe o PONTO (nunca uma
-      // hospedagem ou um evento): a campanha acompanha o ponto enquanto ele
-      // estiver alocado. Sem alocação, `inventario: false` (só para quem já o
-      // tinha): não veicula até a próxima alocação.
-      tipo: r.tipo,
-      inventario: r.inventario,
-      movel: moveis.get(r.id) || null,
     })),
   });
 });
@@ -827,10 +840,23 @@ router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =>
   const plano = planoEfetivoId(conta) ? await planosRepo.buscarPorId(planoEfetivoId(conta)) : null;
   if (!plano) return res.status(400).json({ erro: 'sua conta ainda não tem plano' });
 
-  const pedidos = [...new Set((req.body.pontos || []).map(Number).filter(Number.isInteger))];
-  if (plano.pontos_incluidos && pedidos.length > plano.pontos_incluidos) {
+  // A lista pode trazer a opção Mostraí Móvel (`MOSTRAI_MOVEL`, migration
+  // 115) ao lado dos ids de ponto: ela ocupa UMA posição do plano, como um
+  // ponto, tenha a frota quantas unidades ativas tiver.
+  const brutos = Array.isArray(req.body.pontos) ? req.body.pontos : [];
+  const querMovel = brutos.includes(MOSTRAI_MOVEL);
+  const pedidos = [
+    ...new Set(
+      brutos
+        .filter((v) => v !== MOSTRAI_MOVEL)
+        .map(Number)
+        .filter(Number.isInteger),
+    ),
+  ];
+  const total = pedidos.length + (querMovel ? 1 : 0);
+  if (plano.pontos_incluidos && total > plano.pontos_incluidos) {
     return res.status(400).json({
-      erro: `seu plano cobre ${plano.pontos_incluidos} ponto(s) e você marcou ${pedidos.length}`,
+      erro: `seu plano cobre ${plano.pontos_incluidos} ponto(s) e você marcou ${total}`,
     });
   }
 
@@ -841,12 +867,16 @@ router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =>
   // recusado é ponto que não existe (ou `inativo`).
   if (pedidos.length) {
     const { rows } = await pool.query(
-      `SELECT p.id, ${inventarioSql('p')} AS inventario FROM pontos p
-        WHERE p.id = ANY($1::int[]) AND p.status = ANY($2::text[])`,
+      `SELECT p.id, p.tipo FROM pontos p WHERE p.id = ANY($1::int[]) AND p.status = ANY($2::text[])`,
       [pedidos, pontosRepo.STATUS_NA_REDE],
     );
     if (rows.length !== pedidos.length) {
       return res.status(400).json({ erro: 'um dos pontos escolhidos não existe na rede' });
+    }
+    // Unidade móvel não é escolha: a escolha é a opção Mostraí Móvel, e a
+    // unidade de hoje pode estar em outro lugar amanhã (migration 115).
+    if (rows.some((r) => r.tipo === 'movel')) {
+      return res.status(400).json({ erro: 'escolha a opção Mostraí Móvel, não uma unidade móvel' });
     }
 
     // G.7 (18/09/2026): ponto cruzou 80% pára de aceitar escolha NOVA — mas
@@ -859,12 +889,6 @@ router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =>
     ]);
     const idsJaTinha = new Set(jaTinha.map((r) => r.ponto_id));
     const novos = pedidos.filter((id) => !idsJaTinha.has(id));
-    // Ponto móvel sem alocação (migration 114) não aceita escolha NOVA — não
-    // está em lugar nenhum; quem já tinha pode mantê-lo.
-    const foraDoInventario = new Set(rows.filter((r) => !r.inventario).map((r) => r.id));
-    if (novos.some((id) => foraDoInventario.has(id))) {
-      return res.status(409).json({ erro: 'esse ponto móvel está sem alocação e não pode ser escolhido agora' });
-    }
     if (novos.length) {
       const bloqueados = await pontosRepo.idsBloqueadosParaEscolha();
       const bloqueadosNovos = novos.filter((id) => bloqueados.includes(id));
@@ -892,11 +916,25 @@ router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =>
       conta.id,
       pedidos,
     ]);
-    for (const pontoId of pedidos) {
+    // Na ordem em que vieram, a opção Mostraí Móvel inclusive: ela mantém o
+    // instante se continua escolhida, e some se saiu da lista.
+    if (!querMovel) {
+      await cliente.query('UPDATE anunciantes SET mostrai_movel_escolhido_em = NULL WHERE id = $1', [conta.id]);
+    }
+    const ordem = brutos.filter((v) => v === MOSTRAI_MOVEL || pedidos.includes(Number(v)));
+    for (const alvo of [...new Set(ordem.map((v) => (v === MOSTRAI_MOVEL ? v : Number(v))))]) {
+      if (alvo === MOSTRAI_MOVEL) {
+        await cliente.query(
+          `UPDATE anunciantes SET mostrai_movel_escolhido_em = COALESCE(mostrai_movel_escolhido_em, clock_timestamp())
+            WHERE id = $1`,
+          [conta.id],
+        );
+        continue;
+      }
       await cliente.query(
         `INSERT INTO anunciantes_pontos (anunciante_id, ponto_id, escolhido_em) VALUES ($1,$2, clock_timestamp())
          ON CONFLICT (anunciante_id, ponto_id) DO NOTHING`,
-        [conta.id, pontoId],
+        [conta.id, alvo],
       );
     }
     await cliente.query('COMMIT');
@@ -907,8 +945,12 @@ router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =>
     cliente.release();
   }
 
-  eventos.registrar('pontos:escolhidos', { quantidade: pedidos.length, limite: plano.pontos_incluidos }, conta);
-  res.json({ escolhidos: pedidos, limite: plano.pontos_incluidos });
+  eventos.registrar(
+    'pontos:escolhidos',
+    { quantidade: total, mostrai_movel: querMovel, limite: plano.pontos_incluidos },
+    conta,
+  );
+  res.json({ escolhidos: querMovel ? [...pedidos, MOSTRAI_MOVEL] : pedidos, limite: plano.pontos_incluidos });
 });
 
 // Edição de perfil self-service — lista branca própria (não os campos

@@ -14,8 +14,23 @@
     // o "Agora em: <evento>" logo acima.
     semOutroEvento: 'Nenhum outro evento programado.',
     semAlocacao: 'Sem alocação',
-    // Quem já tinha escolhido o móvel e ele ficou sem alocação.
-    semAlocacaoEscolhido: 'Sem alocação no momento — volta a veicular quando for alocado.',
+  };
+
+  // MOSTRAÍ MÓVEL como opção de seleção do anunciante (migration 115): UMA
+  // escolha, a frota móvel ativa — nunca um equipamento, um endereço ou um
+  // evento prometido. Os termos operacionais (unidade, alocação, base) ficam
+  // fora do card.
+  window.MOSTRAI_MOVEL = {
+    valor: 'mostrai_movel',
+    nome: 'Mostraí Móvel',
+    selo: 'Itinerante',
+    subtitulo: 'Eventos e locais temporários',
+    texto: 'Sua campanha acompanha automaticamente as telas móveis ativas da Mostraí.',
+    emOperacao: (n) =>
+      n === 0
+        ? 'Nenhuma tela móvel em operação agora.'
+        : `${n} ${n === 1 ? 'tela móvel em operação agora' : 'telas móveis em operação agora'}.`,
+    semOperacao: 'Quando uma unidade entrar em operação, sua campanha poderá aparecer nela automaticamente.',
   };
 
   // "10/10 08:00", no relógio de Matão (o período da alocação tem hora).

@@ -2357,6 +2357,9 @@ dialog.dlg-endereco::backdrop { background: rgba(20,23,31,.5); }
 .ponto-movel-evento-meta { font-size: .78rem; line-height: 1.4; color: var(--text-dim); overflow-wrap: anywhere; }
 .ponto-movel-evento.ponto-movel-sem-evento { border-color: var(--border); background: var(--bg-alt); font-size: .8rem; color: var(--text-dim); }
 .ponto-movel-explica { display: block; margin-top: 6px; font-size: .76rem; line-height: 1.45; color: var(--text-dim); }
+/* MOSTRAÍ MÓVEL (migration 115): a opção virtual usa o mesmo molde; o selo
+   "ITINERANTE" vai em caixa alta (o texto fica legível para leitor de tela). */
+.mostrai-movel .selo-movel { text-transform: uppercase; letter-spacing: .04em; }
 @media (max-width: 520px) {
   .ponto-card.ponto-escolha .ponto-movel-media { aspect-ratio: auto; min-height: 60px; }
 }

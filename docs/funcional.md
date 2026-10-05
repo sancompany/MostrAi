@@ -1717,13 +1717,9 @@ nenhum; sem alocação → nenhum. Hospedagem ≠ evento nas regras comerciais
 (evento não gera benefício nem tem anfitrião). A conversão fixo ⇄ móvel
 saiu (rotas 410); `PUT /admin/pontos/:id/base` → 410. Ninguém ganha crédito,
 Plano Básico, cupom ou papel de dono pelo móvel — nem o organizador do
-evento, que é só texto. O anunciante escolhe o PONTO móvel, nunca uma
-hospedagem ou um evento: o card mostra nome, foto, onde está agora ("Agora
-em: <local>" ou "<local> · <evento>") e o próximo evento — nunca a conta do
-anfitrião, o período, o percentual, o saldo, a agenda privada ou a
-logística; quem já tinha escolhido o móvel e ele ficou sem alocação vê
-"Sem alocação no momento" e pode desmarcar, mas ninguém escolhe um móvel
-sem alocação. As colunas `base_*` e a tabela `pontos_moveis_bases` ficam só
+evento, que é só texto. O anunciante nunca escolhe a unidade móvel: escolhe
+a opção **MOSTRAÍ MÓVEL** (RN-73), que vale pelas unidades alocadas em cada
+hora. As colunas `base_*` e a tabela `pontos_moveis_bases` ficam só
 como histórico (deprecated). *Violada:* candidatura como móvel, segunda
 tela, conflito de agenda, dono em móvel, horário ou ramo no próprio móvel,
 troca de tipo → recusa com o motivo. *Quem vê:* o Admin (tudo), o
@@ -1827,6 +1823,34 @@ separados por tela — cadastro (ativa/reparo/inativa), conexão (comunicando,
 sem comunicação, nunca comunicou, sem Player) e operação (exibindo, fora do
 horário, erro relatado; **desconhecida** sem comunicação). O anunciante vê só
 "Sem comunicação com a Mostraí no momento", sem horário nem detalhe técnico.
+
+**RN-73 — MOSTRAÍ MÓVEL: opção permanente de seleção, 1 posição do plano,
+entrega pelo pool das unidades ativas.** (Migration 115, 05/10/2026.)
+CATÁLOGO ≠ INVENTÁRIO ATIVO. Em "Onde seu anúncio aparece" a opção
+**Mostraí Móvel** ("ITINERANTE · Eventos e locais temporários") aparece
+SEMPRE — com 0 unidades alocadas inclusive, marcável, sem endereço e sem
+"Sem alocação" —, logo depois do próprio ponto. É uma escolha lógica
+(`anunciantes.mostrai_movel_escolhido_em`), nunca um equipamento: a unidade
+móvel nunca é item da lista nem aceita no `PUT` (400). Ocupa **exatamente 1
+posição** do plano ("1 de 3"), tenha a frota 0 ou 10 unidades ativas; o
+contador mede escolhas, o "roda em N pontos no ar" mede a realidade.
+**Entrega** (`coberturaDoAnunciante`, src/lib/pacing.js): a cada hora, o
+pool = unidades em operação e no inventário (alocadas — RN-71); a unidade que
+entra numa alocação entra no pool, a que sai deixa o pool, sem a conta editar
+nada. O pool inteiro é UMA posição na RN-49 e a parcela dela se reparte
+entre as unidades (cada uma pede a sua fração, arredondada para cima, e deve
+a sua fração da obrigação — 4 unidades nunca viram 4 obrigações; não há
+presença simultânea prometida). **Sem unidade ativa**: a posição não está no
+ar e o tempo dela volta para os pontos escolhidos (RN-49); se a Mostraí
+Móvel era a única escolha, a conta cai na distribuição automática pela rede
+(RN-42) — nenhuma hora fica esperando um evento. Cada unidade só toca no
+período e no horário da alocação, com a trava de ramo do contexto real dela
+(RN-71); o Proof-of-Play é sempre da tela, do ponto e da alocação reais.
+Plano sem teto de pontos cobre a rede inteira (a opção não muda nada). O
+Plano Básico não muda. "Onde estamos" continua só com locais reais. *Quem
+vê:* o anunciante (card com "Nenhuma tela móvel em operação agora" ou "N
+telas móveis em operação agora"); o Admin continua só com equipamentos e
+alocações.
 
 **RN-15 — Exclusão de conta é soft-delete de 60 dias.** A conta some do sistema
 na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.

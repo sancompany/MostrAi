@@ -1,6 +1,17 @@
 # Current Handoff
 
 ## Updated
+2026-10-05 — **MOSTRAÍ MÓVEL como opção de seleção** (migration 115, RN-73).
+CATÁLOGO ≠ INVENTÁRIO ATIVO: o anunciante escolhe a opção virtual
+(`anunciantes.mostrai_movel_escolhido_em`, marcador `'mostrai_movel'` em
+`PUT /anunciantes/me/pontos` — `src/lib/mostrai-movel.js`), nunca a
+unidade (400). 1 posição do plano; a cada hora o pool = unidades móveis
+alocadas e em operação (`pacing.js#coberturaDoAnunciante`); a parcela se
+reparte no pool (`gerador.js#numerosDaConta`, `fracao`); sem unidade
+ativa o tempo volta para os fixos (RN-49) ou para a rede (RN-42). A 114
+continua valendo para o inventário. Pendências MM.1–MM.3. Não desfazer
+sem contexto.
+
 2026-10-05 — **Ponto Móvel V1.1: sem base, alocação administrada**
 (migration 114). O móvel é equipamento: só tem local, contexto, horário e
 inventário enquanto ALOCADO (hospedagem ativa ou evento em andamento);

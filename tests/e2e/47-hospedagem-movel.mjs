@@ -10,8 +10,8 @@
 //     início/fim em data e hora e o horário de funcionamento — revisão
 //     "ficará vinculada a 20%";
 //   · o anfitrião aceita o termo pelo painel (sem aceite o Admin não inicia);
-//   · inicia (a tela chegou) registrando a entrega: o card do anunciante diz
-//     "Agora em: <tabacaria>", sem conta, percentual nem saldo; o painel do
+//   · inicia (a tela chegou) registrando a entrega: o anunciante vê a opção
+//     Mostraí Móvel (migration 115), sem local, conta, percentual nem saldo; o painel do
 //     anfitrião mostra "Em andamento" com o benefício estimado;
 //   · a tela opera; o Admin encerra (o móvel fica "Sem alocação"); o painel
 //     mostra horas recebidas e o SALDO DE HOSPEDAGEM; sem plano, o saldo
@@ -331,16 +331,21 @@ check(
 );
 await admin.screenshot({ path: `${SAIDA}47-ficha-hospedado.png`, fullPage: true });
 
-// Anunciante: "Agora em: Tabacaria Central", sem dados do anfitrião.
+// Anunciante: a opção MOSTRAÍ MÓVEL (migration 115) — nunca o anfitrião, o
+// local, o percentual ou a hospedagem.
 const emailAnun = `anun-${marca}@teste.com`;
 const ANUN = await cadastrar('Loja Bem Vestir', '11144477735', emailAnun);
 darPlano(ANUN);
 const pA = await entrarConta(emailAnun);
-await pA.waitForSelector(`.ponto-movel[data-ponto-id="${PONTO}"]`, { timeout: 10000 });
-const cardTexto = await pA.locator(`.ponto-movel[data-ponto-id="${PONTO}"]`).innerText();
-check('card: "Agora em: Tabacaria Central"', /Agora em: Tabacaria Central/.test(cardTexto), cardTexto);
-check('card: sem percentual, saldo ou hospedagem', !/%|saldo|hospedagem/i.test(cardTexto), cardTexto);
-await pA.locator(`.ponto-movel[data-ponto-id="${PONTO}"]`).screenshot({ path: `${SAIDA}47-card-hospedado.png` });
+await pA.waitForSelector('[data-mostrai-movel]', { timeout: 10000 });
+const cardTexto = await pA.locator('[data-mostrai-movel]').innerText();
+check('card: "Mostraí Móvel" em operação agora', /Mostraí Móvel[\s\S]*em operação agora/.test(cardTexto), cardTexto);
+check(
+  'card: sem anfitrião, percentual, saldo ou hospedagem',
+  !/Tabacaria|%|saldo|hospedagem/i.test(cardTexto),
+  cardTexto,
+);
+await pA.locator('[data-mostrai-movel]').screenshot({ path: `${SAIDA}47-card-hospedado.png` });
 
 // A tela operou 3 h desde que chegou (horário 24 h: tudo dentro).
 PG(`UPDATE pontos_moveis_hospedagens SET iniciada_em = now() - interval '4 hours' WHERE id = ${HOSP}`);

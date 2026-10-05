@@ -427,12 +427,14 @@ test('17. propriedade: móvel nunca ganha dono — nem pelo PATCH do admin, nem 
     (e) => e.code === '23514',
     'móvel sempre tem número',
   );
-  // Quem escolhe o móvel (durante um evento) não vira dona: não edita o
-  // endereço e não o vê em "Meus pontos".
+  // A unidade nunca é escolhida (a escolha é a opção Mostraí Móvel, migration
+  // 115), e quem escolhe a opção durante um evento não vira dona: não edita
+  // o endereço e não vê o móvel em "Meus pontos".
   await eventoEmAndamento(ponto.id);
   await anunciantesRepo.atualizar(conta.id, { plano_id: 'essencial-1m' });
   const nav = await entrar(conta);
-  assert.strictEqual((await nav('PUT', '/anunciantes/me/pontos', { pontos: [ponto.id] })).status, 200);
+  assert.strictEqual((await nav('PUT', '/anunciantes/me/pontos', { pontos: [ponto.id] })).status, 400);
+  assert.strictEqual((await nav('PUT', '/anunciantes/me/pontos', { pontos: ['mostrai_movel'] })).status, 200);
   const end = await nav('PATCH', `/anunciantes/me/pontos/${ponto.id}/endereco`, { numero: '999' });
   assert.strictEqual(end.status, 404);
   const meus = await nav('GET', '/anunciantes/me/meus-pontos');
@@ -479,11 +481,11 @@ test('5 e 6. sem alocação: nenhum local, fora de "Onde estamos", da escolha e 
   assert.strictEqual(lista.status, 200, JSON.stringify(lista.json));
   assert.ok(!lista.json.pontos.some((p) => p.id === ponto.id), 'fora da escolha');
   const escolha = await nav('PUT', '/anunciantes/me/pontos', { pontos: [ponto.id] });
-  assert.strictEqual(escolha.status, 409, 'escolha nova de móvel sem alocação é recusada');
-  assert.match(escolha.json.erro, /sem alocação/);
+  assert.strictEqual(escolha.status, 400, 'a unidade nunca é escolha');
+  assert.match(escolha.json.erro, /Mostraí Móvel/);
 
-  // A tela ligada toca só o institucional — mesmo com conta que já tinha
-  // escolhido o móvel e peça aprovada.
+  // A tela ligada toca só o institucional — mesmo com conta que escolheu a
+  // opção Mostraí Móvel e tem peça aprovada: sem alocação não é pool.
   await contaComPlanoEPeca(ponto.id);
   const dispositivo = await dispositivosRepo.buscarComPonto(telaId);
   assert.strictEqual(dispositivo.movel_alocado, false);
@@ -797,65 +799,144 @@ test('12, 13 e 14. organizador não vira dono; evento e móvel não dão Plano B
 });
 
 // ---------- 15. escolha do anunciante ----------
-test('15. o anunciante escolhe o PONTO móvel alocado e vê o local e o próximo evento; sem alocação, só quem já tinha', async () => {
-  const ponto = await criarMovel();
-  const eventoId = await eventoEmAndamento(ponto.id, { local: 'Parque de Exposições' });
-  const proximo = await cadastrarEvento(ponto.id, { inicio: paredeMais(4 * 24), fim: paredeMais(5 * 24) });
+// Ponto fixo na rede, em operação e aberto a escolha nova — quem o usa tira
+// do sorteio automático (`tirarDoSorteio`) logo depois de escolher, para não
+// cair na fatia de contas de outros arquivos de teste.
+async function pontoFixo() {
+  const { rows } = await pool.query(
+    `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, status)
+     VALUES ($1, 'Rua Um, 1', 'Matão', 'SP', '15990000', 'outro', 'R', '1', 'em_operacao') RETURNING id`,
+    [`Fixo ${randomUUID().slice(0, 8)}`],
+  );
+  criadas.pontos.push(rows[0].id);
+  return rows[0].id;
+}
+
+// ---------- 15. MOSTRAÍ MÓVEL como opção de seleção (migration 115) ----------
+test('15. Mostraí Móvel: opção sempre no catálogo, 1 posição do plano, nunca a unidade; escolha salva e removível', async () => {
+  const unidade = await criarMovel();
+  await tirarDoSorteio(unidade.id);
+  const [f1, f2, f3] = [await pontoFixo(), await pontoFixo(), await pontoFixo()];
   const anunciante = await novaConta();
   await anunciantesRepo.atualizar(anunciante.id, { plano_id: 'essencial-1m' });
   const nav = await entrar(anunciante);
-  const lista = await nav('GET', '/anunciantes/me/pontos-disponiveis');
-  assert.strictEqual(lista.status, 200, JSON.stringify(lista.json));
-  const doMovel = lista.json.pontos.filter((p) => p.id === ponto.id);
-  assert.strictEqual(doMovel.length, 1, 'o móvel é UM item da lista');
-  const item = doMovel[0];
-  assert.strictEqual(item.tipo, 'movel');
-  assert.strictEqual(item.inventario, true);
-  assert.strictEqual(item.seuPonto, false);
-  assert.strictEqual(item.movel.localAtual.origem, 'evento');
-  assert.strictEqual(item.movel.localAtual.nome, 'Parque de Exposições');
-  assert.strictEqual(item.movel.localAtual.evento.id, eventoId);
-  assert.strictEqual(item.movel.base, undefined, 'sem base');
-  assert.strictEqual(item.movel.proximoEvento.id, proximo);
-  assert.strictEqual(item.movel.proximoEvento.publicoEstimado, 600);
-  assert.strictEqual(item.movel.proximoEvento.organizacao, undefined, 'dado administrativo não vai pro card');
+
+  // Unidade sem alocação: a opção existe mesmo assim, e a unidade nunca é item.
+  const antes = await nav('GET', '/anunciantes/me/pontos-disponiveis');
+  assert.strictEqual(antes.status, 200, JSON.stringify(antes.json));
+  assert.strictEqual(antes.json.mostraiMovel.escolhido, false);
+  assert.strictEqual(typeof antes.json.mostraiMovel.unidadesEmOperacao, 'number');
+  assert.ok(!antes.json.pontos.some((p) => p.id === unidade.id), 'unidade fora da lista');
   assert.ok(
-    lista.json.pontos.filter((p) => p.tipo === 'fixo').every((p) => p.movel === null),
-    'fixo não carrega nada de móvel',
+    antes.json.pontos.every((p) => p.tipo === undefined && p.movel === undefined),
+    'nada de unidade no item',
   );
 
-  const escolha = await nav('PUT', '/anunciantes/me/pontos', { pontos: [ponto.id] });
-  assert.strictEqual(escolha.status, 200, JSON.stringify(escolha.json));
-  const { rows } = await pool.query('SELECT ponto_id FROM anunciantes_pontos WHERE anunciante_id = $1', [
-    anunciante.id,
-  ]);
-  assert.deepStrictEqual(
-    rows.map((r) => r.ponto_id),
-    [ponto.id],
-  );
+  // Alocada e em operação: continua não sendo item (a escolha é a opção).
+  const evento = await eventoEmAndamento(unidade.id, { horario_operacao: '24h' });
+  await pool.query(`UPDATE pontos SET status = 'em_operacao' WHERE id = $1`, [unidade.id]);
+  const alocada = await nav('GET', '/anunciantes/me/pontos-disponiveis');
+  assert.ok(!alocada.json.pontos.some((p) => p.id === unidade.id));
+  assert.ok(alocada.json.mostraiMovel.unidadesEmOperacao >= 1, 'a unidade alocada conta como em operação');
+  const unidadeDireta = await nav('PUT', '/anunciantes/me/pontos', { pontos: [unidade.id] });
+  assert.strictEqual(unidadeDireta.status, 400, 'equipamento individual não é escolha');
 
-  // Fim do evento: sem alocação. Quem já tinha escolhido continua vendo (para
-  // poder tirar), marcado fora do inventário, e pode manter a escolha.
-  assert.strictEqual((await acaoNoEvento(ponto.id, eventoId, 'encerrar')).status, 200);
-  const depois = (await nav('GET', '/anunciantes/me/pontos-disponiveis')).json.pontos.find((p) => p.id === ponto.id);
-  assert.ok(depois, 'quem já tinha vê o móvel');
-  assert.strictEqual(depois.inventario, false);
-  assert.strictEqual(depois.movel.localAtual, null);
-  assert.strictEqual(depois.naCobertura, false, 'sem alocação não entra na cobertura');
-  assert.strictEqual((await nav('PUT', '/anunciantes/me/pontos', { pontos: [ponto.id] })).status, 200, 'manter vale');
-  // Outra conta não vê nem escolhe.
-  const outra = await novaConta();
-  await anunciantesRepo.atualizar(outra.id, { plano_id: 'essencial-1m' });
-  const navOutra = await entrar(outra);
-  const listaOutra = await navOutra('GET', '/anunciantes/me/pontos-disponiveis');
-  assert.ok(!listaOutra.json.pontos.some((p) => p.id === ponto.id));
-  assert.strictEqual((await navOutra('PUT', '/anunciantes/me/pontos', { pontos: [ponto.id] })).status, 409);
+  // 3 fixos + a opção = 4 escolhas num plano de 3: recusado.
+  const demais = await nav('PUT', '/anunciantes/me/pontos', { pontos: [f1, f2, f3, 'mostrai_movel'] });
+  assert.strictEqual(demais.status, 400);
+  assert.match(demais.json.erro, /cobre 3 ponto\(s\) e você marcou 4/);
+  // 2 fixos + a opção = 3 de 3.
+  const ok = await nav('PUT', '/anunciantes/me/pontos', { pontos: [f1, f2, 'mostrai_movel'] });
+  for (const id of [f1, f2, f3]) await tirarDoSorteio(id);
+  assert.strictEqual(ok.status, 200, JSON.stringify(ok.json));
+  assert.deepStrictEqual(ok.json.escolhidos, [f1, f2, 'mostrai_movel']);
+  const depois = (await nav('GET', '/anunciantes/me/pontos-disponiveis')).json;
+  assert.strictEqual(depois.mostraiMovel.escolhido, true);
+  assert.strictEqual(depois.modoAutomatico, false);
+  assert.strictEqual(depois.cobertura.veiculando, 3, 'pool móvel = 1 posição no ar');
+  assert.ok(depois.cobertura.pontosNoAr >= 3, 'os locais físicos contam um a um');
+  const { rows } = await pool.query(
+    `SELECT (SELECT array_agg(ponto_id ORDER BY ponto_id) FROM anunciantes_pontos WHERE anunciante_id = $1) AS pontos,
+            mostrai_movel_escolhido_em IS NOT NULL AS movel
+       FROM anunciantes WHERE id = $1`,
+    [anunciante.id],
+  );
+  assert.deepStrictEqual(rows[0], { pontos: [f1, f2].sort((a, b) => a - b), movel: true }, 'nunca grava a unidade');
+
+  // Encerrada a alocação, a escolha continua (preferência), e não há
+  // unidade no ar: a posição volta para os fixos (2 posições no ar).
+  assert.strictEqual((await acaoNoEvento(unidade.id, evento, 'encerrar')).status, 200);
+  const semUnidade = (await nav('GET', '/anunciantes/me/pontos-disponiveis')).json;
+  assert.strictEqual(semUnidade.mostraiMovel.escolhido, true, 'a escolha não some sem unidade');
+  assert.strictEqual(semUnidade.cobertura.veiculando, 2);
+  assert.strictEqual(semUnidade.cobertura.compensando, true, 'o tempo da posição móvel volta para os fixos');
+
+  // Tirar a opção.
+  assert.strictEqual((await nav('PUT', '/anunciantes/me/pontos', { pontos: [f1] })).status, 200);
+  assert.strictEqual(
+    (await pool.query('SELECT mostrai_movel_escolhido_em FROM anunciantes WHERE id = $1', [anunciante.id])).rows[0]
+      .mostrai_movel_escolhido_em,
+    null,
+  );
+});
+
+test('Mostraí Móvel: o pool é resolvido a cada hora — alocação entra, fim da alocação sai, sem editar a campanha', async () => {
+  const [a, b] = [await criarMovel(), await criarMovel()];
+  for (const u of [a, b]) {
+    await tirarDoSorteio(u.id);
+    await dispositivosRepo.atualizar(u.telaId, { status: 'ativo' });
+    await instalarPlayer(u.telaId);
+    await pool.query(`UPDATE pontos SET status = 'em_operacao' WHERE id = $1`, [u.id]);
+  }
+  const conta = await contaComPlanoEPeca(a.id);
+  const contasNa = async (u) => {
+    const envelope = await gerador.gerarPlaylistDaHora(await dispositivosRepo.buscarComPonto(u.telaId), new Date());
+    return new Set(envelope.itens.map((i) => i.anuncianteId));
+  };
+  // Sem alocação: ninguém.
+  assert.ok(!(await contasNa(a)).has(conta.id), 'unidade sem alocação não recebe comercial');
+  // A entra numa alocação: a campanha passa a poder tocar nela.
+  const evA = await eventoEmAndamento(a.id, { horario_operacao: '24h' });
+  assert.ok((await contasNa(a)).has(conta.id), 'alocada e dentro do horário: recebe');
+  // Fim da alocação de A, B começa outra: A sai do pool, B entra.
+  assert.strictEqual((await acaoNoEvento(a.id, evA, 'encerrar')).status, 200);
+  await eventoEmAndamento(b.id, { horario_operacao: '24h' });
+  assert.ok(!(await contasNa(a)).has(conta.id), 'fim da alocação tira a unidade do pool');
+  assert.ok((await contasNa(b)).has(conta.id), 'a nova alocação entra sozinha');
+  assert.strictEqual(
+    (await pool.query('SELECT COUNT(*)::int AS n FROM anunciantes_pontos WHERE anunciante_id = $1', [conta.id])).rows[0]
+      .n,
+    0,
+    'a escolha nunca foi uma unidade',
+  );
+});
+
+test('Mostraí Móvel: unidade alocada fora do horário da alocação não deve nada nesta hora', async () => {
+  const u = await criarMovel();
+  await tirarDoSorteio(u.id);
+  await dispositivosRepo.atualizar(u.telaId, { status: 'ativo' });
+  await instalarPlayer(u.telaId);
+  await pool.query(`UPDATE pontos SET status = 'em_operacao' WHERE id = $1`, [u.id]);
+  const conta = await contaComPlanoEPeca(u.id);
+  const fechadoHoje = { seg: null, ter: null, qua: null, qui: null, sex: null, sab: null, dom: null };
+  fechadoHoje[diaDaSemana(diaMais(3))] = { abre: '10:00', fecha: '11:00' };
+  await eventoEmAndamento(u.id, { horario_operacao: fechadoHoje });
+  const dispositivo = await dispositivosRepo.buscarComPonto(u.telaId);
+  await gerador.gerarPlaylistDaHora(dispositivo, new Date());
+  const { rows } = await pool.query(
+    `SELECT COALESCE(SUM(segundos_obrigacao), 0)::int AS devido FROM exibicoes_contador
+      WHERE dispositivo_id = $1 AND anunciante_id = $2`,
+    [u.telaId, conta.id],
+  );
+  assert.strictEqual(rows[0].devido, 0, 'fora do horário: nenhuma obrigação, a TV fica apagada');
 });
 
 // ---------- 16. Proof-of-Play ----------
-async function contaComPlanoEPeca(pontoId, categoriaId = null) {
+// Conta com plano e peça que escolheu a opção MOSTRAÍ MÓVEL (migration 115) —
+// nunca a unidade: `_pontoId` é só a unidade que o teste observa.
+async function contaComPlanoEPeca(_pontoId, categoriaId = null) {
   const conta = await novaConta({ categoriaId });
-  await pool.query('INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES ($1, $2)', [conta.id, pontoId]);
+  await pool.query('UPDATE anunciantes SET mostrai_movel_escolhido_em = now() WHERE id = $1', [conta.id]);
   await anunciantesRepo.atualizar(conta.id, { plano_id: 'essencial-1m' });
   const criativo = await criativosRepo.criar({
     anunciante_id: conta.id,
