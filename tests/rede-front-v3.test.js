@@ -924,3 +924,25 @@ test('f. validações: contexto, conta, local e período', async () => {
   );
   assert.strictEqual(rows[0].n, 0, 'nada gravado');
 });
+
+// Codex #120 (P2): o dono do ponto lê o MESMO estado do Admin — fila de
+// comprovantes crítica com a tela comunicando é problema também para ele.
+test('dono do ponto: fila crítica com a tela comunicando = com problema (mesma régua do Admin)', async () => {
+  const { meusPontosDaConta } = require('../src/pontos/meus-pontos');
+  const conta = await novaConta();
+  const ponto = await pontoDaConta(conta, { horario: null });
+  criadas.pontos.push(ponto.id);
+  const { rows } = await pool.query(
+    `INSERT INTO dispositivos (ponto_id, status, chave_hash, primeiro_sinal_em, ultima_vez_online, player_estado,
+                               fila_pendentes, fila_mais_antigo_em)
+     VALUES ($1, 'ativo', md5(random()::text), now(), now(), 'PLAYING', 20000, now() - interval '1 hour')
+     RETURNING id`,
+    [ponto.id],
+  );
+  const admin = await dispositivosRepo.buscarPorId(rows[0].id);
+  assert.strictEqual(admin.saude, 'com_problema', 'Admin: fila crítica');
+  const meus = await meusPontosDaConta(conta.id);
+  const tela = meus.flatMap((p) => p.telas || []).find((t) => t.id === rows[0].id);
+  assert.ok(tela, 'a tela aparece para o dono');
+  assert.strictEqual(tela.situacao, 'com_problema', 'dono: mesma conclusão do Admin');
+});

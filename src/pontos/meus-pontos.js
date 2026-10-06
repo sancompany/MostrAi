@@ -84,6 +84,10 @@ async function meusPontosDaConta(contaId, agora = new Date()) {
     pool.query(
       `SELECT d.id, d.ponto_id, d.numero, d.status, d.ultima_vez_online, d.primeiro_sinal_em, d.instalado_em,
               d.player_estado, d.ultimo_erro, d.ultimo_erro_codigo, d.revogado_em, d.chave_hash,
+              -- O que o classificador do estado lê (src/lib/status-tela.js):
+              -- fila de comprovantes e config travada também são problema.
+              d.created_at, d.provisionado_em, d.fila_pendentes, d.fila_mais_antigo_em,
+              d.config_versao_desejada, d.config_versao_aplicada, d.config_alterada_em,
               COALESCE(SUM(e.vezes_confirmadas) FILTER (WHERE e.janela_hora > now() - interval '30 days'), 0)::int AS exibicoes_30d,
               COUNT(DISTINCT e.anunciante_id) FILTER (WHERE e.janela_hora > now() - interval '30 days')::int AS anunciantes_30d
          FROM dispositivos d

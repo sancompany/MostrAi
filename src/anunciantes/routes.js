@@ -30,7 +30,13 @@ const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
 const { situacaoDasRedes, agendaPublicaDaRede } = require('../pontos/movel');
 const { SEGUNDOS_DA_HORA, telasDaCapacidadeSql } = require('../lib/capacidade');
-const { horarioDaTelaSql, horarioDoPontoSql, telaNoInventarioSql, inventarioSql } = require('../lib/contexto-do-ponto');
+const {
+  horarioDaTelaSql,
+  horarioDoPontoSql,
+  telaNoInventarioSql,
+  inventarioSql,
+  telaAlocadaSql,
+} = require('../lib/contexto-do-ponto');
 const basicoRepo = require('../pontos/basico');
 const { materializarPontoDaCandidatura } = require('../pontos/materializar');
 const indicacoesRepo = require('../indicacoes/repository');
@@ -1840,6 +1846,10 @@ async function comSituacaoNoAr(pontos) {
   const { rows: telas } = await pool.query(
     `SELECT d.ponto_id, d.status, d.revogado_em, (d.chave_hash IS NOT NULL) AS chave_hash, d.primeiro_sinal_em,
             d.ultima_vez_online, d.player_estado, d.ultimo_erro_codigo, d.ultimo_erro,
+            -- O que o classificador do estado lê (src/lib/status-tela.js).
+            d.created_at, d.provisionado_em, d.fila_pendentes, d.fila_mais_antigo_em,
+            d.config_versao_desejada, d.config_versao_aplicada, d.config_alterada_em,
+            p.tipo AS ponto_tipo, ${telaAlocadaSql('p', 'd')} AS movel_alocado,
             ${horarioDaTelaSql('p', 'd')} AS ponto_horario_semanal, ${telaNoInventarioSql('p', 'd')} AS inventario
        FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
       WHERE d.ponto_id = ANY($1::int[])`,
