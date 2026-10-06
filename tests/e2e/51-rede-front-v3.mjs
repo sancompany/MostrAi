@@ -269,7 +269,7 @@ check('Visão geral: 2 telas sem comunicação (não urgente)', semComVG && /2 t
 console.log('== B. Ficha da rede móvel ==');
 await irAdmin(`#rede/pontos/${REDE}`, '[data-rede-cabecalho]');
 const cab = await admin.locator('[data-rede-cabecalho]').innerText();
-check('cabeçalho: MÓVEL e Ativa', /MÓVEL/i.test(cab) && /Ativa/.test(cab), cab);
+check('cabeçalho: MÓVEL e Ativa', /MÓVEL/i.test(cab) && /Ativa/i.test(cab), cab);
 check('cabeçalho: 2 telas · 0 operando · 0 compromissos futuros', /2 telas · 0 operando · 0 compromissos futuros/.test(cab), cab);
 check('cabeçalho: sem "Disponível para anunciantes"', !/Disponível para anunciantes/.test(await admin.locator('#conteudo').innerText()));
 check('cabeçalho: ⋯ com Editar/Alterar foto/Excluir', (await admin.locator('.menu-mais-lista button').count()) === 3);
@@ -406,7 +406,7 @@ await irAdmin(`#rede/pontos/${PONTO_B}/telas/${B1}`, '[data-tela-resumo]');
 check('tela B1: Com problema · Falha de reprodução', /Com problema/.test(await admin.locator('.tela-ficha-topo').innerText()) && /Falha de reprodução/.test(await admin.locator('.tela-ficha-topo').innerText()));
 await irAdmin(`#rede/pontos/${PONTO_A}`, '#pontoCabecalho');
 const cabFixo = await admin.locator('#pontoCabecalho').innerText();
-check('ficha fixa: Fixo + estado + resumo das telas', /Fixo/.test(cabFixo) && /2 telas/.test(cabFixo) && /sem comunicação/.test(cabFixo), cabFixo);
+check('ficha fixa: Fixo + estado + resumo das telas', /Fixo/i.test(cabFixo) && /2 telas/.test(cabFixo) && /sem comunicação/.test(cabFixo), cabFixo);
 check('ficha fixa: telas antes das informações', await admin.evaluate(() => {
   const t = document.querySelector('#pontoTelas');
   const i = document.querySelector('#pontoInformacoes');

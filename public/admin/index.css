@@ -4788,3 +4788,9 @@ button.rede-resumo-item:focus-visible {
 .colecao + .pin-saida {
   margin-top: var(--e-5);
 }
+/* "MÓVEL · ATIVA" / "FIXO · ATIVO": os selos do cabeçalho em caixa alta,
+   como o selo da foto no card. */
+.ponto-cabecalho-selos .badge {
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}

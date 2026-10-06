@@ -283,7 +283,7 @@ check('rede: foto 1280×720', dimensoesDoArquivo(`${STORAGE}ponto-${REDE}.jpg`) 
 const cabecalho = await admin.locator('[data-rede-cabecalho]').innerText();
 check('cabeçalho: "Mostraí Móvel" e "Matão/SP" separados', /MOSTRAÍ MÓVEL/i.test(cabecalho) && cabecalho.includes('Matão/SP') && !/Móvel — Matão/i.test(cabecalho), cabecalho.slice(0, 120));
 const selosRede = await admin.locator('[data-rede-cabecalho] .ponto-cabecalho-selos').innerText();
-check('cabeçalho: MÓVEL e Ativa (sem ITINERANTE)', /MÓVEL/i.test(selosRede) && /Ativa/.test(selosRede) && !/Itinerante/i.test(cabecalho), selosRede);
+check('cabeçalho: MÓVEL e Ativa (sem ITINERANTE)', /MÓVEL/i.test(selosRede) && /Ativa/i.test(selosRede) && !/Itinerante/i.test(cabecalho), selosRede);
 check('cabeçalho: 0 telas · 0 operando · 0 compromissos futuros', /0 telas · 0 operando · 0 compromissos futuros/.test(cabecalho), cabecalho);
 check('ficha: um único "Adicionar tela"', (await admin.locator('[data-nova-tela]').count()) === 1);
 const dup = await apiAdmin('/admin/pontos-moveis', 'POST', { nome: 'Outra', cidade: 'matão', uf: 'SP' });

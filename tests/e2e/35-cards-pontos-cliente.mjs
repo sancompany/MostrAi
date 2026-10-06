@@ -100,7 +100,7 @@ function ponto({ nome, rua, bairro, categoria, status, foto = null, h = H24, don
       `INSERT INTO dispositivos (ponto_id, apelido, status, chave_hash, provisionado_em, primeiro_sinal_em, ultima_vez_online)
        VALUES (${id}, 'Tela 1', 'ativo', md5(random()::text), now(), now(), now())`,
     );
-  if (tela === 'sem_sinal')
+  if (tela === 'sem_comunicacao')
     PG(
       `INSERT INTO dispositivos (ponto_id, apelido, status, chave_hash, provisionado_em)
        VALUES (${id}, 'Tela 1', 'ativo', md5(random()::text), now())`,
@@ -180,7 +180,7 @@ P.barbearia = ponto({
   categoria: 'Barbearia',
   status: 'aguardando_primeiro_sinal',
   foto: '/img/exemplo-ponto-completo-720.jpg',
-  tela: 'sem_sinal',
+  tela: 'sem_comunicacao',
 });
 const NOME_LONGO = 'Pet Shop Amigo Fiel — Banho, Tosa e Hotel para Pets da Vila Santa Cruz';
 P.pet = ponto({
