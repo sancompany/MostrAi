@@ -1617,3 +1617,22 @@ hospedagem) para a mesma coisa operacional, com conta digitada num
 sem ganho operacional); reclassificar estado no navegador; mudar o
 `/config`/scheduler junto (fora do escopo, risco no Player).
 
+## ADR-041 — Indisponibilidade do cliente só reduz a obrigação no fechamento do ciclo (06/10/2026)
+
+**Contexto.** Desde a migration 111 (ADR-035) o tempo em que a campanha
+ficava sem criativo (ou toda pausada) por responsabilidade do cliente
+reduzia a obrigação do lote EM TEMPO REAL: um Essencial de 27 h sem anúncio
+aparecia 26h19, 25h…, caindo a cada hora.
+
+**Decisão (dono).** Durante o ciclo aberto, saldo = contratado −
+Proof-of-Play confirmado; só POP reduz o saldo em tempo real. A
+indisponibilidade do cliente continua registrada (início, fim, motivo) e,
+no FECHAMENTO do lote, a parcela proporcional da obrigação que ela
+representa (fração do período do lote, não horas de relógio) deixa de ser
+dívida da Mostraí — o rollover é só o não entregue da Mostraí. O ritmo do
+gerador (atraso) segue medido sobre a parte da Mostraí, então scheduler e
+pacing não mudam.
+
+**Recusado.** Lançar crédito manual ou corrigir dados (o saldo é
+derivado); descontar horas de relógio da indisponibilidade.
+
