@@ -1058,10 +1058,16 @@ Pro pagava, recebia 0 h, devia-se 0 h e o painel mostrava "Em dia".
   diária.
 - **Responsabilidade.** Ponto fechado, tela offline, capacidade insuficiente
   ou mídia retirada pelo admin: a dívida continua da Mostraí. Tempo em que a
-  campanha está indisponível **por responsabilidade do cliente** sai da
-  obrigação, proporcional ao período do ciclo
-  (`indisponibilidade_cliente`, janela aberta/fechada): nenhuma peça válida
-  (nunca enviou, ou só recusadas) ou todas pausadas por ele. Peça enviada
+  campanha está indisponível **por responsabilidade do cliente** fica
+  REGISTRADO (`indisponibilidade_cliente`, janela aberta/fechada): nenhuma
+  peça válida (nunca enviou, ou só recusadas) ou todas pausadas por ele.
+  **Com o ciclo aberto ele não reduz nada** — saldo = contratado −
+  Proof-of-Play confirmado; o passar do tempo, a falta de peça e a pausa do
+  cliente não derrubam o número (hotfix de 06/10/2026). **No fechamento do
+  ciclo**, a parcela da obrigação correspondente a esse tempo — proporcional
+  ao período do ciclo, nunca em horas de relógio — sai da obrigação: só a
+  parte não entregue de responsabilidade da Mostraí passa pra frente
+  (ex.: 27 h, 2 h atribuíveis ao cliente, 22 h entregues → 3 h). Peça enviada
   esperando a análise da Mostraí é tempo da Mostraí. A janela é reavaliada
   na contratação, a cada mudança de peça (envio, pausa, retomada, exclusão,
   aprovação, recusa, retirada) e a cada 10 min no servidor.

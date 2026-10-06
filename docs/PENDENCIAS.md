@@ -5985,10 +5985,24 @@ Ficou para depois (nada bloqueia):
       contrato do Player ficaram intocados por regra da estação; o ESTADO no
       backend é "Sem alocação". Alinhar o `/config` só numa estação de
       Player.
+
 - RV3 [x] `tests/obrigacao-do-ciclo.test.js` (§31, sobre-entrega) falhava
       quando a suíte rodava entre 00:00 e 00:59 de Matão (a exibição na hora
       anterior caía no dia anterior ao ciclo); o teste agora usa a hora em
       curso. Só o teste mudou.
+
+**Hotfix — Saldo de veiculação (06/10/2026).** A indisponibilidade do
+cliente deixou de reduzir o saldo com o ciclo aberto (saldo = contratado −
+POP); só no fechamento ela decide o que passa pra frente. Ficou registrado,
+sem mexer (fora do escopo do hotfix):
+- SV1 [ ] O lote de BENEFÍCIO nasce proporcional aos dias do período
+      (`registrarBeneficio`): a conta real 14 tem um Essencial de
+      05/10 18:53 a 05/11 03:00 = 98.295 s, e o painel mostra "27h 18min",
+      não "27h". É a regra do benefício pelos dias, não deste hotfix.
+- SV2 [ ] FIFO: entrega além da parte da Mostraí de um ciclo pode pagar o
+      lote seguinte que já existia (renovação paga adiantada). Era assim
+      antes; com o desconto agora só no fechamento, isso aparece na virada
+      do ciclo em vez de durante ele.
 
       (d) (Codex, PR #114) um ajuste NEGATIVO do Admin feito no mesmo
       instante em que o gerador reserva a hora da conta pode deixar a rede

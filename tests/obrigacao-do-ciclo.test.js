@@ -212,10 +212,84 @@ test('ritmo: tempo fora por culpa do cliente não vira atraso (metade do ciclo s
   const um = lote(84 * H);
   const janela = [{ inicio: em(0), fim: em(15) }];
   const s = saldo([um], [], em(15), janela);
-  assert.strictEqual(s.saldoSegundos, 42 * H, 'deve metade');
+  // Hotfix 06/10/2026: com o ciclo aberto a indisponibilidade não desconta
+  // nada do saldo — só no fechamento (ver os testes "SALDO HOTFIX" abaixo).
+  assert.strictEqual(s.saldoSegundos, 84 * H, 'ciclo aberto: contratado − POP');
   assert.strictEqual(s.atrasoSegundos, 0, 'nada atrasado: o tempo que passou foi do cliente');
   const depois = saldo([um], [], em(22.5), janela);
   assert.strictEqual(depois.atrasoSegundos, 21 * H, 'metade do tempo disponível passou sem entrega');
+  assert.strictEqual(saldo([um], [], em(31), janela).saldoSegundos, 42 * H, 'fechado: a metade do cliente sai');
+});
+
+// ---------------------------------------------------------------------------
+// SALDO HOTFIX (06/10/2026, decisão do dono): durante o ciclo ABERTO o saldo
+// é contratado − Proof-of-Play confirmado. A indisponibilidade do cliente fica
+// registrada e só no FECHAMENTO decide qual parte da não entrega passa pra
+// frente — pela parcela proporcional da obrigação, nunca horas de relógio.
+// ---------------------------------------------------------------------------
+test('SALDO HOTFIX 1: 27 h, nenhum criativo, 3 dias passados, 0 POP → 27 h (e não cai com o tempo)', () => {
+  const um = lote(27 * H);
+  const semPeca = [{ inicio: em(0), fim: null }];
+  for (const dia of [1 / 24, 3, 10, 29.9]) {
+    const s = saldo([um], [], em(dia), semPeca);
+    assert.strictEqual(s.devidoSegundos, 27 * H, `contratado 27 h no dia ${dia}`);
+    assert.strictEqual(s.entregueSegundos, 0);
+    assert.strictEqual(s.saldoSegundos, 27 * H, `saldo 27 h no dia ${dia}`);
+    assert.strictEqual(s.cicloAtual.contratadoSegundos, 27 * H);
+    assert.strictEqual(s.atrasoSegundos, 0, 'o tempo do cliente também não vira atraso');
+  }
+  // O registro existe e é visível, só não desconta enquanto o ciclo corre.
+  const [l] = saldo([um], [], em(3), semPeca).lotes;
+  assert.strictEqual(l.indisponivelClienteSegundos, 0);
+  assert.strictEqual(l.indisponivelClienteAcumuladoSegundos, Math.round((27 * H * 3) / 30));
+  assert.strictEqual(l.fechado, false);
+});
+
+test('SALDO HOTFIX 2: 3 dias sem criativo, depois criativo e 2 h de POP → 25 h durante o ciclo', () => {
+  const s = saldo([lote(27 * H)], [entrega(5, 2 * H)], em(6), [{ inicio: em(0), fim: em(3) }]);
+  assert.strictEqual(s.devidoSegundos, 27 * H);
+  assert.strictEqual(s.entregueSegundos, 2 * H);
+  assert.strictEqual(s.saldoSegundos, 25 * H);
+  // POP é a única coisa que derruba o saldo em tempo real: 2h13 → 24h47.
+  const pop = saldo([lote(27 * H)], [entrega(5, 2 * H + 13 * 60)], em(6), [{ inicio: em(0), fim: em(3) }]);
+  assert.strictEqual(pop.saldoSegundos, 24 * H + 47 * 60);
+});
+
+// Ciclo de 27 dias e 2 dias sem peça: a parcela do cliente é 2/27 do ciclo =
+// 2 h da obrigação de 27 h (proporcional à distribuição, não 48 h de relógio).
+const cicloDe27 = () => lote(27 * H, { dias: 27 });
+const doisDiasSemPeca = [{ inicio: em(0), fim: em(2) }];
+
+test('SALDO HOTFIX 3: 27 h, 2 h atribuíveis ao cliente, 22 h POP, ciclo encerrado → 3 h transportadas', () => {
+  const um = cicloDe27();
+  const s = saldo([um], [entrega(10, 22 * H)], em(28), doisDiasSemPeca);
+  assert.strictEqual(s.saldoSegundos, 3 * H, 'só a parte da Mostraí que faltou entregar');
+  const [l] = s.lotes;
+  assert.strictEqual(l.fechado, true);
+  assert.strictEqual(l.indisponivelClienteSegundos, 2 * H, 'as 2 h do cliente saem no fechamento');
+  assert.strictEqual(l.pendenteSegundos, 3 * H);
+  // Rollover: o ciclo seguinte herda só as 3 h da Mostraí, nunca as 2 h do cliente.
+  const renova = lote(27 * H, { inicio: 27, dias: 27 });
+  const depois = saldo([um, renova], [entrega(10, 22 * H)], em(28), doisDiasSemPeca);
+  assert.strictEqual(depois.saldoAnteriorSegundos, 3 * H);
+  assert.strictEqual(depois.cicloAtual.contratadoSegundos, 27 * H, 'o ciclo novo nasce inteiro');
+  assert.strictEqual(depois.saldoSegundos, 30 * H);
+});
+
+test('SALDO HOTFIX 4: o mesmo cenário ANTES do encerramento mostra 5 h, nunca 3 h', () => {
+  const s = saldo([cicloDe27()], [entrega(10, 22 * H)], em(26), doisDiasSemPeca);
+  assert.strictEqual(s.devidoSegundos, 27 * H);
+  assert.strictEqual(s.saldoSegundos, 5 * H, '27 h − 22 h POP');
+  const [l] = s.lotes;
+  assert.strictEqual(l.indisponivelClienteSegundos, 0, 'nada descontado com o ciclo aberto');
+  assert.strictEqual(l.indisponivelClienteAcumuladoSegundos, 2 * H, 'mas registrado');
+});
+
+test('SALDO HOTFIX 5: sem indisponibilidade do cliente, 27 h − 22 h POP no fim → 5 h transportadas', () => {
+  const um = cicloDe27();
+  assert.strictEqual(saldo([um], [entrega(10, 22 * H)], em(28)).saldoSegundos, 5 * H);
+  const depois = saldo([um, lote(27 * H, { inicio: 27, dias: 27 })], [entrega(10, 22 * H)], em(28));
+  assert.strictEqual(depois.saldoAnteriorSegundos, 5 * H);
 });
 
 test('ritmo: no começo do ciclo nada está atrasado; na metade sem entrega, metade está', () => {
@@ -779,4 +853,74 @@ test('§31 anomalia de sobre-entrega vira pendência do admin, uma vez por ciclo
     ['admin'],
   );
   assert.strictEqual((await obrigacao.saldoDaConta(conta.id)).saldoSegundos, 0, 'bônus: nunca dívida do cliente');
+});
+
+// SALDO HOTFIX 6–9 (06/10/2026): quem é responsável pela indisponibilidade.
+// Só o tempo do CLIENTE é registrado; nada desconta com o ciclo aberto; no
+// fechamento, só a parcela do cliente sai da obrigação.
+const depoisDoFim = async (contaId) => {
+  const [l] = await lancamentos(contaId);
+  return new Date(new Date(l.fim).getTime() + DIA);
+};
+
+test('SALDO HOTFIX 6: indisponibilidade da Mostraí (rede sem tela) não desconta nem no fechamento', async () => {
+  const conta = await novaConta();
+  await comprar(conta, 'essencial-1m');
+  await obrigacao.avaliarDisponibilidade(conta.id);
+  const { rows } = await pool.query('SELECT 1 FROM indisponibilidade_cliente WHERE anunciante_id = $1', [conta.id]);
+  assert.strictEqual(rows.length, 0, 'peça aprovada e nenhuma tela: o problema é da Mostraí');
+  const fim = await obrigacao.saldoDaConta(conta.id, { agora: await depoisDoFim(conta.id) });
+  assert.strictEqual(fim.saldoSegundos, 27 * H, 'as 27 h inteiras passam pra frente');
+});
+
+test('SALDO HOTFIX 7: peça aguardando análise da Mostraí não é culpa do cliente', async () => {
+  const conta = await novaConta({ criativo: false });
+  await criativosRepo.criar({
+    anunciante_id: conta.id,
+    arquivo_original_url: 'o.mp4',
+    arquivo_normalizado_url: `https://exemplo.test/${randomUUID()}.mp4`,
+    thumbnail_url: null,
+    duracao_segundos: 15,
+  });
+  await comprar(conta, 'essencial-1m');
+  await obrigacao.avaliarDisponibilidade(conta.id);
+  const { rows } = await pool.query('SELECT 1 FROM indisponibilidade_cliente WHERE anunciante_id = $1', [conta.id]);
+  assert.strictEqual(rows.length, 0, 'em análise: o tempo é da Mostraí');
+  const fim = await obrigacao.saldoDaConta(conta.id, { agora: await depoisDoFim(conta.id) });
+  assert.strictEqual(fim.saldoSegundos, 27 * H);
+});
+
+test('SALDO HOTFIX 8: peça retirada pelo Admin não é culpa do cliente, nem no fechamento', async () => {
+  const conta = await novaConta();
+  await comprar(conta, 'essencial-1m');
+  await pool.query(`UPDATE criativos SET status = 'retirado', retirado_por = 'admin' WHERE id = $1`, [
+    conta.criativoId,
+  ]);
+  await obrigacao.avaliarDisponibilidade(conta.id);
+  const { rows } = await pool.query('SELECT 1 FROM indisponibilidade_cliente WHERE anunciante_id = $1', [conta.id]);
+  assert.strictEqual(rows.length, 0);
+  const fim = await obrigacao.saldoDaConta(conta.id, { agora: await depoisDoFim(conta.id) });
+  assert.strictEqual(fim.saldoSegundos, 27 * H);
+});
+
+test('SALDO HOTFIX 9: peça pausada pelo cliente registra a responsabilidade dele, sem reduzir o saldo do ciclo aberto', async () => {
+  const conta = await novaConta();
+  await comprar(conta, 'essencial-1m');
+  await pool.query(`UPDATE criativos SET status = 'retirado', retirado_por = 'cliente' WHERE id = $1`, [
+    conta.criativoId,
+  ]);
+  await obrigacao.avaliarDisponibilidade(conta.id);
+  const { rows } = await pool.query('SELECT * FROM indisponibilidade_cliente WHERE anunciante_id = $1', [conta.id]);
+  assert.strictEqual(rows.length, 1);
+  assert.strictEqual(rows[0].motivo, 'pausado_pelo_cliente', 'responsabilidade do cliente registrada');
+  // A pausa vem desde o começo do ciclo e já dura 3 dias: o saldo continua 27 h.
+  const [l] = await lancamentos(conta.id);
+  const inicio = new Date(l.inicio);
+  await pool.query('UPDATE indisponibilidade_cliente SET inicio = $2 WHERE anunciante_id = $1', [conta.id, inicio]);
+  const aberto = await obrigacao.saldoDaConta(conta.id, { agora: new Date(inicio.getTime() + 3 * DIA) });
+  assert.strictEqual(aberto.devidoSegundos, 27 * H);
+  assert.strictEqual(aberto.saldoSegundos, 27 * H, 'ciclo aberto: nada sai do saldo');
+  // Fechado com a pausa durante o ciclo inteiro: a obrigação toda era do cliente.
+  const fechado = await obrigacao.saldoDaConta(conta.id, { agora: await depoisDoFim(conta.id) });
+  assert.strictEqual(fechado.saldoSegundos, 0, 'no fechamento nada passa pra frente');
 });
