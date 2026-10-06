@@ -1,6 +1,6 @@
 const pool = require('../db/pool');
 const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
-const { LIMITE_COMERCIAL } = require('../lib/capacidade');
+const { LIMITE_COMERCIAL, SEGUNDOS_DA_HORA, telasDaCapacidadeSql } = require('../lib/capacidade');
 const { PARTES, colunasDoEndereco } = require('../lib/endereco');
 
 // Cinco status (migration 069 + `aguardando_primeiro_sinal` na 088) —
@@ -401,10 +401,9 @@ async function ocupacaoPorAnunciante() {
 // MÓVEL, 3600 s por tela ativa cadastrada (no mínimo 1) — a cota de cada
 // conta na rede se divide entre as telas, então cada tela a mais é hora a
 // mais para vender. Tela em operação ou não, não importa: rede sem
-// localização agora NÃO fica fechada para escolha por isso.
-const capacidadeDaHoraSql = (p) => `(3600 * CASE WHEN ${p}.tipo = 'movel'
-      THEN GREATEST(1, (SELECT COUNT(*) FROM dispositivos d WHERE d.ponto_id = ${p}.id AND d.status = 'ativo'))
-      ELSE 1 END)`;
+// localização agora NÃO fica fechada para escolha por isso. O número de
+// telas é o mesmo da régua da Mídia Mostraí (src/lib/capacidade.js).
+const capacidadeDaHoraSql = (p) => `(${SEGUNDOS_DA_HORA} * ${telasDaCapacidadeSql(p)})`;
 async function avaliarBloqueios() {
   const { rows } = await pool.query(
     `UPDATE pontos SET escolha_bloqueada_em = now()

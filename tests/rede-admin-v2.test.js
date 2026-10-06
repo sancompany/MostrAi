@@ -37,6 +37,7 @@ const app = require('../src/server');
 const alocacao = require('../src/pontos/alocacao');
 const hospedagem = require('../src/pontos/hospedagem');
 const pontosRepo = require('../src/pontos/repository');
+const midiasRepo = require('../src/midias/repository');
 const candidaturasRepo = require('../src/candidaturas/repository');
 
 const IP = `10.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
@@ -676,6 +677,31 @@ test('4. capacidade da hora: 3600 s × telas ativas na rede (no mínimo 1); 3600
     assert.strictEqual(await bloqueadaEm(rede.id), null);
     assert.strictEqual(await bloqueadaEm(semTela.id), null);
     assert.strictEqual(await pontosRepo.liberarEscolha(fixo.id), false, 'fixo: 3600 − 900 < 3000');
+
+    // A régua da Mídia Mostraí (/admin/capacidade-rede, preview e trava de
+    // publicação) usa o MESMO denominador: comercial por tela. Sem isso, o
+    // painel dizia 83% numa rede que a escolha via com 42% (Codex, PR #119).
+    const regua = new Map((await midiasRepo.ocupacaoPorPonto(ids)).map((l) => [l.pontoId, l]));
+    assert.strictEqual(regua.get(rede.id).segundosComercial, 1500, 'rede com 2 telas: 3000 s ÷ 2 por tela');
+    assert.strictEqual(regua.get(rede.id).comercialPct, 41.7);
+    assert.strictEqual(regua.get(fixo.id).segundosComercial, 3000, 'fixo: a conta inteira na única tela');
+    assert.strictEqual(regua.get(fixo.id).comercialPct, 83.3);
+    assert.strictEqual(regua.get(semTela.id).segundosComercial, 2000, 'rede sem tela: divide por 1, nunca por 0');
+    const preview = new Map(
+      (
+        await midiasRepo.previewOcupacao({ pontosAlvo: [rede.id, fixo.id], frequenciaHora: 30, duracaoSegundos: 30 })
+      ).map((l) => [l.pontoId, l]),
+    );
+    // Outros arquivos podem ter mídia de rede ativa ao mesmo tempo: a conta
+    // usa o Mostraí que a própria régua leu.
+    for (const [id, comercial] of [
+      [rede.id, 1500],
+      [fixo.id, 3000],
+    ]) {
+      const l = preview.get(id);
+      assert.strictEqual(l.segundosComercial, comercial);
+      assert.strictEqual(l.depoisPct, Math.round(((comercial + l.segundosMostrai + 900) / 3600) * 1000) / 10);
+    }
 
     // Só telas ATIVAS contam: com uma em reparo, a rede vale 1 hora e fecha.
     await pool.query(`UPDATE dispositivos SET status = 'reparo' WHERE id = $1`, [t2]);

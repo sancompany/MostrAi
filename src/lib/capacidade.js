@@ -43,4 +43,16 @@ function quebraCapacidade(segundosComercial, segundosMostrai) {
   };
 }
 
-module.exports = { SEGUNDOS_DA_HORA, LIMITE_COMERCIAL, RESERVA_MOSTRAI, quebraCapacidade };
+// Por quantas TELAS a parte COMERCIAL de um ponto se divide na hora (estação
+// Rede/Admin V2, 06/10/2026): 1 no ponto fixo; na REDE MÓVEL, uma por tela
+// ativa cadastrada (no mínimo 1) — o gerador divide a cota de cada conta na
+// rede entre as telas do pool (src/playlist/gerador.js#parcelaDaTela). A régua
+// é por tela: comercial ÷ telas contra a hora de UMA tela. A Mídia Mostraí não
+// se divide (cada tela toca a sua). Fonte única para o bloqueio de escolha
+// (src/pontos/repository.js), a régua de capacidade (src/midias/repository.js)
+// e a ocupação do card (src/anunciantes/routes.js) — nunca divergem.
+const telasDaCapacidadeSql = (p) => `(CASE WHEN ${p}.tipo = 'movel'
+      THEN GREATEST(1, (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = ${p}.id AND d.status = 'ativo'))
+      ELSE 1 END)`;
+
+module.exports = { SEGUNDOS_DA_HORA, LIMITE_COMERCIAL, RESERVA_MOSTRAI, quebraCapacidade, telasDaCapacidadeSql };

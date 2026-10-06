@@ -29,6 +29,7 @@ const convitesRepo = require('../convites/repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
 const { situacaoDasRedes, agendaPublicaDaRede } = require('../pontos/movel');
+const { SEGUNDOS_DA_HORA, telasDaCapacidadeSql } = require('../lib/capacidade');
 const { horarioDaTelaSql, horarioDoPontoSql, telaNoInventarioSql, inventarioSql } = require('../lib/contexto-do-ponto');
 const basicoRepo = require('../pontos/basico');
 const { materializarPontoDaCandidatura } = require('../pontos/materializar');
@@ -720,6 +721,7 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
             ${inventarioSql('p')} AS inventario,
             (p.escolha_bloqueada_em IS NOT NULL) AS bloqueado,
             COALESCE(SUM(pl.segundos_por_hora), 0)::int AS segundos_vendidos,
+            ${telasDaCapacidadeSql('p')} AS telas_da_capacidade,
             (ap.ponto_id IS NOT NULL) AS escolhido, ap.escolhido_em,
             (p.anunciante_id IS NOT DISTINCT FROM $1) AS seu_ponto
        FROM pontos p
@@ -802,7 +804,8 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
       // Quanto da hora daquele ponto já está vendido. 100% = cheio.
       // Ponto que ainda não veicula não tem hora vendida — 0 não é "vazio de
       // verdade", é "ainda não existe", e a tela diz isso com o status.
-      ocupacao: Math.min(100, Math.round((r.segundos_vendidos / 3600) * 100)),
+      // Por tela (na rede móvel a cota se divide entre as telas ativas).
+      ocupacao: Math.min(100, Math.round((r.segundos_vendidos / (SEGUNDOS_DA_HORA * r.telas_da_capacidade)) * 100)),
       // Cruzou 80% (G.7) — fechado pra escolha nova, mas continua exibindo
       // pra quem já tinha escolhido (esse nunca é tirado por isso).
       bloqueado: r.bloqueado && !r.escolhido,
