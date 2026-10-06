@@ -5985,10 +5985,41 @@ Ficou para depois (nada bloqueia):
       contrato do Player ficaram intocados por regra da estação; o ESTADO no
       backend é "Sem alocação". Alinhar o `/config` só numa estação de
       Player.
+
 - RV3 [x] `tests/obrigacao-do-ciclo.test.js` (§31, sobre-entrega) falhava
       quando a suíte rodava entre 00:00 e 00:59 de Matão (a exibição na hora
       anterior caía no dia anterior ao ciclo); o teste agora usa a hora em
       curso. Só o teste mudou.
+
+**Hotfix — Saldo de veiculação (06/10/2026).** A indisponibilidade do
+cliente deixou de reduzir o saldo com o ciclo aberto (saldo = contratado −
+POP); só no fechamento ela decide o que passa pra frente. Ficou registrado,
+sem mexer (fora do escopo do hotfix):
+- SV1 [ ] O lote de BENEFÍCIO nasce proporcional aos dias do período
+      (`registrarBeneficio`): a conta real 14 tem um Essencial de
+      05/10 18:53 a 05/11 03:00 = 98.295 s, e o painel mostra "27h 18min",
+      não "27h". É a regra do benefício pelos dias, não deste hotfix.
+- SV2 [ ] FIFO: entrega além da parte da Mostraí de um ciclo pode pagar o
+      lote seguinte que já existia (renovação paga adiantada). Era assim
+      antes; com o desconto agora só no fechamento, isso aparece na virada
+      do ciclo em vez de durante ele.
+- SV3 [ ] Deadlock no gatilho `marcar_playlists_desatualizadas` (migration
+      083): cada disparo grava em TODAS as telas ativas. Dois comandos que
+      disparam o gatilho ao mesmo tempo travam um no outro, porque pegam as
+      mesmas linhas de `dispositivos` em ordem diferente. Exemplo: o
+      `UPDATE pontos SET status` de `sincronizarStatusPonto` e um
+      `DELETE FROM dispositivos WHERE ponto_id`. O Postgres derruba um deles
+      e a requisição volta 500.
+      Visto no CI do PR #121 (run 37530703481): o "revogar credencial" de
+      `tests/player-mvp.test.js` caiu enquanto outro arquivo de teste apagava
+      telas no mesmo banco. Em produção a chance é baixa (pouca escrita
+      concorrente), mas o efeito seria o mesmo.
+      Caminhos possíveis, a decidir:
+      - (a) o gatilho só sobe UMA versão global e o `GET /playlist` compara
+        com a versão da tela, sem varrer as telas;
+      - (b) repetir o comando quando o Postgres derrubar por deadlock
+        (SQLSTATE 40P01) nos caminhos que disparam o gatilho.
+      Fora do escopo do hotfix; nada mudou nesse código.
 
       (d) (Codex, PR #114) um ajuste NEGATIVO do Admin feito no mesmo
       instante em que o gerador reserva a hora da conta pode deixar a rede

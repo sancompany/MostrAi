@@ -11,8 +11,11 @@ const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 // até o Proof-of-Play confirmar a entrega (src/bancohoras/obrigacao-do-ciclo.js).
 //
 //   contratadoSegundos — tudo o que foi contratado e ainda vale (ciclos,
-//                        trocas e benefícios, menos o tempo em que a campanha
-//                        esteve indisponível por responsabilidade do cliente);
+//                        trocas e benefícios). Num ciclo AINDA ABERTO, sem
+//                        desconto nenhum: saldo = contratado − Proof-of-Play.
+//                        Só no ciclo já encerrado sai a parcela do tempo em
+//                        que a campanha esteve indisponível por
+//                        responsabilidade do cliente (hotfix 06/10/2026);
 //   entregueSegundos   — o que o Proof-of-Play confirmou contra isso;
 //   segundos           — o que falta entregar (saldo a entregar);
 //   cicloAtual         — o ciclo em curso e quanto dele foi contratado;

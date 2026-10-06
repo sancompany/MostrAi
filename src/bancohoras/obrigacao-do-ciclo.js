@@ -24,9 +24,13 @@ const { confirmadasPagasSql, confirmadasBancoSql } = require('../lib/partes-da-h
 //     vale dali até o vencimento que já existia);
 //   · benefício encerrado antes do fim: sai o que faltava dele;
 //   · campanha indisponível por responsabilidade do CLIENTE (nenhum criativo
-//     disponível, ou todos pausados por ele): o tempo da assinatura corre e se
-//     perde — a dívida do lote cai na proporção desse tempo. Retirada pela
-//     Mostraí (admin) não reduz nada;
+//     disponível, ou todos pausados por ele): fica registrada
+//     (`indisponibilidade_cliente`) e, NO FECHAMENTO do lote, a parcela da
+//     obrigação que corresponde a esse tempo não passa pra frente — ela é do
+//     cliente, não dívida da Mostraí. Enquanto o lote está aberto ela NÃO
+//     reduz nada: durante o ciclo, saldo = contratado − Proof-of-Play
+//     confirmado (hotfix de 06/10/2026, decisão do dono). Retirada pela
+//     Mostraí (admin) ou peça em análise não contam como tempo do cliente;
 //   · reembolso integral: o ciclo some; o que já tinha sido entregue dele vira
 //     saldo técnico NEGATIVO (interno), descontado da próxima contratação.
 //
@@ -412,7 +416,12 @@ function calcularSaldo({ lancamentos = [], indisponibilidades = [], dias = [], a
       const inicio = new Date(l.inicio).getTime();
       const fim = new Date(l.fim).getTime();
       const fracaoFora = fracaoIndisponivel(inicio, fim);
-      const cliente = Math.round(segundos * fracaoFora);
+      // A parcela da obrigação que o tempo fora do cliente representa — pela
+      // fração do PERÍODO do lote, nunca em horas de relógio. Só sai do valor
+      // do lote depois que ele FECHA: com o lote aberto, o saldo é contratado
+      // − Proof-of-Play, e a indisponibilidade só fica registrada.
+      const clienteAcumulado = Math.round(segundos * fracaoFora);
+      const fechado = fim <= agoraMs;
       eventos.push({
         em,
         ordem: 1,
@@ -424,7 +433,8 @@ function calcularSaldo({ lancamentos = [], indisponibilidades = [], dias = [], a
           inicio,
           fim,
           contratado: segundos,
-          cliente,
+          cliente: fechado ? clienteAcumulado : 0,
+          clienteAcumulado,
           fracaoFora,
           lancamento: l,
         },
@@ -448,6 +458,7 @@ function calcularSaldo({ lancamentos = [], indisponibilidades = [], dias = [], a
           fim: dia,
           contratado: Number(d.basico),
           cliente: 0,
+          clienteAcumulado: 0,
           fracaoFora: 0,
         },
       });
@@ -549,14 +560,18 @@ function calcularSaldo({ lancamentos = [], indisponibilidades = [], dias = [], a
   let atraso = 0;
   let idadeMeses = 0;
   for (const l of ativos) {
-    if (l.restante <= 0) continue;
-    // A parte "por vir" é medida no tempo em que a campanha PODIA rodar: o
-    // tempo fora por responsabilidade do cliente já saiu do valor do lote e
-    // não pode contar de novo como tempo que passou sem entrega.
+    // O ritmo continua medido sobre a parte da MOSTRAÍ: no lote aberto, a
+    // parcela do cliente ainda está no saldo (só sai no fechamento), mas não
+    // é atraso — sai daqui só pra medir. O tempo fora do cliente também não
+    // conta como tempo que passou sem entrega: a parte "por vir" é medida no
+    // tempo em que a campanha PODIA rodar.
+    const aindaDoCliente = l.clienteAcumulado - l.cliente;
+    const restante = l.restante - aindaDoCliente;
+    if (restante <= 0) continue;
     const disponivel = (l.fim - l.inicio) * (1 - l.fracaoFora);
     const futuro =
       l.fim > agoraMs && disponivel > 0 ? Math.min(1, (l.fim - Math.max(agoraMs, l.inicio)) / disponivel) : 0;
-    const devidoAteAgora = Math.max(0, l.restante - Math.max(0, l.valor - l.reduzido) * futuro);
+    const devidoAteAgora = Math.max(0, restante - Math.max(0, l.valor - aindaDoCliente - l.reduzido) * futuro);
     if (devidoAteAgora > 0) {
       if (atraso === 0) {
         const desde = new Date(Math.min(l.fim, agoraMs));
@@ -628,7 +643,11 @@ function calcularSaldo({ lancamentos = [], indisponibilidades = [], dias = [], a
       inicio: new Date(l.inicio),
       fim: new Date(l.fim),
       contratadoSegundos: Math.round(l.contratado),
+      // O que JÁ saiu da obrigação (lote fechado) e o que está registrado até
+      // agora (lote aberto: informativo, ainda não desconta nada).
       indisponivelClienteSegundos: Math.round(l.cliente),
+      indisponivelClienteAcumuladoSegundos: Math.round(l.clienteAcumulado),
+      fechado: l.fim <= agoraMs,
       reduzidoSegundos: Math.round(l.reduzido),
       entregueSegundos: Math.round(l.alocado + l.absorvido),
       negativoAbsorvidoSegundos: Math.round(l.absorvido),

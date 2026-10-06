@@ -1,6 +1,22 @@
 # Current Handoff
 
 ## Updated
+2026-10-06 — **Hotfix Saldo de veiculação** (sem migration; ADR-041; branch
+`claude/busy-noether-hheir2`). `src/bancohoras/obrigacao-do-ciclo.js#calcularSaldo`:
+com o lote ABERTO, saldo = contratado − Proof-of-Play confirmado — a
+`indisponibilidade_cliente` (sem criativo / tudo pausado pelo cliente)
+continua registrada, mas só no FECHAMENTO (`fim <= agora`) a parcela
+proporcional dela (`fracaoIndisponivel` × contratado, fração do período,
+nunca horas de relógio) sai do valor do lote; o rollover é só a parte não
+entregue da Mostraí. Lote expõe `indisponivelClienteSegundos` (já
+descontado, só fechado), `indisponivelClienteAcumuladoSegundos` (registrado
+até agora) e `fechado`. O ATRASO (o que o gerador recupera via
+`saldosParaRecuperar`) continua medido sobre a parte da Mostraí — scheduler,
+pacing e T3 sem mudança. Saldo é derivado: nenhuma correção de dados (a
+conta real 14 volta a 98.295 s sozinha). Regressões "SALDO HOTFIX 1–9" em
+`tests/obrigacao-do-ciclo.test.js`. Pendências SV1–SV2 em
+`docs/PENDENCIAS.md`. Review-Master segue PAUSADA.
+
 2026-10-06 — **Rede Front V3** (sem migration; ADR-040; branch
 `claude/busy-noether-hheir2`). ESTADO DA TELA refeito em
 `src/lib/status-tela.js#estadoDaTela`: `{administrativo, conectividade,
