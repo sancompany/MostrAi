@@ -236,7 +236,7 @@ router.get('/admin/resumo', async (_req, res) => {
     filas,
     pontosPorStatus,
     anunciantesPorSituacao,
-    telasComProblemaDeSinal,
+    telasAtencao,
     faturamento,
     exibicoes,
     novos,
@@ -346,9 +346,9 @@ router.get('/admin/resumo', async (_req, res) => {
                   plano_cortesia, COUNT(*)::int AS qtd
                 FROM anunciantes WHERE excluido_em IS NULL
                 GROUP BY situacao, plano_cortesia`),
-    // Só telas em sem_sinal/erro_do_player (src/lib/status-tela.js) — nunca
-    // fora_do_horario nem aguardando_instalacao, que não são falha.
-    dispositivosRepo.listarComProblemaDeSinal(),
+    // Telas COM PROBLEMA (evidência de erro) e SEM COMUNICAÇÃO, separadas —
+    // sem comunicação não é falha (src/lib/status-tela.js, Rede Front V3).
+    dispositivosRepo.telasComAtencao(),
     pool.query(
       `SELECT to_char(date_trunc('month', criado_em), 'YYYY-MM') AS mes, SUM(valor)::numeric AS total
        FROM cobrancas_confirmadas
@@ -435,7 +435,11 @@ router.get('/admin/resumo', async (_req, res) => {
       // prazo legal correndo — o alerta de urgência olha só pra ela.
       arrependimentos: Number(filas.rows[0].arrependimentos),
       contato: Number(filas.rows[0].contato),
-      offline: telasComProblemaDeSinal.length,
+      // `offline` (nome antigo, mesma chave para a Visão geral) = telas COM
+      // PROBLEMA real; sem comunicação vem à parte, como aviso.
+      offline: telasAtencao.comProblema.length,
+      telasComProblema: telasAtencao.comProblema.length,
+      telasSemComunicacao: telasAtencao.semComunicacao.length,
       bancohoras: Number(filas.rows[0].bancohoras),
       pontosocupados: Number(filas.rows[0].pontosocupados),
       enderecosaconferir: Number(filas.rows[0].enderecosaconferir),

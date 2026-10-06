@@ -136,7 +136,7 @@ await shot(adm, 'admin-candidaturas-aprovada');
 console.log('== admin: ficha do ponto → tela e código de instalação ==');
 await irPara(adm, `rede/pontos/${pontoId}`);
 await adm.waitForSelector('[data-nova-tela]');
-check('ficha do ponto aguardando instalação', (await adm.textContent('.ficha-titulo')).includes('Aguardando instalação'));
+check('ficha do ponto aguardando instalação', (await adm.textContent('#pontoCabecalho')).includes('Aguardando instalação'));
 check('sem tela ainda — mensagem certa', (await adm.textContent('#pontoTelas')).includes('Nenhuma tela'));
 // "+ Adicionar tela": nada a preencher — sem nome manual, sem chave, sem URL;
 // a tela nasce com o código humano M-xxxx e a ficha dela já abre.

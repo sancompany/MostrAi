@@ -5,7 +5,8 @@
 //   + Tela → M-xxxx "Aguardando instalação" → Gerar código → Player
 //   provisiona com ID + código → "Player conectado" sem F5 → heartbeat de
 //   15 s → config (margens, horário do ponto, PIN) → área segura sobe a
-//   versão → erro no Suporte → revogar → excluir → rotas antigas 404 →
+//   versão → erro do Player ("Com problema", detalhe em Operação) → revogar
+//   → excluir (Ações da ficha da tela) → rotas antigas 404 →
 //   dono vê só o simples → celular sem rolagem lateral.
 //
 // Assume banco zerado (reset-db.sh) e servidor na 3999.
@@ -211,14 +212,17 @@ cfg = await (await chamar('GET', `/player/${credencial.dispositivoId}/config`)).
 check('config traz a margem nova', cfg.margens.superior === 2.5 && cfg.margens.esquerda === 1);
 await heartbeat({ configVersionAplicada: cfg.configVersion });
 
-console.log('== erro no Suporte ==');
+console.log('== erro do Player: Com problema ==');
 await heartbeat({
   configVersionAplicada: cfg.configVersion,
   estado: 'PLAYBACK_ERROR',
   erro: { codigo: 'PLAYBACK_FALHOU', mensagem: 'vídeo corrompido', ocorreuEm: new Date().toISOString() },
 });
-await esperarTexto(admin, '.tela-ficha-topo', /Erro do Player/);
-check('Suporte mostra o último erro', /Suporte[\s\S]*vídeo corrompido/.test(await texto(admin, '.tela-ficha')));
+// Rede Front V3: erro do Player com a tela comunicando = "Com problema",
+// com o motivo em português no selo; a mensagem crua fica em Operação.
+await esperarTexto(admin, '.tela-ficha-topo', /Com problema/);
+check('selo do motivo: Falha de reprodução', /Falha de reprodução/.test(await texto(admin, '.tela-ficha-topo')));
+check('Operação mostra o último erro do Player', /Último erro do Player[\s\S]*vídeo corrompido/.test(await texto(admin, '[data-bloco="operacao"]')));
 await heartbeat({ configVersionAplicada: cfg.configVersion, erro: null });
 await esperarTexto(admin, '.tela-ficha-topo', /Operando/);
 check('erro resolvido → Operando', true);
@@ -228,7 +232,8 @@ console.log('== ficha do ponto: linha da tela ==');
 await admin.click(`.breadcrumb a[href="#rede/pontos/${pontoId}"]`);
 await admin.waitForSelector('.tela-linha');
 const linha = await texto(admin, '.tela-linha');
-check('linha: M-xxxx + Operando + Abrir + Excluir', linha.includes(codigoTela) && /Operando/.test(linha) && /Abrir/.test(linha) && /Excluir/.test(linha), linha);
+// Rede Front V3: a linha só tem [Abrir]; Excluir mora nas Ações da ficha da tela.
+check('linha: M-xxxx + Operando + Abrir, sem Excluir', linha.includes(codigoTela) && /Operando/.test(linha) && /Abrir/.test(linha) && !/Excluir/.test(linha), linha);
 
 console.log('== dono do ponto: visão simples ==');
 const dono = await (await b.newContext({ viewport: { width: 1280, height: 900 } })).newPage();

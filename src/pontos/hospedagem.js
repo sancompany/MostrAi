@@ -271,8 +271,14 @@ async function criar(pontoId, corpo, admin) {
         'Endereço',
         LIMITES.endereco,
       );
+      // `sem_categoria: true` (o compromisso unificado, src/pontos/compromissos.js):
+      // o Admin escolheu "Nenhuma restrição" de propósito — não cai no padrão.
       const categoriaId =
-        categoriaInformada !== undefined ? categoriaInformada : (interesse?.categoria_id ?? conta.categoria_id);
+        corpo?.sem_categoria === true
+          ? null
+          : categoriaInformada !== undefined
+            ? categoriaInformada
+            : (interesse?.categoria_id ?? conta.categoria_id);
       await exigirCategoria(c, categoriaId);
       const percentual = await percentualAtual(c, { travar: true });
       if (percentual !== esperado) {

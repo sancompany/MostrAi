@@ -90,10 +90,10 @@ function ponto(nome, { dono = null, status = 'em_operacao', cidade = 'Matão' } 
         SELECT id FROM ins`),
   );
 }
-// no_ar: sinal agora; sem_sinal: 29 h; sem_player: nunca instalado.
+// no_ar: sinal agora; sem_comunicacao: 29 h calada; sem_player: nunca instalado.
 function tela(pontoId, situacao) {
   const chave = situacao === 'sem_player' ? 'NULL' : `'e2e37-${pontoId}-${situacao}-${marca}'`;
-  const sinal = situacao === 'no_ar' ? 'now()' : situacao === 'sem_sinal' ? "now() - interval '29 hours'" : 'NULL';
+  const sinal = situacao === 'no_ar' ? 'now()' : situacao === 'sem_comunicacao' ? "now() - interval '29 hours'" : 'NULL';
   return Number(
     PG(`WITH ins AS (INSERT INTO dispositivos (ponto_id, apelido, status, chave_hash, provisionado_em, primeiro_sinal_em, ultima_vez_online, player_estado)
         VALUES (${pontoId}, 'Tela', 'ativo', ${chave}, now() - interval '90 days', now() - interval '90 days', ${sinal}, ${situacao === 'sem_player' ? 'NULL' : "'PLAYING'"}) RETURNING id)
@@ -189,7 +189,7 @@ const [aHoje, mHoje, dHoje] = hoje.split('-');
 const pago = await conta('Padaria Estrela E2E');
 const cicloPago = planoPago(pago, 'destaque-3m');
 const pontosPago = [ponto('Mercado Bom Preço E2E'), ponto('Academia Forma E2E'), ponto('Barbearia Zé E2E', { cidade: 'Araraquara' })];
-const telasPago = [tela(pontosPago[0], 'no_ar'), tela(pontosPago[1], 'sem_sinal'), tela(pontosPago[2], 'sem_player')];
+const telasPago = [tela(pontosPago[0], 'no_ar'), tela(pontosPago[1], 'sem_comunicacao'), tela(pontosPago[2], 'sem_player')];
 exibicoes(pago, telasPago[0], 420, 0);
 exibicoes(pago, telasPago[1], 200, 2);
 exibicoes(pago, telasPago[2], 20, 0, (d) => 40 + ((d * 13) % 25));
@@ -202,7 +202,7 @@ PG(`UPDATE anunciantes SET papeis = '{anunciante,ponto}' WHERE id = ${dono.id}`)
 planoPorCreditos(dono, 'maximo-6m');
 const proprio = ponto('San & Co Loja Centro E2E', { dono: dono.id });
 const telaOk = tela(proprio, 'no_ar');
-tela(proprio, 'sem_sinal');
+tela(proprio, 'sem_comunicacao');
 sincronizarPonto(proprio);
 ponto('San & Co Instalando E2E', { dono: dono.id, status: 'a_instalar' });
 ponto('San & Co Primeiro Sinal E2E', { dono: dono.id, status: 'aguardando_primeiro_sinal' });

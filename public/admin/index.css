@@ -4318,3 +4318,479 @@ button.pend-bloco:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 1px;
 }
+
+/* =====================================================================
+   Rede Front V3 (06/10/2026): estado da tela em três dimensões, card único
+   de ponto fixo e rede móvel, fichas refeitas e o COMPROMISSO (formulário
+   único da rede móvel).
+   ===================================================================== */
+/* Âmbar = "vale olhar", nunca erro: SEM COMUNICAÇÃO não é problema. */
+:root {
+  --atencao: #d97706;
+  --atencao-texto: #92400e;
+  --atencao-tint: rgba(217, 119, 6, 0.1);
+}
+.badge-atencao {
+  background: var(--atencao-tint);
+  color: var(--atencao-texto);
+}
+.txt-atencao {
+  color: var(--atencao-texto);
+  font-weight: 600;
+}
+.rede-resumo-item.atencao {
+  border-color: var(--atencao);
+  background: var(--atencao-tint);
+}
+.rede-resumo-item.atencao b {
+  color: var(--atencao-texto);
+}
+button.rede-resumo-item {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+button.rede-resumo-item:hover {
+  box-shadow: var(--sombra-hover);
+}
+button.rede-resumo-item:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+@media (max-width: 560px) {
+  .rede-resumo {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--e-2);
+  }
+  .rede-resumo-item {
+    padding: var(--e-2) var(--e-3);
+  }
+  .rede-resumo-item b {
+    font-size: 1.1rem;
+  }
+}
+
+/* Card de ponto: o pé com o resumo das telas e o [Abrir]. */
+.ponto-card.com-corpo .ponto-card-pe {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--e-2);
+}
+.ponto-card-pe-texto {
+  min-width: 0;
+}
+.ponto-card-abrir {
+  flex: none;
+  pointer-events: none;
+}
+.ponto-card .rede-card-linha {
+  margin-top: 2px;
+}
+
+/* Linha da tela: problema em vermelho, sem comunicação em âmbar. */
+.tela-linha.com-atencao {
+  border-color: var(--atencao);
+}
+
+/* Cabeçalho das fichas de ponto (fixo e móvel). */
+.ponto-cabecalho {
+  display: grid;
+  grid-template-columns: 176px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--e-4);
+}
+.ponto-cabecalho-texto {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--e-1);
+}
+.ponto-cabecalho-texto h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.ponto-cabecalho-selos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ponto-cabecalho-texto .ficha-endereco {
+  margin: 0;
+}
+.ponto-cabecalho-resumo {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.ponto-cabecalho-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--e-2);
+  justify-content: flex-end;
+}
+.ponto-nota {
+  margin: var(--e-3) 0 0;
+  font-size: 0.85rem;
+}
+.ponto-ficha-topo {
+  margin-bottom: var(--e-4);
+}
+@media (max-width: 760px) {
+  .ponto-cabecalho {
+    grid-template-columns: 120px minmax(0, 1fr);
+  }
+  .ponto-cabecalho-acoes {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+@media (max-width: 420px) {
+  .ponto-cabecalho {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ponto-cabecalho .ficha-foto {
+    width: 100%;
+  }
+}
+/* Ficha: o conteúdo largo (compromissos, telas) à esquerda. */
+.ponto-detalhe-grid.invertido {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+}
+@media (max-width: 1180px) {
+  .ponto-detalhe-grid.invertido {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* "⋯": as ações raras num menu nativo. */
+.menu-mais {
+  position: relative;
+}
+.menu-mais > summary {
+  list-style: none;
+  min-width: 36px;
+  justify-content: center;
+}
+.menu-mais > summary::-webkit-details-marker {
+  display: none;
+}
+.menu-mais-lista {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--e-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-controle);
+  background: var(--card);
+  box-shadow: 0 10px 30px rgba(20, 23, 31, 0.12);
+}
+.menu-mais-lista button {
+  padding: var(--e-2) var(--e-3);
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+}
+.menu-mais-lista button:hover,
+.menu-mais-lista button:focus-visible {
+  background: var(--bg-alt);
+  outline: none;
+}
+.menu-mais-lista button.perigo {
+  color: var(--err-texto);
+}
+@media (max-width: 760px) {
+  .menu-mais-lista {
+    right: auto;
+    left: 0;
+  }
+}
+
+/* Capacidade recolhida. */
+.sanfona > summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.sanfona[open] > summary {
+  margin-bottom: var(--e-3);
+}
+
+/* COMPROMISSOS da rede móvel. */
+.compromissos-grupo {
+  margin: var(--e-4) 0 var(--e-2);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.secao-topo + .compromissos-grupo {
+  margin-top: 0;
+}
+.lista-compromissos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--e-2);
+}
+.compromisso {
+  padding: var(--e-3) var(--e-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  min-width: 0;
+}
+.compromisso-topo {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--e-2);
+  overflow-wrap: anywhere;
+}
+.compromisso-topo .badge {
+  flex: none;
+}
+.compromisso-linha,
+.compromisso-sub {
+  margin: 2px 0 0;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.compromisso-sub {
+  color: var(--text-dim);
+}
+.compromisso-acoes {
+  margin-top: var(--e-2);
+}
+.vazio-compacto {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--e-2);
+  padding: var(--e-3) var(--e-4);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+}
+.vazio-compacto p {
+  margin: 0;
+}
+
+/* Formulário de compromisso (o segmentado é o da casa, acima). */
+.modal-corpo :is(.opcao-endereco, .opcao-tela, .check-linha) {
+  display: flex;
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 400;
+  color: var(--text);
+}
+.contexto-rotulo {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+.conta-busca {
+  position: relative;
+}
+.conta-resultados {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 30;
+  max-height: 280px;
+  overflow: auto;
+  margin: 4px 0 0;
+  padding: var(--e-1);
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-controle);
+  background: var(--card);
+  box-shadow: 0 10px 30px rgba(20, 23, 31, 0.12);
+}
+.conta-resultados [role="option"] {
+  padding: var(--e-2) var(--e-3);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.conta-resultados [role="option"]:hover,
+.conta-resultados [role="option"].ativo {
+  background: var(--bg-alt);
+}
+.conta-resultados .dado-sub {
+  display: block;
+}
+.conta-resultados-nota {
+  padding: var(--e-2) var(--e-3);
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+.conta-escolhida {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e-3);
+  padding: var(--e-3) var(--e-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-controle);
+  background: var(--bg-alt);
+}
+.conta-escolhida .dado-sub {
+  display: block;
+}
+.conta-escolhida-rotulo {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+.opcoes-endereco,
+.opcoes-telas {
+  display: flex;
+  flex-direction: column;
+  gap: var(--e-1);
+}
+.opcoes-telas {
+  flex-flow: row wrap;
+  gap: var(--e-2);
+}
+.opcao-endereco,
+.opcao-tela {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--e-2);
+  padding: var(--e-2) var(--e-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-controle);
+  font-size: 0.88rem;
+  cursor: pointer;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.opcao-endereco .dado-sub {
+  display: block;
+}
+.opcao-endereco:has(input:checked),
+.opcao-tela:has(input:checked) {
+  border-color: var(--brand);
+  background: var(--brand-tint);
+}
+.opcao-endereco:has(input:disabled),
+.opcao-tela.ocupada {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.opcao-tela {
+  align-items: center;
+}
+.endereco-digitado {
+  padding: var(--e-3);
+  border: 1px dashed var(--border);
+  border-radius: var(--r-controle);
+}
+.compromisso-form .horario-editor[data-grade] {
+  margin-top: var(--e-2);
+}
+.avancado > summary {
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.avancado[open] > summary {
+  margin-bottom: var(--e-3);
+}
+.avancado {
+  display: block;
+}
+
+/* Ficha da tela: resumo de uma linha + Operação / Player lado a lado. */
+.tela-ficha-topo {
+  flex-direction: column;
+  align-items: stretch;
+}
+.tela-ficha-topo .tela-ficha-ponto {
+  margin-left: var(--e-2);
+  font-weight: 400;
+  font-size: 0.95rem;
+  color: var(--text-dim);
+}
+.tela-resumo {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--e-3);
+  margin: 0;
+  padding-top: var(--e-3);
+  border-top: 1px solid var(--border);
+}
+.tela-resumo dt {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+.tela-resumo dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.tela-resumo .dado-sub {
+  display: block;
+  font-weight: 400;
+}
+@media (max-width: 760px) {
+  .tela-resumo {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.tela-ficha-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--e-4);
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .tela-ficha-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.tela-alertas {
+  margin: var(--e-3) 0 0;
+  padding-left: 18px;
+  font-size: 0.88rem;
+}
+.tela-config {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--e-5);
+  align-items: start;
+}
+.tela-config-rotulo {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+@media (max-width: 900px) {
+  .tela-config {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.colecao + .pin-saida {
+  margin-top: var(--e-5);
+}
+/* "MÓVEL · ATIVA" / "FIXO · ATIVO": os selos do cabeçalho em caixa alta,
+   como o selo da foto no card. */
+.ponto-cabecalho-selos .badge {
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}

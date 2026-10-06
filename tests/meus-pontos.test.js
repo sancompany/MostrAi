@@ -112,7 +112,9 @@ test('telas dentro do ponto, com situação humana e sem dado interno', async ()
       estab.telas.map((t) => [t.nome, t.situacao, t.nivel]),
       [
         [codigo(0), 'operando', 'ok'],
-        [codigo(1), 'sem_sinal', 'atencao'],
+        // Ponto sem horário = dia inteiro: calada no horário é atenção; o
+        // erro antigo de uma tela calada não vira problema.
+        [codigo(1), 'sem_comunicacao', 'atencao'],
       ],
     );
     assert.equal(estab.alertas, 1);

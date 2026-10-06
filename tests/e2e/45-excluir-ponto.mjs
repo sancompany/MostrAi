@@ -59,7 +59,9 @@ console.log('== ponto sem histórico ==');
 await admin.evaluate((id) => {
   location.hash = `rede/pontos/${id}`;
 }, idLivre);
-await admin.waitForSelector('[data-excluir-ponto]');
+// Rede Front V3: "Excluir ponto" mora no "⋯" do cabeçalho da ficha.
+await admin.waitForSelector('#pontoCabecalho .menu-mais > summary');
+await admin.click('#pontoCabecalho .menu-mais > summary');
 await admin.click('[data-excluir-ponto]');
 await admin.waitForSelector('dialog[open] [data-confirmar]');
 const textoModal = await admin.locator('dialog[open]').innerText();
@@ -78,7 +80,9 @@ console.log('== ponto com histórico ==');
 await admin.evaluate((id) => {
   location.hash = `rede/pontos/${id}`;
 }, idHistorico);
-await admin.waitForSelector('[data-excluir-ponto]');
+// Rede Front V3: "Excluir ponto" mora no "⋯" do cabeçalho da ficha.
+await admin.waitForSelector('#pontoCabecalho .menu-mais > summary');
+await admin.click('#pontoCabecalho .menu-mais > summary');
 await admin.click('[data-excluir-ponto]');
 await admin.waitForSelector('dialog[open] [data-confirmar]');
 await admin.click('dialog[open] [data-confirmar]');

@@ -2326,8 +2326,8 @@ dialog.dlg-endereco::backdrop { background: rgba(20,23,31,.5); }
 
 /* MOSTRAÍ MÓVEL (a rede móvel da cidade) na escolha de pontos (estação
    Rede/Admin V2): o MESMO molde do card — a foto da rede na moldura
-   canônica (nunca uma faixa colorida no lugar da foto), o selo ITINERANTE
-   por cima dela, nome, cidade/UF, "Atual" e "Próxima localização" — e
+   canônica (nunca uma faixa colorida no lugar da foto), o selo MÓVEL
+   por cima dela, nome, cidade/UF, "Local atual" e "Próxima localização" — e
    "Ver agenda" no canto da foto, no lugar do "Ver no mapa". */
 .ponto-escolha .selo-movel,
 .ponto-card .selo-movel {

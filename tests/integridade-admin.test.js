@@ -143,7 +143,7 @@ test('Ofertas não expõe mais o desconto comodato em percentual', async () => {
 
 // Heartbeat com erro (docs/player-mvp-contract.md §5): `erro` objeto grava;
 // `erro: null` apaga o que ficou — senão a tela fica presa em
-// "erro_do_player" depois de o Player voltar a funcionar. `erro` ausente
+// "com_problema" depois de o Player voltar a funcionar. `erro` ausente
 // não mexe (a batida só não informou).
 test('heartbeat com erro grava o erro; erro null apaga; ausente mantém', async () => {
   const pool = require('../src/db/pool');

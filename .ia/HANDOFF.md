@@ -1,6 +1,31 @@
 # Current Handoff
 
 ## Updated
+2026-10-06 — **Rede Front V3** (sem migration; ADR-040; branch
+`claude/busy-noether-hheir2`). ESTADO DA TELA refeito em
+`src/lib/status-tela.js#estadoDaTela`: `{administrativo, conectividade,
+operacao, resumo, problema, atencao, alertas}` — **sem comunicação ≠
+problema** (`sem_comunicacao`, âmbar; atenção só no horário), **com
+problema** só com evidência de erro e tela comunicando (`ERRO_PLAYER` com
+motivo, `FILA_CRITICA`, `CONFIG_PENDENTE`), tela móvel sem compromisso =
+`sem_alocacao` (nunca 24 h; `ponto_tipo`/`movel_alocado` no SELECT_TELA).
+Os nomes antigos `sem_sinal`/`erro_do_player`/`SEM_SINAL` saíram de tudo
+(owner/anunciante usam `situacaoPublica`). `GET /admin/pontos` traz
+`estadoTelas` (`dispositivos/repository.js#resumoDeTelas`) e
+`codigosTelas`; `/admin/resumo` separa `telasComProblema` (= `offline`) e
+`telasSemComunicacao`. COMPROMISSO: `src/pontos/compromissos.js` (contexto
+`conta` → hospedagem, `externo` → evento; endereço da conta/ponto/outro;
+`horario_modo` local|personalizado|periodo obrigatório; categoria padrão
+do local) + rotas `/admin/compromissos/contas[/:id/locais]` e
+`/admin/pontos/:id/compromissos[/:ref[/:acao]]`; `movel.js#editarEvento`
+novo; as rotas antigas ficam. Front (`public/admin/index.page.js`): grade
+(`montarPontoCard` único, `resumoDaRede`), fichas (`renderPontoFixo`,
+`renderRedeMovel`, `renderTelaFicha` com Operação/Player/Configuração/
+Ações), modal único `abrirCompromisso` (também do "Agendar compromisso" do
+interesse). Selo "Móvel", "Local atual" no card do anunciante. Testes:
+`tests/rede-front-v3.test.js`, E2E `tests/e2e/51-rede-front-v3.mjs`.
+Pendências RV1–RV2 em `docs/PENDENCIAS.md` (RV3 — teste §31 sensível à hora — corrigido). Review-Master segue PAUSADA.
+
 2026-10-06 — **Rede / Admin V2** (migration 116, ADR-039; branch
 `claude/busy-noether-hheir2`; continua o #118 sem mexer na arquitetura da
 rede). Admin › Rede só com [Pontos] [Candidaturas]: fixos e redes móveis na

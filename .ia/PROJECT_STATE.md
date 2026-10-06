@@ -28,6 +28,12 @@ ajuste; a estação fecha com o nível que ele aceitar. Ver `CLAUDE.md`.
 
 ## Funcionalidades concluídas (confirmadas no código, testadas)
 
+- **Rede Front V3 (06/10/2026, ADR-040):** estado da tela em três
+  dimensões (sem comunicação ≠ problema; móvel sem compromisso = sem
+  alocação, nunca 24 h); grade/fichas da Rede refeitas sobre o estado do
+  servidor; COMPROMISSO único da rede móvel (conta ou outro local; horário
+  sempre explícito; endereço e horário vindos da conta/ponto).
+
 - Cadastro/login de conta única, três papéis possíveis.
 - Catálogo de planos no banco: Essencial/Pro/Prime × 4 ciclos, sem regra em
   variável de ambiente (Inicial/Básico ficaram `ativo=false`, só histórico —

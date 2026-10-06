@@ -5956,6 +5956,40 @@ Ficou para depois (nada bloqueia):
       sistema; `pontos.aceitou_termos_em` fica vazio nesse caso (a coluna
       não é lida por nenhuma regra).
 
+**Rede Front V3 — rede, pontos, telas e compromissos móveis (06/10/2026).**
+Feito: o ESTADO da tela em três dimensões (administrativo · conectividade ·
+operação, `src/lib/status-tela.js`) — **sem comunicação não é problema**
+(âmbar, filtro e contador próprios; a Visão geral separa "N telas com
+problema", urgente, de "N telas sem comunicação"); **com problema** só com
+evidência de erro (estado/erro do Player, fila crítica, config travada) com
+a tela comunicando; **rede móvel não tem horário global**: tela sem
+compromisso em curso é "Sem alocação" — não opera, nunca 24 h (era a causa
+do M-0010 aparecer "Com problema"). Grade com resumo e cards somados do
+mesmo `estadoTelas` do servidor, busca pelo código da tela, card único fixo
+/ móvel (MÓVEL, Local atual, Próximo, [Abrir]); fichas do ponto fixo, da
+rede móvel e da tela refeitas; **COMPROMISSO** como conceito único da rede
+móvel ("+ Novo evento" e "+ Nova hospedagem" saíram): contexto *Numa conta*
+(conta anfitriã por busca com homônimos distinguidos; endereço da conta, de
+um ponto da conta ou digitado em partes; benefício e termo físico) ou *Outro
+local ou evento*; horário SEMPRE explícito (do local — cópia —, todo o
+período ou personalizado; vários dias nunca viram 24 h calados); público
+estimado saiu do fluxo; camada única `src/pontos/compromissos.js` com as
+rotas antigas de hospedagem/evento mantidas. Sem migration.
+Ficou para depois (nada bloqueia):
+- RV1 [ ] Editar um compromisso NA CONTA não muda categoria protegida nem
+      observação (a edição da hospedagem — `alterarPeriodo` — não grava
+      esses dois campos; o formulário esconde os campos nesse caso).
+      Ampliar quando aparecer o caso real.
+- RV2 [ ] O `/config` da tela móvel sem alocação continua mandando "dia
+      inteiro" ao Player (que toca só o institucional) — o scheduler e o
+      contrato do Player ficaram intocados por regra da estação; o ESTADO no
+      backend é "Sem alocação". Alinhar o `/config` só numa estação de
+      Player.
+- RV3 [x] `tests/obrigacao-do-ciclo.test.js` (§31, sobre-entrega) falhava
+      quando a suíte rodava entre 00:00 e 00:59 de Matão (a exibição na hora
+      anterior caía no dia anterior ao ciclo); o teste agora usa a hora em
+      curso. Só o teste mudou.
+
       (d) (Codex, PR #114) um ajuste NEGATIVO do Admin feito no mesmo
       instante em que o gerador reserva a hora da conta pode deixar a rede
       entregar alguns segundos além do saldo (no máximo a reserva de uma

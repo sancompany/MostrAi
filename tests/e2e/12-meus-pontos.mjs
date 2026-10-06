@@ -3,7 +3,7 @@
 // duplicar: pedido pelo card compacto → "Em análise"; admin aprova →
 // "Aguardando instalação" (o MESMO card, não um segundo); admin cria a tela e
 // o Player se instala pelo código (docs/player-mvp-contract.md) → "Ativo" com
-// a tela M-xxxx dentro; tela sem sinal → texto humano de atenção; o diálogo
+// a tela M-xxxx dentro; tela sem comunicação → texto humano de atenção; o diálogo
 // da tela não tem PIN (o PIN de saída é global, só no admin). Pedir o mesmo
 // estabelecimento de novo é recusado. Assume servidor na 3999.
 import { chromium } from 'playwright';
@@ -170,7 +170,7 @@ check('tela funcionando', (await p.textContent('.estab-card .tela-linha')).inclu
 check('resumo do cabeçalho', (await p.textContent('#pontosResumo')).includes('1 de 1 tela funcionando'));
 await shot(p, '4-ativo');
 
-console.log('== tela sem sinal: texto humano, sem dado técnico ==');
+console.log('== tela sem comunicação (no horário): texto humano, sem dado técnico ==');
 PG(`UPDATE dispositivos SET ultima_vez_online = now() - interval '3 hours' WHERE id = ${tela.json.id}`);
 const antes = chamadasMeusPontos.length;
 for (let i = 0; i < 3; i++) {
@@ -183,7 +183,7 @@ check('3 resyncs = no máximo 3 chamadas (sem laço, sem duplicar)', porResync <
 check('um card depois dos resyncs', (await p.$$('.estab-card')).length === 1);
 check('uma linha de tela depois dos resyncs', (await p.$$('.tela-linha')).length === 1);
 const linha = await p.textContent('.tela-linha');
-check('sem sinal vira "Precisa de atenção"', linha.includes('Precisa de atenção'), linha);
+check('sem comunicação no horário vira "Precisa de atenção"', linha.includes('Precisa de atenção'), linha);
 check('explica a situação em texto humano, sem horário de sinal (§8)', /sem comunicação com a Mostraí/i.test(linha) && !/último sinal/.test(linha), linha);
 const resposta = await p.evaluate(async () => (await fetch('/anunciantes/me/meus-pontos', { credentials: 'include' })).text());
 check(

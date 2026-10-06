@@ -1,5 +1,5 @@
 const pool = require('../db/pool');
-const { saudeDaTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
+const { estadoDaTela, situacaoPublica } = require('../lib/status-tela');
 const { situacaoDosPontos } = require('../creditos/ponto');
 const { formatarCodigoTela } = require('../lib/codigo-tela');
 
@@ -40,8 +40,9 @@ const SITUACAO_DA_TELA = {
   // Ponto Móvel V1 §8: sem comunicação não é "desligada" — a TV pode estar
   // exibindo o pacote que já tem. Texto neutro, sem horário de sinal; segue
   // "atenção" porque o dono pode conferir a internet da tela.
-  sem_sinal: { nivel: 'atencao', texto: 'Sem comunicação com a Mostraí no momento' },
-  erro_do_player: { nivel: 'atencao', texto: 'A tela relatou um problema.' },
+  sem_comunicacao: { nivel: 'atencao', texto: 'Sem comunicação com a Mostraí no momento' },
+  com_problema: { nivel: 'atencao', texto: 'A tela relatou um problema.' },
+  sem_alocacao: { nivel: 'neutro', texto: 'Sem alocação' },
   em_reparo: { nivel: 'neutro', texto: 'Em reparo' },
   inativa: { nivel: 'neutro', texto: 'Inativa no cadastro' },
 };
@@ -51,14 +52,16 @@ const SITUACAO_DA_TELA = {
 // segue o horário do estabelecimento. Nada técnico — sem credencial, fila,
 // Android, hash, PIN ou versões de config.
 function telaPublica(t, horarioDoPonto, agora) {
-  const situacao = saudeDaTela(t, horarioDoPonto, agora);
+  // Para o dono: fora do horário a TV desligada não é aviso; sem comunicação
+  // DURANTE o horário é atenção; problema é problema (src/lib/status-tela.js).
+  const situacao = situacaoPublica(estadoDaTela(t, horarioDoPonto, agora));
   return {
     id: t.id,
     nome: formatarCodigoTela(t.id),
     situacao,
     nivel: SITUACAO_DA_TELA[situacao].nivel,
     situacaoTexto: SITUACAO_DA_TELA[situacao].texto,
-    alerta: SITUACOES_DE_ALERTA.has(situacao),
+    alerta: situacao === 'sem_comunicacao' || situacao === 'com_problema',
     instaladaEm: t.instalado_em,
     exibicoes30d: t.exibicoes_30d,
     anunciantes30d: t.anunciantes_30d,
@@ -81,6 +84,10 @@ async function meusPontosDaConta(contaId, agora = new Date()) {
     pool.query(
       `SELECT d.id, d.ponto_id, d.numero, d.status, d.ultima_vez_online, d.primeiro_sinal_em, d.instalado_em,
               d.player_estado, d.ultimo_erro, d.ultimo_erro_codigo, d.revogado_em, d.chave_hash,
+              -- O que o classificador do estado lê (src/lib/status-tela.js):
+              -- fila de comprovantes e config travada também são problema.
+              d.created_at, d.provisionado_em, d.fila_pendentes, d.fila_mais_antigo_em,
+              d.config_versao_desejada, d.config_versao_aplicada, d.config_alterada_em,
               COALESCE(SUM(e.vezes_confirmadas) FILTER (WHERE e.janela_hora > now() - interval '30 days'), 0)::int AS exibicoes_30d,
               COUNT(DISTINCT e.anunciante_id) FILTER (WHERE e.janela_hora > now() - interval '30 days')::int AS anunciantes_30d
          FROM dispositivos d

@@ -62,7 +62,9 @@ async function telasECompromissos(redeIds, db = pool) {
   const [{ rows: telas }, { rows: compromissos }] = await Promise.all([
     db.query(
       `SELECT d.id, d.ponto_id, d.status, d.ultima_vez_online, (d.chave_hash IS NOT NULL) AS chave_hash,
-              d.player_estado, d.ultimo_erro_codigo, d.ultimo_erro, d.primeiro_sinal_em, d.instalado_em
+              d.player_estado, d.ultimo_erro_codigo, d.ultimo_erro, d.primeiro_sinal_em, d.instalado_em,
+              d.created_at, d.provisionado_em, d.fila_pendentes, d.fila_mais_antigo_em,
+              d.config_versao_desejada, d.config_versao_aplicada, d.config_alterada_em
          FROM dispositivos d
         WHERE d.ponto_id = ANY($1::int[]) AND d.status <> 'inativo'
         ORDER BY d.id`,
@@ -106,7 +108,7 @@ const compromissoCurto = (c) =>
 // Cada tela da rede com o que está fazendo AGORA e o PRÓXIMO compromisso.
 // `operando`: ativa no cadastro E alocada — é a tela comercial ativa.
 function telasDaRede(redeId, telas, compromissos) {
-  const { estadosDaTela } = require('../lib/status-tela');
+  const { estadoDaTela } = require('../lib/status-tela');
   return telas
     .filter((t) => t.ponto_id === redeId)
     .map((t) => {
@@ -119,7 +121,12 @@ function telasDaRede(redeId, telas, compromissos) {
         status: t.status,
         instaladaEm: t.instalado_em,
         primeiroSinalEm: t.primeiro_sinal_em,
-        ...estadosDaTela(t, atual ? atual.horario_operacao : null),
+        // Tela da rede MÓVEL: sem compromisso em curso = sem alocação (não
+        // opera, nunca "24 h"); com ele, o horário do compromisso.
+        estado: estadoDaTela(
+          { ...t, ponto_tipo: 'movel', movel_alocado: Boolean(atual) },
+          atual ? atual.horario_operacao : null,
+        ),
         alocacao: compromissoCurto(atual),
         proximo: compromissoCurto(proximo),
         operando: t.status === 'ativo' && Boolean(atual),
@@ -405,6 +412,9 @@ async function fichaDaRede(redeId) {
     resumo,
     telas: dela,
     agenda: agendaDaRede,
+    // O formato ÚNICO do Admin (estação Rede Front V3): agora, próximos e
+    // histórico, conta e local externo lado a lado (src/pontos/compromissos.js).
+    compromissos: require('./compromissos').normalizar(hospedagens, listaDeEventos),
     hospedagens,
     eventos: listaDeEventos,
     // Histórico do modelo antigo (anterior à 114): só leitura.
@@ -608,6 +618,52 @@ async function criarEvento(redeId, corpo, admin) {
   });
 }
 
+// Editar um evento PROGRAMADO (estação Rede Front V3 — o compromisso unificado
+// edita os dois tipos): nome, organização, local, endereço, período, horário,
+// telas, categoria e observação, com as mesmas regras do cadastro e a agenda
+// conferida sem contar o próprio evento. Começou → 409 (só encerrar).
+async function editarEvento(redeId, eventoId, corpo) {
+  const ev = validarEvento(corpo);
+  return emTransacao(async (c) => {
+    await travarMovel(c, redeId);
+    const atual = await eventoDaRede(c, redeId, eventoId);
+    if (atual.estado !== 'programado') throw erro(409, JA_ESTA[atual.estado]);
+    await exigirCategoria(c, ev.categoriaId);
+    const telas = await telasValidas(c, redeId, corpo?.telas);
+    await agenda.exigirLivres(c, telas, ev.inicio, ev.fim, { ignorar: { tipo: 'evento', id: atual.id } });
+    // As telas saem antes de mudar o período: o gatilho da agenda do evento
+    // confere as telas que ele já tem.
+    await c.query('DELETE FROM pontos_moveis_evento_telas WHERE evento_id = $1', [atual.id]);
+    await c.query(
+      `UPDATE pontos_moveis_eventos
+          SET nome = $2, organizacao = $3, local = $4, endereco = $5, data_inicio = $6, data_fim = $7,
+              observacao = $8, categoria_id = $9, inicio = $10, fim = $11, horario_operacao = $12
+        WHERE id = $1`,
+      [
+        atual.id,
+        ev.nome,
+        ev.organizacao,
+        ev.local,
+        ev.endereco,
+        ev.dataInicio,
+        ev.dataFim,
+        ev.observacao,
+        ev.categoriaId,
+        ev.inicio,
+        ev.fim,
+        ev.horario ? JSON.stringify(ev.horario) : null,
+      ],
+    );
+    await c.query(`INSERT INTO pontos_moveis_evento_telas (evento_id, dispositivo_id) SELECT $1, unnest($2::int[])`, [
+      atual.id,
+      telas,
+    ]);
+    return { id: Number(atual.id), inicio: ev.inicio, fim: ev.fim };
+  }).catch((err) => {
+    throw agenda.traduzirErroDoBanco(err);
+  });
+}
+
 async function eventoDaRede(c, redeId, eventoId) {
   const id = /^\d{1,15}$/.test(String(eventoId)) ? String(eventoId) : null;
   const { rows } = id
@@ -803,6 +859,7 @@ module.exports = {
   disponibilidadeDasTelas,
   validarEvento,
   criarEvento,
+  editarEvento,
   iniciarEvento,
   encerrarEvento,
   cancelarEvento,

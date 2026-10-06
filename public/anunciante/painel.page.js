@@ -607,7 +607,7 @@ function htmlPontoEscolha(p, vitrine = {}) {
 
 // MOSTRAÍ MÓVEL — a REDE MÓVEL da cidade (estação Rede/Admin V2): o MESMO
 // molde dos outros cards (foto na moldura canônica, corpo, seleção no pé),
-// curto: foto da rede com o selo ITINERANTE, nome, cidade/UF, onde está
+// curto: foto da rede com o selo MÓVEL, nome, cidade/UF, onde está
 // AGORA, a PRÓXIMA localização e "Ver agenda". Nada técnico (telas, operação,
 // inventário). Quem marca escolhe a REDE — 1 posição do plano — e a escolha
 // NUNCA é bloqueada por falta de localização, evento ou tela em operação
@@ -641,7 +641,7 @@ function htmlPontoMovelEscolha(p) {
         <span class="ponto-card-corpo">
           <span class="ponto-card-topo"><span class="ponto-nome" id="${id}-nome" title="${esc(p.nome)}">${esc(p.nome)}</span></span>
           ${cidade ? `<span class="ponto-linha ponto-end">${iconePonto('endereco')}<span>${esc(cidade)}</span></span>` : ''}
-          ${onde('Atual', atual, agora.quantidade === 0, 'atual')}
+          ${onde('Local atual', atual, agora.quantidade === 0, 'atual')}
           ${onde('Próxima localização', proximo, !m.proximo, 'proximo')}
         </span>
         <span class="ponto-escolha-acao">

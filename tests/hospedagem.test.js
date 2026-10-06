@@ -777,10 +777,12 @@ test('31b a 34. conectividade não é operação: sem heartbeat vira "sem comuni
   assert.notStrictEqual(pt[0].status, 'inativo', 'heartbeat sumido não inativa o ponto');
   // Admin (ficha da rede, por tela): os três estados separados.
   const naFicha = (await admin('GET', `/admin/pontos/${m.id}/movel`)).json.telas.find((t) => t.id === telaId);
-  assert.strictEqual(naFicha.administrativo, 'ativo');
-  assert.strictEqual(naFicha.conectividade, 'sem_comunicacao');
-  assert.strictEqual(naFicha.operacao, 'desconhecida', 'sem comunicação, a operação é desconhecida');
-  assert.ok(naFicha.ultimoSinal);
+  assert.strictEqual(naFicha.estado.administrativo, 'ativa');
+  assert.strictEqual(naFicha.estado.conectividade, 'sem_comunicacao');
+  assert.strictEqual(naFicha.estado.operacao, 'desconhecida', 'sem comunicação, a operação é desconhecida');
+  assert.strictEqual(naFicha.estado.resumo, 'sem_comunicacao');
+  assert.strictEqual(naFicha.estado.problema, null, 'sem comunicação nunca é problema');
+  assert.ok(naFicha.estado.ultimoSinal);
   // Anunciante que já teve exibição ali: "sem comunicação", sem o horário
   // do último sinal nem nada da tela.
   const anunciante = await novaConta();
@@ -810,6 +812,11 @@ test('31b a 34. conectividade não é operação: sem heartbeat vira "sem comuni
   assert.strictEqual((await acao(m.id, hid, 'encerrar')).status, 200);
   const ex4 = await nav('GET', `/anunciantes/${anunciante.id}/exibicoes`);
   assert.strictEqual(ex4.json.porPonto.find((p) => p.id === m.id).situacao, 'sem_alocacao');
+  // Na ficha também: tela móvel sem compromisso não opera (nunca "24 h").
+  const livre = (await admin('GET', `/admin/pontos/${m.id}/movel`)).json.telas.find((t) => t.id === telaId);
+  assert.strictEqual(livre.estado.operacao, 'sem_alocacao');
+  assert.strictEqual(livre.estado.esperadaAgora, false);
+  assert.strictEqual(livre.estado.resumo, 'sem_alocacao');
   await pool.query('DELETE FROM exibicoes_contador WHERE anunciante_id = $1', [anunciante.id]);
 });
 
