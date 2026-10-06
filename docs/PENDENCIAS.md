@@ -5873,8 +5873,8 @@ local (conta / ponto / outro endereço); CTA secundário em Meus pontos;
       CHECK `pontos_movel_coerente` e o histórico de bases da ficha ainda
       as citam — remover junto, numa migration só, quando der.
 - V11.2 [~] Agenda visual: a 115 entregou a agenda CONSOLIDADA multi-tela
-      na ficha da rede (cada compromisso com as telas) e os próximos
-      compromissos de todas as redes na central. Falta: calendário/timeline,
+      na ficha da rede (cada compromisso com as telas); a Rede/Admin V2 trocou
+      a central pela Agenda móvel (modal com agora + futuro e histórico). Falta: calendário/timeline,
       filtros na lista de interesses, prioridade/ranking de interessados.
 - V11.3 [ ] Notificar a conta quando o Admin muda o andamento do interesse
       (hoje só SSE para o painel aberto).
@@ -5914,6 +5914,43 @@ Ficou para depois (nada bloqueia):
       hospedagem; para duas telas no mesmo comércio, duas hospedagens).
 - RM3 [ ] Mudar as telas de um evento já cadastrado (hoje: cancelar e
       cadastrar de novo, antes de começar).
+
+#### Rede / Admin V2 — unificação de pontos, fotos, criar ponto, card móvel e agenda pública (06/10/2026, migration 116)
+Feito (continuação do #118, arquitetura da rede intacta): Rede com só
+[Pontos] [Candidaturas] (a aba "Pontos móveis" saiu; `#rede/moveis` abre
+Pontos no filtro Móveis); fixos e redes na mesma grade, cards do mesmo
+tamanho; filtros Todos/Fixos/Móveis/Com problema/Aguardando instalação/
+Aguardando primeiro sinal/Ativos/Em reparo/Inativos; filtro Móveis com a
+barra [+ Nova rede móvel] [Agenda móvel]; Agenda móvel em modal (agora +
+futuro; histórico opcional) — `GET /admin/pontos-moveis` saiu, entrou
+`/admin/pontos-moveis/agenda`; Candidaturas com as subabas "Candidaturas de
+ponto" e "Interesses em hospedar" (o benefício virou uma linha: "Benefício
+padrão da hospedagem: X% [Alterar] [Ver histórico]", regra igual); FOTO
+CANÔNICA 16:9 (`object-fit: cover`) em todos os cards de ponto, com
+enquadramento no navegador (zoom/arrastar → JPEG 1280×720) e
+`POST /admin/pontos/:id/foto` para qualquer ponto (fixo ou móvel; substitui
+`foto-movel`; bytes conferidos no servidor); Contas › conta ›
+[+ Criar ponto] (ponto fixo administrativo, `pontos.origem = 'admin'` +
+`criado_por`, sem candidatura falsa, mesmo núcleo da candidatura —
+`materializarPonto` —, sem tela, 409 no estabelecimento repetido); card da
+rede no anunciante curto (foto, ITINERANTE, Atual, Próxima localização, Ver
+agenda, Selecionar) e SEMPRE escolhível enquanto ativa — o "Indisponível
+para escolha" era o card tratando "sem alocação" como ponto cheio; agora a
+rede tem card próprio e a capacidade da hora é 3600 s × telas ativas;
+agenda pública da rede (`GET /anunciantes/me/redes-moveis/:id/agenda`, só
+presente e futuro, sem dado interno); nome e cidade/UF separados (a 116
+desfaz o "Mostraí Móvel — {Cidade}" que a 115 compôs: ponto 9 vira
+"Mostraí Móvel", Matão/SP, mesmos IDs/tela/credencial/Player/POP).
+Ficou para depois (nada bloqueia):
+- RA1 [ ] Fotos antigas continuam no tamanho original (só o card recorta em
+      16:9); reenquadrar é trocar a foto pela ficha, uma a uma, se o dono
+      quiser.
+- RA2 [ ] Pendências de interesse em hospedar abertas ANTES desta estação
+      apontam para `#rede/moveis` (abre Pontos no filtro Móveis, não a
+      subaba Interesses); as novas já apontam para
+      `#rede/candidaturas/interesses`.
+- RA3 [ ] Origem dos pontos antigos sem candidatura fica `NULL`
+      (desconhecida) — a 116 não inventa história.
 
       (d) (Codex, PR #114) um ajuste NEGATIVO do Admin feito no mesmo
       instante em que o gerador reserva a hora da conta pode deixar a rede

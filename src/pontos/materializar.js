@@ -2,6 +2,8 @@
 // para as duas portas que materializam um ponto: o admin liberando a
 // candidatura numa conta que já existe (src/conta/modos.js) e a conta nova
 // que nasce de um convite ligado a uma candidatura (src/anunciantes/routes.js).
+// O núcleo (`materializarPonto`) também serve à terceira porta: o Admin
+// criando o ponto direto na ficha da conta (src/conta/ponto-admin.js).
 // Antes eram duas cópias do mesmo INSERT, e cada correção precisava ser feita
 // duas vezes (a categoria, o horário, a foto — todas já divergiram uma vez).
 //
@@ -20,32 +22,46 @@
 //     instalação"); a Tela nasce no admin, quando for instalar de verdade;
 //   · o cupom de indicação é por CONTA — criado só se ela ainda não tem;
 //   · candidatura gera SEMPRE ponto FIXO (V2 do ponto móvel, 02/10/2026): o
-//     móvel é um equipamento da Mostraí e nasce só pelo Admin, em Rede →
-//     Redes móveis (src/pontos/movel.js#criarRedeMovel).
+//     móvel é um equipamento da Mostraí e nasce só pelo Admin, em Rede ›
+//     Pontos, filtro Móveis (src/pontos/movel.js#criarRedeMovel).
 const pool = require('../db/pool');
 const pontosRepo = require('./repository');
 const categoriasRepo = require('../categorias/repository');
 const indicacoesRepo = require('../indicacoes/repository');
 
+// O NÚCLEO comum às duas origens de ponto fixo de uma conta — candidatura
+// aprovada e criação pelo Admin na ficha da conta (estação Rede/Admin V2):
+// a mesma checagem de estabelecimento repetido (conta + nome + endereço; com
+// `incluirPedidos`, também o pedido em análise no mesmo endereço), o mesmo
+// INSERT (src/pontos/repository.js#criar: endereço em partes, horário
+// validado, status `a_instalar`, SEM tela) e o mesmo cupom de indicação da
+// conta. Quem chama monta `dados` e diz a origem.
+async function materializarPonto(dados, conta, db, { sufixoDoConflito = '', incluirPedidos = false } = {}) {
+  const motivo = await pontosRepo.estabelecimentoJaCadastrado(
+    conta.id,
+    { nome: dados.nome, endereco: dados.endereco, cep: dados.cep },
+    db,
+    { incluirPedidos },
+  );
+  if (motivo) throw Object.assign(new Error(`${motivo}${sufixoDoConflito}`), { status: 409 });
+  const ponto = await pontosRepo.criar(
+    { ...dados, anunciante_id: conta.id, aceitou_termos_em: dados.aceitou_termos_em || new Date() },
+    db,
+  );
+  if (!(await indicacoesRepo.buscarCupomPorConta(conta.id, db))) {
+    await indicacoesRepo.criarCupom(conta.id, conta.nome_empresa, db);
+  }
+  return ponto;
+}
+
 async function materializarPontoDaCandidatura(cand, conta, db = pool) {
   const { rows: jaExiste } = await db.query('SELECT id FROM pontos WHERE candidatura_id = $1', [cand.id]);
   if (jaExiste.length) return null;
 
-  const nome = cand.nome_comercio || conta.nome_empresa;
-  const motivo = await pontosRepo.estabelecimentoJaCadastrado(
-    conta.id,
-    { nome, endereco: cand.endereco, cep: cand.cep },
-    db,
-    { incluirPedidos: false },
-  );
-  if (motivo) {
-    throw Object.assign(new Error(`${motivo} — recuse esta candidatura em vez de aprovar`), { status: 409 });
-  }
-
   const categoria = cand.segmento ? await categoriasRepo.buscarAtivaPorNomeOuApelido(cand.segmento, db) : null;
-  const ponto = await pontosRepo.criar(
+  return materializarPonto(
     {
-      nome,
+      nome: cand.nome_comercio || conta.nome_empresa,
       endereco: cand.endereco,
       logradouro: cand.logradouro,
       numero: cand.numero,
@@ -63,16 +79,13 @@ async function materializarPontoDaCandidatura(cand, conta, db = pool) {
       horario_semanal: cand.horario_semanal || null,
       foto_instalacao_url: cand.foto_fachada_url || null,
       observacoes: cand.mensagem || null,
-      anunciante_id: conta.id,
       candidatura_id: cand.id,
-      aceitou_termos_em: new Date(),
+      origem: 'candidatura',
     },
+    conta,
     db,
+    { sufixoDoConflito: ' — recuse esta candidatura em vez de aprovar' },
   );
-  if (!(await indicacoesRepo.buscarCupomPorConta(conta.id, db))) {
-    await indicacoesRepo.criarCupom(conta.id, conta.nome_empresa, db);
-  }
-  return ponto;
 }
 
-module.exports = { materializarPontoDaCandidatura };
+module.exports = { materializarPonto, materializarPontoDaCandidatura };

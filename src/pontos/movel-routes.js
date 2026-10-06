@@ -16,10 +16,10 @@ const { limiteTentativas } = require('../lib/limite-tentativas');
 // Admin — tudo em /admin, então a guarda de sessão do admin (src/server.js)
 // vale para todas: o anfitrião, o anunciante e o organizador do evento não
 // mexem em nada daqui.
-//   GET  /admin/pontos-moveis                                central: redes, próximos compromissos, percentual
-//   POST /admin/pontos-moveis                                criar rede (cidade + UF; sem tela)
+//   GET  /admin/pontos-moveis/agenda[?historico=1]           agenda de todas as redes (agora + futuro | histórico)
+//   POST /admin/pontos-moveis                                criar rede (nome + cidade + UF; sem tela)
 //   PATCH /admin/pontos/:id/movel                            editar a rede (nome, cidade, UF, nota)
-//   POST /admin/pontos/:id/foto-movel                        foto/capa da rede
+//   (a foto/capa da rede é a foto do ponto: POST /admin/pontos/:id/foto, src/pontos/routes.js)
 //   GET  /admin/pontos/:id/movel                             ficha (telas, operação agora, agenda, histórico)
 //   GET  /admin/pontos/:id/telas-livres?inicio=&fim=         cada tela da rede, livre ou não no período
 //   PUT  /admin/pontos/:id/base                              410 — a rede não tem base (114)
@@ -105,15 +105,13 @@ function simples(fn) {
 // ---------------------------------------------------------------------------
 // Rede móvel
 // ---------------------------------------------------------------------------
+// A AGENDA MÓVEL (Rede → Pontos, filtro Móveis → "Agenda móvel"): agora +
+// futuro por padrão; `?historico=1` traz os encerrados e cancelados. As
+// redes em si vêm de GET /admin/pontos (`movel`), no mesmo grid dos fixos.
 router.get(
-  '/admin/pontos-moveis',
-  simples(async (_req, res) => {
-    const [redes, proximos, percentual] = await Promise.all([
-      movel.listarRedes(),
-      movel.proximosCompromissos(),
-      hospedagem.percentualAtual(),
-    ]);
-    res.json({ redes, proximos, percentual });
+  '/admin/pontos-moveis/agenda',
+  simples(async (req, res) => {
+    res.json(await movel.agendaDasRedes({ historico: req.query.historico === '1' }));
   }),
 );
 
@@ -142,35 +140,8 @@ router.get(
   }),
 );
 
-// A foto/capa da REDE (não de um comércio): aparece no card do anunciante,
-// no Admin e no site. Mesmo bucket e padrão de upsert + `?v=` das outras
-// fotos; o nome do objeto vem do id numérico, nunca do texto da rota.
-router.post(
-  '/admin/pontos/:id/foto-movel',
-  apagarTemporario,
-  upload.single('arquivo'),
-  rota(async (req, res, id) => {
-    if (!req.file) return res.status(400).json({ erro: 'envie uma imagem (JPG, PNG ou WebP)' });
-    const { rows } = await require('../db/pool').query('SELECT tipo FROM pontos WHERE id = $1', [id]);
-    if (!rows[0]) return res.status(404).json({ erro: 'rede não encontrada' });
-    if (rows[0].tipo !== 'movel') return res.status(409).json({ erro: 'foto/capa é só da rede móvel' });
-    const supabase = require('../lib/supabase');
-    const bucket = process.env.SUPABASE_STORAGE_BUCKET;
-    const nomeArquivo = `pontos/movel-${id}.jpg`;
-    const { error } = await supabase.storage
-      .from(bucket)
-      .upload(nomeArquivo, fs.readFileSync(req.file.path), { contentType: req.file.mimetype, upsert: true });
-    if (error) return res.status(502).json({ erro: 'falha ao salvar a foto' });
-    const { data } = supabase.storage.from(bucket).getPublicUrl(nomeArquivo);
-    const url = `${data.publicUrl}?v=${Date.now()}`;
-    await require('../db/pool').query('UPDATE pontos SET foto_instalacao_url = $2 WHERE id = $1', [id, url]);
-    await avisar(id);
-    res.json({ url });
-  }),
-);
-
-// Foto da entrega ou da retirada (opcional, recomendada): mesmo bucket e
-// mesmo filtro de imagem da foto da rede.
+// Foto da entrega ou da retirada (opcional, recomendada): mesmo bucket das
+// fotos de ponto; só JPEG, PNG ou WebP (`upload`, acima).
 router.post(
   '/admin/pontos/:id/hospedagens/:hid/movimentacoes/:tipo/foto',
   apagarTemporario,
@@ -223,7 +194,7 @@ for (const caminho of ['/admin/pontos/:id/tornar-movel', '/admin/pontos/:id/torn
   router.post(caminho, (_req, res) =>
     res
       .status(410)
-      .json({ erro: 'o tipo do ponto não muda depois de criado — a rede móvel nasce em Rede → Pontos móveis' }),
+      .json({ erro: 'o tipo do ponto não muda depois de criado — a rede móvel nasce em Rede › Pontos, filtro Móveis' }),
   );
 }
 

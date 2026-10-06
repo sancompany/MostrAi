@@ -670,7 +670,8 @@ section.tight.secao-promo-planos { padding-top: 0; }
    pode continuar mostrando a foto artificial de "seu anúncio aqui", vira
    ícone oficial de ponto da rede em fundo neutro. */
 .ponto-card-media {
-  aspect-ratio: 16 / 10;
+  position: relative;
+  aspect-ratio: 16 / 9;
   margin: -20px -20px 14px;
   width: calc(100% + 40px);
   border-radius: var(--radius) var(--radius) 0 0;
@@ -920,7 +921,7 @@ footer.site .footer-links a + a::before { content: "·"; display: inline-block; 
    reticências) e as ações — Escolher, ou Trocar/Remover depois de escolher. */
 .campo-foto-preview { display: flex; align-items: center; gap: 14px; }
 .campo-foto-preview-img {
-  width: 104px; aspect-ratio: 4 / 3; flex: none; border-radius: var(--radius-campo);
+  width: 104px; aspect-ratio: 16 / 9; flex: none; border-radius: var(--radius-campo);
   overflow: hidden; background: var(--bg-alt); border: 1px solid var(--border); color: var(--text-dim);
   display: flex; align-items: center; justify-content: center;
 }
@@ -933,13 +934,12 @@ footer.site .footer-links a + a::before { content: "·"; display: inline-block; 
 }
 .campo-foto-preview-acoes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 
-/* Imagem inteira dentro da moldura (logo quadrado ou em pé): ver
-   candidaturaAjustarFoto/ajustarFotos. !important porque cada moldura
-   (card, miniatura, ficha) declara o próprio `cover` com peso maior. */
-.foto-contida { object-fit: contain !important; padding: 8px; background: var(--bg-alt); }
-/* No card, o logo ocupa pouco mais da metade da altura — é marca, não foto;
-   sem essa folga ele encostava em cima e embaixo e dominava o card. */
-.ponto-card-media .foto-contida { padding: 11% 14%; }
+/* FOTO CANÔNICA DE PONTO (estação Rede/Admin V2): toda moldura de foto de
+   ponto — card do Admin, card da escolha do anunciante, Meus pontos, "Onde
+   estamos", ficha, miniaturas — é 16:9 e a foto PREENCHE o retângulo
+   (`object-fit: cover`), sem distorcer e sem faixas vazias. O Admin envia a
+   foto já enquadrada nesse formato (enquadrarFoto, public/admin); foto
+   antiga continua aparecendo, recortada pelo centro. */
 
 /* Formulário em blocos: um assunto por bloco, separados por linha. */
 .form-bloco { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
@@ -1925,11 +1925,6 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
 .ponto-escolha.cheio :is(.ponto-card-media, .ponto-card-corpo) { opacity: .55; }
 .ponto-escolha.cheio .ponto-card-media img { filter: grayscale(.6); }
 .ponto-escolha:not(.cheio):has(input:disabled) .ponto-card-media { opacity: .8; }
-/* Celular (um card por fileira): foto mais baixa, pra lista não virar uma
-   parede de fotos — a fachada continua reconhecível. */
-@media (max-width: 520px) {
-  .ponto-card.ponto-escolha .ponto-card-media { aspect-ratio: 2 / 1; }
-}
 .pontos-modo { margin: 0 0 4px; font-weight: 600; font-size: .88rem; }
 .pontos-explica { margin: 0 0 14px; }
 
@@ -2329,31 +2324,48 @@ dialog.dlg-endereco::backdrop { background: rgba(20,23,31,.5); }
    destacada pelas setas aparece como a do mouse. */
 .categoria-resultados li.ativo { background: var(--bg-alt); box-shadow: inset 3px 0 0 var(--brand); }
 
-/* MOSTRAÍ MÓVEL (a rede móvel da cidade) na escolha de pontos (migrations
-   112 a 115): o mesmo molde do card, com uma faixa no lugar da foto — o selo
-   ITINERANTE diz o que ela é antes de qualquer texto —, o nome da rede, a
-   frase da cidade e "N telas na rede · X em operação agora". Sem tela em
-   operação, o aviso de que a campanha volta sozinha (a seleção continua). */
-.ponto-card.ponto-escolha .ponto-movel-media {
-  aspect-ratio: auto; min-height: 76px; display: flex; align-items: flex-start; padding: 12px 14px;
-  background: linear-gradient(135deg, #1e3a8a 0%, var(--blue) 60%, #3b82f6 100%);
+/* MOSTRAÍ MÓVEL (a rede móvel da cidade) na escolha de pontos (estação
+   Rede/Admin V2): o MESMO molde do card — a foto da rede na moldura
+   canônica (nunca uma faixa colorida no lugar da foto), o selo ITINERANTE
+   por cima dela, nome, cidade/UF, "Atual" e "Próxima localização" — e
+   "Ver agenda" no canto da foto, no lugar do "Ver no mapa". */
+.ponto-escolha .selo-movel,
+.ponto-card .selo-movel {
+  position: absolute; top: 10px; left: 10px; z-index: 1;
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px 4px 8px;
+  border-radius: 999px; background: rgba(255, 255, 255, .96); color: #1e3a8a; font-size: .7rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .04em; box-shadow: 0 2px 8px rgba(20, 23, 31, .2);
 }
-.selo-movel {
-  display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px 5px 9px;
-  border-radius: 999px; background: rgba(255, 255, 255, .96); color: #1e3a8a; font-size: .76rem; font-weight: 800;
-  text-transform: uppercase; letter-spacing: .03em;
+.selo-movel .ponto-icone { width: 14px; height: 14px; margin: 0; color: var(--blue); }
+.ponto-movel-onde { display: flex; flex-direction: column; gap: 1px; margin-top: 4px; min-width: 0; }
+.ponto-movel-rotulo { font-size: .68rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #8a94a3; }
+.ponto-movel-valor { font-size: .84rem; font-weight: 600; line-height: 1.35; color: var(--text); overflow-wrap: anywhere; }
+.ponto-movel-onde.vazio .ponto-movel-valor { font-weight: 400; color: var(--text-dim); }
+button.ponto-agenda { border: 0; font-family: inherit; cursor: pointer; }
+
+/* "Ver agenda": diálogo nativo, presente + futuro da rede. */
+.dlg-agenda-movel { width: min(560px, calc(100vw - 32px)); max-height: min(80vh, 640px); padding: 0; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 18px 48px rgba(20, 23, 31, .22); }
+.dlg-agenda-movel::backdrop { background: rgba(20, 23, 31, .45); }
+.dlg-agenda-topo { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid var(--border); }
+.dlg-agenda-topo h3 { margin: 0; font-size: 1.05rem; }
+.dlg-agenda-topo p { margin: 2px 0 0; font-size: .84rem; color: var(--text-dim); }
+.dlg-agenda-msg { margin: 0; padding: 16px 18px; }
+.agenda-movel-bloco { padding: 12px 18px 4px; }
+.agenda-movel-bloco:last-child { padding-bottom: 16px; }
+.agenda-movel-bloco h4 { margin: 0 0 8px; font-size: .74rem; letter-spacing: .05em; text-transform: uppercase; color: #8a94a3; }
+.agenda-movel-bloco > p { margin: 0 0 8px; font-size: .86rem; }
+.agenda-movel-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.agenda-movel-item {
+  display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; align-items: start; gap: 10px;
+  padding: 9px 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-alt);
 }
-.selo-movel .ponto-icone { width: 15px; height: 15px; margin: 0; color: var(--blue); }
-.ponto-movel-situacao {
-  display: flex; flex-direction: column; gap: 4px; margin-top: 6px; padding: 9px 11px;
-  border: 1px solid #dbeafe; border-radius: 10px; background: #eff6ff; min-width: 0;
-  font-size: .82rem; font-weight: 600; line-height: 1.4; color: var(--text); overflow-wrap: anywhere;
-}
-.ponto-movel-situacao.ponto-movel-sem-operacao { border-color: var(--border); background: var(--bg-alt); }
-.ponto-movel-situacao.ponto-movel-sem-operacao span + span { font-weight: 400; font-size: .78rem; color: var(--text-dim); }
-.ponto-movel-explica { display: block; margin-top: 6px; font-size: .76rem; line-height: 1.45; color: var(--text-dim); }
+.agenda-movel-data, .agenda-movel-local { display: flex; flex-direction: column; gap: 1px; min-width: 0; font-size: .86rem; }
+.agenda-movel-data span, .agenda-movel-local span { font-size: .8rem; color: var(--text-dim); overflow-wrap: anywhere; }
+.agenda-movel-local b { overflow-wrap: anywhere; }
+.agenda-movel-tipo { font-size: .72rem; font-weight: 700; color: var(--text-dim); white-space: nowrap; }
 @media (max-width: 520px) {
-  .ponto-card.ponto-escolha .ponto-movel-media { aspect-ratio: auto; min-height: 60px; }
+  .agenda-movel-item { grid-template-columns: minmax(0, 1fr) auto; }
+  .agenda-movel-data { grid-column: 1 / -1; flex-direction: row; gap: 8px; }
 }
 
 /* Hospedagem de Ponto Móvel (public/hospedagem-conta.js) — compartilhado

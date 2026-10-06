@@ -418,6 +418,10 @@ async function situacaoDaConta(contaId, agora = new Date()) {
     documento: conta.cpf_cnpj,
     email: conta.contato_email,
     telefone: conta.contato_telefone,
+    // Responsável cadastrado na conta — o Admin usa para pré-preencher o
+    // "+ Criar ponto" (src/conta/ponto-admin.js).
+    responsavel: conta.responsavel_nome || null,
+    responsavelTelefone: conta.responsavel_telefone || null,
     // Endereço da conta (vai na nota fiscal), numa linha só com a regra de
     // src/lib/endereco.js — a ficha não mostrava endereço nenhum (D5,
     // 24/09/2026).

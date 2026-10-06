@@ -441,7 +441,7 @@ async function devolverInteresse(c, h) {
       titulo: `${rows[0].empresa} quer hospedar uma tela do Mostraí Móvel`,
       mensagem: 'A hospedagem agendada foi cancelada — o interesse voltou para "em contato".',
       ctaRotulo: 'Ver interesses',
-      ctaDestino: '#rede/moveis',
+      ctaDestino: '#rede/candidaturas/interesses',
       dados: { interesseId: Number(rows[0].id) },
     },
     c,

@@ -349,13 +349,13 @@ router.post('/convites/:token/aceitar', exigirAnuncianteLogado, async (req, res)
 
 // Admin: libera o papel direto na conta que pediu (candidatura com conta_id).
 // Candidatura gera SEMPRE ponto fixo (V2 do ponto móvel, 02/10/2026): o
-// móvel é equipamento da Mostraí e nasce só em Rede → Pontos móveis. Cliente
+// móvel é equipamento da Mostraí e nasce só em Rede › Pontos (filtro Móveis). Cliente
 // antigo que ainda mande `tipo: 'movel'` recebe a recusa com o caminho certo.
 router.post('/admin/candidaturas/:id/liberar', async (req, res) => {
   if (req.body?.tipo !== undefined && req.body.tipo !== 'fixo') {
     return res
       .status(400)
-      .json({ erro: 'candidatura sempre gera ponto fixo — o ponto móvel nasce em Rede → Pontos móveis' });
+      .json({ erro: 'candidatura sempre gera ponto fixo — o ponto móvel nasce em Rede › Pontos, filtro Móveis' });
   }
   const cand = await candidaturasRepo.buscarPorId(req.params.id);
   if (!cand) return res.status(404).json({ erro: 'candidatura não encontrada' });

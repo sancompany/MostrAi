@@ -6,9 +6,11 @@ const { formatarCodigoTela } = require('../lib/codigo-tela');
 
 // MOSTRAÍ MÓVEL = REDE MÓVEL COMERCIAL DE UMA CIDADE (migration 115, pedido
 // do dono em 05/10/2026). No banco é um `pontos` com `tipo = 'movel'` (o
-// nome técnico continua "ponto móvel"); no produto é a REDE — "Mostraí
-// Móvel — Matão/SP", selo ITINERANTE — com N TELAS físicas (`dispositivos`
-// comuns: Player, credencial, heartbeat, POP e provisionamento por tela).
+// nome técnico continua "ponto móvel"); no produto é a REDE — nome escolhido
+// pelo Admin ("Mostraí Móvel") + cidade/UF ("Matão/SP"), campos separados
+// desde a estação Rede/Admin V2 (06/10/2026) —, selo ITINERANTE, com N TELAS
+// físicas (`dispositivos` comuns: Player, credencial, heartbeat, POP e
+// provisionamento por tela).
 //
 // Não confundir:
 //   · REDE        — a cidade + UF; é o que o anunciante escolhe, e conta
@@ -42,9 +44,6 @@ const LIMITES = {
 const UFS = new Set('AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' '));
 
 const erro = (status, mensagem, campo) => Object.assign(new Error(mensagem), { status, ...(campo ? { campo } : {}) });
-
-// O nome público padrão da rede. Sem cidade fixa no código.
-const nomePadraoDaRede = (cidade) => `Mostraí Móvel — ${cidade}`;
 
 async function proximoNumeroMovel(db) {
   const { rows } = await db.query(`SELECT nextval('pontos_movel_numero_seq')::int AS numero`);
@@ -139,16 +138,47 @@ function resumoDasTelas(telas) {
   return { telas: telas.length, emOperacao, comCompromissoFuturo: agendadas, disponiveis };
 }
 
+// Um compromisso visto de fora (anunciante, site, card): o que é, o nome
+// (o comércio da hospedagem ou o nome do evento), o local do evento e o
+// período — nunca conta, contato, percentual, termo, tela ou observação.
+const compromissoPublico = (c) =>
+  c && {
+    tipo: c.tipo,
+    nome: c.nome,
+    local: c.tipo === 'evento' ? c.local || null : null,
+    inicio: c.inicio,
+    fim: c.fim,
+  };
+
+// Os locais de AGORA da rede, um por compromisso (evento com 3 telas é UM
+// local), e o PRÓXIMO compromisso que ainda vai começar.
+function locaisEProximo(redeId, dela, compromissos) {
+  const vistos = new Set();
+  const locaisAgora = [];
+  for (const t of dela.filter((x) => x.operando)) {
+    const chave = `${t.alocacao.tipo}:${t.alocacao.id}`;
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    locaisAgora.push({ origem: t.alocacao.tipo, nome: t.alocacao.local, endereco: t.alocacao.endereco });
+  }
+  const agora = Date.now();
+  const futuro = compromissos
+    .filter((c) => c.ponto_id === redeId && !emCurso(c) && new Date(c.fim).getTime() > agora)
+    .sort((a, b) => new Date(a.inicio) - new Date(b.inicio))[0];
+  return { locaisAgora, proximo: compromissoPublico(futuro) || null };
+}
+
 // Para o anunciante, "Onde estamos" e a grade do Admin: a rede com cidade,
-// UF, quantas telas e quantas operando agora, e ONDE as telas em operação
+// UF, quantas telas e quantas operando agora, ONDE as telas em operação
 // estão (só nome e endereço do local — nunca conta, período, percentual ou
-// agenda). Sem tela em operação: `locaisAgora` vazio.
+// agenda) e o PRÓXIMO compromisso (público: nome, local do evento,
+// período). Sem tela em operação: `locaisAgora` vazio.
 async function situacaoDasRedes(redeIds, db = pool) {
   const ids = [...new Set(redeIds.map(Number))].filter((id) => Number.isInteger(id) && id > 0);
   if (!ids.length) return new Map();
   const [{ rows: redes }, { telas, compromissos }] = await Promise.all([
     db.query(
-      `SELECT id, nome, cidade, uf, foto_instalacao_url FROM pontos WHERE id = ANY($1::int[]) AND tipo = 'movel'`,
+      `SELECT id, nome, cidade, uf, status, foto_instalacao_url FROM pontos WHERE id = ANY($1::int[]) AND tipo = 'movel'`,
       [ids],
     ),
     telasECompromissos(ids, db),
@@ -161,75 +191,93 @@ async function situacaoDasRedes(redeIds, db = pool) {
       nome: r.nome,
       cidade: r.cidade,
       uf: r.uf,
+      status: r.status,
       foto: r.foto_instalacao_url,
       telas: resumo.telas,
       emOperacao: resumo.emOperacao,
-      locaisAgora: dela
-        .filter((t) => t.operando)
-        .map((t) => ({ origem: t.alocacao.tipo, nome: t.alocacao.local, endereco: t.alocacao.endereco })),
+      ...locaisEProximo(r.id, dela, compromissos),
     });
   }
   return mapa;
 }
 
-// Admin → Rede → Pontos móveis (a central das redes): cada rede com a foto,
-// o resumo das telas, o que está acontecendo AGORA (por tela) e o PRÓXIMO
-// compromisso da rede.
-async function listarRedes() {
-  const { rows } = await pool.query(
-    `SELECT p.id, p.nome, p.cidade, p.uf, p.status, p.movel_numero, p.foto_instalacao_url
-       FROM pontos p
-      WHERE p.tipo = 'movel' AND p.status <> 'arquivado'
-      ORDER BY p.cidade, p.id`,
-  );
-  const { telas, compromissos } = await telasECompromissos(rows.map((r) => r.id));
-  return rows.map((r) => {
-    const dela = telasDaRede(r.id, telas, compromissos);
-    const futuros = compromissos.filter((c) => c.ponto_id === r.id && !emCurso(c));
-    return {
-      id: r.id,
-      nome: r.nome,
-      cidade: r.cidade,
-      uf: r.uf,
-      status: r.status,
-      foto: r.foto_instalacao_url,
-      resumo: resumoDasTelas(dela),
-      agora: dela.filter((t) => t.alocacao).map((t) => t.alocacao),
-      proximo: compromissoCurto(futuros[0]) || null,
-    };
-  });
-}
-
-// PRÓXIMOS COMPROMISSOS de todas as redes (a central): os programados que
-// ainda vão acontecer, por início — evento com várias telas é UMA linha com
-// as telas juntas.
-async function proximosCompromissos(limite = 12) {
+// AGENDA MÓVEL do Admin (Rede → Pontos, filtro Móveis → "Agenda móvel"):
+// os compromissos de todas as redes, uma linha por compromisso (evento com
+// várias telas é UMA linha com as telas juntas). Padrão: AGORA + FUTURO (em
+// curso, ou programado que ainda não terminou), por início; `historico`:
+// os encerrados e cancelados, do mais recente para trás.
+async function agendaDasRedes({ historico = false } = {}) {
+  const filtroH = historico
+    ? `h.estado IN ('encerrada', 'cancelada')`
+    : `(h.estado = 'ativa' OR (h.estado = 'programada' AND h.fim > now()))`;
+  const filtroE = historico
+    ? `e.estado IN ('encerrado', 'cancelado')`
+    : `(e.estado = 'em_andamento' OR (e.estado = 'programado' AND e.fim > now()))`;
   const { rows } = await pool.query(
     `SELECT x.* FROM (
-       SELECT 'hospedagem' AS tipo, h.id, h.ponto_id, p.nome AS rede, h.local AS nome, ca.nome_empresa AS conta,
-              h.inicio, h.fim, ARRAY[h.dispositivo_id] AS telas
+       SELECT 'hospedagem' AS tipo, h.id, h.ponto_id, p.nome AS rede, p.cidade, p.uf, h.local AS nome,
+              NULL::text AS local, ca.nome_empresa AS conta, h.inicio, h.fim, h.estado, ARRAY[h.dispositivo_id] AS telas
          FROM pontos_moveis_hospedagens h JOIN pontos p ON p.id = h.ponto_id JOIN anunciantes ca ON ca.id = h.conta_id
-        WHERE h.estado = 'programada' AND h.fim > now()
+        WHERE ${filtroH}
        UNION ALL
-       SELECT 'evento', e.id, e.ponto_id, p.nome, e.nome, NULL, e.inicio, e.fim,
+       SELECT 'evento', e.id, e.ponto_id, p.nome, p.cidade, p.uf, e.nome, e.local, NULL, e.inicio, e.fim, e.estado,
               (SELECT array_agg(et.dispositivo_id ORDER BY et.dispositivo_id) FROM pontos_moveis_evento_telas et
                 WHERE et.evento_id = e.id)
          FROM pontos_moveis_eventos e JOIN pontos p ON p.id = e.ponto_id
-        WHERE e.estado = 'programado' AND e.fim > now()
-     ) x ORDER BY x.inicio, x.id LIMIT $1`,
-    [limite],
+        WHERE ${filtroE}
+     ) x ORDER BY ${historico ? 'x.inicio DESC' : 'x.inicio'}, x.id LIMIT 200`,
   );
   return rows.map((r) => ({
     tipo: r.tipo,
     id: Number(r.id),
     redeId: r.ponto_id,
     rede: r.rede,
+    cidade: r.cidade,
+    uf: r.uf,
     nome: r.nome,
+    local: r.local,
     conta: r.conta,
     inicio: r.inicio,
     fim: r.fim,
+    estado: r.estado,
+    emCurso: r.estado === 'ativa' || r.estado === 'em_andamento',
     telas: (r.telas || []).map((id) => ({ id, codigo: formatarCodigoTela(id) })),
   }));
+}
+
+// AGENDA PÚBLICA de uma rede (o "Ver agenda" do card do anunciante): só o
+// PRESENTE e o FUTURO — o que está acontecendo agora e o que vai acontecer.
+// Nunca o passado, nunca público estimado, conta, contato, percentual,
+// termo, tela ou observação: só tipo, nome (o comércio da hospedagem ou o
+// nome do evento), local do evento e período. `null` = não é rede ativa.
+async function agendaPublicaDaRede(redeId) {
+  const id = /^\d{1,9}$/.test(String(redeId)) ? Number(redeId) : null;
+  if (!id) return null;
+  const {
+    rows: [rede],
+  } = await pool.query(
+    `SELECT id, nome, cidade, uf FROM pontos WHERE id = $1 AND tipo = 'movel' AND status <> 'arquivado'`,
+    [id],
+  );
+  if (!rede) return null;
+  const { rows } = await pool.query(
+    `SELECT 'hospedagem' AS tipo, h.id, h.local AS nome, NULL::text AS local, h.inicio, h.fim,
+            (h.estado = 'ativa') AS em_curso
+       FROM pontos_moveis_hospedagens h
+      WHERE h.ponto_id = $1 AND h.estado IN ('ativa', 'programada') AND h.fim > now()
+     UNION ALL
+     SELECT 'evento', e.id, e.nome, e.local, e.inicio, e.fim, (e.estado = 'em_andamento')
+       FROM pontos_moveis_eventos e
+      WHERE e.ponto_id = $1 AND e.estado IN ('em_andamento', 'programado') AND e.fim > now()
+      ORDER BY 5, 2 LIMIT 100`,
+    [id],
+  );
+  const linha = (r) => compromissoPublico(r);
+  return {
+    rede: { id: rede.id, nome: rede.nome, cidade: rede.cidade, uf: rede.uf },
+    agora: rows.filter((r) => r.em_curso).map(linha),
+    proximos: rows.filter((r) => !r.em_curso).map(linha),
+  };
 }
 
 // Ficha da rede no Admin: cabeçalho (nome, cidade/UF, selo), o resumo das
@@ -651,14 +699,15 @@ async function cancelarEvento(redeId, eventoId) {
 // ---------------------------------------------------------------------------
 // A rede (só Admin)
 // ---------------------------------------------------------------------------
-// A rede nasce AQUI e só aqui — nunca de candidatura. Cidade e UF
-// obrigatórias; nome opcional ("Mostraí Móvel — {Cidade}"); nota interna
-// opcional; a foto/capa vem depois, pela rota de foto. NENHUMA tela nasce
-// junto: "+ Adicionar tela" na ficha. Uma rede por cidade + UF.
+// A rede nasce AQUI e só aqui — nunca de candidatura. Nome, cidade e UF
+// obrigatórios e SEPARADOS (estação Rede/Admin V2: o sistema não compõe
+// "Nome — Cidade" sozinho; o card mostra "Mostraí Móvel" e "Matão/SP");
+// nota interna opcional; a foto/capa vem depois, pela rota de foto. NENHUMA
+// tela nasce junto: "+ Adicionar tela" na ficha. Uma rede por cidade + UF.
 async function criarRedeMovel(corpo, admin) {
   const cidade = texto(corpo?.cidade, 'cidade', 'Cidade', LIMITES.cidade);
   const uf = lerUf(corpo?.uf);
-  const nomeInformado = texto(corpo?.nome, 'nome', 'Nome da rede', LIMITES.nome, { obrigatorio: false });
+  const nome = texto(corpo?.nome, 'nome', 'Nome da rede', LIMITES.nome);
   const nota = texto(corpo?.observacoes, 'observacoes', 'Nota interna', LIMITES.observacao, { obrigatorio: false });
   const pontosRepo = require('./repository');
   let rede;
@@ -668,7 +717,7 @@ async function criarRedeMovel(corpo, admin) {
       const numero = await proximoNumeroMovel(c);
       return pontosRepo.criar(
         {
-          nome: nomeInformado || nomePadraoDaRede(cidade),
+          nome,
           cidade,
           uf,
           segmento: 'outro',
@@ -706,17 +755,14 @@ function redeDuplicada(err, cidade, uf) {
   return err;
 }
 
-// Editar a rede: nome, cidade, UF e nota interna. Nome vazio volta ao
-// padrão da cidade.
+// Editar a rede: nome, cidade, UF e nota interna. Mudar a cidade NÃO muda o
+// nome (são campos independentes); nome vazio é recusado.
 async function editarRede(redeId, corpo) {
   return emTransacao(async (c) => {
     const atual = await travarMovel(c, redeId);
     const cidade = corpo?.cidade !== undefined ? texto(corpo.cidade, 'cidade', 'Cidade', LIMITES.cidade) : atual.cidade;
     const uf = corpo?.uf !== undefined ? lerUf(corpo.uf) : atual.uf;
-    const nome =
-      corpo?.nome !== undefined
-        ? texto(corpo.nome, 'nome', 'Nome da rede', LIMITES.nome, { obrigatorio: false }) || nomePadraoDaRede(cidade)
-        : atual.nome;
+    const nome = corpo?.nome !== undefined ? texto(corpo.nome, 'nome', 'Nome da rede', LIMITES.nome) : atual.nome;
     const nota =
       corpo?.observacoes !== undefined
         ? texto(corpo.observacoes, 'observacoes', 'Nota interna', LIMITES.observacao, { obrigatorio: false })
@@ -750,10 +796,9 @@ async function contasInteressadas(pontoId, extras = []) {
 
 module.exports = {
   LIMITES,
-  nomePadraoDaRede,
   situacaoDasRedes,
-  listarRedes,
-  proximosCompromissos,
+  agendaDasRedes,
+  agendaPublicaDaRede,
   fichaDaRede,
   disponibilidadeDasTelas,
   validarEvento,

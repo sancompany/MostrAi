@@ -711,7 +711,6 @@
           : formAberto
             ? htmlPedidoAberto()
             : htmlOportunidade()) + (dados.podeHospedarMovel ? htmlHospedarMovel() : '');
-      lista.querySelectorAll('img[data-foto]').forEach(candidaturaAjustarFoto);
       publicar(estabs);
     } catch {
       dados = null;

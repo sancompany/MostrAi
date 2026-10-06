@@ -1535,3 +1535,38 @@ posição do plano com qualquer número de telas.
 - Custo/amortização de equipamento removidos (colunas sem valor em
   produção: 0 e o padrão 36). `instalado_em` fica.
 - "Onde estamos" mostra as alocações reais, nunca um pino da rede.
+
+## ADR-039 — Rede / Admin V2: uma grade de pontos, foto canônica 16:9, ponto criado pelo Admin com origem explícita (06/10/2026)
+
+**Contexto.** Depois do #118 (rede móvel da cidade, ADR-038) o Admin tinha
+uma aba "Pontos móveis" separada, a foto de cada card seguia a proporção do
+arquivo (fotos em pé "contidas", faixas cinza), o comerciante sem tempo de
+preencher o pedido não tinha como virar ponto pelo Admin, e o anunciante via
+a rede como "Indisponível para escolha" quando nenhuma tela estava alocada.
+
+**Decisão (migration 116).**
+- Rede tem só [Pontos] [Candidaturas]; fixos e redes móveis na mesma grade,
+  cards do mesmo tamanho; o filtro Móveis traz as ações das redes. A antiga
+  central saiu (`GET /admin/pontos-moveis` → `.../agenda`, só o que a agenda
+  móvel precisa); interesses em hospedar moram em Candidaturas.
+- FOTO CANÔNICA: 16:9, `object-fit: cover`, em todo card de ponto (Admin e
+  anunciante). O enquadramento é do Admin, no navegador (canvas; a CSP não
+  aceita `blob:`, então a prévia é desenhada, não um `<img>`), e o servidor
+  só aceita bytes de imagem. Recusado: processar a imagem no servidor
+  (dependência nova para o que o canvas faz) e reprocessar fotos antigas
+  (elas continuam valendo, só recortadas no card).
+- Ponto criado pelo Admin: o MESMO núcleo da candidatura
+  (`materializarPonto`), nunca uma candidatura inventada para passar pelo
+  fluxo antigo; a origem fica no ponto (`origem`, `criado_por`) e no
+  registro de eventos. Sem Tela 1: a regra canônica (ponto nasce sem tela)
+  vale para as duas portas. Pontos antigos sem candidatura ficam com origem
+  `NULL` — não se inventa história.
+- A rede móvel no anunciante tem card próprio e é SEMPRE escolhível
+  enquanto ativa; a capacidade da hora (bloqueio de 80%, RN-55) passa a
+  ser por tela ativa, para uma rede de N telas não "encher" como um ponto
+  de 1 tela. A agenda pública vem sob demanda, só presente e futuro, sem
+  público estimado nem dado interno.
+- Nome e cidade/UF da rede são campos separados, escolhidos pelo Admin; a
+  116 desfaz só o nome que a 115 compôs (padrão exato), sem tocar IDs,
+  telas, credenciais, Player ou POP.
+

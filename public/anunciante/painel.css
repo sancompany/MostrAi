@@ -229,10 +229,8 @@
    uma foto em pé esticava a capa (o aspect-ratio cede ao conteúdo). */
 /* Card largo (tablet, um por linha): a capa para em 220 px — a fachada
    aparece, sem virar um cartaz. */
-.estab-capa { position: relative; aspect-ratio: 16 / 7; min-height: 0; max-height: 220px; overflow: hidden; background: var(--bg-alt); }
+.estab-capa { position: relative; aspect-ratio: 16 / 9; min-height: 0; max-height: 260px; overflow: hidden; background: var(--bg-alt); }
 .estab-capa img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
-/* Logo quadrado ou foto em pé (candidaturaAjustarFoto): entra inteira. */
-.estab-capa img.foto-contida { padding: 6% 10%; background: #fff; object-fit: contain; }
 .estab-capa .ponto-foto-placeholder { height: 100%; }
 /* Sem foto, a capa é só uma faixa: um bloco cinza do tamanho de uma fachada
    não diz nada. */

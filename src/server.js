@@ -227,6 +227,7 @@ app.use(require('./pendencias/routes'));
 app.use(require('./indicacoes/routes'));
 app.use(eventosRoutes);
 app.use(require('./conta/modos').router);
+app.use(require('./conta/ponto-admin').router);
 app.use(require('./conta/financeiro'));
 app.use(require('./comunicados/routes'));
 

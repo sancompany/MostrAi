@@ -538,7 +538,10 @@ async function buscarVitrineDosPontos() {
 // atingido") são escolhidas pelo CSS a partir do estado do input — nenhum
 // caminho de código precisa lembrar de repintá-las.
 function htmlPontoEscolha(p, vitrine = {}) {
-  if (p.tipo === 'movel' && p.movel) return htmlPontoMovelEscolha(p, vitrine);
+  // A rede móvel SEMPRE usa o card dela — nunca cai no card do ponto fixo
+  // (era por aí que ela herdava `.cheio`/"Indisponível para escolha" sem
+  // alocação).
+  if (p.tipo === 'movel') return htmlPontoMovelEscolha(p);
   const instalando = p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal';
   // Ponto em instalação nunca está "cheio": ele não vendeu hora nenhuma
   // ainda. Bloquear ele por ocupação seria bloquear por um zero que
@@ -602,41 +605,104 @@ function htmlPontoEscolha(p, vitrine = {}) {
     </div>`;
 }
 
-// MOSTRAÍ MÓVEL — a REDE MÓVEL da cidade (migrations 112 a 115): card
-// próprio, compacto — o mesmo molde e a mesma seleção no pé (input,
-// `data-ponto-id`, `data-busca`), mas o que importa é outro: o selo
-// ITINERANTE, o nome da rede, a frase da cidade e "N telas na rede · X em
-// operação agora" (o servidor conta — src/pontos/movel.js). Quem marca
-// escolhe a REDE, nunca uma tela: conta como 1 posição do plano, tenha 1 ou
-// 10 telas. A rede aparece SEMPRE e a seleção nunca é bloqueada por falta
-// de tela em operação: com 0, o card avisa que a campanha volta sozinha
-// quando houver inventário (só o limite do plano trava, como em todo card).
-function htmlPontoMovelEscolha(p, vitrine = {}) {
+// MOSTRAÍ MÓVEL — a REDE MÓVEL da cidade (estação Rede/Admin V2): o MESMO
+// molde dos outros cards (foto na moldura canônica, corpo, seleção no pé),
+// curto: foto da rede com o selo ITINERANTE, nome, cidade/UF, onde está
+// AGORA, a PRÓXIMA localização e "Ver agenda". Nada técnico (telas, operação,
+// inventário). Quem marca escolhe a REDE — 1 posição do plano — e a escolha
+// NUNCA é bloqueada por falta de localização, evento ou tela em operação
+// (o bug antigo: "sem alocação" virava `.cheio`). Só travam o limite do
+// plano, como em todo card, e a capacidade REAL esgotada — `bloqueado`, que
+// o servidor mede por tela ativa da rede (src/pontos/repository.js#
+// capacidadeDaHoraSql) e nunca vem para quem já escolheu.
+function htmlPontoMovelEscolha(p) {
   const m = p.movel || {};
-  const cidade = m.cidade || p.cidade || '';
-  const emOperacao = Number(m.emOperacao) || 0;
   const id = `ponto-escolha-${p.id}`;
-  const foto = m.foto || vitrine.foto_instalacao_url;
-  const situacao =
-    emOperacao > 0
-      ? `<span class="ponto-movel-situacao" id="${id}-situacao">${esc(window.PONTO_MOVEL.telas(Number(m.telas) || 0, emOperacao))}</span>`
-      : `<span class="ponto-movel-situacao ponto-movel-sem-operacao" id="${id}-situacao"><span>${esc(window.PONTO_MOVEL.telas(Number(m.telas) || 0, 0))}</span><span>${esc(window.PONTO_MOVEL.semOperacao(cidade))}</span></span>`;
-  return `<div class="ponto-card com-corpo ponto-escolha ponto-movel" data-ponto-id="${p.id}" data-busca="${esc(`${p.nome} ${cidade}`.toLowerCase())}">
+  const cidade = window.PONTO_MOVEL.cidade(m.cidade || p.cidade, m.uf || p.uf);
+  const foto = m.foto
+    ? `<img src="${esc(m.foto)}" alt="" loading="lazy" data-foto>`
+    : `<span class="ponto-foto-placeholder" aria-hidden="true">${CANDIDATURA_FOTO_PLACEHOLDER_SVG}</span>`;
+  const agora = m.agora || { quantidade: 0 };
+  const atual =
+    agora.quantidade > 1
+      ? window.PONTO_MOVEL.locais(agora.quantidade)
+      : agora.quantidade === 1 && agora.nome
+        ? agora.nome
+        : window.PONTO_MOVEL.semLocal;
+  const proximo = m.proximo
+    ? `${m.proximo.nome}${m.proximo.local ? ` · ${m.proximo.local}` : ''} · ${window.PONTO_MOVEL.quando(m.proximo.inicio)}`
+    : window.PONTO_MOVEL.semProximo;
+  const onde = (rotulo, valor, vazio, sufixo) =>
+    `<span class="ponto-movel-onde${vazio ? ' vazio' : ''}" id="${id}-${sufixo}"><span class="ponto-movel-rotulo">${rotulo}</span><span class="ponto-movel-valor">${esc(valor)}</span></span>`;
+  const esgotada = p.bloqueado && !p.escolhido;
+  return `<div class="ponto-card com-corpo ponto-escolha ponto-movel${esgotada ? ' cheio' : ''}" data-ponto-id="${p.id}" data-busca="${esc(`${p.nome} ${cidade}`.toLowerCase())}">
       <label class="ponto-marcar">
-        <span class="ponto-card-media ponto-movel-media">${foto ? `<img src="${esc(foto)}" alt="" loading="lazy" data-foto>` : ''}<span class="selo-movel" id="${id}-selo">${iconePonto('movel')}${esc(window.PONTO_MOVEL.selo)}</span></span>
+        <span class="ponto-card-media">${foto}<span class="selo-movel" id="${id}-selo">${iconePonto('movel')}${esc(window.PONTO_MOVEL.selo)}</span></span>
         <span class="ponto-card-corpo">
-          <span class="ponto-card-topo">
-            <span class="ponto-nome" id="${id}-nome" title="${esc(p.nome)}">${esc(p.nome)}</span>
-          </span>
-          <span class="ponto-movel-explica">${esc(window.PONTO_MOVEL.explica(cidade))}</span>
-          ${situacao}
+          <span class="ponto-card-topo"><span class="ponto-nome" id="${id}-nome" title="${esc(p.nome)}">${esc(p.nome)}</span></span>
+          ${cidade ? `<span class="ponto-linha ponto-end">${iconePonto('endereco')}<span>${esc(cidade)}</span></span>` : ''}
+          ${onde('Atual', atual, agora.quantidade === 0, 'atual')}
+          ${onde('Próxima localização', proximo, !m.proximo, 'proximo')}
         </span>
         <span class="ponto-escolha-acao">
-          <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} aria-labelledby="${id}-nome ${id}-selo" aria-describedby="${id}-situacao ${id}-acao">
+          <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''}${esgotada ? ' disabled' : ''} aria-labelledby="${id}-nome ${id}-selo" aria-describedby="${id}-atual ${id}-proximo ${id}-acao">
           <span class="ponto-acao-texto" id="${id}-acao"><span class="acao-livre">Selecionar</span><span class="acao-marcado">Selecionado</span><span class="acao-limite">Limite do plano atingido</span><span class="acao-fechado">Indisponível para escolha</span></span>
         </span>
       </label>
+      <button type="button" class="ponto-mapa ponto-agenda" data-agenda-rede="${p.id}" aria-label="Ver a agenda de ${esc(p.nome)}">${iconePonto('evento')}Ver agenda</button>
     </div>`;
+}
+
+// "Ver agenda" do Mostraí Móvel: um <dialog> com o PRESENTE e o FUTURO da
+// rede (GET /anunciantes/me/redes-moveis/:id/agenda — só dado público:
+// nome, local, período e tipo; nunca histórico, público estimado, conta ou
+// tela). Carrega sob demanda, no clique.
+async function abrirAgendaMovel(redeId) {
+  let dlg = document.getElementById('dlgAgendaMovel');
+  if (!dlg) {
+    dlg = document.createElement('dialog');
+    dlg.id = 'dlgAgendaMovel';
+    dlg.className = 'dlg-agenda-movel';
+    dlg.setAttribute('aria-labelledby', 'agendaMovelTitulo');
+    document.body.appendChild(dlg);
+    dlg.addEventListener('click', (e) => {
+      if (e.target === dlg || e.target.closest('[data-fechar-agenda]')) dlg.close();
+    });
+  }
+  const cabecalho = (titulo, sub = '') => `<header class="dlg-agenda-topo">
+      <div><h3 id="agendaMovelTitulo">${esc(titulo)}</h3>${sub ? `<p>${esc(sub)}</p>` : ''}</div>
+      <button type="button" class="btn ghost mini" data-fechar-agenda aria-label="Fechar">Fechar</button>
+    </header>`;
+  dlg.innerHTML = `${cabecalho('Agenda')}<p class="dlg-agenda-msg">Carregando...</p>`;
+  if (!dlg.open) dlg.showModal();
+  let a;
+  try {
+    const r = await fetch(`${API_BASE_URL}/anunciantes/me/redes-moveis/${encodeURIComponent(redeId)}/agenda`, {
+      credentials: 'include',
+    });
+    a = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(a.erro || 'não deu pra carregar a agenda');
+  } catch (erro) {
+    dlg.innerHTML = `${cabecalho('Agenda')}<p class="dlg-agenda-msg form-msg err" role="alert">Não deu pra carregar a agenda agora (${esc(window.frase(erro.message))}).</p>`;
+    return;
+  }
+  const linha = (c) => {
+    const { data, horario } = window.PONTO_MOVEL.periodoDaAgenda(c.inicio, c.fim);
+    return `<li class="agenda-movel-item">
+        <span class="agenda-movel-data"><b>${esc(data)}</b><span>${esc(horario)}</span></span>
+        <span class="agenda-movel-local"><b>${esc(c.nome)}</b>${c.local ? `<span>${esc(c.local)}</span>` : ''}</span>
+        <span class="agenda-movel-tipo">${esc(window.PONTO_MOVEL.tipo(c.tipo))}</span>
+      </li>`;
+  };
+  const bloco = (titulo, itens, vazio) =>
+    `<section class="agenda-movel-bloco"><h4>${titulo}</h4>${
+      itens.length
+        ? `<ul class="agenda-movel-lista">${itens.map(linha).join('')}</ul>`
+        : `<p class="u-dim">${vazio}</p>`
+    }</section>`;
+  dlg.innerHTML = `${cabecalho(a.rede.nome, window.PONTO_MOVEL.cidade(a.rede.cidade, a.rede.uf))}
+    ${bloco('Agora', a.agora, window.PONTO_MOVEL.semLocal)}
+    ${bloco('Próximas localizações', a.proximos, 'Nenhuma localização programada.')}`;
 }
 
 // Estado da seleção (contador e modo), repintado depois de cada salvamento
@@ -713,8 +779,12 @@ async function desenharPontos() {
   }
   const fotos = await vitrine;
   lista.innerHTML = dados.pontos.map((p) => htmlPontoEscolha(p, fotos.get(p.id))).join('');
-  // Logo quadrado ou foto em pé entra inteira, como no admin e em Meus pontos.
-  lista.querySelectorAll('img[data-foto]').forEach(candidaturaAjustarFoto);
+  // "Ver agenda" do Mostraí Móvel (fora do <label>: não marca a caixa).
+  // `onclick` e não addEventListener: esta função roda de novo a cada carga.
+  lista.onclick = (e) => {
+    const botao = e.target.closest('[data-agenda-rede]');
+    if (botao) abrirAgendaMovel(botao.dataset.agendaRede);
+  };
 
   // Busca só aparece quando faz diferença — poucos pontos não precisam de
   // filtro, e um campo vazio de propósito é uma pergunta sem necessidade.

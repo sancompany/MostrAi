@@ -180,7 +180,7 @@ async function registrar(conta, corpo) {
         titulo: `${empresa} quer hospedar um Ponto Móvel`,
         mensagem: `${linha || 'Endereço a confirmar'}. Entre em contato e, se fizer sentido, aprove e agende a hospedagem.`,
         ctaRotulo: 'Ver interesses',
-        ctaDestino: '#rede/moveis',
+        ctaDestino: '#rede/candidaturas/interesses',
         dados: { interesseId: id },
       })
       .catch((err) => console.error('pendência do interesse em hospedagem não aberta', err.message));

@@ -176,4 +176,4 @@ async function normalizar(caminhoEntrada, criativoId, duracaoMaximaImagem = null
   }
 }
 
-module.exports = { normalizar, probeMidia };
+module.exports = { normalizar, probeMidia, subirParaStorage };
