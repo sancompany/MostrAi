@@ -1559,7 +1559,9 @@ a rede como "Indisponível para escolha" quando nenhuma tela estava alocada.
   (`materializarPonto`), nunca uma candidatura inventada para passar pelo
   fluxo antigo; a origem fica no ponto (`origem`, `criado_por`) e no
   registro de eventos. Sem Tela 1: a regra canônica (ponto nasce sem tela)
-  vale para as duas portas. Pontos antigos sem candidatura ficam com origem
+  vale para as duas portas. O aceite dos termos do ponto é o contrato
+  assinado à mão, fora do sistema (decisão do dono, 06/10/2026): o ponto
+  criado pelo Admin não grava `aceitou_termos_em`. Pontos antigos sem candidatura ficam com origem
   `NULL` — não se inventa história.
 - A rede móvel no anunciante tem card próprio e é SEMPRE escolhível
   enquanto ativa; a capacidade da hora (bloqueio de 80%, RN-55) passa a

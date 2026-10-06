@@ -106,7 +106,9 @@ router.post('/admin/anunciantes/:id/pontos', async (req, res) => {
       await c.query('SELECT pg_advisory_xact_lock(116, $1)', [conta.id]);
       await adicionarPapel(conta.id, 'ponto', c);
       // Sem `aceitou_termos_em`: ninguém da conta aceitou nada neste ato —
-      // quem criou foi o Admin (a origem e o usuário ficam gravados).
+      // quem criou foi o Admin (a origem e o usuário ficam gravados). O
+      // aceite do ponto é o CONTRATO assinado à mão, fora do sistema
+      // (decisão do dono, 06/10/2026).
       return materializarPonto({ ...dados, origem: 'admin', criado_por: admin, aceitou_termos_em: null }, conta, c, {
         incluirPedidos: true,
       });

@@ -5951,6 +5951,10 @@ Ficou para depois (nada bloqueia):
       `#rede/candidaturas/interesses`.
 - RA3 [ ] Origem dos pontos antigos sem candidatura fica `NULL`
       (desconhecida) — a 116 não inventa história.
+- RA4 [x] Aceite dos termos do ponto criado pelo Admin: decidido pelo dono
+      (06/10/2026) — o aceite de ponto é feito à mão, por contrato, fora do
+      sistema; `pontos.aceitou_termos_em` fica vazio nesse caso (a coluna
+      não é lida por nenhuma regra).
 
       (d) (Codex, PR #114) um ajuste NEGATIVO do Admin feito no mesmo
       instante em que o gerador reserva a hora da conta pode deixar a rede

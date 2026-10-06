@@ -113,7 +113,9 @@ dá nada a quem se cadastra: o benefício é do ponto que indicou.
    estimado, observações) → [Criar ponto] cria um ponto FIXO vinculado à
    conta, como "aguardando instalação" e **sem tela** (a tela nasce na
    instalação, mesma regra da candidatura). Nenhuma candidatura falsa: a
-   origem fica gravada como Admin (com o usuário). Estabelecimento repetido
+   origem fica gravada como Admin (com o usuário). O aceite dos termos do
+   ponto é o contrato assinado à mão, fora do sistema (decisão do dono,
+   06/10/2026) — por isso o ponto criado pelo Admin não registra aceite. Estabelecimento repetido
    (mesma conta, nome e endereço) ou pedido em análise no mesmo endereço →
    o modal mostra o conflito e nada é criado. Não aparece na conta própria
    nem em conta excluída. Depois de criar, abre a ficha do ponto.
