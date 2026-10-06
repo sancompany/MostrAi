@@ -331,13 +331,56 @@ router.post('/anunciantes/me/comodato/trocar-por-tela', exigirAnuncianteLogado, 
   res.status(410).json({ erro: 'não há mais ajuda de custo: seu ponto gera créditos todo mês' });
 });
 
-// Upload administrativo da foto do ponto (`POST /admin/pontos/:id/foto`)
-// foi removido na rodada final da Rede (22/09/2026) — a foto pertence ao
-// estabelecimento e vem da candidatura (`POST
-// /conta/modos/ponto/candidaturas/:id/foto`, src/candidaturas/routes.js);
-// sem consumidor real depois de tirar o botão "Trocar foto do ponto" do
-// admin (confirmado antes de remover: só a UI que acabou de sair chamava
-// esta rota).
+// FOTO DE QUALQUER PONTO pelo Admin (estação Rede/Admin V2, 06/10/2026 —
+// volta, a pedido do dono: o Admin precisa trocar a foto de qualquer ponto,
+// fixo ou rede móvel, sem depender de candidatura ou da conta do
+// estabelecimento). O navegador do Admin já manda a foto ENQUADRADA no
+// formato canônico dos cards (16:9, 1280×720, JPEG — public/admin, "Alterar
+// foto"); aqui o servidor só confere que é mesmo uma imagem pelos primeiros
+// bytes (src/lib/imagem.js — o bucket é público) e o tamanho. Mesmo objeto
+// por ponto (upsert) + `?v=` para o navegador não mostrar a foto antiga.
+// Na rede móvel é a foto/capa da REDE (nunca de uma tela).
+const uploadFoto = multer({ dest: os.tmpdir(), limits: { fileSize: 10 * 1024 * 1024 } });
+// O limite da foto é o DESTA rota (10 MB) — o tratador global fala do
+// limite dos vídeos.
+const receberFoto = (req, res, next) =>
+  uploadFoto.single('arquivo')(req, res, (err) =>
+    err?.code === 'LIMIT_FILE_SIZE'
+      ? res.status(413).json({ erro: 'foto grande demais — o máximo é 10 MB' })
+      : next(err),
+  );
+router.post('/admin/pontos/:id/foto', receberFoto, async (req, res) => {
+  try {
+    const id = idDaRota(req.params.id);
+    if (!req.file) return res.status(400).json({ erro: 'envie uma imagem (JPG, PNG ou WebP)' });
+    const db = require('../db/pool');
+    const { rows } = id ? await db.query('SELECT id FROM pontos WHERE id = $1', [id]) : { rows: [] };
+    if (!rows[0]) return res.status(404).json({ erro: 'ponto não encontrado' });
+    const { tipoDaImagem, EXTENSAO } = require('../lib/imagem');
+    const buffer = fs.readFileSync(req.file.path);
+    const tipo = tipoDaImagem(buffer);
+    if (!tipo) return res.status(400).json({ erro: 'envie uma imagem (JPG, PNG ou WebP)' });
+    let url;
+    try {
+      url = await require('../lib/ffmpeg').subirParaStorage(buffer, `pontos/ponto-${id}.${EXTENSAO[tipo]}`, tipo);
+    } catch {
+      return res.status(502).json({ erro: 'falha ao salvar a foto' });
+    }
+    const final = `${url}?v=${Date.now()}`;
+    // O dono (ponto fixo) e quem escolheu o ponto veem a foto nova sem F5.
+    const { rows: contas } = await db.query(
+      `WITH p AS (UPDATE pontos SET foto_instalacao_url = $2 WHERE id = $1 RETURNING anunciante_id)
+       SELECT anunciante_id AS id FROM p WHERE anunciante_id IS NOT NULL
+       UNION SELECT anunciante_id FROM anunciantes_pontos WHERE ponto_id = $1`,
+      [id, final],
+    );
+    for (const conta of contas) sse.emitirParaConta(conta.id, 'point.updated', { id });
+    sse.emitirParaAdmin('point.updated', { id });
+    res.json({ url: final });
+  } finally {
+    if (req.file) fs.unlink(req.file.path, () => {});
+  }
+});
 
 // Admin — foto de EXEMPLO do "ponto completo" mostrada em pontos.html (não é
 // de nenhum ponto real; é a ilustração genérica ao lado do mapa). Mesmo

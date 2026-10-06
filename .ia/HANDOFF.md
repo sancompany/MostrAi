@@ -1,6 +1,31 @@
 # Current Handoff
 
 ## Updated
+2026-10-06 — **Rede / Admin V2** (migration 116, ADR-039; branch
+`claude/busy-noether-hheir2`; continua o #118 sem mexer na arquitetura da
+rede). Admin › Rede só com [Pontos] [Candidaturas]: fixos e redes móveis na
+mesma grade (`montarPontoCard` → `montarRedeCard` na rede), filtros por
+tipo e status, barra do filtro Móveis com [+ Nova rede móvel] [Agenda
+móvel] (`GET /admin/pontos-moveis/agenda`; a central
+`GET /admin/pontos-moveis` saiu); Candidaturas com subabas (Interesses em
+hospedar + linha do benefício). FOTO CANÔNICA 16:9 em todo card de ponto:
+enquadramento no navegador (`enquadrarFoto`, canvas → JPEG 1280×720) e
+`POST /admin/pontos/:id/foto` para qualquer ponto (bytes conferidos em
+`src/lib/imagem.js`); `foto-contida`/`ajustarFotos`/`candidaturaAjustarFoto`
+e `foto-movel` saíram. Contas › conta › [+ Criar ponto]
+(`src/conta/ponto-admin.js`, `POST /admin/anunciantes/:id/pontos`): ponto
+fixo administrativo pelo mesmo núcleo da candidatura
+(`materializar.js#materializarPonto`), `origem='admin'` + `criado_por`, sem
+tela, 409 no repetido. Anunciante: card próprio da rede
+(`painel.page.js#htmlPontoMovelEscolha` — Atual, Próxima localização, Ver
+agenda, Selecionar sempre habilitado) e agenda pública sob demanda
+(`GET /anunciantes/me/redes-moveis/:id/agenda`, `movel.js#agendaPublicaDaRede`
+— só presente/futuro, sem dado interno); capacidade da hora da rede = 3600 s
+× telas ativas (`repository.js#capacidadeDaHoraSql`), então 0 em operação
+nunca bloqueia. Nome e cidade/UF independentes (a 116 renomeia o ponto 9
+para "Mostraí Móvel", mesmos IDs/tela/credencial). Pendências RA1–RA3 em
+`docs/PENDENCIAS.md`. Review-Master segue PAUSADA.
+
 2026-10-05 — **Mostraí Móvel = REDE MÓVEL DA CIDADE** (migration 115,
 ADR-038; branch `claude/busy-noether-hheir2`). Substitui o "1 móvel = 1
 tela" da 112–114: o ponto `tipo='movel'` é a rede comercial de uma

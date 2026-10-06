@@ -1536,8 +1536,8 @@ a.celula-sub:hover {
 }
 .ficha-foto {
   flex: none;
-  width: 132px;
-  aspect-ratio: 4 / 3;
+  width: 176px;
+  aspect-ratio: 16 / 9;
   border-radius: 10px;
   overflow: hidden;
   background: var(--bg-alt);
@@ -1702,7 +1702,7 @@ a.celula-sub:hover {
 }
 .item-linha-foto {
   display: block;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 9;
   border-radius: 8px;
   overflow: hidden;
   background: var(--bg-alt);
@@ -2516,6 +2516,7 @@ button.pend-bloco:focus-visible {
   gap: 10px;
   margin-bottom: 18px;
 }
+.conta-cabecalho-acoes { margin-left: auto; display: flex; gap: 8px; }
 .conta-cabecalho h2 {
   margin: 0 4px 0 0;
   font-size: 1.4rem;
@@ -3640,7 +3641,7 @@ button.pend-bloco:focus-visible {
 }
 .mm-picker-foto {
   display: block;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 9;
   border-radius: 6px;
   overflow: hidden;
   background: var(--bg-alt);
@@ -4213,12 +4214,40 @@ button.pend-bloco:focus-visible {
 .modal-form fieldset.campo-grupo legend { font-weight: 600; font-size: 0.9rem; margin-bottom: 4px; }
 .check-linha { display: flex; gap: 8px; align-items: center; font-size: 0.9rem; margin: 2px 0; }
 
-/* Rede → Pontos móveis (a central das redes): cada rede com o resumo das
-   telas, AGORA e PRÓXIMO em linhas próprias e "Abrir rede" ao lado. */
-.lista-moveis { display: grid; gap: 8px; }
-.movel-card { align-items: center; }
-.movel-card-corpo { display: grid; gap: 2px; min-width: 0; flex: 1; }
-.movel-card-corpo .item-meta { display: block; overflow-wrap: anywhere; }
+/* Rede › Pontos, filtro Móveis (estação Rede/Admin V2): uma barra discreta
+   com as ações das redes móveis, logo abaixo da régua de filtros. */
+.barra-moveis {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 12px; padding: 8px 12px; border: 1px solid #dbeafe; border-radius: 10px; background: #f5f9ff;
+}
+.barra-moveis[hidden] { display: none; }
+.barra-moveis-titulo { font-size: .82rem; font-weight: 700; color: #1e3a8a; }
+.barra-moveis-acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Card da rede móvel no grid dos pontos: "Atual" e "Próximo" em duas linhas. */
+.rede-card-linha { display: flex; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.rede-card-rotulo { flex: none; font-size: .7rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #8a94a3; padding-top: 2px; }
+/* Agenda móvel (modal): a régua Agora/Histórico. */
+.agenda-admin-topo { display: flex; gap: 8px; margin-bottom: 12px; }
+.agenda-admin td { vertical-align: top; }
+.agenda-admin td:nth-child(3) a { white-space: nowrap; }
+/* Interesses: a conta não espreme; as ações quebram em duas linhas. */
+[data-interesses] .interesse-conta { min-width: 170px; }
+.interesse-acoes { display: flex; flex-wrap: wrap; gap: 6px; min-width: 190px; max-width: 280px; }
+/* Rede › Candidaturas: as duas subabas. */
+.subabas { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 14px; }
+.subabas .chip { text-decoration: none; }
+/* Benefício padrão da hospedagem, numa linha (Interesses em hospedar). */
+.beneficio-linha {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 12px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); font-size: .9rem;
+}
+/* Enquadrar foto: o retângulo é o formato canônico dos cards (16:9). */
+.recorte-moldura { border-radius: 10px; overflow: hidden; background: #0f172a; }
+.recorte-tela { display: block; width: 100%; aspect-ratio: 16 / 9; cursor: grab; touch-action: none; }
+.recorte-tela:active { cursor: grabbing; }
+.recorte-tela:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.recorte-controles { display: flex; align-items: center; gap: 10px; margin: 12px 0 6px; }
+.recorte-controles input[type="range"] { flex: 1; }
 
 /* Ficha da rede móvel: título em caixa alta, resumo das telas, a operação
    de agora e a alocação de cada tela na lista. */

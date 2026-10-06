@@ -6,8 +6,8 @@ const { gerarHash } = require('../src/lib/senha');
 
 // PONTO FIXO E REDE MÓVEL (migrations 112 a 115, src/pontos/movel.js). O
 // ponto móvel (`pontos.tipo = 'movel'`) é a REDE MÓVEL de uma cidade
-// (migration 115): nasce só pelo Admin (POST /admin/pontos-moveis, cidade +
-// UF, uma por cidade), sem dona e SEM tela — as telas entram por "+ Adicionar
+// (migration 115): nasce só pelo Admin (POST /admin/pontos-moveis, nome +
+// cidade + UF, uma por cidade), sem dona e SEM tela — as telas entram por "+ Adicionar
 // tela", quantas forem. Candidatura gera sempre fixo; o tipo não muda. Cada
 // TELA só tem local, horário, ramo e lugar no inventário enquanto está
 // ALOCADA (hospedagem ativa ou evento em andamento com ela); o evento é da
@@ -118,6 +118,8 @@ test.after(async () => {
     await pool.query('DELETE FROM candidaturas WHERE conta_id = $1', [id]);
     await pool.query('DELETE FROM cupons_ponto WHERE conta_id = $1', [id]);
     await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [id]);
+    // O e-mail "ponto aprovado" de cada aprovação (src/conta/modos.js).
+    await pool.query('DELETE FROM email_outbox WHERE anunciante_id = $1', [id]);
     await pool.query('DELETE FROM creditos_ledger WHERE anunciante_id = $1', [id]);
     await pool.query('DELETE FROM eventos WHERE anunciante_id = $1', [id]);
     await pool.query('DELETE FROM anunciantes WHERE id = $1', [id]);
@@ -223,11 +225,16 @@ async function aprovar(conta, corpo) {
 
 const cidadeUnica = () => `Cidade ${randomUUID().slice(0, 8)}`;
 
-// A rede nasce pelo Admin (cidade única + UF; nome opcional e nota
-// interna), sem tela; `telas` telas entram em seguida pela rota da ficha
-// ("+ Adicionar tela"). Nasce sem alocação.
+// A rede nasce pelo Admin (nome obrigatório, cidade única + UF; nota
+// interna opcional), sem tela; `telas` telas entram em seguida pela rota da
+// ficha ("+ Adicionar tela"). Nasce sem alocação.
 async function criarMovel(corpo = {}, { telas = 1 } = {}) {
-  const r = await admin('POST', '/admin/pontos-moveis', { cidade: cidadeUnica(), uf: 'SP', ...corpo });
+  const r = await admin('POST', '/admin/pontos-moveis', {
+    nome: 'Mostraí Móvel',
+    cidade: cidadeUnica(),
+    uf: 'SP',
+    ...corpo,
+  });
   assert.strictEqual(r.status, 201, JSON.stringify(r.json));
   criadas.pontos.push(r.json.id);
   const ids = [];
@@ -311,7 +318,11 @@ async function eventoEmAndamento(ponto, extra = {}) {
 const ficha = async (pontoId) => (await admin('GET', `/admin/pontos/${pontoId}/movel`)).json;
 const telaNaFicha = (f, telaId) => f.telas.find((t) => t.id === telaId);
 const acaoNoEvento = (pontoId, eventoId, acao) => admin('POST', `/admin/pontos/${pontoId}/eventos/${eventoId}/${acao}`);
-const daLista = async (pontoId) => (await movel.listarRedes()).find((m) => m.id === pontoId);
+// A rede vista pelo grid do Admin e pelo card (src/pontos/movel.js
+// #situacaoDasRedes) e os compromissos dela na Agenda móvel do Admin
+// (#agendaDasRedes: um por compromisso, evento com várias telas é UM).
+const situacao = async (pontoId) => (await movel.situacaoDasRedes([pontoId])).get(pontoId);
+const naAgenda = async (pontoId, opcoes) => (await movel.agendaDasRedes(opcoes)).filter((c) => c.redeId === pontoId);
 const publicos = async () => (await navegador()('GET', '/pontos')).json;
 const noInventario = async (pontoId) =>
   (await pool.query(`SELECT ${inventarioSql('p')} AS sim FROM pontos p WHERE p.id = $1`, [pontoId])).rows[0].sim;
@@ -364,6 +375,14 @@ test('3. candidatura nunca vira rede móvel; o Admin cria a rede da cidade — s
   assert.match(r.json.erro, /sempre gera ponto fixo/);
   assert.strictEqual(await pontoDaCandidatura(cand.id), null);
 
+  // O nome é obrigatório e independente da cidade (estação Rede/Admin V2):
+  // o sistema não compõe mais "Mostraí Móvel — {Cidade}" sozinho.
+  for (const nome of [undefined, '', '   ']) {
+    const semNome = await admin('POST', '/admin/pontos-moveis', { nome, cidade: cidadeUnica(), uf: 'SP' });
+    assert.strictEqual(semNome.status, 400, `nome ${JSON.stringify(nome)}`);
+    assert.strictEqual(semNome.json.campo, 'nome');
+  }
+
   // Campos do modelo antigo (base, endereço, horário) são ignorados.
   const cidade = cidadeUnica();
   const ponto = await criarMovel(
@@ -378,8 +397,9 @@ test('3. candidatura nunca vira rede móvel; o Admin cria a rede da cidade — s
     { telas: 0 },
   );
   assert.strictEqual(ponto.tipo, 'movel');
-  assert.strictEqual(ponto.nome, `Mostraí Móvel — ${cidade}`);
+  assert.strictEqual(ponto.nome, 'Mostraí Móvel', 'o nome que o Admin digitou, sem a cidade');
   assert.deepStrictEqual([ponto.cidade, ponto.uf], [cidade, 'SP']);
+  assert.strictEqual(ponto.origem, 'movel', 'origem auditável (migration 116)');
   assert.strictEqual(ponto.anunciante_id, null, 'sem dona');
   assert.strictEqual(ponto.candidatura_id, null, 'não vem de candidatura');
   assert.strictEqual(ponto.base_conta_id, null, 'sem base');
@@ -417,7 +437,8 @@ test('4. conta comum (e anônimo) não cria rede nem mexe em rede, tela livre ou
   for (const quem of [nav, anon]) {
     assert.strictEqual((await quem('POST', `/admin/candidaturas/${cand.id}/liberar`, { tipo: 'movel' })).status, 401);
     assert.strictEqual((await quem('POST', '/admin/pontos-moveis', { cidade: cidadeUnica(), uf: 'SP' })).status, 401);
-    assert.strictEqual((await quem('GET', '/admin/pontos-moveis')).status, 401);
+    assert.strictEqual((await quem('GET', '/admin/pontos-moveis/agenda')).status, 401);
+    assert.strictEqual((await quem('POST', `/admin/pontos/${movelPronto.id}/foto`)).status, 401);
     assert.strictEqual((await quem('PATCH', `/admin/pontos/${movelPronto.id}/movel`, { nome: 'X' })).status, 401);
     assert.strictEqual((await quem('POST', `/admin/pontos/${movelPronto.id}/dispositivos`, {})).status, 401);
     assert.strictEqual((await quem('POST', `/admin/pontos/${fixo.id}/tornar-movel`)).status, 401);
@@ -511,10 +532,17 @@ test('5 a 9. evento em andamento aloca SÓ as telas dele (local, inventário, "O
     f.agenda.map((x) => [x.tipo, x.id, x.estado, x.telas.map((t) => t.id)]),
     [['evento', eventoId, 'em_andamento', [a]]],
   );
-  const naLista = await daLista(ponto.id);
+  // O grid do Admin e o card: onde a rede está agora (o local do evento),
+  // quantas telas e quantas em operação.
+  const naSituacao = await situacao(ponto.id);
   assert.deepStrictEqual(
-    naLista.agora.map((x) => x.id),
-    [eventoId],
+    [naSituacao.telas, naSituacao.emOperacao, naSituacao.locaisAgora],
+    [2, 1, [{ origem: 'evento', nome: 'Ginásio Municipal', endereco: 'Rua do Ginásio, 50' }]],
+  );
+  // A Agenda móvel do Admin: o evento em curso, com SÓ a tela dele.
+  assert.deepStrictEqual(
+    (await naAgenda(ponto.id)).map((x) => [x.tipo, x.id, x.emCurso, x.telas.map((t) => t.id)]),
+    [['evento', eventoId, true, [a]]],
   );
   assert.strictEqual(await noInventario(ponto.id), true, 'uma tela alocada: a rede é inventário');
   const publico = (await publicos()).filter((p) => p.id === ponto.id);
@@ -549,6 +577,16 @@ test('5 a 9. evento em andamento aloca SÓ as telas dele (local, inventário, "O
   f = await ficha(ponto.id);
   assert.strictEqual(telaNaFicha(f, a).alocacao, null, 'encerrado: sem alocação de novo');
   assert.strictEqual(telaNaFicha(f, a).proximo.id, outro);
+  assert.deepStrictEqual((await situacao(ponto.id)).locaisAgora, [], 'encerrado: a rede não está em lugar nenhum');
+  assert.deepStrictEqual(
+    (await naAgenda(ponto.id)).map((x) => x.id),
+    [outro],
+    'a Agenda móvel fica só com o futuro',
+  );
+  assert.ok(
+    (await naAgenda(ponto.id, { historico: true })).some((x) => x.id === eventoId && x.estado === 'encerrado'),
+    'o encerrado vai para o histórico',
+  );
   const encerrado = f.eventos.find((e) => e.id === eventoId);
   assert.strictEqual(encerrado.estado, 'encerrado');
   assert.strictEqual(encerrado.encerramento, 'manual');
@@ -605,7 +643,27 @@ test('7 e 11. evento futuro é o próximo compromisso da tela; sem horário oper
     ev.telas.map((t) => t.id),
     [ponto.telaId],
   );
-  assert.strictEqual((await daLista(ponto.id)).proximo.id, maisCedo);
+  // O próximo compromisso da REDE (grid do Admin e card), no formato
+  // público: tipo, nome, local do evento e período — sem id, tela ou público.
+  const { proximo } = await situacao(ponto.id);
+  assert.deepStrictEqual(
+    { ...proximo, inicio: new Date(proximo.inicio).toISOString(), fim: new Date(proximo.fim).toISOString() },
+    {
+      tipo: 'evento',
+      nome: 'Campeonato Regional de Jiu-Jitsu',
+      local: 'Ginásio Municipal',
+      inicio: ev.inicio,
+      fim: ev.fim,
+    },
+  );
+  // A Agenda móvel do Admin: os dois, por início, cada um com a tela.
+  assert.deepStrictEqual(
+    (await naAgenda(ponto.id)).map((x) => [x.id, x.emCurso, x.telas.map((t) => t.id)]),
+    [
+      [maisCedo, false, [ponto.telaId]],
+      [semPublico, false, [ponto.telaId]],
+    ],
+  );
 
   const tentar = (extra) => admin('POST', `/admin/pontos/${ponto.id}/eventos`, corpoDeEvento([ponto.telaId], extra));
   const horarioVazio = await tentar({
@@ -765,14 +823,31 @@ test('a rede não tem horário, ramo nem endereço próprios; nome, cidade, UF e
   const nota = await admin('PATCH', `/admin/pontos/${ponto.id}`, { observacoes: 'lacre 123' });
   assert.strictEqual(nota.status, 200, JSON.stringify(nota.json));
   const cidade = cidadeUnica();
-  const editada = await admin('PATCH', `/admin/pontos/${ponto.id}/movel`, { cidade, uf: 'MG', nome: '' });
+  // Nome vazio é recusado (não volta mais a um padrão da cidade) e nada muda.
+  for (const nome of ['', '   ']) {
+    const vazio = await admin('PATCH', `/admin/pontos/${ponto.id}/movel`, { cidade, uf: 'MG', nome });
+    assert.strictEqual(vazio.status, 400, `nome ${JSON.stringify(nome)}`);
+    assert.strictEqual(vazio.json.campo, 'nome');
+  }
+  const intacta = (await pool.query('SELECT nome, cidade, uf FROM pontos WHERE id = $1', [ponto.id])).rows[0];
+  assert.deepStrictEqual(intacta, { nome: ponto.nome, cidade: ponto.cidade, uf: ponto.uf });
+  // Mudar a cidade NÃO muda o nome: são campos independentes.
+  const editada = await admin('PATCH', `/admin/pontos/${ponto.id}/movel`, { cidade, uf: 'MG' });
   assert.strictEqual(editada.status, 200, JSON.stringify(editada.json));
   const { id, nome, uf } = editada.json;
   assert.deepStrictEqual(
     { id, nome, cidade: editada.json.cidade, uf },
-    { id: ponto.id, nome: `Mostraí Móvel — ${cidade}`, cidade, uf: 'MG' },
-    'nome vazio volta ao padrão da cidade',
+    { id: ponto.id, nome: 'Mostraí Móvel', cidade, uf: 'MG' },
+    'a cidade mudou; o nome continua o que o Admin escolheu',
   );
+  // E o nome muda sozinho, sem tocar na cidade.
+  const renomeada = await admin('PATCH', `/admin/pontos/${ponto.id}/movel`, { nome: '  Rede   do Centro ' });
+  assert.strictEqual(renomeada.status, 200, JSON.stringify(renomeada.json));
+  assert.deepStrictEqual((await pool.query('SELECT nome, cidade, uf FROM pontos WHERE id = $1', [ponto.id])).rows[0], {
+    nome: 'Rede do Centro',
+    cidade,
+    uf: 'MG',
+  });
   const outra = await criarMovel({}, { telas: 0 });
   const dup = await admin('PATCH', `/admin/pontos/${outra.id}/movel`, {
     cidade: ` ${cidade.toUpperCase()} `,
@@ -819,7 +894,7 @@ test('12, 13 e 14. organizador não vira dono; evento e rede não dão Plano Bá
 });
 
 // ---------- 15. card do anunciante ----------
-test('15. o anunciante vê a REDE: telas, quantas em operação e onde — nada administrativo do evento', async () => {
+test('15. o anunciante vê a REDE: cidade, foto, onde está agora e o próximo — nada técnico nem administrativo', async () => {
   const ponto = await criarMovel({}, { telas: 2 });
   await tirarDoSorteio(ponto.id);
   await eventoEmAndamento(ponto, {
@@ -839,16 +914,22 @@ test('15. o anunciante vê a REDE: telas, quantas em operação e onde — nada 
   assert.strictEqual(item.uf, 'SP');
   assert.strictEqual(item.inventario, true);
   assert.strictEqual(item.seuPonto, false);
-  assert.strictEqual(item.movel.telas, 2);
-  assert.strictEqual(item.movel.emOperacao, 1);
-  assert.deepStrictEqual(
-    item.movel.locaisAgora.map((l) => [l.origem, l.nome, l.endereco]),
-    [['evento', 'Parque de Exposições', 'Rua do Ginásio, 50']],
-  );
-  assert.strictEqual(item.movel.base, undefined, 'sem base');
+  // O card (estação Rede/Admin V2): só cidade, foto, onde está AGORA (um
+  // local: o nome dele) e o próximo compromisso — nada de telas, operação,
+  // endereço ou base.
+  assert.deepStrictEqual(item.movel, {
+    cidade: ponto.cidade,
+    uf: 'SP',
+    foto: null,
+    agora: { quantidade: 1, nome: 'Parque de Exposições' },
+    proximo: null,
+  });
+  for (const chave of ['telas', 'emOperacao', 'locaisAgora', 'base']) {
+    assert.ok(!(chave in item.movel), `o card não leva "${chave}"`);
+  }
   assert.doesNotMatch(
     JSON.stringify(item),
-    /Sindicato Rural|organizacao|publico/i,
+    /Sindicato Rural|organizacao|publico|Rua do Ginásio/i,
     'dado administrativo não vai pro card',
   );
   assert.ok(
@@ -1083,18 +1164,16 @@ test('situacaoDasRedes ignora ponto fixo e id inválido; "Meus pontos" não tem 
   const meus = await meusPontosDaConta(fixo.anunciante_id);
   assert.ok(meus.every((e) => e.tipo !== 'base_movel'));
   const m = await criarMovel({}, { telas: 2 });
-  const { nome, cidade, uf, telas, emOperacao, locaisAgora } = (await movel.situacaoDasRedes([m.id, fixo.id])).get(
-    m.id,
-  );
-  assert.deepStrictEqual(
-    { nome, cidade, uf, telas, emOperacao, locaisAgora },
-    {
-      nome: m.nome,
-      cidade: m.cidade,
-      uf: 'SP',
-      telas: 2,
-      emOperacao: 0,
-      locaisAgora: [],
-    },
-  );
+  const { rows } = await pool.query('SELECT status FROM pontos WHERE id = $1', [m.id]);
+  assert.deepStrictEqual((await movel.situacaoDasRedes([m.id, fixo.id])).get(m.id), {
+    nome: m.nome,
+    cidade: m.cidade,
+    uf: 'SP',
+    status: rows[0].status,
+    foto: null,
+    telas: 2,
+    emOperacao: 0,
+    locaisAgora: [],
+    proximo: null,
+  });
 });

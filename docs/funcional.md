@@ -106,7 +106,19 @@ dá nada a quem se cadastra: o benefício é do ponto que indicou.
    cada um com "Benefício: +1 crédito/mês · último · próximo") e
    Solicitações de ponto à parte. Selo "Dono de ponto" só com ponto
    aprovado. Atualiza sozinha (SSE) quando o cliente resgata créditos ou uma
-   candidatura é aprovada.
+   candidatura é aprovada. **[+ Criar ponto]** no cabeçalho (estação
+   Rede/Admin V2, 06/10/2026 — o comerciante que quer ser ponto e não tem
+   tempo de preencher o pedido): modal pré-preenchido com os dados da conta
+   (nome, responsável, telefone, endereço em partes, categoria, movimento
+   estimado, observações) → [Criar ponto] cria um ponto FIXO vinculado à
+   conta, como "aguardando instalação" e **sem tela** (a tela nasce na
+   instalação, mesma regra da candidatura). Nenhuma candidatura falsa: a
+   origem fica gravada como Admin (com o usuário). O aceite dos termos do
+   ponto é o contrato assinado à mão, fora do sistema (decisão do dono,
+   06/10/2026) — por isso o ponto criado pelo Admin não registra aceite. Estabelecimento repetido
+   (mesma conta, nome e endereço) ou pedido em análise no mesmo endereço →
+   o modal mostra o conflito e nada é criado. Não aparece na conta própria
+   nem em conta excluída. Depois de criar, abre a ficha do ponto.
 4. Gera convites, cadastra pontos e telas, gera o código de instalação de cada
    tela (RN-59), revoga o Player, ajusta a área segura (RN-60) e o estado
    (Ativa/Em reparo/Inativa) na ficha da tela (Rede → ponto → M-0235); edita o
@@ -272,27 +284,45 @@ Escrito por grupo, porque o padrão se repete.
   todos os dias"; **Excluir ponto** no pé da ficha: sai com as telas, e
   ponto com histórico — exibição, crédito, repasse, Plano Básico — recusa e
   pede pra deixar as telas Inativas) e as telas em linhas (`M-0235` · situação · Abrir ·
-  Excluir); **Mostraí Móvel — a rede móvel da cidade** (RN-71/RN-72): aba
-  **Rede › Pontos móveis** é a CENTRAL das redes — **Redes móveis** (um card
-  compacto por cidade: foto pequena, "N telas · X em operação · Y agendadas ·
-  Z disponíveis", **AGORA** por tela e **PRÓXIMO** compromisso, [Abrir rede];
-  [+ Nova rede móvel] com Cidade*, UF*, nome opcional — "Mostraí Móvel —
-  {Cidade}" —, **Foto/capa da rede móvel** e nota; nenhuma tela nasce junto),
-  **Próximos compromissos** (de todas as redes, com as telas), **Interesses
-  em hospedar** (conta, direito ativo hoje e de onde vem, contato, local,
-  observação, histórico; [Em contato], [Aprovar], [Agendar hospedagem] — que
-  abre a nova hospedagem com conta, local, endereço e categoria preenchidos —,
-  [Recusar], [Nota]) e **Configuração do benefício** ("Benefício padrão de
-  hospedagem: 20% [Alterar]", "Ver histórico"); na ficha da rede: cabeçalho
-  "MOSTRAÍ MÓVEL — MATÃO/SP" com os selos REDE ITINERANTE e Ativa, o resumo
-  "N telas · X em operação agora · Y com compromisso futuro · Z disponíveis",
+  Excluir); **navegação (estação Rede/Admin V2, 06/10/2026): Rede tem só
+  [Pontos] [Candidaturas]** — a aba "Pontos móveis" saiu (o link antigo
+  `#rede/moveis` abre Pontos com o filtro Móveis). **Pontos**: fixos e redes
+  móveis na MESMA grade, cards do mesmo tamanho, foto canônica 16:9; filtros
+  Todos / Fixos / Móveis / Com problema / Aguardando instalação / Aguardando
+  primeiro sinal / Ativos / Em reparo / Inativos. O filtro **Móveis** mostra
+  uma barra discreta com [+ Nova rede móvel] e [Agenda móvel]. Card da rede
+  (compacto): foto (a capa da rede), selo ITINERANTE, nome + Ativa/Arquivada,
+  cidade/UF, "N telas · X em operação", **Atual** (o local, "N locais em
+  operação" ou "Sem localização") e **Próximo**, [Abrir rede].
+  **Agenda móvel** (modal, sob demanda): Data · Horário · Rede · Tela(s) ·
+  Tipo · Local · Estado — por padrão o que está em curso e o futuro;
+  "Histórico" mostra encerrados e cancelados. **Candidaturas** tem duas
+  subabas: **Candidaturas de ponto** (a fila de sempre) e **Interesses em
+  hospedar** (`#rede/candidaturas/interesses`): no topo a linha
+  "Benefício padrão da hospedagem: 20% [Alterar] [Ver histórico]" (a regra
+  não mudou: vale para as próximas hospedagens, cada uma congela o seu); a
+  tabela com conta, direito ativo hoje e de onde vem, contato, local,
+  observação, situação e [Agendar hospedagem] — que abre a nova hospedagem
+  com conta, local, endereço e categoria preenchidos —, [Em contato],
+  [Aprovar], [Recusar], [Nota]. **Foto de qualquer ponto** (fixo ou móvel):
+  [Alterar foto] na ficha → escolher → **Enquadrar foto** (prévia 16:9,
+  zoom, arrastar, setas do teclado) → [Usar esta foto]; o navegador gera um
+  JPEG 1280×720 e o card usa `object-fit: cover` — foto antiga continua
+  funcionando, só passa a ser recortada no mesmo formato. [+ Nova rede
+  móvel]: **Nome*** (ex.: "Mostraí Móvel"), **Cidade*** e **UF*** — campos
+  independentes, nunca compostos ("Mostraí Móvel" + "Matão/SP"; trocar a
+  cidade não renomeia) —, foto/capa opcional (passa pelo enquadramento) e
+  nota; nenhuma tela nasce junto. Na ficha da rede: cabeçalho com o nome,
+  selos ITINERANTE e Ativa e a cidade/UF, o resumo "N telas · X em operação
+  agora · Y com compromisso futuro · Z disponíveis",
   **Disponível para anunciantes: Sim** (1 posição do plano, com qualquer
-  número de telas), **Telas comerciais ativas agora: X de N**, [+ Adicionar
-  tela], [+ Novo evento], [+ Nova hospedagem], [Editar rede], [Trocar
-  foto/capa], [Excluir rede]; **TELAS** (código, situação do Player, a
-  alocação de agora ou o próximo compromisso, Abrir/Excluir — a ficha da tela
-  é a de sempre); **OPERAÇÃO AGORA** por tela; **AGENDA** consolidada (cada
-  hospedagem ou evento com tela(s), período, local e estado) e **Histórico**.
+  número de telas), **Telas comerciais ativas agora: X de N**, [+ Novo
+  evento], [+ Nova hospedagem], [Editar rede], [Alterar foto], [Excluir
+  rede]; **TELAS** com o ÚNICO [+ Adicionar tela] da ficha (código, situação
+  do Player, a alocação de agora ou o próximo compromisso, Abrir/Excluir — a
+  ficha da tela é a de sempre); **OPERAÇÃO AGORA** por tela; **AGENDA**
+  consolidada (cada hospedagem ou evento com tela(s), período, local e
+  estado) e **Histórico**.
   [+ Novo evento]: nome*, organização, local*, endereço* (a cidade é a da
   rede), público estimado, observação, início* e fim*, "Operar durante todo
   o período" marcado por padrão (desmarcado abre a grade por dia com
@@ -1523,7 +1553,9 @@ estado ao lado, endereço com bairro e cidade, segmento, horário, ocupação,
 "Ver no mapa" sobre a foto e, no pé, a caixa de seleção com o estado
 escrito — "Selecionar ponto", "Selecionado" (borda da marca), "Limite do
 plano atingido" ou "Indisponível para escolha" (sem espaço ou fechado pra
-escolha nova, card apagado). Clicar em qualquer parte do card marca; no
+escolha nova, card apagado; nunca na rede móvel, que tem card próprio —
+RN-71). A foto de todo card é a canônica 16:9 (`object-fit: cover`, estação
+Rede/Admin V2). Clicar em qualquer parte do card marca; no
 mapa, não. Foto, segmento e bairro vêm da vitrine pública (`GET /pontos`);
 se ela falhar ou passar de 3 s, o card fica com o placeholder e a escolha
 segue igual. Só a apresentação mudou: limite, trava, salvamento e contador
@@ -1700,11 +1732,14 @@ anunciante escolhe a rede (1 posição) e cada tela opera onde está alocada.**
 decidido no NASCIMENTO e imutável (gatilho no banco). **Fixo** é o de
 sempre: nasce da candidatura aprovada — candidatura gera **sempre** fixo — e a
 conta que cedeu a parede é a dona (crédito mensal, Plano Básico, cupom). O
-tipo **móvel** é a **REDE MÓVEL COMERCIAL DE UMA CIDADE** ("Mostraí Móvel —
-Matão/SP", selo ITINERANTE): nasce só em Admin → Rede → Pontos móveis, com
-**cidade e UF obrigatórias** (uma rede por cidade + UF — índice único; a
-mesma cidade de novo é recusada), nome opcional ("Mostraí Móvel —
-{Cidade}"), foto/capa e nota; `anunciante_id` e `candidatura_id` vazios
+tipo **móvel** é a **REDE MÓVEL COMERCIAL DE UMA CIDADE** ("Mostraí Móvel"
++ "Matão/SP", selo ITINERANTE): nasce só em Admin → Rede › Pontos (filtro
+Móveis) › [+ Nova rede móvel], com **nome, cidade e UF obrigatórios e
+independentes** (desde a estação Rede/Admin V2, 06/10/2026, migration 116:
+o nome nunca é composto com a cidade, e trocar a cidade não renomeia; uma
+rede por cidade + UF — índice único; a mesma cidade de novo é recusada),
+foto/capa (a foto canônica 16:9 do ponto, que aparece no card do Admin e
+do anunciante) e nota; `anunciante_id` e `candidatura_id` vazios
 (CHECK no banco); **nenhuma tela nasce junto** — "+ Adicionar tela", quantas
 forem. Não confundir: a **rede** (o que o anunciante escolhe); a **tela**
 (o equipamento físico: Player, credencial, heartbeat, POP, área segura e
@@ -1729,12 +1764,23 @@ anfitrião; no evento em andamento, o horário e a categoria dele, sem casa;
 própria ou obrigação, e se ligada toca só o institucional. "Onde estamos"
 mostra só as alocações reais de agora (um card por hospedagem ou evento,
 com o local e o endereço) — nunca um pino da rede. **O anunciante escolhe a
-REDE, nunca uma tela**: o card "MOSTRAÍ MÓVEL — MATÃO" (ITINERANTE, "Rede
-móvel de eventos e ações em Matão.", "N telas na rede · X em operação
-agora") aparece SEMPRE e a seleção nunca é bloqueada por falta de tela; com
-0 em operação: "Nenhuma tela móvel em operação agora. A campanha volta
-automaticamente para a rede móvel quando houver inventário ativo em
-Matão." A escolha conta **1 posição** do plano, com 1 ou 10 telas — nunca
+REDE, nunca uma tela**: o card da rede (estação Rede/Admin V2) é curto —
+FOTO (a capa da rede, mesmo formato 16:9 dos outros cards) com o selo
+ITINERANTE, nome, cidade/UF, **Atual** (o local de agora; "N locais em
+operação" com 2 ou mais; "Sem localização no momento" sem nenhum) e
+**Próxima localização** (nome · local · "08/10 às 18h"; "Nenhuma
+programada"), [Ver agenda] e a caixa **Selecionar**. Aparece SEMPRE e é
+escolhível enquanto ativa e não arquivada — sem localização não é
+"Indisponível para escolha"; só travam o limite do plano e a capacidade
+REAL esgotada, medida por tela ativa (a causa do bug antigo era o card tratar "sem
+alocação" como ponto cheio; a rede agora tem card próprio e o servidor
+mede a capacidade da hora por tela ativa, 3600 s × telas, então 0 em
+operação nunca bloqueia). **Ver agenda** abre a agenda PÚBLICA da rede,
+carregada sob demanda (qualquer anunciante logado, mesmo sem ter escolhido
+a rede): "Agora" e "Próximas localizações", cada uma com data, horário,
+nome, local do evento e tipo — só presente e futuro; nunca público
+estimado, conta, contato, notas, percentual, termo ou fotos de entrega.
+A escolha conta **1 posição** do plano, com 1 ou 10 telas — nunca
 a conta, a agenda, o período ou a logística. Ninguém ganha crédito, Plano
 Básico, cupom ou papel de dono pela rede — nem o organizador do evento. A
 conversão fixo ⇄ móvel saiu (rotas 410); `PUT /admin/pontos/:id/base` →
@@ -1776,8 +1822,8 @@ ou o sistema no fim previsto); programada →
 cancelada (só antes de começar; benefício zero). Encerrada não muda mais
 (gatilho) — só o tempo comprovado DENTRO da janela pode crescer, quando a
 tela manda depois o que exibiu sem internet (apuração tardia, abaixo). Prorrogar é permitido sem conflito, com o mesmo
-percentual. O **percentual** é global (Admin → Rede → Pontos móveis →
-"Benefício por hospedagem", padrão 20%, 0 a 100 com até 2 casas, cada
+percentual. O **percentual** é global (Admin → Rede › Candidaturas ›
+Interesses em hospedar → "Benefício padrão da hospedagem", padrão 20%, 0 a 100 com até 2 casas, cada
 alteração auditada com anterior, novo, admin e data) e é **congelado** na
 hospedagem quando o Admin confirma — a confirmação leva o percentual que o
 Admin revisou e é recusada se o global mudou no meio. O **tempo operacional

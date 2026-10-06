@@ -171,7 +171,8 @@ P.academia = ponto({
   status: 'a_instalar',
   tela: 'nenhuma',
 });
-// Foto em pé: entra inteira (foto-contida), como no admin.
+// Foto em pé: enquadrada no formato canônico 16:9 (object-fit: cover),
+// como em todos os cards de ponto (estação Rede/Admin V2).
 P.barbearia = ponto({
   nome: 'Barbearia do Zé',
   rua: 'Rua Tiradentes, 55',
@@ -359,7 +360,12 @@ await p.waitForFunction(
   (id) => document.querySelector(`.ponto-escolha[data-ponto-id="${id}"] img`)?.complete,
   P.barbearia,
 );
-check('foto em pé entra inteira (foto-contida)', await card(p, P.barbearia).locator('img.foto-contida').count() === 1);
+check(
+  'foto em pé: formato canônico (cover, sem foto-contida)',
+  await card(p, P.barbearia)
+    .locator('img')
+    .evaluate((img) => getComputedStyle(img).objectFit === 'cover' && !img.classList.contains('foto-contida')),
+);
 check('aguardando primeiro sinal', (await card(p, P.barbearia).locator('.badge').innerText()) === 'Aguardando primeiro sinal');
 check('em instalação: sem hora vendida', (await card(p, P.academia).locator('.ponto-ocupacao').innerText()) === 'Ainda sem hora vendida');
 check('em reparo', (await card(p, P.pet).locator('.badge').innerText()) === 'Em reparo');
@@ -524,7 +530,7 @@ for (const [nome, largura, altura, esperadas] of [
   if (nome === 'celular') {
     check('celular: a página rola, não a lista', (await t.p.$eval('#listaPontos', (el) => getComputedStyle(el).overflowY)) === 'visible');
     const media = await card(t.p, P.mercado).locator('.ponto-card-media').boundingBox();
-    check('celular: foto mais baixa (2:1)', Math.abs(media.width / media.height - 2) < 0.05, JSON.stringify(media));
+    check('celular: foto no formato canônico (16:9)', Math.abs(media.width / media.height - 16 / 9) < 0.05, JSON.stringify(media));
     await salvou(t.p, () => card(t.p, P.mercado).locator('.ponto-nome').click());
     check('celular: tocar no card marca e salva', escolhidos() === String(P.mercado));
     await salvou(t.p, () => card(t.p, P.mercado).locator('input').click());

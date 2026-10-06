@@ -28,7 +28,8 @@ const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas'
 const convitesRepo = require('../convites/repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
-const { situacaoDasRedes } = require('../pontos/movel');
+const { situacaoDasRedes, agendaPublicaDaRede } = require('../pontos/movel');
+const { SEGUNDOS_DA_HORA, telasDaCapacidadeSql } = require('../lib/capacidade');
 const { horarioDaTelaSql, horarioDoPontoSql, telaNoInventarioSql, inventarioSql } = require('../lib/contexto-do-ponto');
 const basicoRepo = require('../pontos/basico');
 const { materializarPontoDaCandidatura } = require('../pontos/materializar');
@@ -720,6 +721,7 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
             ${inventarioSql('p')} AS inventario,
             (p.escolha_bloqueada_em IS NOT NULL) AS bloqueado,
             COALESCE(SUM(pl.segundos_por_hora), 0)::int AS segundos_vendidos,
+            ${telasDaCapacidadeSql('p')} AS telas_da_capacidade,
             (ap.ponto_id IS NOT NULL) AS escolhido, ap.escolhido_em,
             (p.anunciante_id IS NOT DISTINCT FROM $1) AS seu_ponto
        FROM pontos p
@@ -758,7 +760,7 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
     bloqueados,
   );
   const naCobertura = new Set(cobertos);
-  // Rede móvel: quantas telas e quantas em operação agora — decididos no
+  // Rede móvel: onde está agora e o próximo compromisso — decididos no
   // servidor (src/pontos/movel.js), o card só mostra.
   const moveis = await situacaoDasRedes(lista.filter((r) => r.tipo === 'movel').map((r) => r.id));
   const base = Number(plano.segundos_por_hora) || 0;
@@ -802,7 +804,8 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
       // Quanto da hora daquele ponto já está vendido. 100% = cheio.
       // Ponto que ainda não veicula não tem hora vendida — 0 não é "vazio de
       // verdade", é "ainda não existe", e a tela diz isso com o status.
-      ocupacao: Math.min(100, Math.round((r.segundos_vendidos / 3600) * 100)),
+      // Por tela (na rede móvel a cota se divide entre as telas ativas).
+      ocupacao: Math.min(100, Math.round((r.segundos_vendidos / (SEGUNDOS_DA_HORA * r.telas_da_capacidade)) * 100)),
       // Cruzou 80% (G.7) — fechado pra escolha nova, mas continua exibindo
       // pra quem já tinha escolhido (esse nunca é tirado por isso).
       bloqueado: r.bloqueado && !r.escolhido,
@@ -816,13 +819,39 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
       // 'fixo' | 'movel'. Quem escolhe o móvel escolhe a REDE da cidade
       // (nunca uma tela, uma hospedagem ou um evento): 1 posição do plano,
       // dividida entre as telas dela em operação. `inventario: false` = 0
-      // tela em operação agora (a escolha vale e volta sozinha).
+      // tela em operação agora — a rede continua ESCOLHÍVEL (a escolha vale
+      // e volta sozinha; o tempo vai para os pontos no ar enquanto isso).
       tipo: r.tipo,
       uf: r.uf,
       inventario: r.inventario,
-      movel: moveis.get(r.id) || null,
+      movel: cardDaRede(moveis.get(r.id)),
     })),
   });
+});
+
+// O card do Mostraí Móvel no painel (estação Rede/Admin V2): só o que o
+// cliente precisa — foto, cidade, onde está AGORA (um local, ou quantos
+// quando são vários) e a PRÓXIMA localização. Nada técnico (telas, operação,
+// inventário, pool) e nada interno (conta, contato, percentual, termo).
+function cardDaRede(m) {
+  if (!m) return null;
+  const locais = m.locaisAgora || [];
+  return {
+    cidade: m.cidade,
+    uf: m.uf,
+    foto: m.foto || null,
+    agora: { quantidade: locais.length, nome: locais.length === 1 ? locais[0].nome : null },
+    proximo: m.proximo || null,
+  };
+}
+
+// "Ver agenda" do card do Mostraí Móvel: presente + futuro da rede, só com
+// dado público (src/pontos/movel.js#agendaPublicaDaRede). Qualquer conta
+// logada vê — não precisa ter escolhido a rede.
+router.get('/anunciantes/me/redes-moveis/:id/agenda', exigirAnuncianteLogado, async (req, res) => {
+  const agenda = await agendaPublicaDaRede(req.params.id);
+  if (!agenda) return res.status(404).json({ erro: 'rede móvel não encontrada' });
+  res.json(agenda);
 });
 
 router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) => {

@@ -41,19 +41,6 @@ function candidaturaBloco(prefixo, chave, titulo, conteudo) {
     </div>`;
 }
 
-// Logo quadrado ou em pé numa moldura deitada: com `cover` ele era cortado e
-// ampliado até sobrar uma letra gigante no card (achado do dono no polimento
-// final). Abaixo de 1,2:1 a imagem entra inteira, com respiro. Mesma régua de
-// `ajustarFotos` no admin (public/admin/index.page.js) — duplicada de
-// propósito, os dois front-ends não compartilham script.
-function candidaturaAjustarFoto(img) {
-  const aplicar = () => {
-    if (img.naturalWidth && img.naturalWidth / img.naturalHeight < 1.2) img.classList.add('foto-contida');
-  };
-  if (img.complete) aplicar();
-  else img.addEventListener('load', aplicar, { once: true });
-}
-
 // ---------- Endereço (D5, 24/09/2026: todas as partes separadas) ----------
 // CEP, logradouro, número, complemento, bairro, cidade e UF — o componente
 // único de public/endereco.js (estação de endereços, 01/10/2026): mesmos
@@ -199,7 +186,6 @@ function candidaturaLigarFoto(form, prefixo, aoMudar) {
       // foto removida/superada.
       if (input.files[0] !== arquivo) return;
       previewImg.innerHTML = `<img src="${leitor.result}" alt="Prévia da foto da fachada">`;
-      candidaturaAjustarFoto(previewImg.querySelector('img'));
       raiz.removeAttribute('aria-busy');
     };
     leitor.onerror = () => {
@@ -544,7 +530,6 @@ function candidaturaLigarPreviewCard(form, previewRaiz, prefixo, fixos) {
       leitor.onload = () => {
         if (candidaturaFotoSelecionada(form, prefixo) !== foto) return;
         mediaFoto.innerHTML = `<img src="${leitor.result}" alt="">`;
-        candidaturaAjustarFoto(mediaFoto.querySelector('img'));
       };
       leitor.onerror = placeholder;
       leitor.readAsDataURL(foto);

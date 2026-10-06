@@ -121,7 +121,10 @@ tela) — fonte de verdade, não duplicada aqui.
 
 ## Banco / migrations
 
-Arquivos SQL em `src/db/migrations/`, numerados até `115`. Mais recente:
+Arquivos SQL em `src/db/migrations/`, numerados até `116`. Mais recente:
+`116_rede_admin_v2.sql` (`pontos.origem` — candidatura/admin/movel — e
+`criado_por`; o nome da rede móvel separado da cidade: desfaz o
+"Mostraí Móvel — {Cidade}" composto pela 115 — ADR-039). Antes dela,
 `115_rede_movel.sql` (Mostraí Móvel = rede móvel da cidade com N telas,
 alocação e agenda por tela, pool da hora, termo físico, sem custo/amortização
 — ADR-038). Aplicadas por `src/db/migrate.js`, idempotente, com

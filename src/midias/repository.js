@@ -1,5 +1,5 @@
 const pool = require('../db/pool');
-const { SEGUNDOS_DA_HORA, quebraCapacidade } = require('../lib/capacidade');
+const { SEGUNDOS_DA_HORA, quebraCapacidade, telasDaCapacidadeSql } = require('../lib/capacidade');
 const { instanteComercial } = require('../lib/fuso-comercial');
 
 // Mídia Mostraí (reorganização de Conteúdo, 22/09/2026, pedido do dono):
@@ -291,8 +291,12 @@ async function ocupacaoPorPonto(pontosIds, excluirMidiaId, status = ['em_operaca
        -- fica dentro do SUM (não no WHERE de fora) pra o ponto continuar
        -- aparecendo na lista com 0% comercial — é alocação planejada, não
        -- ocupação operacional — em vez de sumir da tabela.
+       -- Por TELA: na rede móvel a cota de cada conta se divide entre as
+       -- telas (src/lib/capacidade.js#telasDaCapacidadeSql) — a mesma conta
+       -- do bloqueio de escolha. CEIL: a tela que leva o segundo a mais.
        SELECT p.id AS ponto_id,
-              COALESCE(SUM(pl.segundos_por_hora) FILTER (WHERE p.status = 'em_operacao'), 0)::int AS segundos_comercial
+              CEIL(COALESCE(SUM(pl.segundos_por_hora) FILTER (WHERE p.status = 'em_operacao'), 0)::numeric
+                   / ${telasDaCapacidadeSql('p')})::int AS segundos_comercial
          FROM pontos p
          LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id
          LEFT JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL

@@ -1,6 +1,6 @@
 const pool = require('../db/pool');
 const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
-const { LIMITE_COMERCIAL } = require('../lib/capacidade');
+const { LIMITE_COMERCIAL, SEGUNDOS_DA_HORA, telasDaCapacidadeSql } = require('../lib/capacidade');
 const { PARTES, colunasDoEndereco } = require('../lib/endereco');
 
 // Cinco status (migration 069 + `aguardando_primeiro_sinal` na 088) —
@@ -84,6 +84,9 @@ async function criar(dados, db = pool) {
     // próprio (o local é o da alocação). Fixo é o padrão.
     tipo,
     movel_numero,
+    // Origem auditável (migration 116): 'candidatura' | 'admin' | 'movel'.
+    origem,
+    criado_por,
   } = dados;
   const horarioValidado = validarHorarioSemanal(horario_semanal);
   const movel = tipo === 'movel';
@@ -94,9 +97,9 @@ async function criar(dados, db = pool) {
         responsavel_nome, responsavel_contato, status, aceitou_termos_em,
         cota_autoanuncio_slots_hora, anunciante_id, fluxo_estimado_mensal,
         horario_semanal, foto_instalacao_url, observacoes, candidatura_id, logradouro, numero,
-        tipo, movel_numero)
+        tipo, movel_numero, origem, criado_por)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,
-             $24,$25)
+             $24,$25,$26,$27)
      RETURNING *`,
     [
       nome,
@@ -124,6 +127,8 @@ async function criar(dados, db = pool) {
       end.numero ?? null,
       movel ? 'movel' : 'fixo',
       movel ? movel_numero : null,
+      movel ? 'movel' : origem || (candidatura_id ? 'candidatura' : null),
+      criado_por || null,
     ],
   );
   return rows[0];
@@ -391,6 +396,14 @@ async function ocupacaoPorAnunciante() {
 // Só `em_operacao` — `a_instalar` não veicula ainda, então "cheio" não tem
 // sentido pra ele; e ele já é escolha válida por si (RN-49), sem depender
 // deste bloqueio.
+//
+// Capacidade da hora (estação Rede/Admin V2): 3600 s por ponto fixo; na REDE
+// MÓVEL, 3600 s por tela ativa cadastrada (no mínimo 1) — a cota de cada
+// conta na rede se divide entre as telas, então cada tela a mais é hora a
+// mais para vender. Tela em operação ou não, não importa: rede sem
+// localização agora NÃO fica fechada para escolha por isso. O número de
+// telas é o mesmo da régua da Mídia Mostraí (src/lib/capacidade.js).
+const capacidadeDaHoraSql = (p) => `(${SEGUNDOS_DA_HORA} * ${telasDaCapacidadeSql(p)})`;
 async function avaliarBloqueios() {
   const { rows } = await pool.query(
     `UPDATE pontos SET escolha_bloqueada_em = now()
@@ -400,7 +413,7 @@ async function avaliarBloqueios() {
                 FROM anunciantes_pontos ap
                 JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL
                 JOIN planos pl ON pl.id = a.plano_id
-               WHERE ap.ponto_id = pontos.id) >= $1::numeric * 3600
+               WHERE ap.ponto_id = pontos.id) >= $1::numeric * ${capacidadeDaHoraSql('pontos')}
      RETURNING id`,
     [LIMITE_OCUPACAO_BLOQUEIA],
   );
@@ -417,7 +430,7 @@ async function liberarEscolha(id) {
                 FROM anunciantes_pontos ap
                 JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL
                 JOIN planos pl ON pl.id = a.plano_id
-               WHERE ap.ponto_id = pontos.id) <= (3600 - $2)
+               WHERE ap.ponto_id = pontos.id) <= (${capacidadeDaHoraSql('pontos')} - $2)
      RETURNING id`,
     [id, FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS],
   );
