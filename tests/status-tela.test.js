@@ -1,7 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const {
+  estadoDaTela,
   saudeDaTela,
+  situacaoPublica,
   TOLERANCIA_SEM_SINAL_MS,
   situacaoConfig,
   situacaoFila,
@@ -44,31 +46,56 @@ test('horário do ponto: dentro do horário + heartbeat recente -> operando', ()
   assert.strictEqual(saudeDaTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA), 'operando');
 });
 
-test('horário do ponto: fora do horário -> fora_do_horario, não alerta', () => {
+test('horário do ponto: fora do horário + heartbeat vencido -> sem_comunicacao, operação fora_do_horario, sem aviso', () => {
   const tela = {
     status: 'ativo',
     chave_hash: 'h',
     primeiro_sinal_em: EXPIRADO,
     ultima_vez_online: EXPIRADO,
   };
+  const e = estadoDaTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA);
+  assert.strictEqual(e.resumo, 'sem_comunicacao');
+  assert.strictEqual(e.conectividade, 'sem_comunicacao');
+  assert.strictEqual(e.operacao, 'fora_do_horario');
+  assert.strictEqual(e.esperadaAgora, false);
+  assert.strictEqual(e.problema, null);
+  assert.strictEqual(e.atencao, null, 'fora do horário, calada não é atenção');
+  assert.deepStrictEqual(e.alertas, []);
+  // Dono/anunciante: fora do horário a TV desligada não é aviso nenhum.
+  assert.strictEqual(situacaoPublica(e), 'fora_do_horario');
+});
+
+test('horário do ponto: fora do horário + heartbeat recente -> fora_do_horario', () => {
+  const tela = { status: 'ativo', chave_hash: 'h', primeiro_sinal_em: RECENTE, ultima_vez_online: RECENTE };
   assert.strictEqual(saudeDaTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA), 'fora_do_horario');
 });
 
-test('horário do ponto: dentro do horário + heartbeat expirado -> sem_sinal', () => {
+test('horário do ponto: dentro do horário + heartbeat vencido -> sem_comunicacao com atenção, nunca problema', () => {
   const tela = {
     status: 'ativo',
     chave_hash: 'h',
     primeiro_sinal_em: EXPIRADO,
     ultima_vez_online: EXPIRADO,
   };
-  assert.strictEqual(saudeDaTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA), 'sem_sinal');
+  const e = estadoDaTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA);
+  assert.strictEqual(e.resumo, 'sem_comunicacao');
+  assert.strictEqual(e.conectividade, 'sem_comunicacao');
+  assert.strictEqual(e.operacao, 'desconhecida');
+  assert.strictEqual(e.esperadaAgora, true);
+  assert.strictEqual(e.problema, null);
+  assert.strictEqual(e.atencao.codigo, 'SEM_COMUNICACAO_NO_HORARIO');
+  assert.strictEqual(e.atencao.desde, EXPIRADO);
+  assert.strictEqual(situacaoPublica(e), 'sem_comunicacao');
 });
 
-test('ponto 24 h (00:00–24:00): heartbeat expirado -> sem_sinal a qualquer hora', () => {
+test('ponto 24 h (00:00–24:00): heartbeat vencido -> sem_comunicacao no horário a qualquer hora', () => {
   const madrugada = new Date('2026-09-23T03:00:00-03:00');
   const expirado = new Date(madrugada.getTime() - TOLERANCIA_SEM_SINAL_MS - 60 * 1000).toISOString();
   const tela = { status: 'ativo', chave_hash: 'h', primeiro_sinal_em: expirado, ultima_vez_online: expirado };
-  assert.strictEqual(saudeDaTela(tela, HORARIO_24H, madrugada), 'sem_sinal');
+  const e = estadoDaTela(tela, HORARIO_24H, madrugada);
+  assert.strictEqual(e.resumo, 'sem_comunicacao');
+  assert.strictEqual(e.esperadaAgora, true);
+  assert.strictEqual(e.atencao?.codigo, 'SEM_COMUNICACAO_NO_HORARIO');
 });
 
 test('horário/modo gravados na TELA são ignorados: vale sempre o do ponto', () => {
@@ -79,7 +106,10 @@ test('horário/modo gravados na TELA são ignorados: vale sempre o do ponto', ()
     primeiro_sinal_em: EXPIRADO,
     ultima_vez_online: EXPIRADO,
   };
-  assert.strictEqual(saudeDaTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA), 'fora_do_horario');
+  const e = estadoDaTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA);
+  assert.strictEqual(e.operacao, 'fora_do_horario');
+  assert.strictEqual(e.esperadaAgora, false);
+  assert.strictEqual(e.atencao, null);
 });
 
 test('sem horário cadastrado (null): trata como "deveria estar online" (nunca suprime por omissão)', () => {
@@ -89,10 +119,13 @@ test('sem horário cadastrado (null): trata como "deveria estar online" (nunca s
     primeiro_sinal_em: EXPIRADO,
     ultima_vez_online: EXPIRADO,
   };
-  assert.strictEqual(saudeDaTela(tela, null, QUARTA_MEIO_DIA), 'sem_sinal');
+  const e = estadoDaTela(tela, null, QUARTA_MEIO_DIA);
+  assert.strictEqual(e.resumo, 'sem_comunicacao');
+  assert.strictEqual(e.esperadaAgora, true);
+  assert.strictEqual(e.atencao?.codigo, 'SEM_COMUNICACAO_NO_HORARIO');
 });
 
-test('player relatou erro -> erro_do_player, quando por outro lado estaria operando', () => {
+test('player relatou erro (comunicando) -> com_problema, quando por outro lado estaria operando', () => {
   const tela = {
     status: 'ativo',
     chave_hash: 'h',
@@ -100,10 +133,15 @@ test('player relatou erro -> erro_do_player, quando por outro lado estaria opera
     ultima_vez_online: RECENTE,
     ultimo_erro: 'falha ao baixar playlist',
   };
-  assert.strictEqual(saudeDaTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA), 'erro_do_player');
+  const e = estadoDaTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA);
+  assert.strictEqual(e.resumo, 'com_problema');
+  assert.strictEqual(e.operacao, 'erro');
+  assert.strictEqual(e.problema.codigo, 'ERRO_PLAYER');
+  assert.strictEqual(e.problema.motivo, 'Erro relatado pelo Player');
+  assert.strictEqual(situacaoPublica(e), 'com_problema');
 });
 
-test('erro relatado, mas heartbeat já expirou -> sem_sinal tem prioridade (parou de falar de vez)', () => {
+test('erro relatado, mas heartbeat já venceu -> sem_comunicacao, sem problema (dado de tela calada é velho)', () => {
   const tela = {
     status: 'ativo',
     chave_hash: 'h',
@@ -111,7 +149,10 @@ test('erro relatado, mas heartbeat já expirou -> sem_sinal tem prioridade (paro
     ultima_vez_online: EXPIRADO,
     ultimo_erro: 'falha antiga',
   };
-  assert.strictEqual(saudeDaTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA), 'sem_sinal');
+  const e = estadoDaTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA);
+  assert.strictEqual(e.resumo, 'sem_comunicacao');
+  assert.strictEqual(e.problema, null);
+  assert.strictEqual(e.atencao?.codigo, 'SEM_COMUNICACAO_NO_HORARIO');
 });
 
 // ---------------------------------------------------------------------------
@@ -126,7 +167,7 @@ const viva = (extra = {}) => ({
   ...extra,
 });
 
-test('heartbeat de 15 s (contrato §5) e "sem sinal" depois de 8 batidas = 2 min', () => {
+test('heartbeat de 15 s (contrato §5) e "sem comunicação" depois de 8 batidas = 2 min', () => {
   assert.strictEqual(
     INTERVALO_HEARTBEAT_MS,
     15 * 1000,
@@ -139,29 +180,37 @@ test('heartbeat de 15 s (contrato §5) e "sem sinal" depois de 8 batidas = 2 min
   const ha = (s) => new Date(QUARTA_MEIO_DIA.getTime() - s * 1000).toISOString();
   assert.strictEqual(saudeDaTela(viva({ ultima_vez_online: ha(15) }), null, QUARTA_MEIO_DIA), 'operando');
   assert.strictEqual(saudeDaTela(viva({ ultima_vez_online: ha(119) }), null, QUARTA_MEIO_DIA), 'operando');
-  assert.strictEqual(saudeDaTela(viva({ ultima_vez_online: ha(121) }), null, QUARTA_MEIO_DIA), 'sem_sinal');
+  assert.strictEqual(saudeDaTela(viva({ ultima_vez_online: ha(121) }), null, QUARTA_MEIO_DIA), 'sem_comunicacao');
 });
 
 test('Player V2 reporta OUT_OF_SCHEDULE -> fora_do_horario, mesmo com 24h no servidor', () => {
   assert.strictEqual(saudeDaTela(viva({ player_estado: 'OUT_OF_SCHEDULE' }), null, QUARTA_MEIO_DIA), 'fora_do_horario');
 });
 
-test('estados de erro do contrato §10 -> erro_do_player; PLAYING/IDLE -> operando', () => {
+test('estados de erro do contrato §10 -> com_problema com motivo em português; PLAYING/IDLE -> operando', () => {
   for (const e of ['PLAYBACK_ERROR', 'DOWNLOAD_ERROR', 'AUTH_ERROR', 'CONFIG_ERROR', 'NO_PLAYLIST']) {
-    assert.strictEqual(saudeDaTela(viva({ player_estado: e }), null, QUARTA_MEIO_DIA), 'erro_do_player', e);
+    assert.strictEqual(saudeDaTela(viva({ player_estado: e }), null, QUARTA_MEIO_DIA), 'com_problema', e);
+  }
+  const motivos = {
+    PLAYBACK_ERROR: 'Falha de reprodução',
+    DOWNLOAD_ERROR: 'Falha ao baixar mídia',
+    AUTH_ERROR: 'Falha de autenticação do Player',
+    CONFIG_ERROR: 'Falha ao aplicar a configuração',
+    NO_PLAYLIST: 'Sem playlist',
+  };
+  for (const [codigo, motivo] of Object.entries(motivos)) {
+    const e = estadoDaTela(viva({ ultimo_erro_codigo: codigo }), null, QUARTA_MEIO_DIA);
+    assert.deepStrictEqual([e.problema.codigo, e.problema.motivo], ['ERRO_PLAYER', motivo], codigo);
   }
   for (const e of ['PLAYING', 'IDLE']) {
     assert.strictEqual(saudeDaTela(viva({ player_estado: e }), null, QUARTA_MEIO_DIA), 'operando', e);
   }
-  assert.strictEqual(
-    saudeDaTela(viva({ ultimo_erro_codigo: 'CONFIG_FALHOU' }), null, QUARTA_MEIO_DIA),
-    'erro_do_player',
-  );
+  assert.strictEqual(saudeDaTela(viva({ ultimo_erro_codigo: 'CONFIG_FALHOU' }), null, QUARTA_MEIO_DIA), 'com_problema');
 });
 
 test('heartbeat volta / erro resolve -> operando de novo (derivado, nada gravado)', () => {
   const t = viva({ ultimo_erro_codigo: 'X' });
-  assert.strictEqual(saudeDaTela(t, null, QUARTA_MEIO_DIA), 'erro_do_player');
+  assert.strictEqual(saudeDaTela(t, null, QUARTA_MEIO_DIA), 'com_problema');
   t.ultimo_erro_codigo = null;
   assert.strictEqual(saudeDaTela(t, null, QUARTA_MEIO_DIA), 'operando');
 });
@@ -197,19 +246,58 @@ test('fila: desconhecida nunca vira zero; limiares 2.000/10.000/48 h do contrato
   assert.strictEqual(situacaoFila({ fila_pendentes: 5, fila_mais_antigo_em: antigo }, QUARTA_MEIO_DIA), 'critica');
 });
 
-test('alertas: sem sinal/erro alertam; fora do horário, reparo e inativa nunca', () => {
+test('alertas: sem comunicação no horário é atenção; erro é problema só comunicando; fora do horário nunca', () => {
+  const codigos = (tela, ctx) => alertasDaTela(tela, ctx, QUARTA_MEIO_DIA).map((a) => [a.codigo, a.nivel]);
   assert.deepStrictEqual(
-    alertasDaTela(viva(), 'sem_sinal', QUARTA_MEIO_DIA).map((a) => a.codigo),
-    ['SEM_SINAL'],
+    codigos(viva(), { conectividade: 'sem_comunicacao', esperadaAgora: true, operacao: 'desconhecida' }),
+    [['SEM_COMUNICACAO_NO_HORARIO', 'atencao']],
   );
-  assert.deepStrictEqual(alertasDaTela(viva(), 'fora_do_horario', QUARTA_MEIO_DIA), []);
-  assert.deepStrictEqual(alertasDaTela(viva({ status: 'reparo' }), 'em_reparo', QUARTA_MEIO_DIA), []);
-  assert.deepStrictEqual(alertasDaTela(viva({ status: 'inativo' }), 'inativa', QUARTA_MEIO_DIA), []);
+  assert.deepStrictEqual(
+    codigos(viva(), { conectividade: 'sem_comunicacao', esperadaAgora: false, operacao: 'fora_do_horario' }),
+    [],
+  );
+  assert.deepStrictEqual(
+    codigos(viva({ ultimo_erro_codigo: 'PLAYBACK_ERROR' }), {
+      conectividade: 'sem_comunicacao',
+      esperadaAgora: false,
+      operacao: 'fora_do_horario',
+    }),
+    [],
+    'erro de tela calada não vira problema',
+  );
+  assert.deepStrictEqual(
+    codigos(viva({ ultimo_erro_codigo: 'PLAYBACK_ERROR', fila_pendentes: 2001 }), {
+      conectividade: 'comunicando',
+      esperadaAgora: true,
+      operacao: 'erro',
+    }),
+    [
+      ['ERRO_PLAYER', 'alerta'],
+      ['FILA_ALTA', 'atencao'],
+    ],
+  );
+  assert.deepStrictEqual(
+    codigos(viva(), { conectividade: 'comunicando', esperadaAgora: false, operacao: 'fora_do_horario' }),
+    [],
+  );
+  // Config travada há mais de 15 min com a tela comunicando = problema.
+  const velhaConfig = new Date(QUARTA_MEIO_DIA.getTime() - 16 * 60 * 1000).toISOString();
+  assert.deepStrictEqual(
+    codigos(viva({ config_versao_desejada: 3, config_versao_aplicada: 2, config_alterada_em: velhaConfig }), {
+      conectividade: 'comunicando',
+      esperadaAgora: true,
+      operacao: 'exibindo',
+    }),
+    [['CONFIG_PENDENTE', 'alerta']],
+  );
+  // Reparo/inativa: estadoDaTela nem pergunta (só tela ativa tem alerta).
+  for (const status of ['reparo', 'inativo']) {
+    const e = estadoDaTela(viva({ status, ultima_vez_online: EXPIRADO, ultimo_erro: 'x' }), null, QUARTA_MEIO_DIA);
+    assert.deepStrictEqual(e.alertas, [], status);
+  }
   const velha = new Date(QUARTA_MEIO_DIA.getTime() - 8 * 24 * 3600 * 1000).toISOString();
   assert.deepStrictEqual(
-    alertasDaTela(viva({ created_at: velha, chave_hash: null }), 'aguardando_instalacao', QUARTA_MEIO_DIA).map(
-      (a) => a.codigo,
-    ),
-    ['INSTALACAO_ATRASADA'],
+    codigos(viva({ created_at: velha, chave_hash: null }), { conectividade: 'sem_player', esperadaAgora: false }),
+    [['INSTALACAO_ATRASADA', 'atencao']],
   );
 });

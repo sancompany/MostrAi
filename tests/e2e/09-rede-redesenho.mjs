@@ -7,9 +7,11 @@
 // tabela de telas) não existem mais. Seletores e textos acompanham o polimento
 // visual final do admin (23/09/2026, PR #22) e a ficha da tela do Player MVP
 // (26/09/2026, docs/player-mvp-contract.md): ficha em `.ficha-*`, migalha
-// "Pontos / <nome>", tela em `.tela-linha` (M-xxxx + selo + Abrir/Excluir),
-// ficha da tela em Resumo/Instalação/Área segura/Estado/Ações, "+ Adicionar
-// tela" sem formulário, instalação por código, "Liberar" em modal.
+// "Pontos / <nome>", tela em `.tela-linha` (M-xxxx + selo + Abrir), "+ Adicionar
+// tela" sem formulário, instalação por código, "Liberar" em modal. Rede Front V3
+// (06/10/2026): cabeçalho da ficha em `#pontoCabecalho`, ficha da tela com o
+// resumo de uma linha e as seções Operação/Player/Configuração/Ações (Excluir
+// saiu da linha da tela e foi para as Ações).
 import { chromium } from 'playwright';
 import { acompanharRede, irQuieto } from './espera.mjs';
 import { codigoPara } from './emails.mjs';
@@ -209,7 +211,7 @@ const migalhaTexto = await admin.textContent('.breadcrumb');
 check('migalha "Pontos / <nome>"', migalhaTexto.includes('Pontos') && migalhaTexto.includes('Academia'), migalhaTexto);
 check('voltar pela migalha leva pra grade', await admin.locator('.breadcrumb a:has-text("Pontos")').isVisible());
 check('foto grande no cabeçalho', await admin.locator('.ficha-foto img').isVisible());
-check('nome grande aparece por inteiro', (await admin.textContent('.ficha-nome h3')).includes('Academia Corpo em Movimento'));
+check('nome grande aparece por inteiro', (await admin.textContent('#pontoCabecalho h3')).includes('Academia Corpo em Movimento'));
 check('segmento aparece', (await admin.textContent('#pontoInformacoes')).includes('academia'));
 check('responsável somente-leitura (sem input)', (await admin.locator('#pontoInformacoes input, #pontoInformacoes select').count()) === 0);
 check('horário de funcionamento mostrado como texto', (await admin.textContent('#pontoInformacoes')).includes('06:00'));
@@ -225,13 +227,13 @@ check('3 telas em linhas (não tabela)', (await admin.locator('#pontoTelas .tela
 check('sem tabela de telas', (await admin.locator('#pontoTelas table').count()) === 0);
 check('sem coluna/campo "Contrato" nas telas', !(await admin.locator('#pontoTelas').locator('text=Contrato').count()));
 check('sem coluna/campo "Custo" nas telas', !(await admin.locator('#pontoTelas').locator('text=Custo').count()));
-// Player MVP: a linha é o código da tela (M-xxxx), o selo de saúde e as duas
-// ações rápidas — área segura e instalação moram na ficha da tela.
+// Rede Front V3: a linha é o código da tela (M-xxxx), o selo do estado e
+// [Abrir] — excluir, área segura e instalação moram na ficha da tela.
 const linhasTela = await admin.locator('#pontoTelas .tela-linha').allTextContents();
 check(
-  'cada linha: M-xxxx + selo + Abrir + Excluir',
+  'cada linha: M-xxxx + selo + Abrir, sem Excluir',
   linhasTela.length === 3 &&
-    linhasTela.every((l) => /M-\d{4,}/.test(l) && /Abrir/.test(l) && /Excluir/.test(l)) &&
+    linhasTela.every((l) => /M-\d{4,}/.test(l) && /Abrir/.test(l) && !/Excluir/.test(l)) &&
     (await admin.locator('#pontoTelas .tela-linha .badge').count()) === 3,
   linhasTela,
 );
@@ -252,11 +254,19 @@ await admin.locator('#pontoTelas .tela-linha').first().locator('a:has-text("Abri
 await admin.waitForSelector('.tela-ficha');
 const telaIdC1 = admin.url().split('/').pop();
 const blocos = (await admin.locator('.tela-ficha .ficha-bloco h4').allTextContents()).map((h) => h.trim());
+// Rede Front V3: resumo de uma linha no topo e quatro seções.
 check(
-  'ficha da tela: Resumo, Instalação, Área segura, Estado e Ações',
-  ['Resumo', 'Instalação', 'Área segura', 'Estado', 'Ações'].every((b) => blocos.includes(b)),
+  'ficha da tela: Operação, Player, Configuração e Ações',
+  JSON.stringify(blocos) === JSON.stringify(['Operação', 'Player', 'Configuração', 'Ações']),
   blocos,
 );
+const resumoTela = await admin.textContent('[data-tela-resumo]');
+check(
+  'resumo: Conectividade, Operação, Player, Último contato, Instalada em',
+  ['Conectividade', 'Operação', 'Player', 'Último contato', 'Instalada em'].every((r) => resumoTela.includes(r)),
+  resumoTela,
+);
+check('ficha da tela: Excluir nas Ações', (await admin.locator('.tela-ficha [data-acao="excluir"]').count()) === 1);
 const fichaTexto = await admin.textContent('.tela-ficha');
 check('ficha sem Preparar Player, PIN por tela, rotação, diagnóstico ou histórico', !/Preparar Player|PIN|Rota[çc]ão|Diagnóstico|Histórico/i.test(fichaTexto), fichaTexto.slice(0, 300));
 check('sem botão [data-acao="preparar"]', (await admin.locator('[data-acao="preparar"]').count()) === 0);
@@ -278,7 +288,7 @@ await admin.evaluate((id) => {
 }, idA);
 await admin.waitForTimeout(300);
 check('placeholder no cabeçalho do ponto sem foto', await admin.locator('.ficha-foto .ponto-foto-placeholder').isVisible());
-check('badge "Aguardando instalação" no detalhe', (await admin.textContent('.ficha-titulo')).includes('Aguardando instalação'));
+check('badge "Aguardando instalação" no detalhe', (await admin.textContent('#pontoCabecalho')).includes('Aguardando instalação'));
 check('nenhuma tela — mensagem certa', (await admin.textContent('#pontoTelas')).includes('Nenhuma tela'));
 check('sem botão de instalação manual', !(await admin.locator('text=/Colocar em operação|Voltar.*instalação/i').count()));
 

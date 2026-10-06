@@ -223,9 +223,12 @@ Toda tela segue o **horário do ponto** (não existe horário por tela).
   Player não muda): o "ponto móvel" é a REDE MÓVEL de uma cidade, com N
   telas, e a config é POR TELA. Enquanto a TELA está ALOCADA (hospedagem
   ativa dela ou evento em andamento com ela), `operacao` traz o horário da
-  alocação — "operar durante todo o período" (sem grade: 24 h dentro do
-  período) por padrão, ou a grade que o Admin definiu (formato de sempre,
-  com feriados). Sem alocação, a config vem como ponto sem horário (24 h) e
+  alocação — a grade que o Admin escolheu explicitamente no compromisso
+  (cópia do horário do local, ou personalizada; formato de sempre, com
+  feriados) ou "operar durante todo o período" (sem grade: o período
+  inteiro, escolha explícita — Rede Front V3). Sem alocação, a config vem
+  como ponto sem horário (dia inteiro, só para o Player não travar — o
+  ESTADO da tela no backend é "Sem alocação", nenhuma operação esperada) e
   a **playlist é só institucional** (itens `institucional: true`,
   `contabiliza: false`, sem anunciante) — a tela não é inventário. A tela
   alocada no meio de uma hora só recebe campanha a partir da hora
@@ -252,7 +255,7 @@ Toda tela segue o **horário do ponto** (não existe horário por tela).
 - PIN correto → saída autorizada: o watchdog local **não** reabre o app. Ao
   abrir o app de novo (manual ou boot), a operação normal e o watchdog
   voltam. O backend não é avisado da saída: 2 min depois a tela aparece
-  como "Sem sinal" no admin, que é o fato.
+  como "Sem comunicação" no admin, que é o fato (e não é problema).
 
 ---
 
@@ -440,10 +443,14 @@ Derivados no servidor (o Player reporta fatos, o servidor classifica):
 | Estado | Regra |
 |---|---|
 | Aguardando instalação | tela sem Player provisionado (nunca instalada, ou revogada) |
-| Operando | sinal nos últimos 2 min (8 batidas de 15 s, §5), sem erro |
-| Fora do horário | o horário do ponto diz fechado, ou o Player diz `OUT_OF_SCHEDULE` |
-| Sem sinal | deveria operar e o último sinal passou de 2 min (`src/lib/heartbeat.js`; `TELA_SEM_SINAL_MIN` sobrescreve) |
-| Erro do Player | sinal recente com `erro` ou estado de erro |
+| Operando | sinal nos últimos 2 min (8 batidas de 15 s, §5), sem erro, no horário |
+| Fora do horário | o horário em vigor diz fechado, ou o Player diz `OUT_OF_SCHEDULE` |
+| Sem comunicação | o último sinal passou de 2 min (`src/lib/heartbeat.js`; `TELA_SEM_SINAL_MIN` sobrescreve). **Não é problema** — o backend não sabe se a TV está desligada, sem internet ou o local fechado; durante o horário vira "atenção" |
+| Sem alocação | tela da rede móvel sem compromisso em curso: nenhuma operação esperada (nunca 24 h). O `/config` continua mandando dia inteiro e a tela toca só o institucional (scheduler intocado) |
+| Com problema | evidência de erro com a tela comunicando: estado `PLAYBACK_ERROR`/`DOWNLOAD_ERROR`/`AUTH_ERROR`/`CONFIG_ERROR`/`NO_PLAYLIST` ou `erro` relatado (código desconhecido → o estado diz o motivo), fila crítica, configuração não aplicada há 15 min |
+
+As três dimensões (administrativo, conectividade, operação) vão separadas
+para o Admin em `estado` (Rede Front V3, 06/10/2026).
 
 Estados administrativos (decididos pelo operador): **Ativa**, **Em reparo**,
 **Inativa**.

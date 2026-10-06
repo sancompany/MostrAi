@@ -283,68 +283,95 @@ Escrito por grupo, porque o padrão se repete.
   (**Editar horário**: por dia Horário/24 horas/Fechado, e "Aberto 24 horas
   todos os dias"; **Excluir ponto** no pé da ficha: sai com as telas, e
   ponto com histórico — exibição, crédito, repasse, Plano Básico — recusa e
-  pede pra deixar as telas Inativas) e as telas em linhas (`M-0235` · situação · Abrir ·
-  Excluir); **navegação (estação Rede/Admin V2, 06/10/2026): Rede tem só
-  [Pontos] [Candidaturas]** — a aba "Pontos móveis" saiu (o link antigo
-  `#rede/moveis` abre Pontos com o filtro Móveis). **Pontos**: fixos e redes
-  móveis na MESMA grade, cards do mesmo tamanho, foto canônica 16:9; filtros
-  Todos / Fixos / Móveis / Com problema / Aguardando instalação / Aguardando
-  primeiro sinal / Ativos / Em reparo / Inativos. O filtro **Móveis** mostra
-  uma barra discreta com [+ Nova rede móvel] e [Agenda móvel]. Card da rede
-  (compacto): foto (a capa da rede), selo ITINERANTE, nome + Ativa/Arquivada,
-  cidade/UF, "N telas · X em operação", **Atual** (o local, "N locais em
-  operação" ou "Sem localização") e **Próximo**, [Abrir rede].
+  pede pra deixar as telas Inativas). **Navegação (estação Rede/Admin V2,
+  06/10/2026): Rede tem só [Pontos] [Candidaturas]** — o link antigo
+  `#rede/moveis` abre Pontos com o filtro Móveis.
+  **Rede Front V3 (06/10/2026) — o estado da tela em três dimensões**
+  (administrativo · conectividade · operação, `src/lib/status-tela.js`; o
+  Admin só apresenta, nunca reclassifica): **Sem comunicação** (sem
+  heartbeat há 2 min) é âmbar e NÃO é problema — a TV pode estar desligada,
+  sem internet ou o comércio fechado; **Com problema** (vermelho) só com
+  evidência de erro com a tela comunicando (estado/erro do Player:
+  PLAYBACK_ERROR, DOWNLOAD_ERROR, AUTH_ERROR, CONFIG_ERROR, NO_PLAYLIST ou
+  erro relatado; fila de comprovantes crítica; configuração travada há mais
+  de 15 min); tela de rede móvel sem compromisso em curso é **Sem
+  alocação** (não opera — nunca "24 h").
+  **Pontos** (grade): no topo o resumo **Pontos · Telas · Operando · Sem
+  comunicação · Com problema · Aguardando instalação**, somado do MESMO
+  estado que o servidor manda em cada ponto (`estadoTelas`) — os números com
+  filtro são clicáveis; busca por nome, cidade, endereço, nome da rede e
+  **código da tela** (M-0010); filtros Todos / Fixos / Móveis / Com problema /
+  **Sem comunicação** / Aguardando instalação / Aguardando primeiro sinal /
+  Ativos / Em reparo / Inativos. Fixo e móvel no MESMO card: foto 16:9, nome,
+  selo (MÓVEL na foto da rede; estado do ponto), localização (endereço e
+  horário no fixo; **Local atual** e **Próximo** na rede), o resumo das telas
+  ("2 telas · 1 sem comunicação · 1 aguardando instalação") e [Abrir]. O
+  filtro Móveis mostra a barra [+ Nova rede móvel] [Agenda móvel]. O PIN de
+  saída do Player fica embaixo da grade.
   **Agenda móvel** (modal, sob demanda): Data · Horário · Rede · Tela(s) ·
-  Tipo · Local · Estado — por padrão o que está em curso e o futuro;
+  Onde (Na conta / Outro local) · Local · Estado — agora + futuro;
   "Histórico" mostra encerrados e cancelados. **Candidaturas** tem duas
-  subabas: **Candidaturas de ponto** (a fila de sempre) e **Interesses em
-  hospedar** (`#rede/candidaturas/interesses`): no topo a linha
-  "Benefício padrão da hospedagem: 20% [Alterar] [Ver histórico]" (a regra
-  não mudou: vale para as próximas hospedagens, cada uma congela o seu); a
-  tabela com conta, direito ativo hoje e de onde vem, contato, local,
-  observação, situação e [Agendar hospedagem] — que abre a nova hospedagem
-  com conta, local, endereço e categoria preenchidos —, [Em contato],
-  [Aprovar], [Recusar], [Nota]. **Foto de qualquer ponto** (fixo ou móvel):
-  [Alterar foto] na ficha → escolher → **Enquadrar foto** (prévia 16:9,
-  zoom, arrastar, setas do teclado) → [Usar esta foto]; o navegador gera um
-  JPEG 1280×720 e o card usa `object-fit: cover` — foto antiga continua
-  funcionando, só passa a ser recortada no mesmo formato. [+ Nova rede
-  móvel]: **Nome*** (ex.: "Mostraí Móvel"), **Cidade*** e **UF*** — campos
-  independentes, nunca compostos ("Mostraí Móvel" + "Matão/SP"; trocar a
-  cidade não renomeia) —, foto/capa opcional (passa pelo enquadramento) e
-  nota; nenhuma tela nasce junto. Na ficha da rede: cabeçalho com o nome,
-  selos ITINERANTE e Ativa e a cidade/UF, o resumo "N telas · X em operação
-  agora · Y com compromisso futuro · Z disponíveis",
-  **Disponível para anunciantes: Sim** (1 posição do plano, com qualquer
-  número de telas), **Telas comerciais ativas agora: X de N**, [+ Novo
-  evento], [+ Nova hospedagem], [Editar rede], [Alterar foto], [Excluir
-  rede]; **TELAS** com o ÚNICO [+ Adicionar tela] da ficha (código, situação
-  do Player, a alocação de agora ou o próximo compromisso, Abrir/Excluir — a
-  ficha da tela é a de sempre); **OPERAÇÃO AGORA** por tela; **AGENDA**
-  consolidada (cada hospedagem ou evento com tela(s), período, local e
-  estado) e **Histórico**.
-  [+ Novo evento]: nome*, organização, local*, endereço* (a cidade é a da
-  rede), público estimado, observação, início* e fim*, "Operar durante todo
-  o período" marcado por padrão (desmarcado abre a grade por dia com
-  feriados), **TELAS PARTICIPANTES** (caixas com "livre"/"ocupada: …" no
-  período) e **Categoria protegida** ("Nenhuma restrição" ou uma categoria).
-  [+ Nova hospedagem]: rede → **tela*** (só as livres no período) → conta
-  anfitriã* → local* e endereço* → início* e fim* → horário (todo o período
-  por padrão) → categoria protegida (padrão: a do anfitrião) → observação →
-  "Esta hospedagem ficará vinculada a 20%" → confirmar. Na hospedagem:
-  **TERMO FÍSICO: Pendente/Assinado** com [Marcar como assinado] (data e
-  observação opcionais) — [Iniciar (a tela chegou)] fica travado até o
-  termo estar assinado e pede a entrega —, [Alterar tela, período e
-  horário], [Cancelar], [Encerrar hospedagem] (retirada opcional),
-  [Prorrogar], tempo válido e benefício (estimado enquanto ativa); evento com
-  [Iniciar (as telas chegaram)] / [Encerrar evento] / [Cancelar]; a aprovação de candidatura não pergunta tipo (sempre
-  fixo); a ficha da conta mostra o **Saldo de hospedagem** (disponível,
-  recebido, entregue, extrato) com [Ajustar]; ficha da tela em blocos — **Resumo** (último sinal, versão do
-  Player, mídia atual), **Instalação** (ID da tela, código com contagem
-  regressiva, Copiar, Gerar novo código → "Player conectado"), **Área segura**
-  (4 lados em vmin), **Estado** (Ativa/Em reparo/Inativa, "Instalada em"),
-  **Suporte** (só com erro ou comprovante pendente) e **Ações** (Revogar
-  Player, Excluir tela). Tudo se refaz pelo SSE, sem recarregar.
+  subabas: **Candidaturas de ponto** e **Interesses em hospedar**
+  (`#rede/candidaturas/interesses`): a linha "Benefício padrão da hospedagem:
+  20% [Alterar] [Ver histórico]" e a tabela com [Agendar compromisso] — abre
+  o compromisso NA CONTA já com a conta, o local (endereço da conta, ponto da
+  conta ou o endereço digitado no interesse) e a categoria —, [Em contato],
+  [Aprovar], [Recusar], [Nota]. **Foto de qualquer ponto**: [Alterar foto]
+  (no ⋯ da ficha) → **Enquadrar foto** (16:9, zoom, arrastar, setas) → JPEG
+  1280×720. [+ Nova rede móvel]: **Nome***, **Cidade*** e **UF***
+  independentes, foto opcional e nota; nenhuma tela nasce junto.
+  **Ficha do ponto fixo**: cabeçalho (foto, nome, Fixo + estado, endereço, o
+  resumo das telas, [+ Adicionar tela] e ⋯ [Alterar foto] [Excluir ponto]);
+  **Telas** em linhas operacionais ("M-0002 · Sem comunicação · Fora do
+  horário · Último contato há 3 h · [Abrir]"); **Informações** (proprietário,
+  segmento, responsável, benefício, aprovado em, primeiro sinal, horário com
+  [Editar horário]); **Endereço e localização**; **Capacidade de
+  veiculação** recolhida.
+  **Ficha da rede móvel**: cabeçalho (nome, MÓVEL · Ativa, cidade/UF, "N
+  telas · X operando · Y compromissos futuros", [+ Novo compromisso]
+  [Adicionar tela] e ⋯ [Editar rede] [Alterar foto] [Excluir rede]) — saiu
+  "Disponível para anunciantes" (a rede é sempre escolhível); **COMPROMISSOS**
+  (Agora / Próximos; vazio: "Nenhum compromisso agora ou programado." com o
+  botão; Histórico recolhido); **Telas** operacionais ("M-0010 · Sem
+  comunicação · Sem alocação · Último contato há 8 h · Próximo: … · [Abrir]");
+  **Capacidade** recolhida.
+  **COMPROMISSO — um formulário só** (src/pontos/compromissos.js; "+ Novo
+  evento" e "+ Nova hospedagem" saíram): **Onde a tela vai ficar** — *Numa
+  conta* ou *Outro local ou evento*.
+  *Numa conta*: a **conta anfitriã** num campo de busca (nome, e-mail ou
+  CPF/CNPJ; resultados paginados com cidade/UF, e-mail, telefone e nº de
+  pontos — dois homônimos se distinguem; teclado ↑↓ Enter); o **endereço**
+  sai do que o sistema já tem — *Endereço da conta*, *Ponto: <nome>* (com o
+  horário dele) ou *Outro endereço* (CEP, rua, número, complemento, bairro,
+  cidade, UF) —; UMA tela; a linha do **benefício** (o percentual vigente,
+  congelado na criação) e o **termo físico** (assinado em papel antes de
+  iniciar). *Outro local ou evento*: nome do evento ou ação, local, endereço
+  em partes, uma ou várias telas, sem conta, sem benefício, sem termo.
+  **Período** (início e fim com hora; a tela ocupada no período aparece
+  desabilitada — conflito é por tela). **Horário de operação — sempre
+  explícito**: *Usar horário do local* (só com um ponto escolhido: o horário
+  dele é COPIADO para o compromisso — o comércio pode mudar o dele depois),
+  *Operar durante todo o período* (padrão só para período de até 24 h) ou
+  *Personalizar* (grade por dia com feriados; atravessar a meia-noite vale;
+  com o horário do local, a grade já vem preenchida). Período de vários dias
+  sem horário escolhido é recusado — nunca 24 h implícito. **Configurações
+  avançadas** (recolhidas): categoria protegida (padrão: a do local; ou
+  "Nenhuma restrição"), nome exibido ao anunciante, organização, observação.
+  **Público estimado saiu do fluxo** (a coluna continua no banco). Editar um
+  compromisso programado reabre o mesmo formulário ("Manter o endereço");
+  em curso na conta, só [Prorrogar]. Ações: [Iniciar] (na conta, travado até
+  o termo físico estar assinado, e pede a entrega), [Editar], [Cancelar],
+  [Encerrar] (na conta, retirada opcional), [Registrar retirada], fotos.
+  A aprovação de candidatura não pergunta tipo (sempre fixo); a ficha da
+  conta mostra o **Saldo de hospedagem** com [Ajustar].
+  **Ficha da tela**: cabeçalho (código, ponto, o estado e os motivos) com o
+  resumo **Conectividade · Operação · Player · Último contato · Instalada
+  em**; **Operação** (mídia atual, comprovantes pendentes, último erro, o que
+  vale olhar), **Player** (conectado desde…, ou ID da tela + código de
+  instalação com contagem regressiva, Copiar, Gerar novo código),
+  **Configuração** (área segura em vmin, estado administrativo
+  Ativa/Em reparo/Inativa, instalada em) e **Ações** (Revogar Player, Excluir
+  tela). Tudo se refaz pelo SSE, sem recarregar.
 - *Sem permissão:* 401 → login do admin.
 - *Lista longa:* a grade filtra por status/busca.
 
@@ -1338,17 +1365,20 @@ para o Player no `/config` (`operacao`: fuso, os 7 dias, feriados nacionais
 materializados) e o backend decide "deveria operar agora" com a mesma regra
 (`src/lib/operacao-tela.js`: início inclusivo, fim exclusivo, faixa que cruza a
 meia-noite pertence ao dia em que começa, feriado vence o dia). A saúde é
-derivada, nunca gravada, e só `src/lib/status-tela.js#saudeDaTela` calcula,
-nesta ordem: `em_reparo`/`inativa` (estado administrativo, nunca alerta) →
-`aguardando_instalacao` (sem Player: nunca instalado ou revogado) →
-`fora_do_horario` (o Player diz `OUT_OF_SCHEDULE` ou o horário diz fechado) →
-`sem_sinal` (deveria operar e o último sinal passou de 2 min — 8 batidas de
-15 s, `src/lib/heartbeat.js`; `TELA_SEM_SINAL_MIN` sobrescreve. Entre 02 e
-05/10/2026 esteve em 6 min 30 s por uma premissa errada — "o APK bate a
-cada 5 min", que era o APK 0.1.0/1.0.0) → `erro_do_player` (sinal recente com erro) →
-`operando`. Só `sem_sinal`/`erro_do_player` são alerta. Config só é
-"pendente" depois de 2 min sem aplicar e vira alerta com 15 min; fila de
-comprovantes vira atenção com 2.000, alerta com 10.000 ou 48 h de idade.
+derivada, nunca gravada, e só `src/lib/status-tela.js#estadoDaTela` calcula
+— em TRÊS dimensões que não se misturam (Rede Front V3, 06/10/2026):
+**administrativo** (ativa/em reparo/inativa), **conectividade**
+(comunicando/sem comunicação/sem Player — heartbeat em até 2 min, 8 batidas
+de 15 s, `src/lib/heartbeat.js`; `TELA_SEM_SINAL_MIN` sobrescreve) e
+**operação** (exibindo/fora do horário/sem alocação/erro/desconhecida). O
+resumo único, nesta ordem: `em_reparo`/`inativa` → `aguardando_instalacao`
+→ `com_problema` (EVIDÊNCIA de erro com a tela comunicando: estado ou código
+de erro do Player, fila de comprovantes crítica — 10.000 ou 48 h —,
+configuração não aplicada há 15 min) → `sem_comunicacao` (NÃO é problema;
+durante o horário em que deveria operar vira "atenção") → `sem_alocacao`
+(tela da rede móvel sem compromisso em curso: nenhuma operação esperada,
+nunca 24 h) → `fora_do_horario` → `operando`. Heartbeat ausente nunca é
+problema. Fila de 2.000 é atenção.
 *Violada:* o backend nunca afirma sinal que não chegou. *Quem vê:* o
 administrador (Visão geral, grade da Rede, ficha da tela) e, em linguagem
 simples, o dono do ponto.
@@ -1733,7 +1763,7 @@ decidido no NASCIMENTO e imutável (gatilho no banco). **Fixo** é o de
 sempre: nasce da candidatura aprovada — candidatura gera **sempre** fixo — e a
 conta que cedeu a parede é a dona (crédito mensal, Plano Básico, cupom). O
 tipo **móvel** é a **REDE MÓVEL COMERCIAL DE UMA CIDADE** ("Mostraí Móvel"
-+ "Matão/SP", selo ITINERANTE): nasce só em Admin → Rede › Pontos (filtro
++ "Matão/SP", selo MÓVEL): nasce só em Admin → Rede › Pontos (filtro
 Móveis) › [+ Nova rede móvel], com **nome, cidade e UF obrigatórios e
 independentes** (desde a estação Rede/Admin V2, 06/10/2026, migration 116:
 o nome nunca é composto com a cidade, e trocar a cidade não renomeia; uma
@@ -1766,7 +1796,7 @@ mostra só as alocações reais de agora (um card por hospedagem ou evento,
 com o local e o endereço) — nunca um pino da rede. **O anunciante escolhe a
 REDE, nunca uma tela**: o card da rede (estação Rede/Admin V2) é curto —
 FOTO (a capa da rede, mesmo formato 16:9 dos outros cards) com o selo
-ITINERANTE, nome, cidade/UF, **Atual** (o local de agora; "N locais em
+MÓVEL, nome, cidade/UF, **Local atual** (o local de agora; "N locais em
 operação" com 2 ou mais; "Sem localização no momento" sem nenhum) e
 **Próxima localização** (nome · local · "08/10 às 18h"; "Nenhuma
 programada"), [Ver agenda] e a caixa **Selecionar**. Aparece SEMPRE e é

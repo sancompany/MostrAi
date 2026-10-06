@@ -49,7 +49,7 @@ const sanCheckout = require('../financeiro/san-checkout');
 const cicloContratado = require('../financeiro/ciclo-contratado');
 const bancohorasRepo = require('../bancohoras/repository');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
-const { saudeDaTela } = require('../lib/status-tela');
+const { estadoDaTela, situacaoPublica } = require('../lib/status-tela');
 const { limiteDeCriativos } = require('../playlist/gerador');
 const outbox = require('../email/outbox');
 const codigosEmail = require('../email/codigos');
@@ -1850,7 +1850,7 @@ async function comSituacaoNoAr(pontos) {
     // Rede móvel: só as telas alocadas agora contam (as outras estão
     // guardadas ou em trânsito); nenhuma alocada = "sem tela em operação".
     const doPonto = telas.filter((t) => t.ponto_id === p.id && t.inventario);
-    const saudes = doPonto.map((t) => saudeDaTela(t, t.ponto_horario_semanal, agora));
+    const saudes = doPonto.map((t) => situacaoPublica(estadoDaTela(t, t.ponto_horario_semanal, agora)));
     const situacao =
       !doPonto.length && telas.some((t) => t.ponto_id === p.id)
         ? 'sem_alocacao'
@@ -1858,7 +1858,7 @@ async function comSituacaoNoAr(pontos) {
           ? 'no_ar'
           : saudes.includes('fora_do_horario')
             ? 'fora_do_horario'
-            : saudes.includes('sem_sinal')
+            : saudes.includes('sem_comunicacao')
               ? 'sem_comunicacao'
               : 'fora_do_ar';
     // Nada da tela vai ao anunciante — nem o horário do último sinal.

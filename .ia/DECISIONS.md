@@ -1572,3 +1572,48 @@ a rede como "Indisponível para escolha" quando nenhuma tela estava alocada.
   116 desfaz só o nome que a 115 compôs (padrão exato), sem tocar IDs,
   telas, credenciais, Player ou POP.
 
+## ADR-040 — Rede Front V3: estado da tela em três dimensões e o COMPROMISSO móvel (06/10/2026)
+
+**Contexto.** Em produção a M-0010 (rede móvel, Player instalado, sem
+compromisso, TV desligada) aparecia "Com problema": a tela móvel sem
+alocação herdava "sem horário = 24 h", então todo silêncio virava
+`sem_sinal`, que era alerta. E o Admin tinha dois formulários (evento e
+hospedagem) para a mesma coisa operacional, com conta digitada num
+`datalist` e endereço redigitado.
+
+**Decisão (sem migration).**
+- **Sem comunicação não é problema.** Heartbeat ausente diz só que a
+  Mostraí não fala com a tela agora — TV desligada, sem internet, local
+  fechado; o backend não sabe qual e não chama de erro. É âmbar, com filtro
+  e contador próprios; vira "atenção" só durante o horário em que a tela
+  deveria operar.
+- **Com problema exige evidência:** estado/erro do Player, fila de
+  comprovantes crítica ou configuração travada — e só com a tela
+  comunicando (dado de tela calada pode ser velho).
+- **Três dimensões separadas** (administrativo, conectividade, operação) +
+  um `resumo`; só `src/lib/status-tela.js` classifica; Admin, dono e
+  anunciante apresentam.
+- **A rede móvel não tem horário global.** Sem compromisso em curso a tela
+  está "Sem alocação" e nenhuma operação é esperada (nunca 24 h); com
+  compromisso, vale o horário dele. O `/config` do Player para a tela sem
+  alocação ficou como estava (dia inteiro, só institucional) — scheduler e
+  Player intocados nesta estação (PENDENCIAS RV2).
+- **COMPROMISSO é o conceito único da UI.** Conta e outro local são
+  CONTEXTOS de um mesmo formulário; por baixo continuam hospedagem (1 tela,
+  benefício, termo físico) e evento (1..N telas) — nenhuma tabela nova nem
+  migration por estética. A regra nova mora uma vez em
+  `src/pontos/compromissos.js`; as rotas antigas viram compatibilidade.
+- **Horário sempre explícito:** "do local" (cópia gravada no compromisso —
+  o comércio pode mudar o dele depois), "todo o período" (escolha
+  explícita; padrão só para até 24 h) ou personalizado. Vários dias sem
+  escolha é recusado.
+- **Nunca redigitar o que o sistema sabe:** conta por busca (homônimos
+  distinguidos por cidade, e-mail, telefone), endereço da conta ou de um
+  ponto dela, categoria padrão do local.
+- **Público estimado saiu da UX** (a coluna continua). Benefício e termo
+  físico só no contexto de conta. Conflito continua por TELA.
+
+**Recusado.** Unificar as tabelas de hospedagem e evento (migration grande
+sem ganho operacional); reclassificar estado no navegador; mudar o
+`/config`/scheduler junto (fora do escopo, risco no Player).
+

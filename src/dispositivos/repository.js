@@ -1,7 +1,7 @@
 const crypto = require('node:crypto');
 const pool = require('../db/pool');
 const cofre = require('../lib/cofre');
-const { saudeDaTela, situacaoConfig, situacaoFila, alertasDaTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
+const { estadoDaTela, situacaoConfig, situacaoFila } = require('../lib/status-tela');
 const {
   telaAlocadaSql,
   horarioDaTelaSql,
@@ -137,7 +137,8 @@ function situacaoInstalacao(t, agora) {
 // O que o admin precisa para operar a tela — e nada que sirva para se passar
 // por ela (sem chave, sem hash, sem PIN) nem jargão de engenharia.
 function paraAdmin(t, agora = new Date()) {
-  const saude = saudeDaTela(t, t.ponto_horario_semanal, agora);
+  // O estado canônico (src/lib/status-tela.js): o Admin só apresenta.
+  const estado = estadoDaTela(t, t.ponto_horario_semanal, agora);
   const temErro = t.ultimo_erro_codigo || t.ultimo_erro;
   return {
     id: t.id,
@@ -147,8 +148,10 @@ function paraAdmin(t, agora = new Date()) {
     pontoNome: t.ponto_nome,
     pontoCidade: t.ponto_cidade,
     status: t.status,
-    saude,
-    alertas: alertasDaTela(t, saude, agora),
+    pontoTipo: t.ponto_tipo,
+    saude: estado.resumo,
+    estado,
+    alertas: estado.alertas,
     criadaEm: t.created_at,
     instaladoEm: t.instalado_em,
     primeiroSinalEm: t.primeiro_sinal_em,
@@ -192,9 +195,45 @@ async function buscarPorId(id) {
   return rows[0] ? paraAdmin(rows[0], new Date()) : null;
 }
 
-// Visão geral / alertas: só quem deveria operar e não está.
-async function listarComProblemaDeSinal() {
-  return (await listarTodos()).filter((t) => SITUACOES_DE_ALERTA.has(t.saude));
+// O resumo das telas de UM ponto, a partir do estado já classificado de cada
+// uma (src/lib/status-tela.js) — a MESMA conta no card, no filtro, no
+// contador do topo da Rede e na Visão geral. `filtros`: os chips da grade de
+// que o ponto faz parte por causa das telas.
+function resumoDeTelas(telas) {
+  const r = {
+    total: telas.length,
+    operando: 0,
+    semComunicacao: 0,
+    comProblema: 0,
+    aguardandoInstalacao: 0,
+    semAlocacao: 0,
+    foraDoHorario: 0,
+    emReparo: 0,
+    inativas: 0,
+  };
+  const chave = {
+    operando: 'operando',
+    sem_comunicacao: 'semComunicacao',
+    com_problema: 'comProblema',
+    aguardando_instalacao: 'aguardandoInstalacao',
+    sem_alocacao: 'semAlocacao',
+    fora_do_horario: 'foraDoHorario',
+    em_reparo: 'emReparo',
+    inativa: 'inativas',
+  };
+  for (const t of telas) if (chave[t.saude]) r[chave[t.saude]] += 1;
+  r.filtros = [...(r.comProblema ? ['problema'] : []), ...(r.semComunicacao ? ['sem_comunicacao'] : [])];
+  return r;
+}
+
+// Visão geral: COM PROBLEMA (evidência de erro) e SEM COMUNICAÇÃO são listas
+// separadas — sem comunicação não é problema (src/lib/status-tela.js).
+async function telasComAtencao() {
+  const telas = await listarTodos();
+  return {
+    comProblema: telas.filter((t) => t.estado.resumo === 'com_problema'),
+    semComunicacao: telas.filter((t) => t.estado.conectividade === 'sem_comunicacao' && t.status === 'ativo'),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -533,7 +572,8 @@ module.exports = {
   paraAdmin,
   listarPorPonto,
   listarTodos,
-  listarComProblemaDeSinal,
+  telasComAtencao,
+  resumoDeTelas,
   criar,
   atualizar,
   temExibicaoConfirmada,

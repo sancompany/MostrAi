@@ -665,7 +665,14 @@ test('heartbeat: snapshot do estado, fila, erro e config aplicada; versão só p
   await bater(p, { estado: 'PLAYBACK_ERROR', erro: { codigo: 'PLAYBACK_FALHOU', mensagem: 'x' } });
   assert.equal(await eventosDe(tela.id, 'ERROR_STARTED'), 1, 'mesmo código = mesma transição');
   const admin = await app.chamar('GET', `/admin/dispositivos/${tela.id}`);
-  assert.equal(admin.json.saude, 'erro_do_player');
+  assert.equal(admin.json.saude, 'com_problema');
+  assert.equal(admin.json.estado.problema.codigo, 'ERRO_PLAYER');
+  assert.equal(
+    admin.json.estado.problema.motivo,
+    'Falha de reprodução',
+    'código próprio do Player: o estado diz o motivo',
+  );
+  assert.equal(admin.json.estado.conectividade, 'comunicando');
   await bater(p, { estado: 'PLAYING', erro: null });
   assert.equal(await eventosDe(tela.id, 'ERROR_RESOLVED'), 1);
   assert.equal((await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json.saude, 'operando');
@@ -674,7 +681,7 @@ test('heartbeat: snapshot do estado, fila, erro e config aplicada; versão só p
   assert.equal((await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json.saude, 'fora_do_horario');
 });
 
-test('heartbeat: tela em reparo continua batendo (nunca 403); "Sem sinal" depois de 2 min (8 batidas de 15 s)', async () => {
+test('heartbeat: tela em reparo continua batendo (nunca 403); "Sem comunicação" depois de 2 min (8 batidas de 15 s)', async () => {
   const pid = await novoPonto();
   const tela = await novaTela(pid);
   const p = await instalarPlayer(tela.id);
@@ -688,7 +695,7 @@ test('heartbeat: tela em reparo continua batendo (nunca 403); "Sem sinal" depois
   ]);
   assert.equal((await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json.saude, 'operando');
   await pool.query("UPDATE dispositivos SET ultima_vez_online = now() - interval '3 minutes' WHERE id = $1", [tela.id]);
-  assert.equal((await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json.saude, 'sem_sinal');
+  assert.equal((await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json.saude, 'sem_comunicacao');
   await bater(p, { estado: 'PLAYING' });
   assert.equal(await eventosDe(tela.id, 'OFFLINE'), 1);
   assert.equal(await eventosDe(tela.id, 'ONLINE'), 1);

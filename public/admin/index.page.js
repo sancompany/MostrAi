@@ -1228,20 +1228,25 @@ verificarSessao();
 //   desta mesma Visão geral — `rolar` desce até ela em vez de navegar pra
 //   Rede/Pontos, onde o botão Liberar não existe.
 const ALERTAS = [
-  // "offline" só conta sem_sinal/erro_do_player (src/lib/status-tela.js) —
-  // tela fora do horário de funcionamento ou nunca instalada não é falha e
-  // não entra aqui (revisão final da Visão geral, 23/09/2026).
+  // "offline" = telas COM PROBLEMA: evidência de erro do Player, fila de
+  // comprovantes crítica, configuração travada (src/lib/status-tela.js).
+  // Sem comunicação NÃO entra aqui — vem na linha de baixo, sem urgência
+  // (Rede Front V3, 06/10/2026).
   {
     fila: 'offline',
     aba: 'pontos',
     // Abre a grade já filtrada em "Com problema" (o mesmo chip da lista).
     filtroPontos: 'problema',
     acao: 'Ver pontos',
-    texto: (n) =>
-      n === 1
-        ? '<b>1 tela</b> deveria estar operando e não está'
-        : `<b>${n} telas</b> deveriam estar operando e não estão`,
+    texto: (n) => (n === 1 ? '<b>1 tela</b> com problema' : `<b>${n} telas</b> com problema`),
     urgente: true,
+  },
+  {
+    fila: 'telasSemComunicacao',
+    aba: 'pontos',
+    filtroPontos: 'sem_comunicacao',
+    acao: 'Ver pontos',
+    texto: (n) => (n === 1 ? '<b>1 tela</b> sem comunicação' : `<b>${n} telas</b> sem comunicação`),
   },
   {
     fila: 'bancohoras',
@@ -2943,42 +2948,31 @@ async function renderMidiaMostrai(el) {
 // status" — consumido uma vez só.
 let FILTRO_PONTOS_STATUS = null;
 
-const TELA_STATUS_CLASSE = { ativo: 'badge-neutro', reparo: 'badge-info', inativo: 'badge-neutro' };
+// O `resumo` do estado canônico da tela (src/lib/status-tela.js) — o Admin
+// só apresenta. SEM COMUNICAÇÃO é âmbar, nunca vermelho: não é problema
+// (Rede Front V3, 06/10/2026). COM PROBLEMA só com evidência de erro.
 const SAUDE_TELA = {
   operando: { rotulo: 'Operando', classe: 'badge-ok' },
+  com_problema: { rotulo: 'Com problema', classe: 'badge-err' },
+  sem_comunicacao: { rotulo: 'Sem comunicação', classe: 'badge-atencao' },
+  sem_alocacao: { rotulo: 'Sem alocação', classe: 'badge-neutro' },
   fora_do_horario: { rotulo: 'Fora do horário', classe: 'badge-neutro' },
   aguardando_instalacao: { rotulo: 'Aguardando instalação', classe: 'badge-pendente' },
-  sem_sinal: { rotulo: 'Sem sinal', classe: 'badge-err' },
-  erro_do_player: { rotulo: 'Erro do Player', classe: 'badge-err' },
   em_reparo: { rotulo: 'Em reparo', classe: 'badge-info' },
   inativa: { rotulo: 'Inativa', classe: 'badge-neutro' },
 };
-// Ordem em que a saúde aparece no resumo do card do ponto.
-const ORDEM_SAUDE = [
-  'operando',
-  'sem_sinal',
-  'erro_do_player',
-  'fora_do_horario',
-  'aguardando_instalacao',
-  'em_reparo',
-  'inativa',
-];
-const SAUDE_NO_RESUMO = {
-  operando: 'operando',
-  sem_sinal: 'sem sinal',
-  erro_do_player: 'com erro',
-  fora_do_horario: 'fora do horário',
-  aguardando_instalacao: 'aguardando instalação',
-  em_reparo: 'em reparo',
-  inativa: 'inativa',
+// As três dimensões, em palavras (a ficha da tela mostra cada uma).
+const CONECTIVIDADE_TELA = {
+  comunicando: 'Comunicando',
+  sem_comunicacao: 'Sem comunicação',
+  sem_player: 'Player não instalado',
 };
-const TEXTO_ALERTA = {
-  SEM_SINAL: 'Deveria operar e está sem sinal',
-  ERRO_PLAYER: 'O Player relatou um erro',
-  INSTALACAO_ATRASADA: 'Aguardando instalação há mais de 7 dias',
-  FILA_CRITICA: 'Comprovantes acumulados na TV',
-  FILA_ALTA: 'Muitos comprovantes esperando envio',
-  CONFIG_PENDENTE: 'A TV ainda não recebeu a última alteração',
+const OPERACAO_TELA = {
+  exibindo: 'Exibindo',
+  fora_do_horario: 'Fora do horário',
+  sem_alocacao: 'Sem alocação',
+  erro: 'Com erro',
+  desconhecida: 'Sem informação',
 };
 const DIAS_HORARIO = [
   { id: 'seg', rotulo: 'Segunda' },
@@ -3018,13 +3012,24 @@ function sinalDesde(v) {
   return tempoDesde(v);
 }
 
-// Selo + uma frase: "Operando · último sinal agora", "Sem sinal · há 18 min",
-// "Aguardando instalação". Estado administrativo (reparo/inativa) vence a saúde.
+// "Último contato há 8 h" — o heartbeat mais recente; sem Player, nada.
+function ultimoContato(t) {
+  const v = t.estado ? t.estado.ultimoSinal : t.ultimoSinalEm;
+  return v ? `Último contato ${sinalDesde(v)}` : '';
+}
+
+// A linha operacional da tela, do estado que o servidor já classificou:
+// o selo do resumo + o que mais importa ("Sem comunicação · Sem alocação ·
+// Último contato há 8 h"). Nada é reclassificado aqui.
 function situacaoDaTela(t) {
-  const selo = SAUDE_TELA[t.saude] || SAUDE_TELA.operando;
-  if (!t.ultimoSinalEm || t.saude === 'aguardando_instalacao') return { selo, texto: '' };
-  if (t.saude === 'sem_sinal') return { selo, texto: sinalDesde(t.ultimoSinalEm) };
-  return { selo, texto: `último sinal ${sinalDesde(t.ultimoSinalEm)}` };
+  const e = t.estado || { resumo: t.saude };
+  const selo = SAUDE_TELA[e.resumo] || SAUDE_TELA.operando;
+  const extras = [];
+  if (e.resumo === 'com_problema' && e.problema) extras.push(e.problema.motivo);
+  if (e.resumo !== 'sem_alocacao' && e.operacao === 'sem_alocacao') extras.push(OPERACAO_TELA.sem_alocacao);
+  if (e.resumo === 'sem_comunicacao' && e.operacao === 'fora_do_horario') extras.push(OPERACAO_TELA.fora_do_horario);
+  const contato = e.resumo === 'aguardando_instalacao' ? '' : ultimoContato(t);
+  return { selo, extras, contato, texto: [...extras, contato].filter(Boolean).join(' · ') };
 }
 
 // ---------- tempo real ----------
@@ -3152,88 +3157,109 @@ function fotoOuPlaceholder(url, nome) {
 }
 
 // Card de ponto e de candidatura: um molde só (polimento final, 23/09/2026).
-function cardEntidade({ href, filtro = '', foto, nome, badge: selo, meta, rodape }) {
+// `busca`: texto que a busca da grade acha sem aparecer no card (código das
+// telas, endereço completo); `abrir`: o [Abrir] no pé do card.
+function cardEntidade({ href, filtro = '', foto, nome, badge: selo, meta, rodape, busca = '', abrir = false }) {
   return `<a class="ponto-card ponto-card-link com-corpo" href="${href}" ${filtro ? `data-filtro="${filtro}"` : ''}>
     <div class="ponto-card-media">${foto}</div>
     <div class="ponto-card-corpo">
       <div class="ponto-card-topo"><h4>${nome}</h4>${selo}</div>
       ${meta ? `<p class="ponto-card-meta">${meta}</p>` : ''}
-      ${rodape ? `<p class="ponto-card-pe">${rodape}</p>` : ''}
+      ${rodape || abrir ? `<div class="ponto-card-pe">${rodape ? `<span class="ponto-card-pe-texto">${rodape}</span>` : ''}${abrir ? '<span class="btn ghost mini ponto-card-abrir" aria-hidden="true">Abrir</span>' : ''}</div>` : ''}
+      ${busca ? `<span hidden>${esc(busca)}</span>` : ''}
     </div>
   </a>`;
 }
 
-// "2 telas · 1 operando · 1 sem sinal" — a contagem por saúde vem da saúde
-// que o backend já calculou em cada tela.
-function resumoDasTelas(telas) {
-  if (!telas.length) return 'Nenhuma tela ainda';
-  const porSaude = {};
-  for (const t of telas) porSaude[t.saude] = (porSaude[t.saude] || 0) + 1;
-  const partes = ORDEM_SAUDE.filter((s) => porSaude[s]).map((s) => `${porSaude[s]} ${SAUDE_NO_RESUMO[s]}`);
-  return `${plural(telas.length, 'tela')} · ${partes.join(' · ')}`;
+// "2 telas · 1 operando · 1 sem comunicação" — somado do `estadoTelas` que o
+// servidor manda em cada ponto (GET /admin/pontos): o mesmo número do
+// resumo do topo e dos filtros.
+const PARTES_DO_RESUMO = [
+  ['operando', 'operando'],
+  ['comProblema', 'com problema', 'txt-alerta'],
+  ['semComunicacao', 'sem comunicação', 'txt-atencao'],
+  ['semAlocacao', 'sem alocação'],
+  ['foraDoHorario', 'fora do horário'],
+  ['aguardandoInstalacao', 'aguardando instalação'],
+  ['emReparo', 'em reparo'],
+  ['inativas', 'inativa'],
+];
+function resumoDasTelas(e) {
+  if (!e?.total) return '<span class="u-dim">Nenhuma tela ainda</span>';
+  const partes = PARTES_DO_RESUMO.filter(([k]) => e[k]).map(
+    ([k, rotulo, classe]) => `<span class="${classe || ''}">${e[k]} ${rotulo}</span>`,
+  );
+  return [esc(plural(e.total, 'tela')), ...partes].join(' · ');
 }
 
-function montarPontoCard(p, telas) {
-  if (p.tipo === 'movel') return montarRedeCard(p, telas);
-  const segmento = p.categoria_nome || p.categoria_livre || p.segmento;
-  const problema = telas.some((t) => t.alertas.some((a) => a.nivel === 'alerta'));
-  const local = `${esc(p.cidade)}${p.uf ? `/${esc(p.uf)}` : ''}${p.endereco ? ` · ${esc(p.endereco)}` : ''}`;
+// Fixo e móvel: o MESMO card (Rede Front V3) — foto 16:9, nome, selo,
+// localização, resumo operacional das telas e [Abrir]. A rede móvel troca
+// endereço/horário por onde está agora e o próximo compromisso (prontos em
+// `movel`, src/pontos/movel.js#situacaoDasRedes).
+function montarPontoCard(p) {
+  const movel = p.tipo === 'movel';
+  const e = p.estadoTelas || { total: 0, filtros: [] };
+  const arquivada = movel && p.status === 'arquivado';
+  const situacao = movel ? (arquivada ? 'arquivado' : 'em_operacao') : p.status;
+  const cidade = esc([p.cidade, p.uf].filter(Boolean).join('/'));
+  let meta;
+  if (movel) {
+    const m = p.movel || { locaisAgora: [] };
+    const locais = m.locaisAgora || [];
+    const atual =
+      locais.length > 1
+        ? esc(window.PONTO_MOVEL.locais(locais.length))
+        : locais.length === 1
+          ? esc(locais[0].nome)
+          : '<span class="u-dim">Sem localização</span>';
+    const proximo = m.proximo
+      ? `${esc(m.proximo.nome)} · ${esc(window.PONTO_MOVEL.quando(m.proximo.inicio))}`
+      : '<span class="u-dim">Nenhum programado</span>';
+    meta = `${cidade}
+      <span class="rede-card-linha"><span class="rede-card-rotulo">Local atual</span><span>${atual}</span></span>
+      <span class="rede-card-linha"><span class="rede-card-rotulo">Próximo</span><span>${proximo}</span></span>`;
+  } else {
+    const segmento = p.categoria_nome || p.categoria_livre || p.segmento;
+    meta = `${cidade}${p.endereco ? ` · ${esc(p.endereco)}` : ''}${segmento ? `<br>${esc(segmento)}` : ''}<br><span class="u-dim">${esc(resumoHorarioSemanal(p.horario_semanal) || 'Aberto 24 horas')}</span>`;
+  }
+  const selo = movel
+    ? `<span class="badge ${arquivada ? 'badge-neutro' : 'badge-ok'}">${arquivada ? 'Arquivada' : 'Ativa'}</span>`
+    : `<span class="badge ${PONTO_STATUS_CLASSE[p.status]}">${PONTO_STATUS[p.status] || p.status}</span>`;
   return cardEntidade({
     href: `#rede/pontos/${p.id}`,
-    filtro: `fixo ${p.status}${problema ? ' problema' : ''}`,
-    foto: fotoOuPlaceholder(p.foto_instalacao_url, p.nome),
+    filtro: [movel ? 'movel' : 'fixo', situacao, ...(e.filtros || [])].join(' '),
+    foto: `${fotoOuPlaceholder(p.foto_instalacao_url, p.nome)}${movel ? `<span class="selo-movel">${esc(window.PONTO_MOVEL.selo)}</span>` : ''}`,
     nome: esc(p.nome),
-    badge: `<span class="badge ${PONTO_STATUS_CLASSE[p.status]}">${PONTO_STATUS[p.status] || p.status}</span>`,
-    meta: `${local}${segmento ? `<br>${esc(segmento)}` : ''}<br><span class="u-dim">${esc(resumoHorarioSemanal(p.horario_semanal) || 'Aberto 24 horas')}</span>`,
-    rodape: `<span class="${problema ? 'txt-alerta' : ''}">${esc(resumoDasTelas(telas))}</span>${
-      p.endereco_a_conferir ? '<br><span class="txt-alerta">Endereço alterado — conferir</span>' : ''
-    }`,
+    badge: selo,
+    meta,
+    rodape: `${resumoDasTelas(e)}${p.endereco_a_conferir ? '<br><span class="txt-alerta">Endereço alterado — conferir</span>' : ''}`,
+    busca: [...(p.codigosTelas || []), p.cidade, p.uf, p.endereco, p.bairro].filter(Boolean).join(' '),
+    abrir: true,
   });
 }
 
-// A REDE MÓVEL no mesmo grid dos fixos (estação Rede/Admin V2): mesmo molde
-// e mesma foto canônica; no lugar de endereço/horário, a cidade, as telas,
-// onde está AGORA e o PRÓXIMO compromisso (vêm prontos de GET /admin/pontos,
-// `movel` — src/pontos/movel.js#situacaoDasRedes).
-function montarRedeCard(p, telas) {
-  const m = p.movel || { locaisAgora: [], telas: 0, emOperacao: 0 };
-  const problema = telas.some((t) => t.alertas.some((a) => a.nivel === 'alerta'));
-  const arquivada = p.status === 'arquivado';
-  const locais = m.locaisAgora || [];
-  const atual =
-    locais.length > 1
-      ? window.PONTO_MOVEL.locais(locais.length)
-      : locais.length === 1
-        ? esc(locais[0].nome)
-        : '<span class="u-dim">Sem localização</span>';
-  const proximo = m.proximo
-    ? `${esc(m.proximo.nome)} · ${esc(window.PONTO_MOVEL.quando(m.proximo.inicio))}`
-    : '<span class="u-dim">Nenhum programado</span>';
-  return cardEntidade({
-    href: `#rede/pontos/${p.id}`,
-    filtro: `movel${arquivada ? ' arquivado' : ' em_operacao'}${problema ? ' problema' : ''}`,
-    foto: `${fotoOuPlaceholder(p.foto_instalacao_url, p.nome)}<span class="selo-movel">${esc(window.PONTO_MOVEL.selo)}</span>`,
-    nome: esc(p.nome),
-    badge: `<span class="badge ${arquivada ? 'badge-neutro' : 'badge-ok'}">${arquivada ? 'Arquivada' : 'Ativa'}</span>`,
-    meta: `${esc(window.PONTO_MOVEL.cidade(p.cidade, p.uf))}<br><span class="u-dim">${esc(window.PONTO_MOVEL.telas(Number(m.telas) || 0, Number(m.emOperacao) || 0))}</span>`,
-    rodape: `<span class="rede-card-linha"><span class="rede-card-rotulo">Atual</span>${atual}</span><span class="rede-card-linha"><span class="rede-card-rotulo">Próximo</span>${proximo}</span>`,
-  });
-}
-
-// Só números que fazem alguém agir: quantos pontos e telas, quantas
-// operando, quantas com problema e quantos pontos esperam instalação.
-function resumoDaRede(pontos, telas) {
-  const operando = telas.filter((t) => t.saude === 'operando').length;
-  const problema = telas.filter((t) => t.alertas.some((a) => a.nivel === 'alerta')).length;
-  const aguardando = pontos.filter((p) => p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal').length;
-  const item = (valor, rotulo, classe = '') =>
-    `<div class="rede-resumo-item ${classe}"><b>${num(valor)}</b><span>${rotulo}</span></div>`;
+// O resumo do topo: só números que fazem alguém agir, somados do MESMO
+// `estadoTelas` dos cards. Os que têm filtro são botões que o aplicam.
+function resumoDaRede(pontos) {
+  const soma = (k) => pontos.reduce((n, p) => n + (p.estadoTelas?.[k] || 0), 0);
+  const aguardando = pontos.filter((p) => p.status === 'a_instalar').length;
+  const item = (valor, rotulo, { classe = '', filtro = null } = {}) => {
+    const corpo = `<b>${num(valor)}</b><span>${rotulo}</span>`;
+    return filtro != null && valor
+      ? `<button type="button" class="rede-resumo-item ${classe}" data-resumo-filtro="${filtro}">${corpo}</button>`
+      : `<div class="rede-resumo-item ${classe}">${corpo}</div>`;
+  };
+  const telas = soma('total');
+  const operando = soma('operando');
+  const semComunicacao = soma('semComunicacao');
+  const problema = soma('comProblema');
   return `<div class="rede-resumo" aria-label="Resumo da rede">
     ${item(pontos.length, pontos.length === 1 ? 'ponto' : 'pontos')}
-    ${item(telas.length, telas.length === 1 ? 'tela' : 'telas')}
-    ${item(operando, 'operando', operando ? 'ok' : '')}
-    ${item(problema, 'com problema', problema ? 'alerta' : '')}
-    ${item(aguardando, 'aguardando instalação')}
+    ${item(telas, telas === 1 ? 'tela' : 'telas')}
+    ${item(operando, 'operando', { classe: operando ? 'ok' : '' })}
+    ${item(semComunicacao, 'sem comunicação', { classe: semComunicacao ? 'atencao' : '', filtro: 'sem_comunicacao' })}
+    ${item(problema, 'com problema', { classe: problema ? 'alerta' : '', filtro: 'problema' })}
+    ${item(aguardando, 'aguardando instalação', { filtro: 'a_instalar' })}
   </div>`;
 }
 
@@ -3305,34 +3331,29 @@ async function renderPontosGrade(el) {
   FILTRO_PONTOS_STATUS = null;
 
   async function montar() {
-    const [pontos, telas, pin] = await Promise.all([
-      pegar('/admin/pontos'),
-      pegar('/admin/dispositivos'),
-      pegar('/admin/player/pin-saida'),
-    ]);
-    const telasPorPonto = new Map();
-    for (const t of telas) {
-      if (!telasPorPonto.has(t.pontoId)) telasPorPonto.set(t.pontoId, []);
-      telasPorPonto.get(t.pontoId).push(t);
-    }
+    // O estado das telas vem somado em cada ponto (`estadoTelas`): grade,
+    // filtros e resumo do topo leem a mesma conta do servidor.
+    const [pontos, pin] = await Promise.all([pegar('/admin/pontos'), pegar('/admin/player/pin-saida')]);
     const chipAtivo = el.querySelector('.chip.active')?.dataset.filtro ?? filtroStatus;
     const busca = el.querySelector('.busca')?.value || '';
     // Fixos e móveis num grid só; a régua de filtros mistura TIPO (Fixos,
-    // Móveis), "Com problema" e o estado do ponto fixo.
-    el.innerHTML = `${blocoPinSaida(pin)}${
+    // Móveis), o estado das telas (Com problema, Sem comunicação) e o
+    // estado do ponto.
+    el.innerHTML = `${
       pontos.length
-        ? `${resumoDaRede(pontos, telas)}${caixaCards({
+        ? `${resumoDaRede(pontos)}${caixaCards({
             chips: [
               { valor: '', nome: 'Todos' },
               { valor: 'fixo', nome: 'Fixos' },
               { valor: 'movel', nome: 'Móveis' },
               { valor: 'problema', nome: 'Com problema' },
+              { valor: 'sem_comunicacao', nome: 'Sem comunicação' },
               ...Object.entries(PONTO_STATUS).map(([v, n]) => ({
                 valor: v,
                 nome: v === 'em_operacao' ? 'Ativos' : n === 'Inativo' ? 'Inativos' : n,
               })),
             ],
-            html: pontos.map((p) => montarPontoCard(p, telasPorPonto.get(p.id) || [])).join(''),
+            html: pontos.map(montarPontoCard).join(''),
             ativo: chipAtivo,
             unidade: 'ponto|pontos',
           })}`
@@ -3340,7 +3361,7 @@ async function renderPontosGrade(el) {
             'Nenhum ponto cadastrado ainda.',
             'Pedido de ponto feito no painel de uma conta chega em Candidaturas — aprovado, o ponto nasce aqui. O Admin também cria o ponto pela ficha da conta.',
           )
-    }`;
+    }${blocoPinSaida(pin)}`;
     // Barra do filtro Móveis: discreta, só com o filtro ativo — sem página
     // separada para as redes móveis.
     const barra = document.createElement('div');
@@ -3366,6 +3387,12 @@ async function renderPontosGrade(el) {
       if (campoBusca && busca) campoBusca.value = busca;
       turbinarCards(el.querySelector('.colecao'), '.ponto-card');
       el.querySelectorAll('.colecao .chip').forEach((chip) => chip.addEventListener('click', sincronizarBarra));
+      // Número do resumo com filtro = o chip correspondente.
+      el.querySelectorAll('[data-resumo-filtro]').forEach((b) =>
+        b.addEventListener('click', () =>
+          el.querySelector(`.colecao .chip[data-filtro="${b.dataset.resumoFiltro}"]`)?.click(),
+        ),
+      );
     }
     sincronizarBarra();
   }
@@ -3417,7 +3444,7 @@ async function abrirAgendaMovel() {
       return;
     }
     corpo.innerHTML = `<div class="tabela-rolagem"><table class="mini-table agenda-admin" data-agenda-admin>
-        <thead><tr><th>Data</th><th>Horário</th><th>Rede</th><th>Tela(s)</th><th>Tipo</th><th>Local</th><th>Estado</th></tr></thead>
+        <thead><tr><th>Data</th><th>Horário</th><th>Rede</th><th>Tela(s)</th><th>Onde</th><th>Local</th><th>Estado</th></tr></thead>
         <tbody>${linhas
           .map((l) => {
             const { data: dia, horario } = window.PONTO_MOVEL.periodoDaAgenda(l.inicio, l.fim);
@@ -3427,7 +3454,7 @@ async function abrirAgendaMovel() {
               <td class="u-nowrap">${esc(horario)}</td>
               <td><a href="#rede/pontos/${l.redeId}" data-abrir-rede>${esc(l.rede)}</a><span class="dado-sub">${esc(window.PONTO_MOVEL.cidade(l.cidade, l.uf))}</span></td>
               <td>${(l.telas || []).map((t) => `<span class="u-nowrap">${esc(t.codigo)}</span>`).join(', ')}</td>
-              <td>${l.tipo === 'hospedagem' ? 'Hospedagem' : 'Evento'}</td>
+              <td>${l.tipo === 'hospedagem' ? 'Na conta' : 'Outro local'}</td>
               <td>${esc(l.nome)}${l.local ? `<span class="dado-sub">${esc(l.local)}</span>` : ''}${l.conta && l.conta !== l.nome ? `<span class="dado-sub">${esc(l.conta)}</span>` : ''}</td>
               <td><span class="badge ${classe}">${rotulo}</span></td>
             </tr>`;
@@ -3495,42 +3522,21 @@ async function renderPontoDetalhe(el, pontoId) {
       el.innerHTML = '<p class="form-msg err">Ponto não encontrado. <a href="#rede/pontos">Voltar pra Rede</a></p>';
       return;
     }
-    // REDE MÓVEL (migration 115): a ficha é da rede da cidade — cabeçalho
-    // com o resumo das telas, a operação de agora, a agenda consolidada e o
-    // histórico; as telas ao lado, cada uma com a alocação dela.
+    // REDE MÓVEL (migration 115): a ficha é da rede da cidade — cabeçalho,
+    // COMPROMISSOS (agora / próximos / histórico) e as telas.
     if (ponto.tipo === 'movel') {
-      const ficha = await pegar(`/admin/pontos/${pontoId}/movel`);
-      el.innerHTML = `
-        ${migalha([{ rotulo: 'Pontos', href: '#rede/pontos' }, { rotulo: ficha.nome }])}
-        <div class="ponto-detalhe-grid">
-          <div class="pilha">
-            <section class="panel ponto-ficha" id="pontoInformacoes"></section>
-            <section class="panel" id="pontoMovel"></section>
-            <section class="panel" id="pontoCapacidade" hidden></section>
-          </div>
-          <section class="panel" id="pontoTelas"></section>
-        </div>`;
-      renderRedeCabecalho(el.querySelector('#pontoInformacoes'), ponto, ficha, telas, montar);
-      renderRedeTelas(el.querySelector('#pontoTelas'), ponto, ficha, telas);
-      renderRedeAgenda(el.querySelector('#pontoMovel'), ponto, ficha, montar);
+      renderRedeMovel(el, ponto, await pegar(`/admin/pontos/${pontoId}/movel`), telas, montar);
     } else {
-      el.innerHTML = `
-        ${migalha([{ rotulo: 'Pontos', href: '#rede/pontos' }, { rotulo: ponto.nome }])}
-        <div class="ponto-detalhe-grid">
-          <div class="pilha">
-            <section class="panel ponto-ficha" id="pontoInformacoes"></section>
-            <section class="panel" id="pontoEndereco"></section>
-            <section class="panel" id="pontoCapacidade" hidden></section>
-          </div>
-          <section class="panel" id="pontoTelas"></section>
-        </div>`;
-      renderPontoInformacoes(el.querySelector('#pontoInformacoes'), ponto, telas, montar);
-      renderPontoEndereco(el.querySelector('#pontoEndereco'), ponto, pendencias, montar);
-      renderPontoTelas(el.querySelector('#pontoTelas'), ponto, telas);
+      renderPontoFixo(el, ponto, telas, pendencias, montar);
     }
+    const sanfona = el.querySelector('#pontoCapacidadeSanfona');
     blocoIndependente(
       el.querySelector('#pontoCapacidade'),
-      (alvo) => renderPontoCapacidade(alvo, pontoId),
+      async (alvo) => {
+        await renderPontoCapacidade(alvo, pontoId, { compacta: true });
+        sanfona.hidden = alvo.hidden;
+        alvo.hidden = false;
+      },
       'capacidade do ponto',
     );
   }
@@ -3538,57 +3544,64 @@ async function renderPontoDetalhe(el, pontoId) {
   definirVistaRede(montar);
 }
 
+// FICHA DO PONTO FIXO (Rede Front V3): cabeçalho com o resumo operacional
+// das telas e as ações; as telas em primeiro plano; informações, endereço e
+// a capacidade (recolhida) ao lado.
+function renderPontoFixo(el, ponto, telas, pendencias, remontar) {
+  const arquivado = ponto.status === 'arquivado';
+  const local = window.linhaEndereco(ponto, { comCidade: true }) || [ponto.cidade, ponto.uf].filter(Boolean).join('/');
+  el.innerHTML = `
+    ${migalha([{ rotulo: 'Pontos', href: '#rede/pontos' }, { rotulo: ponto.nome }])}
+    <section class="panel ponto-ficha-topo" id="pontoCabecalho">
+      ${cabecalhoDoPonto({
+        foto: fotoOuPlaceholder(ponto.foto_instalacao_url, ponto.nome),
+        nome: esc(ponto.nome),
+        selos: `<span class="badge badge-neutro">Fixo</span><span class="badge ${PONTO_STATUS_CLASSE[ponto.status]}">${PONTO_STATUS[ponto.status] || ponto.status}</span>`,
+        local: esc(local),
+        resumo: resumoDasTelas(ponto.estadoTelas),
+        acoes: arquivado
+          ? ''
+          : `<button type="button" class="btn primary mini" data-nova-tela>+ Adicionar tela</button>
+             ${menuMais([
+               ['data-alterar-foto', 'Alterar foto'],
+               ['data-excluir-ponto', 'Excluir ponto', true],
+             ])}`,
+      })}
+    </section>
+    <div class="ponto-detalhe-grid invertido">
+      <div class="pilha">
+        <section class="panel" id="pontoTelas"></section>
+        <section class="panel ponto-ficha" id="pontoInformacoes"></section>
+      </div>
+      <div class="pilha">
+        <section class="panel" id="pontoEndereco"></section>
+        ${sanfonaCapacidade()}
+      </div>
+    </div>`;
+  secaoTelas(el.querySelector('#pontoTelas'), ponto, telas);
+  renderPontoInformacoes(el.querySelector('#pontoInformacoes'), ponto, telas, remontar);
+  renderPontoEndereco(el.querySelector('#pontoEndereco'), ponto, pendencias, remontar);
+  el.querySelector('[data-nova-tela]')?.addEventListener('click', () => adicionarTela(ponto));
+  el.querySelector('[data-alterar-foto]')?.addEventListener('click', () => alterarFotoDoPonto(ponto, remontar));
+  el.querySelector('[data-excluir-ponto]')?.addEventListener('click', () => excluirPonto(ponto, telas));
+}
+
 // ---------- Mostraí Móvel: a rede móvel da cidade (migrations 112 a 115) ----------
-// A rede (pontos.tipo = 'movel') tem N telas; cada tela tem a sua agenda —
-// HOSPEDAGEM (uma tela num comércio) ou EVENTO (uma ou várias telas). O
-// anunciante escolhe a rede (1 posição). Tudo vem decidido do servidor
-// (GET /admin/pontos/:id/movel).
-const ESTADO_EVENTO = {
-  programado: ['Programado', 'badge-neutro'],
-  em_andamento: ['Em andamento', 'badge-ok'],
+// A rede (pontos.tipo = 'movel') tem N telas; cada tela tem a sua agenda. Na
+// estação Rede Front V3 (06/10/2026) a agenda virou UM conceito no Admin: o
+// COMPROMISSO — uma ou mais telas, num local, num período, com um horário.
+// O contexto diz o resto: NA CONTA (a conta anfitriã; uma tela, benefício,
+// termo físico, entrega e retirada) ou EM OUTRO LOCAL / EVENTO (sem conta,
+// uma ou várias telas). Tudo decidido no servidor (src/pontos/compromissos.js,
+// GET /admin/pontos/:id/movel → `compromissos`).
+const ESTADO_COMPROMISSO = {
+  programado: ['Programado', 'badge-pendente'],
+  em_curso: ['Agora', 'badge-ok'],
   encerrado: ['Encerrado', 'badge-neutro'],
   cancelado: ['Cancelado', 'badge-err'],
 };
 const codigosDasTelas = (telas) => (telas || []).map((t) => esc(t.codigo)).join(', ');
 const UFS_BR = 'AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' ');
-
-function linhaDoEvento(e, comAcoes) {
-  const [rotulo, classe] = ESTADO_EVENTO[e.estado] || [e.estado, 'badge-neutro'];
-  const detalhes = [
-    esc(window.periodoComHora(e.inicio, e.fim) || window.periodoDoEvento(e.dataInicio, e.dataFim)),
-    e.horario ? `horário: ${esc(e.horario)}` : 'todo o período',
-    `${e.telas?.length === 1 ? 'tela' : 'telas'}: <b>${codigosDasTelas(e.telas)}</b>`,
-    esc(e.local),
-    e.organizacao ? `organização: ${esc(e.organizacao)}` : '',
-    window.publicoEstimadoTexto(e.publicoEstimado),
-    e.categoria ? `categoria protegida: ${esc(e.categoria.nome)}` : 'nenhuma restrição',
-  ].filter(Boolean);
-  const auditoria = [];
-  if (e.iniciadoEm) auditoria.push(`começou ${dataHora(e.iniciadoEm)}`);
-  if (e.encerradoEm)
-    auditoria.push(
-      `encerrado ${dataHora(e.encerradoEm)}${e.encerramento === 'automatico' ? ' (encerramento automático)' : ''}`,
-    );
-  if (e.canceladoEm) auditoria.push(`cancelado ${dataHora(e.canceladoEm)}`);
-  if (e.iniciadoEm) auditoria.push(`${num(e.exibicoesConfirmadas)} exibições confirmadas no evento`);
-  const acoes = !comAcoes
-    ? ''
-    : e.estado === 'em_andamento'
-      ? `<button type="button" class="btn primary mini" data-evento-acao="encerrar" data-evento="${e.id}">Encerrar evento</button>`
-      : e.estado === 'programado'
-        ? `<button type="button" class="btn ghost mini" data-evento-acao="iniciar" data-evento="${e.id}">Iniciar (as telas chegaram)</button>
-           <button type="button" class="btn perigo-sutil mini" data-evento-acao="cancelar" data-evento="${e.id}">Cancelar</button>`
-        : '';
-  return `<li class="evento-movel" data-evento-id="${e.id}">
-      <div class="evento-movel-topo"><span class="badge badge-info">Evento</span> <b>${esc(e.nome)}</b> <span class="badge ${classe}">${rotulo}</span></div>
-      <p class="u-m-0 u-fs-85">${detalhes.join(' · ')}</p>
-      ${e.endereco ? `<p class="u-dim u-fs-85 u-m-0">${esc(e.endereco)}</p>` : ''}
-      ${e.estado === 'em_andamento' && e.terminou ? '<p class="aviso-linha u-mt-4">O fim já passou — o sistema encerra sozinho em instantes.</p>' : ''}
-      ${e.observacao ? `<p class="u-dim u-fs-85 u-m-0">${esc(e.observacao)}</p>` : ''}
-      ${auditoria.length ? `<p class="u-dim u-fs-85 u-m-0">${auditoria.join(' · ')}</p>` : ''}
-      ${acoes ? `<div class="acoes u-mt-8">${acoes}</div>` : ''}
-    </li>`;
-}
 
 // "6 h 00 min" — o formato do saldo de hospedagem (src/pontos/hospedagem.js).
 function horasDeMidia(segundos) {
@@ -3599,93 +3612,870 @@ function horasDeMidia(segundos) {
 }
 const percentualBR = (n) => `${String(Number(n)).replace('.', ',')}%`;
 
-const ESTADO_HOSPEDAGEM = {
-  programada: ['Programada', 'badge-pendente'],
-  ativa: ['Hospedado agora', 'badge-ok'],
-  encerrada: ['Encerrada', 'badge-neutro'],
-  cancelada: ['Cancelada', 'badge-err'],
-};
-
-function linhaDaHospedagem(h, comAcoes) {
-  const [rotulo, classe] = ESTADO_HOSPEDAGEM[h.estado] || [h.estado, 'badge-neutro'];
-  const detalhes = [
-    esc(window.periodoComHora(h.inicio, h.fim) || window.periodoDoEvento(h.dataInicio, h.dataFim)),
-    h.horario ? `horário: ${esc(h.horario)}` : 'todo o período',
-    `tela: <b>${esc(h.tela?.codigo || '—')}</b>`,
-    `<a href="#contas/contas/${h.conta.id}">${esc(h.conta.nome)}</a>`,
-    h.categoria ? `categoria protegida: ${esc(h.categoria.nome)}` : 'nenhuma restrição',
-    `percentual congelado: ${percentualBR(h.percentual)}`,
-  ].filter(Boolean);
-  const numeros =
-    h.estado === 'ativa' || h.estado === 'encerrada'
-      ? `<p class="u-m-0 u-fs-85">Tempo operacional válido: <b>${horasDeMidia(h.tempoSegundos)}</b> · ${h.estimado ? 'benefício estimado' : 'benefício'}: <b>${horasDeMidia(h.beneficioSegundos)}</b></p>`
-      : '';
-  const auditoria = [];
-  if (h.criadoPor) auditoria.push(`confirmada por ${esc(h.criadoPor)} em ${dataHora(h.criadoEm)}`);
-  if (h.iniciadaEm) auditoria.push(`começou ${dataHora(h.iniciadaEm)}`);
-  if (h.encerradaEm)
-    auditoria.push(
-      `encerrada ${dataHora(h.encerradaEm)}${h.encerramento === 'automatico' ? ' (encerramento automático)' : h.encerradoPor ? ` por ${esc(h.encerradoPor)}` : ''}`,
-    );
-  if (h.canceladaEm)
-    auditoria.push(`cancelada ${dataHora(h.canceladaEm)}${h.encerramento === 'automatico' ? ' (automático)' : ''}`);
-  // Termo FÍSICO (migration 115): assinado em papel; aqui só Pendente /
-  // Assinado. Entrega e retirada do equipamento.
-  const documentos = [];
-  const termo = h.termo || { assinado: false };
-  if (h.estado !== 'cancelada') {
-    const podeMarcar = comAcoes && (h.estado === 'programada' || h.estado === 'ativa');
-    documentos.push(
-      `TERMO FÍSICO: ${
-        termo.assinado
-          ? `<span class="badge badge-ok" data-termo-fisico="assinado">Assinado</span>${termo.assinadoEm ? ` em ${data(termo.assinadoEm)}` : ''}${termo.observacao ? ` · ${esc(termo.observacao)}` : ''}${termo.marcadoPor ? ` <span class="u-dim">(marcado por ${esc(termo.marcadoPor)})</span>` : ''}`
-          : '<span class="badge badge-pendente" data-termo-fisico="pendente">Pendente</span>'
-      }${podeMarcar ? ` <button type="button" class="btn ghost mini" data-hosp-acao="termo" data-hosp="${h.id}">${termo.assinado ? 'Editar' : 'Marcar como assinado'}</button>` : ''}`,
-    );
+// Um compromisso numa linha: o local, o estado, o período e o horário, as
+// telas, de quem é (conta ou outro local) e — só na conta — benefício, termo
+// físico e equipamento.
+function linhaDoCompromisso(c, comAcoes) {
+  const [rotulo, classe] = ESTADO_COMPROMISSO[c.estado] || [c.estado, 'badge-neutro'];
+  const naConta = c.contexto === 'conta';
+  const titulo = naConta ? c.local : c.nome;
+  const quem = naConta
+    ? `<a href="#contas/contas/${c.conta.id}">${esc(c.conta.nome)}</a>`
+    : [c.local && c.local !== c.nome ? esc(c.local) : '', c.organizacao ? esc(c.organizacao) : '']
+        .filter(Boolean)
+        .join(' · ') || 'Outro local';
+  const quando = [
+    esc(window.periodoComHora(c.inicio, c.fim)),
+    c.horario ? esc(c.horario) : 'durante todo o período',
+    `${c.telas.length === 1 ? 'tela' : 'telas'} <b>${codigosDasTelas(c.telas)}</b>`,
+  ];
+  const linhas = [];
+  const h = c.hospedagem;
+  if (naConta && h) {
+    const termo = h.termo || { assinado: false };
+    const podeMarcar = comAcoes && (c.estado === 'programado' || c.estado === 'em_curso');
+    if (c.estado !== 'cancelado') {
+      linhas.push(
+        `Benefício ${percentualBR(h.percentual)} · termo físico ${
+          termo.assinado
+            ? `<span class="badge badge-ok" data-termo-fisico="assinado">Assinado</span>${termo.assinadoEm ? ` em ${data(termo.assinadoEm)}` : ''}`
+            : '<span class="badge badge-pendente" data-termo-fisico="pendente">Pendente</span>'
+        }${podeMarcar ? ` <button type="button" class="btn ghost mini" data-comp-acao="termo" data-ref="${c.ref}">${termo.assinado ? 'Editar' : 'Marcar como assinado'}</button>` : ''}`,
+      );
+    }
+    if (c.estado === 'em_curso' || c.estado === 'encerrado') {
+      linhas.push(
+        `Tempo válido <b>${horasDeMidia(h.tempoSegundos)}</b> · ${h.estimado ? 'benefício estimado' : 'benefício'} <b>${horasDeMidia(h.beneficioSegundos)}</b>`,
+      );
+    }
+    const movimento = (m, nome) =>
+      m
+        ? `${nome} ${dataHora(m.realizadaEm)} · ${m.condicao === 'ok' ? 'sem avarias' : `<b>com avarias</b>: ${esc(m.observacao)}`}${m.foto ? ` · <a href="${esc(m.foto)}" target="_blank" rel="noopener">foto</a>` : ''}`
+        : '';
+    if (h.entrega) linhas.push(movimento(h.entrega, 'Entrega'));
+    if (h.retirada) linhas.push(movimento(h.retirada, 'Retirada'));
   }
-  const movimento = (m, nome) =>
-    m
-      ? `${nome} ${dataHora(m.realizadaEm)} por ${esc(m.admin)} · ${m.condicao === 'ok' ? 'sem avarias' : `<b>com avarias</b>: ${esc(m.observacao)}`}${m.condicao === 'ok' && m.observacao ? ` · ${esc(m.observacao)}` : ''}${m.foto ? ` · <a href="${esc(m.foto)}" target="_blank" rel="noopener">foto</a>` : ''}`
-      : '';
-  if (h.entrega) documentos.push(movimento(h.entrega, 'Entrega'));
-  if (h.retirada) documentos.push(movimento(h.retirada, 'Retirada'));
-  const acoes = !comAcoes
-    ? ''
-    : h.estado === 'ativa'
-      ? `<button type="button" class="btn primary mini" data-hosp-acao="encerrar" data-hosp="${h.id}">Encerrar hospedagem</button>
-         <button type="button" class="btn ghost mini" data-hosp-acao="periodo" data-hosp="${h.id}">Prorrogar</button>`
-      : h.estado === 'programada'
-        ? `<button type="button" class="btn ghost mini" data-hosp-acao="iniciar" data-hosp="${h.id}" ${termo.assinado ? '' : 'disabled title="Marque o termo físico como assinado antes"'}>Iniciar (a tela chegou)</button>
-           <button type="button" class="btn ghost mini" data-hosp-acao="periodo" data-hosp="${h.id}">Alterar tela, período e horário</button>
-           <button type="button" class="btn perigo-sutil mini" data-hosp-acao="cancelar" data-hosp="${h.id}">Cancelar</button>`
-        : h.estado === 'encerrada' && !h.retirada
-          ? `<button type="button" class="btn ghost mini" data-hosp-acao="retirada" data-hosp="${h.id}">Registrar retirada</button>`
-          : '';
-  // Foto que não subiu junto (ou ficou para depois): envia avulsa.
-  const fotos = !comAcoes
-    ? ''
-    : [
+  if (!naConta && c.estado === 'encerrado') linhas.push(`${num(c.exibicoesConfirmadas)} exibições confirmadas`);
+  const acoes = [];
+  if (comAcoes) {
+    const botao = (acao, texto, estilo = 'ghost', extra = '') =>
+      `<button type="button" class="btn ${estilo} mini" data-comp-acao="${acao}" data-ref="${c.ref}" ${extra}>${texto}</button>`;
+    if (c.estado === 'em_curso') {
+      acoes.push(botao('encerrar', 'Encerrar', 'primary'));
+      if (naConta) acoes.push(botao('prorrogar', 'Prorrogar'));
+    } else if (c.estado === 'programado') {
+      const semTermo = naConta && !h?.termo?.assinado;
+      acoes.push(
+        botao(
+          'iniciar',
+          'Iniciar',
+          'ghost',
+          semTermo ? 'disabled title="Marque o termo físico como assinado antes"' : '',
+        ),
+      );
+      acoes.push(botao('editar', 'Editar'));
+      acoes.push(botao('cancelar', 'Cancelar', 'perigo-sutil'));
+    } else if (naConta && c.estado === 'encerrado' && !h?.retirada) {
+      acoes.push(botao('retirada', 'Registrar retirada'));
+    }
+    if (naConta && h) {
+      for (const [tipo, m] of [
         ['entrega', h.entrega],
         ['retirada', h.retirada],
-      ]
-        .filter(([, m]) => m && !m.foto)
-        .map(
-          ([tipo]) =>
-            `<button type="button" class="btn ghost mini" data-hosp-acao="foto-${tipo}" data-hosp="${h.id}">Adicionar foto da ${tipo}</button>`,
-        )
-        .join('');
-  const todasAcoes = acoes + fotos;
-  return `<li class="evento-movel" data-hospedagem-id="${h.id}">
-      <div class="evento-movel-topo"><span class="badge badge-info">Hospedagem</span> <b>${esc(h.local)}</b> <span class="badge ${classe}">${rotulo}</span></div>
-      <p class="u-m-0 u-fs-85">${detalhes.join(' · ')}</p>
-      ${h.endereco ? `<p class="u-dim u-fs-85 u-m-0">${esc(h.endereco)}</p>` : ''}
-      ${h.observacao ? `<p class="u-dim u-fs-85 u-m-0">Obs.: ${esc(h.observacao)}</p>` : ''}
-      ${numeros}
-      ${h.estado === 'ativa' && h.terminou ? '<p class="aviso-linha u-mt-4">O fim já passou — o sistema encerra sozinho em instantes.</p>' : ''}
-      ${documentos.map((d) => `<p class="u-fs-85 u-m-0">${d}</p>`).join('')}
-      ${auditoria.length ? `<p class="u-dim u-fs-85 u-m-0">${auditoria.join(' · ')}</p>` : ''}
-      ${todasAcoes ? `<div class="acoes u-mt-8">${todasAcoes}</div>` : ''}
+      ]) {
+        if (m && !m.foto) acoes.push(botao(`foto-${tipo}`, `Foto da ${tipo}`));
+      }
+    }
+  }
+  return `<li class="compromisso" data-compromisso="${c.ref}" data-contexto="${c.contexto}">
+      <div class="compromisso-topo"><b>${esc(titulo)}</b><span class="badge ${classe}">${rotulo}</span></div>
+      <p class="compromisso-linha">${quando.join(' · ')}</p>
+      <p class="compromisso-sub">${quem}${c.endereco ? ` · ${esc(c.endereco)}` : ''}</p>
+      ${linhas.map((l) => `<p class="compromisso-sub">${l}</p>`).join('')}
+      ${c.estado === 'em_curso' && c.terminou ? '<p class="aviso-linha u-mt-4">O fim já passou — o sistema encerra sozinho em instantes.</p>' : ''}
+      ${c.observacao ? `<p class="compromisso-sub u-dim">Obs.: ${esc(c.observacao)}</p>` : ''}
+      ${acoes.length ? `<div class="acoes compromisso-acoes">${acoes.join('')}</div>` : ''}
     </li>`;
+}
+
+// O que a tela móvel está fazendo agora (ou o próximo compromisso dela).
+function alocacaoDaTela(x) {
+  if (x?.alocacao)
+    return `Em ${esc(x.alocacao.local || x.alocacao.nome)} até ${esc(window.instanteMatao(x.alocacao.fim))}`;
+  if (x?.proximo)
+    return `<span class="u-dim">Próximo: ${esc(x.proximo.local || x.proximo.nome)} · ${esc(window.instanteMatao(x.proximo.inicio))}</span>`;
+  return '';
+}
+
+// Linha OPERACIONAL da tela (fixa ou móvel), sempre do estado que o servidor
+// classificou: "M-0010 · Sem comunicação · Sem alocação · Último contato há
+// 8 h · [Abrir]". Excluir e o resto ficam na ficha da tela.
+function linhaDaTela(t, alocacao = '') {
+  const { selo, texto } = situacaoDaTela(t);
+  const classe = t.saude === 'com_problema' ? 'com-alerta' : t.saude === 'sem_comunicacao' ? 'com-atencao' : '';
+  const href = `#rede/pontos/${t.pontoId}/telas/${t.id}`;
+  return `<div class="tela-linha ${classe}" data-tela-linha="${t.id}" data-saude="${esc(t.saude)}">
+    <a class="tela-linha-codigo" href="${href}">${esc(t.codigo)}</a>
+    <span class="tela-linha-situacao">${badge(selo)}${texto ? ` <span class="u-dim">${esc(texto)}</span>` : ''}</span>
+    ${alocacao ? `<span class="tela-linha-alocacao">${alocacao}</span>` : ''}
+    <span class="tela-linha-acoes"><a class="btn ghost mini" href="${href}">Abrir</a></span>
+  </div>`;
+}
+
+// Seção TELAS das duas fichas (fixa e móvel).
+function secaoTelas(el, ponto, telas, alocacaoDe = () => '') {
+  el.innerHTML = `
+    <div class="secao-topo"><h3>Telas</h3>${telas.length ? `<span class="contagem">${telas.length}</span>` : ''}</div>
+    ${
+      telas.length
+        ? `<div class="telas-lista">${telas.map((t) => linhaDaTela(t, alocacaoDe(t))).join('')}</div>`
+        : vazio(
+            `Nenhuma tela ${ponto.tipo === 'movel' ? 'nesta rede' : 'neste ponto'} ainda.`,
+            'Adicione a tela e gere o código de instalação na ficha dela.',
+          )
+    }`;
+}
+
+// "⋯" das fichas: as ações raras num menu nativo (<details>), fora da vista.
+function menuMais(itens) {
+  return `<details class="menu-mais"><summary class="btn ghost mini" aria-label="Mais ações">⋯</summary>
+    <div class="menu-mais-lista" role="menu">${itens
+      .map(
+        ([attr, texto, perigo]) =>
+          `<button type="button" role="menuitem" class="${perigo ? 'perigo' : ''}" ${attr}>${texto}</button>`,
+      )
+      .join('')}</div>
+  </details>`;
+}
+
+// Cabeçalho das fichas de ponto (fixo e móvel): foto 16:9, nome, selos,
+// localização, o resumo operacional e as ações.
+function cabecalhoDoPonto({ foto, nome, selos, local, resumo, acoes }) {
+  return `<div class="ponto-cabecalho">
+    <div class="ficha-foto">${foto}</div>
+    <div class="ponto-cabecalho-texto">
+      <h3>${nome}</h3>
+      <div class="ponto-cabecalho-selos">${selos}</div>
+      ${local ? `<p class="ficha-endereco">${local}</p>` : ''}
+      ${resumo ? `<p class="ponto-cabecalho-resumo" data-resumo-rede>${resumo}</p>` : ''}
+    </div>
+    ${acoes ? `<div class="ponto-cabecalho-acoes">${acoes}</div>` : ''}
+  </div>`;
+}
+
+// FICHA DA REDE MÓVEL: cabeçalho (nome, MÓVEL · ATIVA, cidade, "N telas · X
+// operando · Y compromissos futuros", ações), COMPROMISSOS (Agora /
+// Próximos / Histórico), as telas e a capacidade recolhida.
+function renderRedeMovel(el, ponto, f, telas, remontar) {
+  const arquivada = ponto.status === 'arquivado';
+  const c = f.compromissos || { agora: [], proximos: [], historico: [] };
+  const operando = telas.filter((t) => t.saude === 'operando').length;
+  const daFicha = new Map(f.telas.map((t) => [t.id, t]));
+  const novo = () => abrirCompromisso({ rede: ponto, f, aoSalvar: remontar });
+  el.innerHTML = `
+    ${migalha([{ rotulo: 'Pontos', href: '#rede/pontos' }, { rotulo: f.nome }])}
+    <section class="panel ponto-ficha-topo" id="pontoInformacoes" data-rede-cabecalho>
+      ${cabecalhoDoPonto({
+        foto: fotoOuPlaceholder(f.foto, f.nome),
+        nome: `<span class="rede-titulo">${esc(f.nome)}</span>`,
+        selos: `<span class="badge badge-info">${esc(window.PONTO_MOVEL.selo)}</span><span class="badge ${arquivada ? 'badge-neutro' : 'badge-ok'}">${arquivada ? 'Arquivada' : 'Ativa'}</span>`,
+        local: esc(window.PONTO_MOVEL.cidade(f.cidade, f.uf)),
+        resumo: `${plural(telas.length, 'tela')} · ${operando} operando · ${plural(c.proximos.length, 'compromisso futuro', 'compromissos futuros')}`,
+        acoes: arquivada
+          ? ''
+          : `<button type="button" class="btn primary mini" data-novo-compromisso>+ Novo compromisso</button>
+             <button type="button" class="btn ghost mini" data-nova-tela>Adicionar tela</button>
+             ${menuMais([
+               ['data-editar-rede', 'Editar rede'],
+               ['data-alterar-foto', 'Alterar foto'],
+               ['data-excluir-ponto', 'Excluir rede', true],
+             ])}`,
+      })}
+      ${f.notaInterna ? `<p class="ponto-nota u-dim">${esc(f.notaInterna)}</p>` : ''}
+    </section>
+    <div class="pilha">
+        <section class="panel" id="pontoMovel" data-compromissos>
+          <div class="secao-topo"><h3>Compromissos</h3></div>
+          ${
+            c.agora.length || c.proximos.length
+              ? `${c.agora.length ? `<h4 class="compromissos-grupo">Agora</h4><ul class="lista-compromissos" data-agora>${c.agora.map((x) => linhaDoCompromisso(x, true)).join('')}</ul>` : ''}
+                 ${c.proximos.length ? `<h4 class="compromissos-grupo">Próximos</h4><ul class="lista-compromissos" data-proximos>${c.proximos.map((x) => linhaDoCompromisso(x, true)).join('')}</ul>` : ''}`
+              : `<div class="vazio-compacto" data-compromissos-vazio><p>Nenhum compromisso agora ou programado.</p>${arquivada ? '' : '<button type="button" class="btn ghost mini" data-novo-compromisso>+ Novo compromisso</button>'}</div>`
+          }
+          <details class="u-mt-16"${c.historico.length ? '' : ' hidden'}><summary>Histórico (${c.historico.length})</summary>
+            <ul class="lista-compromissos" data-historico>${c.historico.map((x) => linhaDoCompromisso(x, x.contexto === 'conta')).join('')}</ul>
+          </details>
+          ${
+            f.basesAnteriores.length
+              ? `<details class="u-mt-8"><summary>Histórico do modelo antigo (${f.basesAnteriores.length} ${f.basesAnteriores.length === 1 ? 'base' : 'bases'})</summary>
+                  ${f.basesAnteriores.map((b) => `<p class="u-fs-85 u-m-0">Base <b>${esc(b.nome)}</b>${b.conta?.nome ? ` (${esc(b.conta.nome)})` : ''} · ${data(b.desde)} a ${data(b.ate)}</p>`).join('')}
+                </details>`
+              : ''
+          }
+        </section>
+        <section class="panel" id="pontoTelas"></section>
+        ${sanfonaCapacidade()}
+    </div>`;
+  secaoTelas(el.querySelector('#pontoTelas'), ponto, telas, (t) => alocacaoDaTela(daFicha.get(t.id)));
+  el.querySelectorAll('[data-novo-compromisso]').forEach((b) => b.addEventListener('click', novo));
+  el.querySelector('[data-nova-tela]')?.addEventListener('click', () => adicionarTela(ponto));
+  el.querySelector('[data-editar-rede]')?.addEventListener('click', () => editarRedeMovel(ponto, f, remontar));
+  el.querySelector('[data-excluir-ponto]')?.addEventListener('click', () => excluirPonto(ponto, telas));
+  el.querySelector('[data-alterar-foto]')?.addEventListener('click', () => alterarFotoDoPonto(ponto, remontar));
+  const todos = [...c.agora, ...c.proximos, ...c.historico];
+  el.querySelectorAll('[data-comp-acao]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const comp = todos.find((x) => x.ref === b.dataset.ref);
+      if (comp) acaoNoCompromisso(ponto, f, comp, b.dataset.compAcao, remontar);
+    }),
+  );
+}
+
+// Capacidade de veiculação recolhida (abre sob demanda) — nas duas fichas.
+function sanfonaCapacidade() {
+  return `<details class="panel sanfona" id="pontoCapacidadeSanfona">
+    <summary>Capacidade de veiculação</summary>
+    <div id="pontoCapacidade"></div>
+  </details>`;
+}
+
+// As ações de um compromisso. Na conta, iniciar/encerrar/retirada passam
+// pelo formulário do equipamento (a hospedagem de sempre); fora dela, uma
+// confirmação.
+async function acaoNoCompromisso(ponto, f, c, acao, remontar) {
+  if (acao === 'editar') return abrirCompromisso({ rede: ponto, f, compromisso: c, aoSalvar: remontar });
+  if (acao === 'prorrogar') return prorrogarCompromisso(ponto, c, remontar);
+  if (c.contexto === 'conta') {
+    // O formato antigo da hospedagem (termo, equipamento, percentual).
+    const h = f.hospedagens.find((x) => x.id === c.id);
+    if (!h) return;
+    if (acao === 'termo') return marcarTermoFisico(ponto, h, remontar);
+    if (acao === 'foto-entrega' || acao === 'foto-retirada')
+      return fotoDaMovimentacao(ponto, h, acao.slice(5), remontar);
+    if (acao !== 'cancelar') return acaoComEquipamento(ponto, h, acao, remontar);
+  }
+  const telas = codigosDasTelas(c.telas);
+  const textos = {
+    iniciar: {
+      titulo: `As telas chegaram a “${c.nome}”?`,
+      texto: `<p>${telas} passa${c.telas.length === 1 ? '' : 'm'} a operar em ${esc(c.local || c.nome)}, com o horário do compromisso (${esc(c.horario || 'todo o período')}).</p>`,
+      botao: 'Iniciar',
+    },
+    encerrar: {
+      titulo: `Encerrar “${c.nome}”?`,
+      texto: `<p>${telas} fica${c.telas.length === 1 ? '' : 'm'} sem alocação: sem compromisso, a tela móvel não opera.</p>`,
+      botao: 'Encerrar',
+    },
+    cancelar: {
+      titulo: `Cancelar “${c.nome}”?`,
+      texto:
+        c.contexto === 'conta'
+          ? '<p>Não aconteceu: nenhum benefício é gerado. Continua no histórico; se veio de um interesse, ele volta para “em contato”.</p>'
+          : '<p>Sai da agenda das telas e continua no histórico.</p>',
+      botao: 'Cancelar compromisso',
+      perigo: true,
+    },
+  }[acao];
+  if (!textos || !(await confirmarModal(textos))) return;
+  const r = await api(`/admin/pontos/${ponto.id}/compromissos/${c.ref}/${acao}`, { method: 'POST' });
+  if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível agora.', 'err');
+  toast(
+    { iniciar: 'Compromisso iniciado.', encerrar: 'Compromisso encerrado.', cancelar: 'Compromisso cancelado.' }[acao],
+  );
+  remontar();
+}
+
+// Em curso na conta: só o fim pode mudar, para depois.
+function prorrogarCompromisso(ponto, c, remontar) {
+  const { dlg, fechar } = abrirModal({
+    titulo: `Prorrogar — ${c.local}`,
+    corpo: `<form id="formProrrogar" class="modal-form" novalidate>
+        <div class="campo-grupo"><label for="prFim">Novo fim (data e hora)</label><input id="prFim" type="datetime-local" name="fim" value="${esc(c.fimLocal || '')}" required></div>
+        <p class="campo-ajuda">Horário de Matão. Para terminar antes, use Encerrar.</p>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formProrrogar" class="btn primary">Prorrogar</button>',
+  });
+  const form = dlg.querySelector('form');
+  let enviando = false;
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (enviando) return;
+    enviando = true;
+    try {
+      const r = await api(`/admin/pontos/${ponto.id}/compromissos/${c.ref}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ fim: form.fim.value }),
+      });
+      if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível salvar.');
+      fechar();
+      toast('Compromisso prorrogado.');
+      remontar();
+    } finally {
+      enviando = false;
+    }
+  });
+}
+
+// ---------- NOVO COMPROMISSO / EDITAR (um formulário só) ----------
+// Grade de horário por dia (com feriados; fechar depois da meia-noite vale —
+// a madrugada fica com o dia em que abriu). Só aparece em "Personalizar".
+function gradeDeHorario(horario) {
+  const linha = (d) => {
+    const v = horario ? horario[d.id] : undefined;
+    const modo = !horario ? 'faixa' : v == null ? 'fechado' : eh24h(v) ? '24h' : 'faixa';
+    const abre = modo === 'faixa' && v ? v.abre : '08:00';
+    const fecha = modo === 'faixa' && v ? v.fecha : '18:00';
+    const opcao = (valor, rotulo) => `<option value="${valor}" ${modo === valor ? 'selected' : ''}>${rotulo}</option>`;
+    return `<div class="horario-editor-linha" data-dia="${d.id}" data-modo="${modo}">
+      <span>${d.rotulo}</span>
+      <select aria-label="${d.rotulo}">${opcao('faixa', 'Horário')}${opcao('24h', '24 horas')}${opcao('fechado', 'Fechado')}</select>
+      <span class="horario-editor-faixa">
+        <input type="time" data-abre value="${abre}" aria-label="${d.rotulo}, abre">
+        <span aria-hidden="true">às</span>
+        <input type="time" data-fecha value="${fecha}" aria-label="${d.rotulo}, fecha">
+      </span>
+    </div>`;
+  };
+  return DIAS_HORARIO.map(linha).join('');
+}
+// { horario } ou { erro } — o servidor confere de novo.
+function lerGradeDeHorario(raiz) {
+  const horario = {};
+  for (const l of raiz.querySelectorAll('.horario-editor-linha')) {
+    const modo = l.querySelector('select').value;
+    const abre = l.querySelector('[data-abre]').value;
+    const fecha = l.querySelector('[data-fecha]').value;
+    if (modo === 'faixa' && (!abre || !fecha)) {
+      return { erro: `Preencha abertura e fechamento de ${l.firstElementChild.textContent}.` };
+    }
+    horario[l.dataset.dia] =
+      modo === 'fechado' ? null : modo === '24h' ? { abre: '00:00', fecha: '24:00' } : { abre, fecha };
+  }
+  if (!Object.values(horario).some(Boolean)) return { erro: 'Abra pelo menos um dia no horário personalizado.' };
+  return { horario };
+}
+
+// "Padaria Central · Matão/SP · contato@… · (16) 9…" — o bastante para
+// distinguir duas contas com o mesmo nome.
+function linhaDaConta(c) {
+  return [
+    esc([c.cidade, c.uf].filter(Boolean).join('/')),
+    esc(c.email || ''),
+    esc(c.telefone || ''),
+    c.pontos ? plural(c.pontos, 'ponto') : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+// O formulário ÚNICO de compromisso (novo e edição). Contexto → (conta e
+// local da conta | nome, local e endereço) → período → tela(s) → horário
+// explícito → benefício (só na conta) → configurações avançadas (categoria
+// protegida, nome exibido, organização, observação). Nada que o sistema já
+// sabe é redigitado: endereço, horário e categoria vêm da conta ou do ponto.
+async function abrirCompromisso({ rede = null, f = null, compromisso = null, interesse = null, aoSalvar }) {
+  const c = compromisso;
+  const edicao = Boolean(c);
+  const [redes, { percentual }, categorias] = await Promise.all([
+    rede ? [rede] : pegar('/admin/pontos').then((l) => l.filter((p) => p.tipo === 'movel' && p.status !== 'arquivado')),
+    pegar('/admin/hospedagem/percentual'),
+    pegar('/categorias').catch(() => []),
+  ]);
+  const st = {
+    redeId: rede ? rede.id : redes.length === 1 ? redes[0].id : null,
+    contexto: c?.contexto || 'conta',
+    conta: null,
+    locais: null,
+    origem: edicao ? 'atual' : null,
+    pontoId: null,
+    horarioTocado: edicao,
+    telasDaRede: f ? f.telas : null,
+  };
+  const redeAtual = () => redes.find((r) => r.id === st.redeId) || rede || {};
+  const titulo = edicao ? `Editar compromisso — ${c.contexto === 'conta' ? c.local : c.nome}` : 'Novo compromisso';
+  const categoriaInicial = edicao
+    ? c.categoria
+      ? String(c.categoria.id)
+      : ''
+    : interesse?.categoriaId != null
+      ? String(interesse.categoriaId)
+      : '__padrao';
+  const { dlg, fechar } = abrirModal({
+    titulo,
+    largo: true,
+    corpo: `<form id="formCompromisso" class="modal-form compromisso-form" novalidate>
+        ${
+          !rede && redes.length > 1
+            ? `<div class="campo-grupo"><label for="cmpRede">Rede móvel</label><select id="cmpRede" name="rede">
+                <option value="">Escolha a rede</option>
+                ${redes.map((m) => `<option value="${m.id}">${esc(m.nome)} · ${esc(window.PONTO_MOVEL.cidade(m.cidade, m.uf))}</option>`).join('')}
+              </select></div>`
+            : ''
+        }
+        <div data-contexto ${edicao ? 'hidden' : ''}><span class="contexto-rotulo" id="cmpContextoRotulo">Onde a tela vai ficar</span>
+          <div class="segmentado" role="radiogroup" aria-labelledby="cmpContextoRotulo">
+            <label><input type="radio" name="contexto" value="conta" ${st.contexto === 'conta' ? 'checked' : ''}><span>Numa conta</span></label>
+            <label><input type="radio" name="contexto" value="externo" ${st.contexto === 'externo' ? 'checked' : ''}><span>Outro local ou evento</span></label>
+          </div>
+        </div>
+        <div data-so="conta">
+          <div class="campo-grupo conta-busca" data-conta-busca ${edicao ? 'hidden' : ''}>
+            <label for="cmpConta">Conta anfitriã</label>
+            <input id="cmpConta" type="search" autocomplete="off" placeholder="Nome, e-mail ou CPF/CNPJ" role="combobox" aria-expanded="false" aria-controls="cmpContaLista" aria-autocomplete="list">
+            <ul id="cmpContaLista" class="conta-resultados" role="listbox" hidden></ul>
+          </div>
+          <div class="conta-escolhida" data-conta-escolhida hidden></div>
+        </div>
+        <div data-so="externo">
+          <div class="campos">
+            <div class="campo-grupo"><label for="cmpNome">Nome do evento ou ação</label><input id="cmpNome" name="nome" maxlength="120" value="${esc(c?.contexto === 'externo' ? c.nome : '')}"></div>
+            <div class="campo-grupo"><label for="cmpLocal">Local</label><input id="cmpLocal" name="local_externo" maxlength="160" placeholder="Parque de Exposições" value="${esc(c?.contexto === 'externo' ? c.local || '' : '')}"></div>
+          </div>
+        </div>
+        <fieldset class="campo-grupo" data-enderecos hidden><legend>Endereço</legend><div class="opcoes-endereco" data-enderecos-opcoes></div></fieldset>
+        <div class="endereco-digitado" data-endereco-digitado hidden></div>
+        <div class="campos">
+          <div class="campo-grupo"><label for="cmpInicio">Início (data e hora)</label><input id="cmpInicio" type="datetime-local" name="inicio" value="${esc(c?.inicioLocal || '')}" ${c?.estado === 'em_curso' ? 'disabled' : ''}></div>
+          <div class="campo-grupo"><label for="cmpFim">Fim (data e hora)</label><input id="cmpFim" type="datetime-local" name="fim" value="${esc(c?.fimLocal || '')}"></div>
+        </div>
+        <fieldset class="campo-grupo" data-telas><legend data-telas-titulo>Tela</legend>
+          <div class="opcoes-telas" data-telas-lista></div>
+          <span class="campo-ajuda" data-telas-ajuda></span>
+        </fieldset>
+        <fieldset class="campo-grupo" data-horario><legend>Horário de operação</legend>
+          <label class="check-linha" data-modo-local hidden><input type="radio" name="horario_modo" value="local"> Usar horário do local <span class="u-dim" data-horario-local></span></label>
+          <label class="check-linha"><input type="radio" name="horario_modo" value="periodo"> Operar durante todo o período</label>
+          <label class="check-linha"><input type="radio" name="horario_modo" value="personalizado"> Personalizar</label>
+          <div class="horario-editor" data-grade hidden>${gradeDeHorario(c?.horarioOperacao || null)}</div>
+          <p class="campo-ajuda u-m-0" data-horario-ajuda></p>
+        </fieldset>
+        <p class="aviso-bloco" data-so="conta" data-beneficio>${
+          edicao
+            ? `Benefício congelado em <b>${percentualBR(c.hospedagem?.percentual ?? percentual)}</b> do tempo operado.`
+            : `Benefício: <b>${percentualBR(percentual)}</b> do tempo operado vira mídia para a conta. Termo físico assinado antes de iniciar.`
+        }</p>
+        <details class="avancado" data-avancado>
+          <summary>Configurações avançadas</summary>
+          <div class="campo-grupo" ${edicao && c.contexto === 'conta' ? 'hidden' : ''}><label for="cmpCategoria">Categoria protegida</label>
+            <select id="cmpCategoria" name="categoria_id">
+              <option value="__padrao" data-padrao>Padrão do local</option>
+              <option value="">Nenhuma restrição</option>
+              ${categorias.map((x) => `<option value="${x.id}">${esc(x.nome)}</option>`).join('')}
+            </select>
+            <span class="campo-ajuda">Enquanto a tela estiver ali, não exibe anúncio desta categoria nem dos concorrentes diretos.</span></div>
+          <div class="campo-grupo" data-so="conta" ${edicao ? 'data-oculto' : ''}><label for="cmpLocalNome">Nome exibido ao anunciante</label><input id="cmpLocalNome" name="local" maxlength="160" placeholder="O nome da conta ou do ponto"></div>
+          <div class="campo-grupo" data-so="externo"><label for="cmpOrg">Organização (opcional)</label><input id="cmpOrg" name="organizacao" maxlength="120" value="${esc(c?.organizacao || '')}"></div>
+          <div class="campo-grupo" ${edicao && c.contexto === 'conta' ? 'hidden' : ''}><label for="cmpObs">Observação (interna)</label><textarea id="cmpObs" name="observacao" maxlength="500" rows="2">${esc(c?.observacao || '')}</textarea></div>
+        </details>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape: `<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formCompromisso" class="btn primary">${edicao ? 'Salvar' : 'Criar compromisso'}</button>`,
+  });
+  const form = dlg.querySelector('form');
+  const $ = (sel) => form.querySelector(sel);
+  form.categoria_id.value = categoriaInicial;
+  if (!redes.length)
+    erroNoModal(dlg, 'Nenhuma rede móvel cadastrada ainda — crie uma em Rede › Pontos (filtro Móveis).');
+  if (form.rede && st.redeId) form.rede.value = String(st.redeId);
+
+  // ----- contexto -----
+  const pintarContexto = () => {
+    form.querySelectorAll('[data-so]').forEach((x) => {
+      x.hidden = x.dataset.so !== st.contexto || x.hasAttribute('data-oculto');
+    });
+    $('[data-telas-titulo]').textContent = st.contexto === 'conta' ? 'Tela' : 'Telas';
+    if (st.contexto === 'externo') {
+      // Fora da conta não há "padrão do local": a categoria começa sem restrição.
+      $('[data-padrao]').hidden = true;
+      if (form.categoria_id.value === '__padrao') form.categoria_id.value = '';
+    } else {
+      $('[data-padrao]').hidden = false;
+    }
+    pintarEnderecos();
+    pintarTelas();
+    sincronizarHorario();
+  };
+  form.querySelectorAll('[name="contexto"]').forEach((r) =>
+    r.addEventListener('change', () => {
+      st.contexto = r.value;
+      pintarContexto();
+    }),
+  );
+
+  // ----- conta anfitriã (autocomplete) -----
+  const busca = $('#cmpConta');
+  const lista = $('#cmpContaLista');
+  let espera = null;
+  let geracao = 0;
+  let resultados = [];
+  const fecharLista = () => {
+    lista.hidden = true;
+    busca.setAttribute('aria-expanded', 'false');
+  };
+  const destacar = (i) => {
+    lista.querySelectorAll('[role="option"]').forEach((li, j) => li.classList.toggle('ativo', i === j));
+  };
+  async function buscarContas() {
+    const termo = busca.value.trim();
+    const minha = ++geracao;
+    if (termo.length < 2) return fecharLista();
+    const achadas = await pegar(`/admin/compromissos/contas?q=${encodeURIComponent(termo)}`).catch(() => null);
+    if (minha !== geracao) return;
+    resultados = achadas || [];
+    lista.innerHTML = achadas
+      ? resultados.length
+        ? `${resultados.map((x, i) => `<li role="option" id="cmpConta${i}" data-i="${i}"><b>${esc(x.nome)}</b><span class="dado-sub">${linhaDaConta(x)}</span></li>`).join('')}${resultados.length >= 12 ? '<li class="conta-resultados-nota" aria-disabled="true">Mostrando as 12 primeiras — refine a busca.</li>' : ''}`
+        : '<li class="conta-resultados-nota" aria-disabled="true">Nenhuma conta encontrada.</li>'
+      : '<li class="conta-resultados-nota" aria-disabled="true">Não foi possível buscar agora.</li>';
+    lista.hidden = false;
+    busca.setAttribute('aria-expanded', 'true');
+  }
+  busca.addEventListener('input', () => {
+    clearTimeout(espera);
+    espera = setTimeout(buscarContas, 250);
+  });
+  busca.addEventListener('keydown', (e) => {
+    const itens = [...lista.querySelectorAll('[role="option"]')];
+    if (lista.hidden || !itens.length) return;
+    const atual = itens.findIndex((li) => li.classList.contains('ativo'));
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const i = e.key === 'ArrowDown' ? Math.min(itens.length - 1, atual + 1) : Math.max(0, atual - 1);
+      destacar(i);
+      busca.setAttribute('aria-activedescendant', itens[i].id);
+    } else if (e.key === 'Enter' && atual >= 0) {
+      e.preventDefault();
+      escolherConta(resultados[atual]);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      fecharLista();
+    }
+  });
+  lista.addEventListener('mousedown', (e) => {
+    const li = e.target.closest('[role="option"]');
+    if (!li) return;
+    e.preventDefault();
+    escolherConta(resultados[Number(li.dataset.i)]);
+  });
+  busca.addEventListener('blur', () => setTimeout(fecharLista, 150));
+
+  async function escolherConta(conta, preferencia = null) {
+    fecharLista();
+    st.conta = conta;
+    st.locais = null;
+    $('[data-conta-busca]').hidden = true;
+    const escolhida = $('[data-conta-escolhida]');
+    escolhida.hidden = false;
+    escolhida.innerHTML = `<div><span class="conta-escolhida-rotulo">Conta anfitriã</span><b>${esc(conta.nome)}</b>${conta.cidade || conta.email ? `<span class="dado-sub">${linhaDaConta(conta)}</span>` : ''}</div>${edicao ? '' : '<button type="button" class="btn ghost mini" data-trocar-conta>Trocar</button>'}`;
+    escolhida.querySelector('[data-trocar-conta]')?.addEventListener('click', () => {
+      st.conta = null;
+      st.locais = null;
+      st.origem = null;
+      escolhida.hidden = true;
+      $('[data-conta-busca]').hidden = false;
+      busca.value = '';
+      busca.focus();
+      pintarEnderecos();
+      sincronizarHorario();
+    });
+    try {
+      st.locais = await pegar(`/admin/compromissos/contas/${conta.id}/locais`);
+    } catch {
+      return erroNoModal(dlg, 'Não foi possível carregar os locais desta conta.');
+    }
+    if (st.conta !== conta) return;
+    if (!edicao) {
+      const p = st.locais.pontos;
+      if (preferencia?.origem) {
+        st.origem = preferencia.origem;
+        st.pontoId = preferencia.pontoId ?? null;
+      } else if (p.length === 1) {
+        st.origem = 'ponto';
+        st.pontoId = p[0].id;
+      } else if (st.locais.conta.endereco) st.origem = 'conta';
+      else if (p.length) {
+        st.origem = 'ponto';
+        st.pontoId = p[0].id;
+      } else st.origem = 'outro';
+    }
+    pintarEnderecos(preferencia?.partes);
+    sincronizarHorario();
+  }
+
+  // ----- endereço -----
+  const pontoEscolhido = () => st.locais?.pontos.find((p) => p.id === st.pontoId) || null;
+  function pintarEnderecos(partes = null) {
+    const caixa = $('[data-enderecos]');
+    const opcoes = $('[data-enderecos-opcoes]');
+    const digitado = $('[data-endereco-digitado]');
+    const radio = (valor, rotulo, sub, extra = '') =>
+      `<label class="opcao-endereco"><input type="radio" name="endereco_origem" value="${valor}" ${extra}><span><b>${rotulo}</b>${sub ? `<span class="dado-sub">${sub}</span>` : ''}</span></label>`;
+    const itens = [];
+    if (edicao) itens.push(radio('atual', 'Manter o endereço', esc(c.endereco || '')));
+    if (st.contexto === 'conta' && st.locais) {
+      const l = st.locais;
+      itens.push(
+        radio(
+          'conta',
+          'Endereço da conta',
+          l.conta.endereco ? esc(l.conta.endereco) : 'Sem endereço completo na conta',
+          l.conta.endereco ? '' : 'disabled',
+        ),
+      );
+      for (const p of l.pontos) {
+        itens.push(
+          radio(
+            `ponto:${p.id}`,
+            `Ponto: ${esc(p.nome)}`,
+            `${esc(p.endereco)}${p.horarioResumo ? ` · ${esc(p.horarioResumo)}` : ''}`,
+          ),
+        );
+      }
+      itens.push(radio('outro', 'Outro endereço', ''));
+    } else if (st.contexto === 'externo' && edicao) {
+      itens.push(radio('outro', 'Outro endereço', ''));
+    }
+    const semRadios = st.contexto === 'externo' && !edicao;
+    if (semRadios) st.origem = 'outro';
+    caixa.hidden = semRadios || !itens.length || (st.contexto === 'conta' && !st.locais);
+    opcoes.innerHTML = itens.join('');
+    const valor = st.origem === 'ponto' ? `ponto:${st.pontoId}` : st.origem;
+    const marcado = opcoes.querySelector(`[value="${valor}"]`);
+    if (marcado && !marcado.disabled) marcado.checked = true;
+    const mostrarDigitado = st.origem === 'outro' && (st.contexto === 'externo' || st.locais);
+    if (mostrarDigitado && !digitado.dataset.montado) {
+      const r = redeAtual();
+      digitado.innerHTML = window.camposEndereco('cmp_', {
+        valores: partes || {},
+        cidadePadrao: r.cidade || '',
+        ufPadrao: r.uf || '',
+      });
+      digitado.dataset.montado = '1';
+      window.ligarCep(digitado);
+    }
+    digitado.hidden = !mostrarDigitado;
+  }
+  $('[data-enderecos-opcoes]').addEventListener('change', (e) => {
+    if (e.target.name !== 'endereco_origem') return;
+    const [origem, id] = e.target.value.split(':');
+    st.origem = origem;
+    st.pontoId = id ? Number(id) : null;
+    // Novo local = o horário e a categoria padrão voltam a seguir o local.
+    st.horarioTocado = false;
+    pintarEnderecos();
+    sincronizarHorario();
+  });
+
+  // ----- telas (com a disponibilidade no período) -----
+  // Só a ÚLTIMA leitura pinta: trocar o período rápido não deixa uma
+  // resposta velha marcar tela ocupada como livre.
+  let leituraDeTelas = 0;
+  async function pintarTelas() {
+    const minha = ++leituraDeTelas;
+    const alvo = $('[data-telas-lista]');
+    const ajuda = $('[data-telas-ajuda]');
+    if (!st.redeId) {
+      alvo.innerHTML = '<p class="u-dim u-m-0">Escolha a rede.</p>';
+      return;
+    }
+    const marcadas = new Set(
+      [...form.querySelectorAll('[name="telas"]:checked')]
+        .map((x) => Number(x.value))
+        .concat(alvo.dataset.iniciado ? [] : (c?.telas || []).map((t) => t.id)),
+    );
+    alvo.dataset.iniciado = '1';
+    if (!st.telasDaRede) {
+      st.telasDaRede = (await pegar(`/admin/pontos/${st.redeId}/movel`).catch(() => ({ telas: [] }))).telas;
+    }
+    const ignorar = edicao ? { tipo: c.contexto === 'conta' ? 'hospedagem' : 'evento', id: c.id } : null;
+    const livres = await disponibilidadeNoPeriodo(st.redeId, form.inicio.value, form.fim.value, ignorar);
+    if (minha !== leituraDeTelas) return;
+    const telas = st.telasDaRede.filter((t) => t.status !== 'inativo');
+    const tipo = st.contexto === 'conta' ? 'radio' : 'checkbox';
+    alvo.innerHTML = telas.length
+      ? telas
+          .map((t) => {
+            const d = livres?.find((x) => x.id === t.id);
+            const ocupada = Boolean(d && !d.livre);
+            return `<label class="opcao-tela ${ocupada ? 'ocupada' : ''}"><input type="${tipo}" name="telas" value="${t.id}" ${ocupada ? 'disabled' : ''} ${!ocupada && marcadas.has(t.id) ? 'checked' : ''}><b>${esc(t.codigo)}</b><span class="u-dim">${d ? (d.livre ? 'livre' : `ocupada: ${esc(d.motivo)}`) : ''}</span></label>`;
+          })
+          .join('')
+      : '<p class="u-dim u-m-0">Esta rede ainda não tem tela — adicione uma antes.</p>';
+    ajuda.textContent =
+      st.contexto === 'conta'
+        ? 'Na conta vai uma tela por compromisso.'
+        : livres
+          ? 'Uma ou várias. Ocupada = já em outro compromisso no período.'
+          : 'Preencha início e fim para ver quais estão livres.';
+  }
+  form.rede?.addEventListener('change', () => {
+    st.redeId = Number(form.rede.value) || null;
+    st.telasDaRede = null;
+    pintarTelas();
+  });
+
+  // ----- horário: sempre explícito -----
+  const ms = (v) => (v ? new Date(`${v}:00`).getTime() : null);
+  const periodoCurto = () => {
+    const a = ms(form.inicio.value);
+    const b = ms(form.fim.value);
+    return a != null && b != null && b > a && b - a <= 24 * 3600 * 1000;
+  };
+  const horarioDoLocal = () => (st.contexto === 'conta' && st.origem === 'ponto' ? pontoEscolhido()?.horario : null);
+  function sincronizarHorario() {
+    const local = horarioDoLocal();
+    const opLocal = $('[data-modo-local]');
+    opLocal.hidden = !local;
+    $('[data-horario-local]').textContent = local ? `(${pontoEscolhido().horarioResumo || ''})` : '';
+    const radios = [...form.querySelectorAll('[name="horario_modo"]')];
+    const atual = radios.find((r) => r.checked)?.value;
+    if (atual === 'local' && !local) radios.forEach((r) => (r.checked = false));
+    if (!st.horarioTocado) {
+      // Padrão: o horário do local; sem ele, um período de até 24 h opera o
+      // período inteiro; vários dias = escolha do Admin (nunca 24 h calado).
+      const padrao = local ? 'local' : periodoCurto() ? 'periodo' : null;
+      radios.forEach((r) => (r.checked = r.value === padrao));
+    }
+    const modo = radios.find((r) => r.checked)?.value;
+    $('[data-grade]').hidden = modo !== 'personalizado';
+    const ajuda = $('[data-horario-ajuda]');
+    const preenchido = form.inicio.value && form.fim.value;
+    if (!modo) ajuda.textContent = preenchido ? 'Período de vários dias: escolha como a tela opera.' : '';
+    else if (modo === 'periodo') ajuda.textContent = 'A tela opera sem parar, do início ao fim.';
+    else if (modo === 'local') ajuda.textContent = 'O horário do local é copiado para o compromisso.';
+    else ajuda.textContent = 'Por dia, com feriados. Fechar depois da meia-noite vale.';
+  }
+  form.querySelectorAll('[name="horario_modo"]').forEach((r) =>
+    r.addEventListener('change', () => {
+      st.horarioTocado = true;
+      // Personalizar a partir do horário do local: a grade já vem com ele.
+      if (r.value === 'personalizado' && horarioDoLocal() && !$('[data-grade]').dataset.tocada) {
+        $('[data-grade]').innerHTML = gradeDeHorario(horarioDoLocal());
+      }
+      sincronizarHorario();
+    }),
+  );
+  $('[data-grade]').addEventListener('change', (e) => {
+    $('[data-grade]').dataset.tocada = '1';
+    if (e.target.tagName === 'SELECT') e.target.closest('.horario-editor-linha').dataset.modo = e.target.value;
+  });
+  for (const campo of [form.inicio, form.fim]) {
+    campo.addEventListener('change', () => {
+      pintarTelas();
+      sincronizarHorario();
+    });
+  }
+
+  // ----- abertura -----
+  // Edição: o horário gravado — a grade, ou "todo o período" (escolha
+  // explícita de quando foi criado).
+  if (edicao) {
+    const modo = c.horarioOperacao ? 'personalizado' : 'periodo';
+    form.querySelector(`[name="horario_modo"][value="${modo}"]`).checked = true;
+  }
+  pintarContexto();
+  if (edicao && c.contexto === 'conta') escolherConta({ id: c.conta.id, nome: c.conta.nome });
+  if (!edicao && interesse?.conta) {
+    escolherConta(
+      { id: interesse.conta.id, nome: interesse.conta.nome },
+      interesse.localTipo === 'ponto' && interesse.ponto
+        ? { origem: 'ponto', pontoId: interesse.ponto.id }
+        : interesse.localTipo === 'outro'
+          ? { origem: 'outro', partes: interesse.partes }
+          : { origem: 'conta' },
+    );
+    if (interesse.localTipo === 'outro' && interesse.localNome) form.local.value = interesse.localNome;
+  }
+
+  // ----- enviar -----
+  const focar = (campo) => {
+    const mapa = {
+      conta_id: '#cmpConta',
+      telas: '[name="telas"]:not(:disabled)',
+      horario_modo: '[name="horario_modo"]',
+      endereco_origem: '[name="endereco_origem"]',
+      ponto_id: '[name="endereco_origem"]',
+      nome: '#cmpNome',
+      local: st.contexto === 'externo' ? '#cmpLocal' : '#cmpLocalNome',
+    };
+    const alvo = form.querySelector(mapa[campo] || `[name="${campo}"]`);
+    if (alvo?.closest('details')) alvo.closest('details').open = true;
+    alvo?.focus();
+  };
+  let enviando = false;
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (enviando) return;
+    const falha = (msg, campo) => {
+      if (campo) focar(campo);
+      return erroNoModal(dlg, msg);
+    };
+    if (!st.redeId) return falha('Escolha a rede móvel.', 'rede');
+    if (st.contexto === 'conta' && !st.conta) return falha('Escolha a conta anfitriã na lista.', 'conta_id');
+    if (st.contexto === 'externo' && !form.nome.value.trim()) return falha('Dê um nome ao evento ou ação.', 'nome');
+    if (st.contexto === 'externo' && !form.local_externo.value.trim()) return falha('Informe o local.', 'local');
+    if (!form.fim.value || (!form.inicio.disabled && !form.inicio.value))
+      return falha('Preencha início e fim.', 'inicio');
+    const telas = [...form.querySelectorAll('[name="telas"]:checked')].map((x) => Number(x.value));
+    if (!telas.length)
+      return falha(st.contexto === 'conta' ? 'Escolha a tela.' : 'Escolha pelo menos uma tela.', 'telas');
+    const modo = form.querySelector('[name="horario_modo"]:checked')?.value;
+    if (!modo) return falha('Escolha o horário de operação.', 'horario_modo');
+    const corpo = {
+      contexto: st.contexto,
+      inicio: form.inicio.value,
+      fim: form.fim.value,
+      telas,
+      horario_modo: modo,
+      observacao: form.observacao.value,
+    };
+    if (modo === 'personalizado') {
+      const lido = lerGradeDeHorario($('[data-grade]'));
+      if (lido.erro) return falha(lido.erro);
+      corpo.horario_operacao = lido.horario;
+    }
+    if (form.categoria_id.value !== '__padrao') corpo.categoria_id = form.categoria_id.value;
+    const origem = st.origem;
+    if (st.contexto === 'conta') {
+      if (!origem) return falha('Escolha o endereço.', 'endereco_origem');
+      corpo.endereco_origem = origem;
+      if (origem === 'ponto') corpo.ponto_id = st.pontoId;
+      if (form.local.value.trim()) corpo.local = form.local.value;
+      if (!edicao) {
+        corpo.conta_id = st.conta.id;
+        corpo.percentual_esperado = percentual;
+        if (interesse) corpo.interesse_id = interesse.id;
+      }
+    } else {
+      corpo.nome = form.nome.value;
+      corpo.local = form.local_externo.value;
+      corpo.organizacao = form.organizacao.value;
+      corpo.endereco_origem = origem || 'outro';
+    }
+    if (origem === 'outro') corpo.endereco_partes = window.enderecoDoForm($('[data-endereco-digitado]'));
+    enviando = true;
+    try {
+      const url = `/admin/pontos/${st.redeId}/compromissos${edicao ? `/${c.ref}` : ''}`;
+      const r = await api(url, { method: edicao ? 'PATCH' : 'POST', body: JSON.stringify(corpo) });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        return falha(d.erro || 'Não foi possível salvar o compromisso.', d.campo);
+      }
+      fechar();
+      toast(
+        edicao
+          ? 'Compromisso atualizado.'
+          : st.contexto === 'conta'
+            ? 'Compromisso criado. Termo físico pendente.'
+            : 'Compromisso criado.',
+      );
+      aoSalvar?.();
+    } finally {
+      enviando = false;
+    }
+  });
 }
 
 // Termo FÍSICO da hospedagem: o Admin marca que o termo em papel foi
@@ -3883,76 +4673,6 @@ function acaoComEquipamento(ponto, h, acao, remontar) {
   });
 }
 
-// Horário de uma ALOCAÇÃO (hospedagem ou evento — migration 115). Padrão:
-// "Operar durante todo o período" (sem grade: a TV opera o período
-// inteiro). Desmarcado, abre o editor por dia com feriados (a mesma
-// semântica do horário do ponto: fechar depois da meia-noite vale; a
-// madrugada fica com o dia em que abriu).
-function camposHorarioAlocacao(horario) {
-  const modoDe = (v) => (!horario ? 'faixa' : v === null || v === undefined ? 'fechado' : eh24h(v) ? '24h' : 'faixa');
-  const linha = (d) => {
-    const v = horario ? horario[d.id] : undefined;
-    const modo = modoDe(v);
-    const abre = modo === 'faixa' && v ? v.abre : '08:00';
-    const fecha = modo === 'faixa' && v ? v.fecha : '18:00';
-    const opcao = (valor, rotulo) => `<option value="${valor}" ${modo === valor ? 'selected' : ''}>${rotulo}</option>`;
-    return `<div class="horario-editor-linha" data-dia="${d.id}" data-modo="${modo}">
-      <span>${d.rotulo}</span>
-      <select aria-label="${d.rotulo}">${opcao('faixa', 'Horário')}${opcao('24h', '24 horas')}${opcao('fechado', 'Fechado')}</select>
-      <span class="horario-editor-faixa">
-        <input type="time" data-abre value="${abre}" aria-label="${d.rotulo}, abre">
-        <span aria-hidden="true">às</span>
-        <input type="time" data-fecha value="${fecha}" aria-label="${d.rotulo}, fecha">
-      </span>
-    </div>`;
-  };
-  return `<fieldset class="horario-editor" data-horario-alocacao><legend>Horário de operação</legend>
-      <label class="check-linha"><input type="checkbox" data-todo-periodo ${horario ? '' : 'checked'}> Operar durante todo o período</label>
-      <div data-horario-personalizado ${horario ? '' : 'hidden'}>
-        ${DIAS_HORARIO.map(linha).join('')}
-      </div>
-      <p class="campo-ajuda u-m-0">Desmarque para usar um horário personalizado (por dia e feriados). A TV exibe só dentro do horário, e o benefício conta só o tempo válido dentro dele e do período.</p>
-    </fieldset>`;
-}
-function ligarHorarioAlocacao(raiz) {
-  const bloco = raiz.querySelector('[data-horario-alocacao]');
-  if (!bloco) return;
-  bloco.addEventListener('change', (e) => {
-    if (e.target.matches('[data-todo-periodo]')) {
-      bloco.querySelector('[data-horario-personalizado]').hidden = e.target.checked;
-    }
-    if (e.target.tagName === 'SELECT') e.target.closest('.horario-editor-linha').dataset.modo = e.target.value;
-  });
-}
-// { horario } (null = todo o período) ou { erro } — o servidor confere de novo.
-function lerHorarioAlocacao(raiz) {
-  if (raiz.querySelector('[data-todo-periodo]')?.checked) return { horario: null };
-  const horario = {};
-  for (const l of raiz.querySelectorAll('[data-horario-alocacao] .horario-editor-linha')) {
-    const modo = l.querySelector('select').value;
-    const abre = l.querySelector('[data-abre]').value;
-    const fecha = l.querySelector('[data-fecha]').value;
-    if (modo === 'faixa' && (!abre || !fecha)) {
-      return { erro: `Preencha abertura e fechamento de ${l.firstElementChild.textContent}.` };
-    }
-    horario[l.dataset.dia] =
-      modo === 'fechado' ? null : modo === '24h' ? { abre: '00:00', fecha: '24:00' } : { abre, fecha };
-  }
-  if (!Object.values(horario).some(Boolean)) return { erro: 'Abra pelo menos um dia no horário personalizado.' };
-  return { horario };
-}
-// O corpo do horário para a API: "todo o período" ou a grade.
-const corpoDoHorario = (horario) => (horario ? { horario_operacao: horario } : { operar_todo_periodo: true });
-
-// Categoria protegida da alocação: a trava de concorrência daquela tela
-// enquanto ela está ali.
-function campoCategoriaProtegida(categorias, selecionada, ajuda) {
-  return `<div class="campo-grupo"><label for="alCategoria">Categoria protegida</label><select id="alCategoria" name="categoria_id">
-      <option value="">Nenhuma restrição</option>
-      ${categorias.map((c) => `<option value="${c.id}" ${c.id === selecionada ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}
-    </select><span class="campo-ajuda">${ajuda}</span></div>`;
-}
-
 // As telas da rede livres (ou não) no período do formulário — só a
 // resposta adiantada; o servidor confere de novo ao gravar.
 async function disponibilidadeNoPeriodo(redeId, inicio, fim, ignorar = null) {
@@ -3963,556 +4683,6 @@ async function disponibilidadeNoPeriodo(redeId, inicio, fim, ignorar = null) {
     ...(ignorar ? { ignorar_tipo: ignorar.tipo, ignorar_id: ignorar.id } : {}),
   });
   return (await pegar(`/admin/pontos/${redeId}/telas-livres?${q}`).catch(() => null))?.telas || null;
-}
-
-// "Hospedada · Padaria Central" / "Em evento · Feira" — o que a tela faz agora.
-function textoDaAlocacao(a) {
-  if (!a) return '';
-  const quem = a.tipo === 'hospedagem' ? `Hospedada · ${esc(a.local || a.nome)}` : `Em evento · ${esc(a.nome)}`;
-  return `${quem}<span class="dado-sub">até ${esc(window.instanteMatao(a.fim))}${a.conta ? ` · ${esc(a.conta)}` : ''}</span>`;
-}
-
-// Cabeçalho da rede: nome + cidade/UF, os selos (ITINERANTE e a situação),
-// o resumo das telas e as ações da rede. A rede é sempre escolhível pelo
-// anunciante — sem tela em operação ela só não veicula.
-function renderRedeCabecalho(el, ponto, f, telas, remontar) {
-  const r = f.resumo;
-  const arquivada = ponto.status === 'arquivado';
-  const acoes = arquivada
-    ? ''
-    : `<div class="acoes secao-pe">
-        <button type="button" class="btn primary mini" data-novo-evento>+ Novo evento</button>
-        <button type="button" class="btn ghost mini" data-nova-hospedagem>+ Nova hospedagem</button>
-        <button type="button" class="btn ghost mini" data-editar-rede>Editar rede</button>
-        <button type="button" class="btn ghost mini" data-alterar-foto>Alterar foto</button>
-        <button type="button" class="btn perigo-sutil mini" data-excluir-ponto>Excluir rede</button>
-      </div>`;
-  el.innerHTML = `
-    ${fichaCabecalho({
-      foto: fotoOuPlaceholder(f.foto, f.nome),
-      nome: `<span class="rede-titulo">${esc(f.nome)}</span>`,
-      badge: `<span class="badge badge-info">${esc(window.PONTO_MOVEL.selo)}</span> <span class="badge ${arquivada ? 'badge-neutro' : 'badge-ok'}">${arquivada ? 'Arquivada' : 'Ativa'}</span>`,
-      endereco: esc(window.PONTO_MOVEL.cidade(f.cidade, f.uf)),
-    })}
-    <p class="rede-movel-resumo" data-resumo-rede><b>${plural(r.telas, 'tela')}</b> · ${r.emOperacao} em operação agora · ${r.comCompromissoFuturo} com compromisso futuro · ${r.disponiveis} ${r.disponiveis === 1 ? 'disponível' : 'disponíveis'}</p>
-    <dl class="dados dados-3" data-rede>
-      <div><dt>Disponível para anunciantes</dt><dd>${f.disponivelParaAnunciantes ? 'Sim · 1 posição do plano' : 'Não'}</dd></div>
-      <div><dt>Telas comerciais ativas agora</dt><dd data-telas-ativas>${r.emOperacao} de ${r.telas}</dd></div>
-      <div><dt>Criada em</dt><dd>${data(ponto.created_at)}</dd></div>
-      ${f.notaInterna ? `<div class="dados-largo"><dt>Nota interna</dt><dd>${esc(f.notaInterna)}</dd></div>` : ''}
-    </dl>
-    ${acoes}`;
-  el.querySelector('[data-novo-evento]')?.addEventListener('click', () => cadastrarEventoMovel(ponto, f, remontar));
-  el.querySelector('[data-nova-hospedagem]')?.addEventListener('click', () =>
-    programarHospedagem({ pontoId: ponto.id, aoSalvar: remontar }),
-  );
-  el.querySelector('[data-editar-rede]')?.addEventListener('click', () => editarRedeMovel(ponto, f, remontar));
-  el.querySelector('[data-excluir-ponto]')?.addEventListener('click', () => excluirPonto(ponto, telas));
-  el.querySelector('[data-alterar-foto]')?.addEventListener('click', () => alterarFotoDoPonto(ponto, remontar));
-}
-
-// TELAS da rede: cada uma com o código, a situação do Player e a alocação
-// de agora (ou o próximo compromisso). A ficha individual da tela (Player,
-// credencial, área segura, suporte) continua a mesma.
-function renderRedeTelas(el, ponto, f, telas) {
-  const daFicha = new Map(f.telas.map((t) => [t.id, t]));
-  const linha = (t) => {
-    const x = daFicha.get(t.id);
-    const { selo, texto } = situacaoDaTela(t);
-    const alocacao = x?.alocacao
-      ? textoDaAlocacao(x.alocacao)
-      : x?.proximo
-        ? `<span class="u-dim">Próximo: ${x.proximo.tipo === 'hospedagem' ? 'hospedagem' : 'evento'} · ${esc(x.proximo.nome)} · ${esc(window.periodoComHora(x.proximo.inicio, x.proximo.fim))}</span>`
-        : t.status === 'ativo'
-          ? '<span class="u-dim">Disponível — sem alocação</span>'
-          : '';
-    return `<div class="tela-linha" data-tela-rede="${t.id}">
-      <a class="tela-linha-codigo" href="#rede/pontos/${t.pontoId}/telas/${t.id}">${esc(t.codigo)}</a>
-      <span class="tela-linha-situacao">${t.status === 'ativo' ? badge(selo) : `<span class="badge ${TELA_STATUS_CLASSE[t.status]}">${TELA_STATUS[t.status]}</span>`}${texto ? ` <span class="u-dim">${esc(texto)}</span>` : ''}</span>
-      <span class="tela-linha-alocacao">${alocacao}</span>
-      <span class="tela-linha-acoes">
-        <a class="btn ghost mini" href="#rede/pontos/${t.pontoId}/telas/${t.id}">Abrir</a>
-        <button type="button" class="btn perigo-sutil mini" data-excluir-tela="${t.id}">Excluir</button>
-      </span>
-    </div>`;
-  };
-  el.innerHTML = `
-    <div class="secao-topo">
-      <h3>Telas</h3>${telas.length ? `<span class="contagem">${telas.length}</span>` : ''}
-      <div class="secao-acoes"><button class="btn primary mini" data-nova-tela ${ponto.status === 'arquivado' ? 'disabled' : ''}>+ Adicionar tela</button></div>
-    </div>
-    ${
-      telas.length
-        ? `<div class="telas-lista">${telas.map(linha).join('')}</div>`
-        : vazio(
-            'Nenhuma tela nesta rede ainda.',
-            'Adicione a tela e gere o código de instalação na ficha dela — é o que o técnico digita na TV.',
-          )
-    }`;
-  el.querySelector('[data-nova-tela]').addEventListener('click', () => adicionarTela(ponto));
-  el.querySelectorAll('[data-excluir-tela]').forEach((btn) =>
-    btn.addEventListener('click', () => {
-      const t = telas.find((x) => x.id === Number(btn.dataset.excluirTela));
-      if (t) excluirTela(t, () => irPara(`rede/pontos/${ponto.id}`));
-    }),
-  );
-}
-
-// OPERAÇÃO AGORA (por tela), AGENDA consolidada (cada compromisso com as
-// telas dele) e HISTÓRICO (hospedagens e eventos encerrados ou cancelados).
-function renderRedeAgenda(el, ponto, f, remontar) {
-  const emCurso = (x) => x.estado === 'ativa' || x.estado === 'em_andamento';
-  const operando = f.telas.filter((t) => t.alocacao);
-  const agenda = [
-    ...f.hospedagens.filter((h) => h.estado === 'ativa' || h.estado === 'programada').map((h) => ({ tipo: 'h', x: h })),
-    ...f.eventos
-      .filter((e) => e.estado === 'em_andamento' || e.estado === 'programado')
-      .map((e) => ({ tipo: 'e', x: e })),
-  ].sort((a, b) =>
-    emCurso(a.x) !== emCurso(b.x) ? (emCurso(a.x) ? -1 : 1) : new Date(a.x.inicio) - new Date(b.x.inicio),
-  );
-  const passadas = [
-    ...f.hospedagens
-      .filter((h) => h.estado === 'encerrada' || h.estado === 'cancelada')
-      .map((h) => ({ tipo: 'h', x: h })),
-    ...f.eventos.filter((e) => e.estado === 'encerrado' || e.estado === 'cancelado').map((e) => ({ tipo: 'e', x: e })),
-  ].sort((a, b) => new Date(b.x.inicio) - new Date(a.x.inicio));
-  const linha = ({ tipo, x }, comAcoes) => (tipo === 'h' ? linhaDaHospedagem(x, comAcoes) : linhaDoEvento(x, comAcoes));
-  el.innerHTML = `
-    <div class="secao-topo"><h3>Operação agora</h3></div>
-    ${
-      operando.length
-        ? `<ul class="lista-operacao-rede" data-operacao-agora>${operando
-            .map(
-              (t) =>
-                `<li><a href="#rede/pontos/${ponto.id}/telas/${t.id}"><b>${esc(t.codigo)}</b></a> · ${textoDaAlocacao(t.alocacao)}</li>`,
-            )
-            .join('')}</ul>`
-        : '<p class="u-dim u-fs-85" data-operacao-vazia>Nenhuma tela em operação agora — as telas sem alocação tocam só o institucional.</p>'
-    }
-    <h4 class="u-mt-16">Agenda</h4>
-    ${
-      agenda.length
-        ? `<ul class="lista-eventos-movel" data-agenda>${agenda.map((a) => linha(a, true)).join('')}</ul>`
-        : '<p class="u-dim u-fs-85" data-agenda-vazia>Nenhum compromisso agendado.</p>'
-    }
-    <details class="u-mt-16"${passadas.length ? '' : ' hidden'}><summary>Histórico (${passadas.length})</summary>
-      <ul class="lista-eventos-movel" data-historico>${passadas.map((a) => linha(a, a.tipo === 'h')).join('')}</ul>
-    </details>
-    ${
-      f.basesAnteriores.length
-        ? `<details class="u-mt-8"><summary>Histórico do modelo antigo (${f.basesAnteriores.length} ${f.basesAnteriores.length === 1 ? 'base' : 'bases'})</summary>
-            ${f.basesAnteriores
-              .map(
-                (b) =>
-                  `<p class="u-fs-85 u-m-0">Base <b>${esc(b.nome)}</b>${b.conta?.nome ? ` (${esc(b.conta.nome)})` : ''} · ${data(b.desde)} a ${data(b.ate)}</p>`,
-              )
-              .join('')}
-          </details>`
-        : ''
-    }`;
-  el.querySelectorAll('[data-evento-acao]').forEach((b) =>
-    b.addEventListener('click', () =>
-      acaoNoEventoMovel(
-        ponto,
-        f.eventos.find((e) => e.id === Number(b.dataset.evento)),
-        b.dataset.eventoAcao,
-        remontar,
-      ),
-    ),
-  );
-  el.querySelectorAll('[data-hosp-acao]').forEach((b) =>
-    b.addEventListener('click', () =>
-      acaoNaHospedagem(
-        ponto,
-        f.hospedagens.find((h) => h.id === Number(b.dataset.hosp)),
-        b.dataset.hospAcao,
-        remontar,
-        f,
-      ),
-    ),
-  );
-}
-
-async function acaoNaHospedagem(ponto, h, acao, remontar, f) {
-  if (!h) return;
-  if (acao === 'termo') return marcarTermoFisico(ponto, h, remontar);
-  if (acao === 'periodo') return alterarPeriodoDaHospedagem(ponto, h, remontar, f);
-  if (acao === 'foto-entrega' || acao === 'foto-retirada') return fotoDaMovimentacao(ponto, h, acao.slice(5), remontar);
-  if (acao !== 'cancelar') return acaoComEquipamento(ponto, h, acao, remontar);
-  const ok = await confirmarModal({
-    titulo: `Cancelar a hospedagem em “${h.local}”?`,
-    texto:
-      '<p>Ela não aconteceu: nenhum benefício é gerado. Continua no histórico. Se veio de um interesse, ele volta para “em contato”.</p>',
-    botao: 'Cancelar hospedagem',
-    perigo: true,
-  });
-  if (!ok) return;
-  const r = await api(`/admin/pontos/${ponto.id}/hospedagens/${h.id}/cancelar`, { method: 'POST' });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) return toast(d.erro || 'Não foi possível agora.', 'err');
-  toast('Hospedagem cancelada.');
-  remontar();
-}
-
-// Programada: tela, período (data e hora), horário, local e endereço. Em
-// andamento: só prorrogar o fim.
-function alterarPeriodoDaHospedagem(ponto, h, remontar, f) {
-  const ativa = h.estado === 'ativa';
-  const telas = (f?.telas || []).filter((t) => t.status !== 'inativo');
-  const { dlg, fechar } = abrirModal({
-    titulo: ativa ? `Prorrogar — ${h.local}` : `Tela, período e horário — ${h.local}`,
-    largo: !ativa,
-    corpo: `<form id="formPeriodoHosp" class="modal-form" novalidate>
-        ${
-          ativa
-            ? ''
-            : `<div class="campo-grupo"><label for="hpTela">Tela</label><select id="hpTela" name="dispositivo_id">${telas
-                .map(
-                  (t) => `<option value="${t.id}" ${t.id === h.tela?.id ? 'selected' : ''}>${esc(t.codigo)}</option>`,
-                )
-                .join('')}</select></div>`
-        }
-        <div class="campos">
-          <div class="campo-grupo"><label for="hpInicio">Início (data e hora)</label><input id="hpInicio" type="datetime-local" name="inicio" value="${esc(h.inicioLocal || '')}" ${ativa ? 'disabled' : 'required'}></div>
-          <div class="campo-grupo"><label for="hpFim">Fim (data e hora)</label><input id="hpFim" type="datetime-local" name="fim" value="${esc(h.fimLocal || '')}" required></div>
-        </div>
-        ${
-          ativa
-            ? `<p class="campo-ajuda">Em andamento: só o fim pode mudar, para depois. Para terminar antes, use Encerrar. Horário em vigor: ${esc(h.horario || 'todo o período')}.</p>`
-            : `<div class="campos">
-                 <div class="campo-grupo"><label for="hpLocal">Local</label><input id="hpLocal" name="local" maxlength="160" value="${esc(h.local)}" required></div>
-                 <div class="campo-grupo"><label for="hpEndereco">Endereço</label><input id="hpEndereco" name="endereco" maxlength="300" value="${esc(h.endereco || '')}" required></div>
-               </div>
-               ${camposHorarioAlocacao(h.horarioOperacao)}`
-        }
-        <p class="campo-ajuda">Horário de Matão. O percentual continua o congelado na confirmação (${percentualBR(h.percentual)}). A tela não pode estar em outra hospedagem ou evento no mesmo período.</p>
-        <p class="form-msg" data-msg role="status"></p>
-      </form>`,
-    rodape:
-      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formPeriodoHosp" class="btn primary">Salvar</button>',
-  });
-  const form = dlg.querySelector('form');
-  ligarHorarioAlocacao(form);
-  let enviando = false;
-  form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    if (enviando) return;
-    let corpo = { fim: form.fim.value };
-    if (!ativa) {
-      const lido = lerHorarioAlocacao(form);
-      if (lido.erro) return erroNoModal(dlg, lido.erro);
-      corpo = {
-        dispositivo_id: Number(form.dispositivo_id.value),
-        inicio: form.inicio.value,
-        fim: form.fim.value,
-        ...corpoDoHorario(lido.horario),
-        local: form.local.value,
-        endereco: form.endereco.value,
-      };
-    }
-    enviando = true;
-    try {
-      const r = await api(`/admin/pontos/${ponto.id}/hospedagens/${h.id}/periodo`, {
-        method: 'PUT',
-        body: JSON.stringify(corpo),
-      });
-      if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível salvar.');
-      fechar();
-      toast(ativa ? 'Hospedagem prorrogada.' : 'Hospedagem atualizada.');
-      remontar();
-    } finally {
-      enviando = false;
-    }
-  });
-}
-
-// Nova hospedagem (o Admin orquestra tudo): rede → TELA → conta anfitriã →
-// local e endereço → início e fim (data e hora) → horário (padrão: todo o
-// período) → categoria protegida (padrão: a do anfitrião) → observação →
-// revisão do percentual → confirmar. O percentual que o Admin VÊ vai junto
-// (`percentual_esperado`): se o global mudar no meio, o servidor recusa.
-// Nasce programada, com o termo físico Pendente. De um interesse, chega com
-// a conta, o local, o endereço e a categoria.
-async function programarHospedagem({ pontoId = null, interesse = null, aoSalvar }) {
-  const [contas, redes, { percentual }, categorias] = await Promise.all([
-    pegar('/admin/anunciantes').then((l) => l.filter((a) => !a.excluido_em && !a.conta_propria)),
-    pegar('/admin/pontos').then((l) => l.filter((p) => p.tipo === 'movel' && p.status !== 'arquivado')),
-    pegar('/admin/hospedagem/percentual'),
-    pegar('/categorias').catch(() => []),
-  ]);
-  const rotulo = (a) => `${a.nome_empresa} (#${a.id})`;
-  const contaInicial = interesse?.conta ? contas.find((a) => a.id === interesse.conta.id) : null;
-  const categoriaInicial = interesse?.categoriaId ?? contaInicial?.categoria_id ?? null;
-  const redeInicial = pontoId || (redes.length === 1 ? redes[0].id : null);
-  const { dlg, fechar } = abrirModal({
-    titulo: 'Nova hospedagem',
-    largo: true,
-    corpo: `<form id="formHospedagem" class="modal-form" novalidate>
-        <p class="campo-ajuda">Um comércio recebe UMA tela da rede por um período combinado, sem pagar nada e sem virar dono. A tela não pode estar em outra hospedagem ou evento no mesmo período.</p>
-        <div class="campos">
-          <div class="campo-grupo"><label for="hoRede">Rede móvel</label><select id="hoRede" name="ponto" required>
-            ${redeInicial ? '' : '<option value="">Escolha a rede</option>'}
-            ${redes.map((m) => `<option value="${m.id}" ${m.id === redeInicial ? 'selected' : ''}>${esc(m.nome)} · ${esc(window.PONTO_MOVEL.cidade(m.cidade, m.uf))}</option>`).join('')}
-          </select></div>
-          <div class="campo-grupo"><label for="hoTela">Tela</label><select id="hoTela" name="dispositivo_id" required><option value="">Escolha a rede e o período</option></select>
-            <span class="campo-ajuda" data-telas-ajuda>As telas livres no período aparecem aqui.</span></div>
-        </div>
-        <div class="campos">
-          <div class="campo-grupo"><label for="hoConta">Conta anfitriã</label><input id="hoConta" name="conta" list="contasAnfitrias" required autocomplete="off" value="${contaInicial ? esc(rotulo(contaInicial)) : ''}" placeholder="Busque pelo nome"></div>
-          <div class="campo-grupo"><label for="hoLocal">Local (como aparece para o anunciante)</label><input id="hoLocal" name="local" maxlength="160" value="${esc(interesse?.localNome || interesse?.empresa || contaInicial?.nome_empresa || '')}" required></div>
-        </div>
-        <datalist id="contasAnfitrias">${contas.map((a) => `<option value="${esc(rotulo(a))}"></option>`).join('')}</datalist>
-        <div class="campo-grupo"><label for="hoEndereco">Endereço</label><input id="hoEndereco" name="endereco" maxlength="300" value="${esc(interesse?.endereco || '')}" required></div>
-        <div class="campos">
-          <div class="campo-grupo"><label for="hoInicio">Início (data e hora)</label><input id="hoInicio" type="datetime-local" name="inicio" required></div>
-          <div class="campo-grupo"><label for="hoFim">Fim (data e hora)</label><input id="hoFim" type="datetime-local" name="fim" required></div>
-        </div>
-        ${camposHorarioAlocacao(null)}
-        <div class="campos">
-          ${campoCategoriaProtegida(categorias, categoriaInicial, 'Padrão: a categoria do anfitrião. Enquanto hospedada, a tela não exibe anúncio desta categoria (nem dos concorrentes diretos dela).')}
-          <div class="campo-grupo"><label for="hoObs">Observação (interna)</label><textarea id="hoObs" name="observacao" maxlength="500" rows="2"></textarea></div>
-        </div>
-        <p class="aviso-bloco u-mt-8" data-revisao-percentual><b>Esta hospedagem ficará vinculada a ${percentualBR(percentual)}.</b> O percentual fica congelado: mudar o global depois não altera esta hospedagem. ${esc(exemploDoPercentual(percentual))}</p>
-        <p class="campo-ajuda">Horário de Matão. Agendar não inicia: o termo é assinado em papel (marque na hospedagem) e você inicia quando a tela chegar, registrando a entrega.</p>
-        <p class="form-msg" data-msg role="status"></p>
-      </form>`,
-    rodape:
-      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formHospedagem" class="btn primary">Confirmar agendamento</button>',
-  });
-  if (!redes.length)
-    erroNoModal(dlg, 'Nenhuma rede móvel cadastrada ainda — crie uma em Rede › Pontos (filtro Móveis).');
-  const form = dlg.querySelector('form');
-  ligarHorarioAlocacao(form);
-  // A lista de telas da rede escolhida, com a disponibilidade no período.
-  const pintarTelas = async () => {
-    const rede = Number(form.ponto.value);
-    const seletor = form.dispositivo_id;
-    const anterior = seletor.value;
-    if (!rede) {
-      seletor.innerHTML = '<option value="">Escolha a rede e o período</option>';
-      return;
-    }
-    const livres = await disponibilidadeNoPeriodo(rede, form.inicio.value, form.fim.value);
-    const telas =
-      livres ||
-      (await pegar(`/admin/pontos/${rede}/movel`).catch(() => ({ telas: [] }))).telas.map((t) => ({
-        id: t.id,
-        codigo: t.codigo,
-        livre: true,
-      }));
-    seletor.innerHTML = telas.length
-      ? `<option value="">Escolha a tela</option>${telas
-          .map(
-            (t) =>
-              `<option value="${t.id}" ${t.livre ? '' : 'disabled'} ${String(t.id) === anterior && t.livre ? 'selected' : ''}>${esc(t.codigo)}${t.livre ? (livres ? ' — livre' : '') : ' — ocupada'}</option>`,
-          )
-          .join('')}`
-      : '<option value="">Esta rede não tem tela</option>';
-    dlg.querySelector('[data-telas-ajuda]').textContent = livres
-      ? 'Ocupada = já em hospedagem ou evento nesse período.'
-      : 'Preencha início e fim para ver quais estão livres.';
-  };
-  form.ponto.addEventListener('change', pintarTelas);
-  form.inicio.addEventListener('change', pintarTelas);
-  form.fim.addEventListener('change', pintarTelas);
-  pintarTelas();
-  const contaEscolhida = () => {
-    const m = /\(#(\d+)\)$/.exec(form.querySelector('[name="conta"]').value.trim());
-    return m ? contas.find((a) => a.id === Number(m[1])) : null;
-  };
-  form.querySelector('[name="conta"]').addEventListener('change', () => {
-    const c = contaEscolhida();
-    const localInput = form.querySelector('[name="local"]');
-    if (c && !localInput.value) localInput.value = c.nome_empresa;
-    if (c && !form.endereco.value && c.endereco) form.endereco.value = c.endereco;
-    if (c?.categoria_id && !form.categoria_id.value) form.categoria_id.value = String(c.categoria_id);
-  });
-  let enviando = false;
-  form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    if (enviando) return;
-    const conta = contaEscolhida();
-    if (!conta) {
-      form.querySelector('[name="conta"]').focus();
-      return erroNoModal(dlg, 'Escolha a conta anfitriã na lista.');
-    }
-    const vazio = [...form.querySelectorAll('[required]')].find((c) => !c.value.trim());
-    if (vazio) {
-      vazio.focus();
-      return erroNoModal(dlg, 'Preencha rede, tela, local, endereço, início e fim.');
-    }
-    const lido = lerHorarioAlocacao(form);
-    if (lido.erro) return erroNoModal(dlg, lido.erro);
-    enviando = true;
-    try {
-      const destino = Number(form.ponto.value);
-      const corpo = {
-        dispositivo_id: Number(form.dispositivo_id.value),
-        conta_id: conta.id,
-        local: form.local.value,
-        endereco: form.endereco.value,
-        inicio: form.inicio.value,
-        fim: form.fim.value,
-        ...corpoDoHorario(lido.horario),
-        categoria_id: form.categoria_id.value,
-        observacao: form.observacao.value,
-        percentual_esperado: percentual,
-        ...(interesse ? { interesse_id: interesse.id } : {}),
-      };
-      const r = await api(`/admin/pontos/${destino}/hospedagens`, { method: 'POST', body: JSON.stringify(corpo) });
-      if (!r.ok) {
-        const d = await r.json().catch(() => ({}));
-        if (d.campo) form.querySelector(`[name="${d.campo === 'telas' ? 'dispositivo_id' : d.campo}"]`)?.focus();
-        return erroNoModal(dlg, d.erro || 'Não foi possível agendar a hospedagem.');
-      }
-      fechar();
-      toast(`Hospedagem agendada (${percentualBR(percentual)}). Termo físico pendente.`);
-      aoSalvar?.();
-    } finally {
-      enviando = false;
-    }
-  });
-}
-
-async function acaoNoEventoMovel(ponto, evento, acao, remontar) {
-  if (!evento) return;
-  const telas = codigosDasTelas(evento.telas);
-  const textos = {
-    iniciar: {
-      titulo: `As telas chegaram a “${evento.nome}”?`,
-      texto: `<p>As telas <b>${telas}</b> passam a operar no evento (${esc(evento.local)}) — com o horário dele (${esc(evento.horario || 'todo o período')}) e a categoria protegida dele. As outras telas da rede não mudam.</p>`,
-      botao: 'Iniciar evento',
-    },
-    encerrar: {
-      titulo: `Encerrar “${evento.nome}”?`,
-      texto: `<p>As telas <b>${telas}</b> ficam sem alocação: saem do inventário e, se ligadas, tocam só o institucional.</p>`,
-      botao: 'Encerrar evento',
-    },
-    cancelar: {
-      titulo: `Cancelar “${evento.nome}”?`,
-      texto: '<p>O evento sai da agenda das telas. Ele continua no histórico.</p>',
-      botao: 'Cancelar evento',
-      perigo: true,
-    },
-  }[acao];
-  if (!(await confirmarModal(textos))) return;
-  const r = await api(`/admin/pontos/${ponto.id}/eventos/${evento.id}/${acao}`, { method: 'POST' });
-  if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível agora.', 'err');
-  toast(
-    {
-      iniciar: 'Evento iniciado.',
-      encerrar: 'Evento encerrado: as telas ficaram sem alocação.',
-      cancelar: 'Evento cancelado.',
-    }[acao],
-  );
-  remontar();
-}
-
-// Novo evento: nome, organização (opcional), local e endereço (a cidade é a
-// da rede), público estimado e observação (opcionais), início e fim, o
-// horário (padrão: todo o período), a categoria protegida e as TELAS
-// PARTICIPANTES (uma ou várias, com a disponibilidade no período).
-async function cadastrarEventoMovel(ponto, f, remontar) {
-  const categorias = await pegar('/categorias').catch(() => []);
-  const telas = f.telas.filter((t) => t.status !== 'inativo');
-  const { dlg, fechar } = abrirModal({
-    titulo: `Novo evento — ${f.nome}`,
-    largo: true,
-    corpo: `<form id="formEventoMovel" class="modal-form" novalidate>
-        <div class="campos">
-          <div class="campo-grupo"><label for="evNome">Nome do evento</label><input id="evNome" name="nome" maxlength="120" required></div>
-          <div class="campo-grupo"><label for="evOrg">Organização (opcional)</label><input id="evOrg" name="organizacao" maxlength="120" placeholder="Prefeitura, federação, igreja…"></div>
-        </div>
-        <div class="campos">
-          <div class="campo-grupo"><label for="evLocal">Local</label><input id="evLocal" name="local" maxlength="160" required placeholder="Parque de Exposições"></div>
-          <div class="campo-grupo"><label for="evEndereco">Endereço</label><input id="evEndereco" name="endereco" maxlength="300" required placeholder="Av. das Feiras, 100"></div>
-        </div>
-        <p class="campo-ajuda u-m-0">Cidade: ${esc(f.cidade)}/${esc(f.uf)} (a da rede).</p>
-        <div class="campos">
-          <div class="campo-grupo"><label for="evInicio">Início (data e hora)</label><input id="evInicio" type="datetime-local" name="inicio" required></div>
-          <div class="campo-grupo"><label for="evFim">Fim (data e hora)</label><input id="evFim" type="datetime-local" name="fim" required></div>
-          <div class="campo-grupo"><label for="evPublico">Público estimado (opcional)</label><input id="evPublico" type="number" name="publico_estimado" min="1" step="1" inputmode="numeric"></div>
-        </div>
-        ${camposHorarioAlocacao(null)}
-        <fieldset class="campo-grupo" data-telas-participantes><legend>Telas participantes</legend>
-          ${
-            telas.length
-              ? telas
-                  .map(
-                    (t) =>
-                      `<label class="check-linha"><input type="checkbox" name="telas" value="${t.id}"> ${esc(t.codigo)} <span class="u-dim" data-livre="${t.id}"></span></label>`,
-                  )
-                  .join('')
-              : '<p class="u-dim u-m-0">Esta rede ainda não tem tela — adicione uma antes.</p>'
-          }
-          <span class="campo-ajuda">Preencha início e fim para ver quais estão livres. Uma tela não pode estar em dois compromissos ao mesmo tempo.</span>
-        </fieldset>
-        ${campoCategoriaProtegida(categorias, null, 'Durante o evento, as telas dele não exibem anúncio desta categoria (nem dos concorrentes diretos dela). Nenhuma restrição = todos os anunciantes.')}
-        <div class="campo-grupo"><label for="evObs">Observação (opcional)</label><textarea id="evObs" name="observacao" maxlength="500" rows="2"></textarea></div>
-        <p class="campo-ajuda">Horário de Matão. O público é a estimativa do evento: aparece como “~N pessoas” e nunca vira exibição, impressão nem alcance.</p>
-        <p class="form-msg" data-msg role="status"></p>
-      </form>`,
-    rodape:
-      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formEventoMovel" class="btn primary">Cadastrar evento</button>',
-  });
-  const form = dlg.querySelector('form');
-  ligarHorarioAlocacao(form);
-  const pintarLivres = async () => {
-    const livres = await disponibilidadeNoPeriodo(ponto.id, form.inicio.value, form.fim.value);
-    for (const t of telas) {
-      const alvo = dlg.querySelector(`[data-livre="${t.id}"]`);
-      const caixa = form.querySelector(`[name="telas"][value="${t.id}"]`);
-      const d = livres?.find((x) => x.id === t.id);
-      if (!alvo || !caixa) continue;
-      alvo.textContent = !d ? '' : d.livre ? '— livre' : `— ocupada: ${d.motivo}`;
-      caixa.disabled = Boolean(d && !d.livre);
-      if (caixa.disabled) caixa.checked = false;
-    }
-  };
-  form.inicio.addEventListener('change', pintarLivres);
-  form.fim.addEventListener('change', pintarLivres);
-  let enviando = false;
-  form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    if (enviando) return;
-    const vazio = [...form.querySelectorAll('[required]')].find((c) => !c.value.trim());
-    if (vazio) {
-      vazio.focus();
-      return erroNoModal(dlg, 'Preencha nome, local, endereço, início e fim.');
-    }
-    const escolhidas = [...form.querySelectorAll('[name="telas"]:checked')].map((c) => Number(c.value));
-    if (!escolhidas.length) return erroNoModal(dlg, 'Escolha pelo menos uma tela participante.');
-    const lido = lerHorarioAlocacao(form);
-    if (lido.erro) return erroNoModal(dlg, lido.erro);
-    enviando = true;
-    try {
-      const corpo = {
-        nome: form.nome.value,
-        organizacao: form.organizacao.value,
-        local: form.local.value,
-        endereco: form.endereco.value,
-        inicio: form.inicio.value,
-        fim: form.fim.value,
-        publico_estimado: form.publico_estimado.value,
-        categoria_id: form.categoria_id.value,
-        observacao: form.observacao.value,
-        telas: escolhidas,
-        ...corpoDoHorario(lido.horario),
-      };
-      const r = await api(`/admin/pontos/${ponto.id}/eventos`, { method: 'POST', body: JSON.stringify(corpo) });
-      if (!r.ok) {
-        const d = await r.json().catch(() => ({}));
-        if (d.campo && d.campo !== 'telas') form.querySelector(`[name="${d.campo}"]`)?.focus();
-        return erroNoModal(dlg, d.erro || 'Não foi possível cadastrar o evento.');
-      }
-      fechar();
-      toast('Evento cadastrado.');
-      remontar();
-    } finally {
-      enviando = false;
-    }
-  });
 }
 
 // Editar a rede: nome, cidade, UF e nota interna.
@@ -4613,7 +4783,7 @@ function linhaDoInteresse(i) {
       <td class="u-nowrap"><span class="badge ${classe}">${rotulo}</span><span class="dado-sub">${data(i.criadoEm)}</span></td>
       <td><div class="interesse-acoes">${
         aberto
-          ? `<button type="button" class="btn primary mini" data-interesse-acao="agendar" data-interesse="${i.id}">Agendar hospedagem</button>
+          ? `<button type="button" class="btn primary mini" data-interesse-acao="agendar" data-interesse="${i.id}">Agendar compromisso</button>
              ${i.status === 'nova' ? `<button type="button" class="btn ghost mini" data-interesse-acao="em_contato" data-interesse="${i.id}">Em contato</button>` : ''}
              ${i.status !== 'aprovada' ? `<button type="button" class="btn ghost mini" data-interesse-acao="aprovada" data-interesse="${i.id}">Aprovar</button>` : ''}
              <button type="button" class="btn perigo-sutil mini" data-interesse-acao="recusada" data-interesse="${i.id}">Recusar</button>`
@@ -4831,7 +5001,7 @@ async function criarRedeMovel() {
 
 async function acaoNoInteresse(i, acao, aoSalvar) {
   if (!i) return;
-  if (acao === 'agendar') return programarHospedagem({ interesse: i, aoSalvar });
+  if (acao === 'agendar') return abrirCompromisso({ interesse: i, aoSalvar });
   if (acao === 'nota') {
     const { dlg, fechar } = abrirModal({
       titulo: `Nota interna — ${i.empresa}`,
@@ -4944,12 +5114,12 @@ function renderPontoEndereco(el, ponto, pendencias, remontar) {
 // mesma régua 80/20 de sempre (GET /admin/capacidade-rede, src/lib/capacidade.js);
 // `escopo=rede` pra ponto ainda sem tela também ter o bloco. Ponto arquivado
 // não entra na régua, e o bloco não aparece.
-async function renderPontoCapacidade(el, pontoId) {
+async function renderPontoCapacidade(el, pontoId, { compacta = false } = {}) {
   const c = (await pegar('/admin/capacidade-rede?escopo=rede')).find((l) => l.pontoId === pontoId);
   el.hidden = !c;
   if (!c) return;
   el.innerHTML = `
-    <div class="secao-topo"><h3>Capacidade de veiculação</h3><span class="secao-nota">teto comercial 80% · teto Mostraí 20%</span></div>
+    ${compacta ? '<p class="secao-nota u-mt-0">Teto comercial 80% · teto Mostraí 20%</p>' : '<div class="secao-topo"><h3>Capacidade de veiculação</h3><span class="secao-nota">teto comercial 80% · teto Mostraí 20%</span></div>'}
     <dl class="dados dados-2 capacidade-ponto" data-capacidade-ponto>
       <div><dt>Comercial</dt><dd><b data-cap="comercial">${pct(c.comercialPct)}</b> usado<span class="dado-sub" data-cap="comercial-livre">${pct(c.comercialRestantePct)} livre</span></dd></div>
       <div><dt>Reserva Mostraí</dt><dd><b data-cap="mostrai">${pct(c.mostraiPct)}</b> usado<span class="dado-sub" data-cap="mostrai-livre">${pct(c.reservaRestantePct)} livre${c.mostraiAcimaDaReservaPct > 0 ? ` · ${pct(c.mostraiAcimaDaReservaPct)} acima da reserva` : ''}</span></dd></div>
@@ -5009,37 +5179,22 @@ function renderPontoInformacoes(el, ponto, telas, remontar) {
       ? `<a href="#contas/contas/${ponto.anunciante_id}">${esc(ponto.dono_nome)}</a>`
       : esc(ponto.dono_nome)
     : naoInformado('Sem conta vinculada');
-  const acoes =
-    ponto.status === 'arquivado'
-      ? ''
-      : `<div class="acoes secao-pe">
-          <button type="button" class="btn ghost mini" data-alterar-foto>Alterar foto</button>
-          <button type="button" class="btn perigo-sutil mini" data-excluir-ponto>Excluir ponto</button>
-        </div>`;
   el.innerHTML = `
-    ${fichaCabecalho({
-      foto: fotoOuPlaceholder(ponto.foto_instalacao_url, ponto.nome),
-      nome: esc(ponto.nome),
-      badge: `<span class="badge ${PONTO_STATUS_CLASSE[ponto.status]}">${PONTO_STATUS[ponto.status] || ponto.status}</span>`,
-      endereco: enderecoFicha(ponto),
-    })}
+    <div class="secao-topo"><h3>Informações</h3></div>
     <dl class="dados dados-2">
-      <div><dt>Segmento</dt><dd>${segmento ? esc(segmento) : naoInformado()}</dd></div>
       <div><dt>Proprietário</dt><dd>${proprietario}</dd></div>
+      <div><dt>Segmento</dt><dd>${segmento ? esc(segmento) : naoInformado()}</dd></div>
       <div><dt>Responsável no local</dt><dd>${esc(ponto.responsavel_nome || '—')}${ponto.responsavel_contato ? `<span class="dado-sub">${esc(ponto.responsavel_contato)}</span>` : ''}</dd></div>
       <div><dt>Benefício do ponto</dt><dd>${textoBeneficioPonto(ponto.beneficio)}</dd></div>
       <div><dt>Aprovado em</dt><dd>${data(ponto.created_at)}</dd></div>
-      <div><dt>Primeiro sinal de tela</dt><dd>${primeiroSinal ? data(primeiroSinal) : naoInformado('Nenhuma tela deu sinal ainda')}</dd></div>
+      <div><dt>Primeiro sinal de tela</dt><dd>${primeiroSinal ? data(primeiroSinal) : naoInformado('Nenhum ainda')}</dd></div>
       ${ponto.fluxo_estimado_mensal ? `<div><dt>Movimento estimado</dt><dd>${num(ponto.fluxo_estimado_mensal)} pessoas/mês</dd></div>` : ''}
       <div class="dados-largo"><dt>Horário de funcionamento<span class="dado-ajuda">As telas do ponto seguem este horário.</span></dt>
         <dd>${ponto.horario_semanal ? horarioEmLinhas(ponto.horario_semanal) : 'Aberto 24 horas'}
-          <div class="u-mt-8"><button type="button" class="btn ghost mini" data-editar-horario>Editar horário</button></div></dd></div>
+          <div class="u-mt-8"><button type="button" class="btn ghost mini" data-editar-horario ${ponto.status === 'arquivado' ? 'disabled' : ''}>Editar horário</button></div></dd></div>
       ${ponto.observacoes ? `<div class="dados-largo"><dt>Observações</dt><dd>${esc(ponto.observacoes)}</dd></div>` : ''}
-    </dl>
-    ${acoes}`;
+    </dl>`;
   el.querySelector('[data-editar-horario]')?.addEventListener('click', () => editarHorarioPonto(ponto, remontar));
-  el.querySelector('[data-alterar-foto]')?.addEventListener('click', () => alterarFotoDoPonto(ponto, remontar));
-  el.querySelector('[data-excluir-ponto]')?.addEventListener('click', () => excluirPonto(ponto, telas));
 }
 
 // ---------- foto canônica do ponto (estação Rede/Admin V2) ----------
@@ -5290,43 +5445,6 @@ function editarHorarioPonto(ponto, remontar) {
   });
 }
 
-// Linha da tela dentro do ponto: código, situação e as duas ações rápidas.
-function montarTelaLinha(t) {
-  const { selo, texto } = situacaoDaTela(t);
-  const alerta = t.alertas.some((a) => a.nivel === 'alerta');
-  return `<div class="tela-linha ${alerta ? 'com-alerta' : ''}">
-    <a class="tela-linha-codigo" href="#rede/pontos/${t.pontoId}/telas/${t.id}">${esc(t.codigo)}</a>
-    <span class="tela-linha-situacao">${badge(selo)}${texto ? ` <span class="u-dim">${esc(texto)}</span>` : ''}</span>
-    <span class="tela-linha-acoes">
-      <a class="btn ghost mini" href="#rede/pontos/${t.pontoId}/telas/${t.id}">Abrir</a>
-      <button type="button" class="btn perigo-sutil mini" data-excluir-tela="${t.id}">Excluir</button>
-    </span>
-  </div>`;
-}
-
-function renderPontoTelas(el, ponto, telas) {
-  el.innerHTML = `
-    <div class="secao-topo">
-      <h3>Telas</h3>${telas.length ? `<span class="contagem">${telas.length}</span>` : ''}
-      <div class="secao-acoes"><button class="btn primary mini" data-nova-tela ${ponto.status === 'arquivado' ? 'disabled' : ''}>+ Adicionar tela</button></div>
-    </div>
-    ${
-      telas.length
-        ? `<div class="telas-lista">${telas.map(montarTelaLinha).join('')}</div>`
-        : vazio(
-            'Nenhuma tela neste ponto ainda.',
-            'Adicione a tela e gere o código de instalação na ficha dela — é o que o técnico digita na TV.',
-          )
-    }`;
-  el.querySelector('[data-nova-tela]').addEventListener('click', () => adicionarTela(ponto));
-  el.querySelectorAll('[data-excluir-tela]').forEach((btn) =>
-    btn.addEventListener('click', () => {
-      const t = telas.find((x) => x.id === Number(btn.dataset.excluirTela));
-      if (t) excluirTela(t, () => irPara(`rede/pontos/${ponto.id}`));
-    }),
-  );
-}
-
 // Nada para preencher: a tela nasce Ativa, com o código humano (M-0235) e
 // "Aguardando instalação". A ficha dela já abre com "Gerar código".
 async function adicionarTela(ponto) {
@@ -5358,10 +5476,12 @@ async function excluirTela(t, depois) {
 }
 
 // ---------- ficha da tela ----------
-// Resumo, Instalação, Área segura, Estado, Suporte (só quando há o que
-// mostrar) e Ações — nada de identificador técnico, chave, versão de config,
-// contrato ou histórico de engenharia (reestruturação do Player MVP,
-// 26/09/2026).
+// Rede Front V3: cabeçalho com o estado e um resumo de uma linha
+// (Conectividade · Operação · Player · Último contato · Instalada em), e
+// quatro seções — Operação, Player, Configuração e Ações. As três dimensões
+// do estado (administrativo, conectividade, operação) vêm separadas do
+// servidor (src/lib/status-tela.js); nada é reclassificado aqui. Sem
+// identificador técnico, chave, versão de config ou jargão de engenharia.
 let relogioInstalacao = null;
 
 async function renderTelaFicha(el, pontoId, telaId) {
@@ -5377,7 +5497,17 @@ async function renderTelaFicha(el, pontoId, telaId) {
       el.innerHTML = `<p class="form-msg err">Tela não encontrada. <a href="#rede/pontos/${pontoId}">Voltar pro ponto</a></p>`;
       return;
     }
-    const { selo, texto } = situacaoDaTela(t);
+    const e = t.estado;
+    const { selo } = situacaoDaTela(t);
+    const conectado = t.instalacao.estado === 'conectado';
+    // Selos além do resumo: o motivo do problema e o que vale olhar.
+    const extras = (t.alertas || [])
+      .map(
+        (a) =>
+          `<span class="badge ${a.nivel === 'alerta' ? 'badge-err' : 'badge-atencao'}" data-alerta="${esc(a.codigo)}">${esc(a.motivo || a.codigo)}</span>`,
+      )
+      .join('');
+    const contato = e.ultimoSinal;
     el.innerHTML = `
       ${migalha([
         { rotulo: 'Pontos', href: '#rede/pontos' },
@@ -5386,29 +5516,27 @@ async function renderTelaFicha(el, pontoId, telaId) {
       ])}
       <div class="tela-ficha">
         <header class="panel tela-ficha-topo">
-          <div>
-            <h3>${esc(t.codigo)} <span class="u-dim tela-ficha-ponto">· ${esc(t.pontoNome)}</span></h3>
-            <p class="tela-card-selos">
-              ${t.status === 'ativo' ? badge(selo) : `<span class="badge ${TELA_STATUS_CLASSE[t.status]}">${TELA_STATUS[t.status]}</span>`}
-              ${t.alertas
-                .filter((a) => a.codigo !== 'SEM_SINAL' && a.codigo !== 'ERRO_PLAYER')
-                .map(
-                  (a) =>
-                    `<span class="badge ${a.nivel === 'alerta' ? 'badge-err' : 'badge-pendente'}">${esc(TEXTO_ALERTA[a.codigo] || a.codigo)}</span>`,
-                )
-                .join('')}
-            </p>
+          <div class="tela-ficha-id">
+            <h3>${esc(t.codigo)} <a class="tela-ficha-ponto" href="#rede/pontos/${t.pontoId}">${esc(t.pontoNome)}</a></h3>
+            <p class="tela-card-selos">${badge(selo)}${extras}</p>
           </div>
+          <dl class="tela-resumo" data-tela-resumo>
+            <div><dt>Conectividade</dt><dd data-conectividade="${e.conectividade}">${esc(CONECTIVIDADE_TELA[e.conectividade] || e.conectividade)}</dd></div>
+            <div><dt>Operação</dt><dd data-operacao="${e.operacao}">${esc(OPERACAO_TELA[e.operacao] || e.operacao)}</dd></div>
+            <div><dt>Player</dt><dd>${t.player?.versao ? esc(t.player.versao) : '<span class="u-dim">—</span>'}</dd></div>
+            <div><dt>Último contato</dt><dd>${contato ? `${esc(sinalDesde(contato))}<span class="dado-sub">${esc(dataHora(contato))}</span>` : `<span class="u-dim">${conectado ? 'Nenhum ainda' : '—'}</span>`}</dd></div>
+            <div><dt>Instalada em</dt><dd>${t.instaladoEm ? data(t.instaladoEm) : '<span class="u-dim">—</span>'}</dd></div>
+          </dl>
         </header>
-        ${blocoResumo(t, texto)}
-        ${blocoInstalacao(t)}
-        ${blocoAreaSegura(t)}
-        ${blocoEstado(t)}
-        ${blocoSuporte(t)}
+        <div class="tela-ficha-grid">
+          ${blocoOperacao(t)}
+          ${blocoPlayer(t)}
+        </div>
+        ${blocoConfiguracao(t)}
         <section class="panel ficha-bloco">
           <h4>Ações</h4>
           <div class="acoes">
-            ${t.instalacao.estado === 'conectado' ? '<button class="btn perigo-sutil mini" data-acao="revogar">Revogar Player</button>' : ''}
+            ${conectado ? '<button class="btn perigo-sutil mini" data-acao="revogar">Revogar Player</button>' : ''}
             <button class="btn perigo-sutil mini" data-acao="excluir">Excluir tela</button>
           </div>
         </section>
@@ -5419,34 +5547,43 @@ async function renderTelaFicha(el, pontoId, telaId) {
   definirVistaRede(montar);
 }
 
-function blocoResumo(t, texto) {
+// OPERAÇÃO: o que está no ar, o que vale olhar e o que o suporte precisa.
+function blocoOperacao(t) {
   const conectado = t.instalacao.estado === 'conectado';
-  return `<section class="panel ficha-bloco">
-    <h4>Resumo</h4>
-    <dl class="dados dados-3">
-      ${linhaDado('Último sinal', conectado && t.ultimoSinalEm ? `${esc(sinalDesde(t.ultimoSinalEm))}<span class="dado-sub">${esc(dataHora(t.ultimoSinalEm))}</span>` : naoInformado(conectado ? 'Nenhum ainda' : 'Sem Player instalado'))}
-      ${linhaDado('Player', t.player?.versao ? esc(t.player.versao) : naoInformado(conectado ? 'Versão não informada' : '—'))}
+  const { erro, fila } = t.suporte;
+  const pendentes = Number(fila.pendentes) || 0;
+  const alertas = t.alertas || [];
+  return `<section class="panel ficha-bloco" data-bloco="operacao">
+    <h4>Operação</h4>
+    <dl class="dados dados-2">
       ${linhaDado('Mídia atual', t.midiaAtual ? esc(t.midiaAtual) : naoInformado(conectado ? 'Nenhum anúncio no ar' : '—'))}
+      ${linhaDado('Comprovantes pendentes', fila.pendentes == null ? naoInformado('Não informado') : `${num(pendentes)}${pendentes && fila.maisAntigoEm ? `<span class="dado-sub">o mais antigo ${esc(tempoDesde(fila.maisAntigoEm))}</span>` : ''}`)}
+      ${erro ? linhaDado('Último erro do Player', `${esc(erro.mensagem || erro.codigo || 'Erro')}${erro.em ? `<span class="dado-sub">${esc(dataHora(erro.em))}</span>` : ''}`) : ''}
     </dl>
-    ${texto && t.saude === 'sem_sinal' ? `<p class="u-dim u-fs-85 u-mb-0">Sem sinal ${esc(texto)}.</p>` : ''}
+    ${
+      alertas.length
+        ? `<ul class="tela-alertas">${alertas.map((a) => `<li class="${a.nivel === 'alerta' ? 'txt-alerta' : 'txt-atencao'}">${esc(a.motivo || a.codigo)}</li>`).join('')}</ul>`
+        : ''
+    }
   </section>`;
 }
 
-function blocoInstalacao(t) {
+// PLAYER: conectado (desde quando) ou a instalação (ID + código).
+function blocoPlayer(t) {
   const i = t.instalacao;
   if (i.estado === 'conectado') {
-    return `<section class="panel ficha-bloco">
-      <h4>Instalação</h4>
+    return `<section class="panel ficha-bloco" data-bloco="player">
+      <h4>Player</h4>
       <p class="u-m-0"><span class="badge badge-ok">Player conectado</span>${i.conectadoEm ? ` <span class="u-dim">desde ${esc(dataHora(i.conectadoEm))}</span>` : ''}</p>
     </section>`;
   }
   const codigo = i.codigo
     ? `<code class="codigo-instalacao">${esc(i.codigo)}</code>`
     : naoInformado('Nenhum código ativo — gere um para instalar');
-  return `<section class="panel ficha-bloco">
-    <h4>Instalação</h4>
+  return `<section class="panel ficha-bloco" data-bloco="player">
+    <h4>Player</h4>
     <p class="u-dim u-fs-85 u-mt-0">Na primeira abertura, o app pede estes dois dados. O código vale 30 minutos e uma vez só.</p>
-    <dl class="dados dados-3">
+    <dl class="dados dados-2">
       ${linhaDado('ID da tela', `<code class="codigo-instalacao">${esc(t.codigo)}</code>`)}
       ${linhaDado('Código de instalação', codigo)}
       ${i.codigo ? linhaDado('Expira em', `<span data-expira="${esc(i.expiraEm)}">—</span>`) : ''}
@@ -5458,50 +5595,35 @@ function blocoInstalacao(t) {
   </section>`;
 }
 
-// Os quatro lados à mão, em cruz, com a tela no meio.
-function blocoAreaSegura(t) {
+// CONFIGURAÇÃO: área segura (os quatro lados em cruz), estado
+// administrativo e data de instalação.
+function blocoConfiguracao(t) {
   const m = t.margens;
   const campo = (lado, rotulo, classe) =>
     `<label class="safe-lado safe-${classe}" for="area_${lado}"><span class="safe-rotulo">${rotulo}</span>
       <span class="campo-unidade"><input class="mini" type="number" min="0" max="10" step="0.5" id="area_${lado}" name="${lado}" value="${m[lado]}"><span>vmin</span></span></label>`;
-  return `<section class="panel ficha-bloco">
-    <h4>Área segura</h4>
-    <form data-form-area class="modal-form">
-      <div class="safe-area">
-        ${campo('superior', 'Topo', 'topo')}
-        ${campo('esquerda', 'Esquerda', 'esquerda')}
-        <div class="safe-tela" aria-hidden="true"><div class="safe-miolo">mídia</div></div>
-        ${campo('direita', 'Direita', 'direita')}
-        ${campo('inferior', 'Inferior', 'baixo')}
-      </div>
-      <p class="u-dim u-fs-85 u-m-0">De 0 a 10 por lado (1 = 1% do menor lado da tela). A TV aplica em poucos segundos, sem reiniciar.</p>
-      <div class="acoes"><button type="submit" class="btn primary mini">Salvar</button></div>
-    </form>
-  </section>`;
-}
-
-function blocoEstado(t) {
   const instalada = t.instaladoEm ? data(t.instaladoEm) : naoInformado('Não informada');
-  return `<section class="panel ficha-bloco">
-    <h4>Estado</h4>
-    <dl class="dados dados-3">
-      ${linhaDado('Estado da tela', selectStatus(TELA_STATUS, t.status, 'data-campo="status" aria-label="Estado da tela"'), 'Em reparo e Inativa param a programação; o que já foi exibido fica registrado.')}
-      ${linhaDado('Instalada em', `<span data-instalada-em>${instalada}</span> <button type="button" class="btn ghost mini" data-acao="instalacao">Editar</button>`)}
-    </dl>
-  </section>`;
-}
-
-// Só aparece quando há o que o suporte precise ver.
-function blocoSuporte(t) {
-  const { erro, fila } = t.suporte;
-  const pendentes = Number(fila.pendentes) || 0;
-  if (!erro && !pendentes) return '';
-  return `<section class="panel ficha-bloco">
-    <h4>Suporte</h4>
-    <dl class="dados dados-3">
-      ${erro ? linhaDado('Último erro', `${erro.mensagem ? esc(erro.mensagem) : esc(erro.codigo || 'Erro')}${erro.em ? `<span class="dado-sub">${esc(dataHora(erro.em))}</span>` : ''}`) : ''}
-      ${pendentes ? linhaDado('Comprovantes pendentes', `${num(pendentes)}${fila.maisAntigoEm ? `<span class="dado-sub">o mais antigo ${esc(tempoDesde(fila.maisAntigoEm))}</span>` : ''}`, 'Exibições que a TV ainda não conseguiu enviar.') : ''}
-    </dl>
+  return `<section class="panel ficha-bloco" data-bloco="configuracao">
+    <h4>Configuração</h4>
+    <div class="tela-config">
+      <form data-form-area class="modal-form">
+        <span class="tela-config-rotulo">Área segura</span>
+        <div class="safe-area">
+          ${campo('superior', 'Topo', 'topo')}
+          ${campo('esquerda', 'Esquerda', 'esquerda')}
+          <div class="safe-tela" aria-hidden="true"><div class="safe-miolo">mídia</div></div>
+          ${campo('direita', 'Direita', 'direita')}
+          ${campo('inferior', 'Inferior', 'baixo')}
+        </div>
+        <p class="u-dim u-fs-85 u-m-0">De 0 a 10 por lado (1 = 1% do menor lado da tela). A TV aplica em poucos segundos.</p>
+        <div class="acoes"><button type="submit" class="btn primary mini">Salvar área segura</button></div>
+      </form>
+      <dl class="dados">
+        ${linhaDado('Estado administrativo', selectStatus(TELA_STATUS, t.status, 'data-campo="status" aria-label="Estado administrativo da tela"'), 'Em reparo e Inativa param a programação; o que já foi exibido fica registrado.')}
+        ${linhaDado('Instalada em', `<span data-instalada-em>${instalada}</span> <button type="button" class="btn ghost mini" data-acao="instalacao">Editar</button>`)}
+        ${t.configuracao.situacao === 'pendente' ? linhaDado('Configuração', '<span class="txt-atencao">A TV ainda não recebeu a última alteração</span>') : ''}
+      </dl>
+    </div>
   </section>`;
 }
 

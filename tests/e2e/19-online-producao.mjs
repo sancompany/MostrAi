@@ -198,7 +198,7 @@ if (TOKEN_ID && ADMIN_USER) {
   // página, então `body` inteiro passava com a tela anterior ainda no ar
   // (revisão Codex do PR #54).
   for (const [hash, titulo, esperado] of [
-    ['#rede/pontos', 'Rede', /Aguardando|Operando|Sem sinal|Nenhum ponto/i],
+    ['#rede/pontos', 'Rede', /Aguardando|Operando|Sem comunicação|Com problema|Nenhum ponto/i],
     ['#contas/contas', 'Contas', /Essencial|Pro|Prime|Sem plano|Nenhuma conta/i],
     ['#ofertas/precos', 'Ofertas', /Essencial.*Pro.*Prime/s],
     ['#ofertas/promocoes', 'Ofertas', /promoç/i],
@@ -240,12 +240,20 @@ if (TOKEN_ID && ADMIN_USER) {
       await primeiraTela.click();
       await p.waitForTimeout(1500);
       const fichaTela = await p.locator('body').innerText().catch(() => '');
-      // Ficha do Player MVP: Resumo, Instalação, Área segura, Estado, Ações.
-      // Sem diferenciar maiúscula: `.ficha-bloco h4` é text-transform:
-      // uppercase, e o innerText devolve "INSTALAÇÃO".
+      // Ficha da tela (Rede Front V3): resumo de uma linha (Conectividade ·
+      // Operação · Player · Último contato · Instalada em) e as seções
+      // Operação, Player, Configuração (com a área segura) e Ações. Sem
+      // diferenciar maiúscula: `.ficha-bloco h4` é text-transform: uppercase,
+      // e o innerText devolve "CONFIGURAÇÃO".
       check(
-        'admin: ficha da tela nos blocos do MVP (Resumo / Instalação / Área segura / Estado / Ações)',
-        /Resumo/i.test(fichaTela) && /Instala/i.test(fichaTela) && /rea segura/i.test(fichaTela) && /Estado/i.test(fichaTela) && /A[cç][oõ]es/i.test(fichaTela),
+        'admin: ficha da tela (Conectividade / Último contato / Operação / Player / Configuração / Ações)',
+        /Conectividade/i.test(fichaTela) &&
+          /Último contato/i.test(fichaTela) &&
+          /Opera[cç][aã]o/i.test(fichaTela) &&
+          /Player/i.test(fichaTela) &&
+          /Configura[cç][aã]o/i.test(fichaTela) &&
+          /rea segura/i.test(fichaTela) &&
+          /A[cç][oõ]es/i.test(fichaTela),
         fichaTela.slice(-300),
       );
       check('admin: ficha da tela sem chave, sem Preparar Player, sem PIN por tela', !/chaveAparelho|Preparar Player|PIN de manutenção/i.test(fichaTela));

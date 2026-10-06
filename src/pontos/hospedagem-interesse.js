@@ -233,6 +233,16 @@ async function listar() {
       localNome: r.local_tipo === 'ponto' ? r.ponto_nome : r.local_tipo === 'outro' ? r.local_nome : null,
       ponto: r.ponto_id ? { id: r.ponto_id, nome: r.ponto_nome } : null,
       endereco: r.endereco,
+      // As partes, para o compromisso abrir já preenchido (Rede Front V3).
+      partes: {
+        cep: r.cep || '',
+        logradouro: r.logradouro || '',
+        numero: r.numero || '',
+        complemento: r.complemento || '',
+        bairro: r.bairro || '',
+        cidade: r.cidade || '',
+        uf: r.uf || '',
+      },
       segmento: r.categoria_nome || r.categoria_livre,
       categoriaId: r.categoria_id,
       observacao: r.observacao,

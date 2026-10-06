@@ -4,15 +4,17 @@
 //     com o filtro Móveis; fixos e móveis no MESMO grid; o filtro Móveis
 //     mostra a barra (+ Nova rede móvel, Agenda móvel); cria a rede com Nome,
 //     Cidade e UF separados e a foto ENQUADRADA (16:9); duas telas (um único
-//     "+ Adicionar tela" na ficha); evento com a tela A, hospedagem com a B
-//     (termo físico); a mesma tela nunca pega dois compromissos; a Agenda
-//     móvel abre sob demanda (agora + próximos, histórico à parte);
-//     Candidaturas → Interesses em hospedar com o benefício numa linha e o
-//     "Agendar hospedagem" pré-preenchido; "Alterar foto" de um ponto fixo.
+//     "Adicionar tela" na ficha); pelo "+ Novo compromisso" (Rede Front V3,
+//     06/10/2026 — um formulário só): em outro local com a tela A, na conta
+//     com a B (termo físico, entrega); a mesma tela nunca pega dois
+//     compromissos; a Agenda móvel abre sob demanda (agora + próximos,
+//     histórico à parte); Candidaturas → Interesses em hospedar com o
+//     benefício numa linha e o "Agendar compromisso" pré-preenchido;
+//     "Alterar foto" de um ponto fixo (no "⋯" do cabeçalho).
 //   B. Conta — "+ Criar ponto" na ficha da conta: formulário pré-preenchido,
 //     salva um ponto FIXO da conta (origem admin), sem candidatura.
 //   C. Anunciante — o card do Mostraí Móvel: foto real (nunca a faixa azul),
-//     ITINERANTE, cidade, "Atual" / "Próxima localização", sem dado técnico;
+//     MÓVEL, cidade, "Local atual" / "Próxima localização", sem dado técnico;
 //     com 0 tela em operação, 0 evento e 0 alocação a caixa está HABILITADA
 //     (nunca "Indisponível para escolha") e a escolha conta 1 posição;
 //     "Ver agenda" mostra só presente e futuro; 390px sem rolagem lateral.
@@ -117,6 +119,11 @@ const semRolagemLateral = (p) => p.evaluate(() => document.documentElement.scrol
 // ---------------------------------------------------------------------------
 const emailAnf = `padaria-${marca}@teste.com`;
 const ANF = await cadastrar('Padaria Central', '52998224725', emailAnf);
+// Endereço completo na conta: sem ponto fixo, o compromisso "na conta" usa
+// o endereço dela (origem padrão do formulário).
+PG(
+  `UPDATE anunciantes SET logradouro = 'Rua Nove', numero = '90', bairro = 'Centro', cep = '15990-000', cidade = 'Matão', uf = 'SP' WHERE id = ${ANF}`,
+);
 const emailAnun = `loja-${marca}@teste.com`;
 const ANUN = await cadastrar('Loja do Anunciante', '11144477735', emailAnun);
 PG(
@@ -196,7 +203,8 @@ check('criar ponto: CEP pré-preenchido', (await admin.inputValue('#cp_cep')) ==
 await shot(modal(), 'modal-criar-ponto');
 await modal().locator('button[type=submit]').click();
 await admin.waitForURL(/rede\/pontos\/\d+/, { timeout: 10000 });
-await admin.waitForSelector('#pontoInformacoes [data-alterar-foto]', { timeout: 10000 });
+// Rede Front V3: "Alterar foto" mora no "⋯" do cabeçalho da ficha.
+await admin.waitForSelector('#pontoCabecalho [data-alterar-foto]', { state: 'attached', timeout: 10000 });
 await redeQuieta(admin);
 const FIXO = PG(`SELECT id FROM pontos WHERE anunciante_id = ${COM}`);
 check(
@@ -220,13 +228,14 @@ const repetido = await apiAdmin(`/admin/anunciantes/${COM}/pontos`, 'POST', {
 check('criar ponto repetido: 409 com o motivo', repetido.status === 409 && /já é um ponto/.test(repetido.json?.erro), JSON.stringify(repetido.json));
 
 console.log('== A. Admin: Alterar foto de um ponto FIXO ==');
+await admin.click('#pontoCabecalho .menu-mais > summary');
 const [seletorFixo] = await Promise.all([
   admin.waitForEvent('filechooser'),
-  admin.click('#pontoInformacoes [data-alterar-foto]'),
+  admin.click('#pontoCabecalho [data-alterar-foto]'),
 ]);
 await seletorFixo.setFiles(FOTO_EM_PE);
 await enquadrar();
-await admin.waitForFunction((id) => !!document.querySelector('#pontoInformacoes .ficha-foto img'), FIXO, { timeout: 10000 });
+await admin.waitForFunction(() => !!document.querySelector('#pontoCabecalho .ficha-foto img'), null, { timeout: 10000 });
 check('foto do fixo gravada (/e2e-storage, ?v=)', /^\/e2e-storage\/ponto-\d+\.jpg\?v=\d+$/.test(PG(`SELECT foto_instalacao_url FROM pontos WHERE id = ${FIXO}`)));
 check('foto do fixo: 1280×720', dimensoesDoArquivo(`${STORAGE}ponto-${FIXO}.jpg`) === '1280,720');
 
@@ -235,7 +244,7 @@ await irAdmin('#rede/pontos', '.colecao');
 const abas = await admin.locator('.modulo-aba').allInnerTexts();
 check('Rede: abas Pontos e Candidaturas', JSON.stringify(abas.map((a) => a.replace(/\s*\d+$/, '').trim())) === JSON.stringify(['Pontos', 'Candidaturas']), JSON.stringify(abas));
 const chips = await admin.locator('.colecao .chip').allInnerTexts();
-for (const c of ['Todos', 'Fixos', 'Móveis', 'Com problema', 'Aguardando instalação', 'Aguardando primeiro sinal', 'Ativos', 'Em reparo', 'Inativos']) {
+for (const c of ['Todos', 'Fixos', 'Móveis', 'Com problema', 'Sem comunicação', 'Aguardando instalação', 'Aguardando primeiro sinal', 'Ativos', 'Em reparo', 'Inativos']) {
   check(`filtro "${c}"`, chips.includes(c), JSON.stringify(chips));
 }
 check('barra Móveis escondida em "Todos"', !(await admin.locator('[data-barra-moveis]').isVisible()));
@@ -271,10 +280,12 @@ check('rede: nome sem a cidade', PG(`SELECT nome FROM pontos WHERE id = ${REDE}`
 check('rede criada sem tela', PG(`SELECT COUNT(*) FROM dispositivos WHERE ponto_id = ${REDE}`) === '0');
 check('rede: foto gravada', /^\/e2e-storage\/ponto-\d+\.jpg\?v=\d+$/.test(PG(`SELECT foto_instalacao_url FROM pontos WHERE id = ${REDE}`)));
 check('rede: foto 1280×720', dimensoesDoArquivo(`${STORAGE}ponto-${REDE}.jpg`) === '1280,720');
-const cabecalho = await admin.locator('#pontoInformacoes').innerText();
+const cabecalho = await admin.locator('[data-rede-cabecalho]').innerText();
 check('cabeçalho: "Mostraí Móvel" e "Matão/SP" separados', /MOSTRAÍ MÓVEL/i.test(cabecalho) && cabecalho.includes('Matão/SP') && !/Móvel — Matão/i.test(cabecalho), cabecalho.slice(0, 120));
-check('cabeçalho: ITINERANTE e Ativa', /Itinerante/i.test(cabecalho) && /Ativa/.test(cabecalho));
-check('ficha: um único "+ Adicionar tela"', (await admin.locator('[data-nova-tela]').count()) === 1);
+const selosRede = await admin.locator('[data-rede-cabecalho] .ponto-cabecalho-selos').innerText();
+check('cabeçalho: MÓVEL e Ativa (sem ITINERANTE)', /MÓVEL/i.test(selosRede) && /Ativa/.test(selosRede) && !/Itinerante/i.test(cabecalho), selosRede);
+check('cabeçalho: 0 telas · 0 operando · 0 compromissos futuros', /0 telas · 0 operando · 0 compromissos futuros/.test(cabecalho), cabecalho);
+check('ficha: um único "Adicionar tela"', (await admin.locator('[data-nova-tela]').count()) === 1);
 const dup = await apiAdmin('/admin/pontos-moveis', 'POST', { nome: 'Outra', cidade: 'matão', uf: 'SP' });
 check('mesma cidade + UF de novo: 409', dup.status === 409, JSON.stringify(dup.json));
 const semNome = await apiAdmin('/admin/pontos-moveis', 'POST', { cidade: 'Araraquara', uf: 'SP' });
@@ -284,8 +295,13 @@ console.log('== A. Admin: o grid com fixo e móvel ==');
 await irAdmin('#rede/pontos', '.colecao');
 const cardAdmin = admin.locator(`.ponto-card[href="#rede/pontos/${REDE}"]`);
 const textoCardAdmin = await cardAdmin.innerText();
-check('card admin: ITINERANTE · Ativa · Matão/SP', /Itinerante/i.test(textoCardAdmin) && /Ativa/.test(textoCardAdmin) && textoCardAdmin.includes('Matão/SP'), textoCardAdmin);
-check('card admin: Atual / Próximo', /Atual/i.test(textoCardAdmin) && /Próximo/i.test(textoCardAdmin));
+check(
+  'card admin: MÓVEL · Ativa · Matão/SP',
+  /MÓVEL/.test(await cardAdmin.locator('.selo-movel').innerText()) && !/Itinerante/i.test(textoCardAdmin) && /Ativa/.test(textoCardAdmin) && textoCardAdmin.includes('Matão/SP'),
+  textoCardAdmin,
+);
+check('card admin: Local atual / Próximo', /Local atual/i.test(textoCardAdmin) && /Próximo/i.test(textoCardAdmin), textoCardAdmin);
+check('card admin: [Abrir]', /Abrir/.test(textoCardAdmin));
 check('card admin: foto real', await cardAdmin.locator('.ponto-card-media img').evaluate((i) => i.complete && i.naturalWidth === 1280));
 const larguras = await admin.locator('.colecao .ponto-card:not([hidden])').evaluateAll((cs) => cs.map((c) => Math.round(c.getBoundingClientRect().width)));
 check('card móvel e fixo com a mesma largura', new Set(larguras).size === 1, JSON.stringify(larguras));
@@ -298,8 +314,8 @@ check('filtro Móveis: só a rede', (await admin.locator('.colecao .ponto-card:n
 await shot(admin.locator('#conteudo'), 'grid-moveis', { animations: 'disabled' });
 
 console.log('== A. Admin: duas telas ==');
-await irAdmin(`#rede/pontos/${REDE}`, '#pontoTelas [data-nova-tela]');
-await admin.click('#pontoTelas [data-nova-tela]');
+await irAdmin(`#rede/pontos/${REDE}`, '[data-rede-cabecalho] [data-nova-tela]');
+await admin.click('[data-rede-cabecalho] [data-nova-tela]');
 await admin.waitForURL(/telas\/\d+/, { timeout: 10000 });
 await admin.waitForSelector('.tela-ficha');
 await redeQuieta(admin);
@@ -308,7 +324,7 @@ check('ficha da tela: "Instalada em"', /Instalada em/.test(fichaTela));
 check('ficha da tela: sem custo/amortização', !/Custo|amortiza|R\$/i.test(fichaTela), fichaTela);
 const TELA_A = PG(`SELECT min(id) FROM dispositivos WHERE ponto_id = ${REDE}`);
 await irAdmin(`#rede/pontos/${REDE}`, '#pontoTelas');
-await admin.click('#pontoTelas [data-nova-tela]');
+await admin.click('[data-rede-cabecalho] [data-nova-tela]');
 await admin.waitForURL(/telas\/\d+/, { timeout: 10000 });
 const TELA_B = PG(`SELECT max(id) FROM dispositivos WHERE ponto_id = ${REDE}`);
 check('duas telas na rede', PG(`SELECT COUNT(*) FROM dispositivos WHERE ponto_id = ${REDE}`) === '2');
@@ -341,8 +357,8 @@ const cardRede = anun.locator(`.ponto-escolha[data-ponto-id="${REDE}"]`);
 let textoCard = await cardRede.innerText();
 check('card: nome "Mostraí Móvel" (sem cidade colada)', textoCard.includes('Mostraí Móvel') && !/Móvel — /.test(textoCard), textoCard);
 check('card: cidade separada', textoCard.includes('Matão/SP'));
-check('card: selo ITINERANTE', /ITINERANTE/i.test(textoCard));
-check('card: Atual — Sem localização no momento', /Atual\s*Sem localização no momento/i.test(textoCard), textoCard);
+check('card: selo MÓVEL (sem ITINERANTE)', /MÓVEL/.test(await cardRede.locator('.selo-movel').innerText()) && !/itinerante/i.test(textoCard), textoCard);
+check('card: Local atual — Sem localização no momento', /Local atual\s*Sem localização no momento/i.test(textoCard), textoCard);
 check('card: Próxima localização — Nenhuma programada', /Próxima localização\s*Nenhuma programada/i.test(textoCard), textoCard);
 check(
   'card: nada técnico',
@@ -383,101 +399,166 @@ await anun.waitForSelector(`.ponto-escolha[data-ponto-id="${REDE}"] input:checke
 check('recarregar mantém a escolha', true);
 
 // ---------------------------------------------------------------------------
-console.log('== A. Admin: evento com a tela A, evento futuro e hospedagem da B ==');
-await irAdmin(`#rede/pontos/${REDE}`, '[data-novo-evento]');
-await admin.click('[data-novo-evento]');
+console.log('== A. Admin: compromisso em outro local (tela A), um futuro e um na conta (tela B) ==');
+// Rede Front V3: "+ Novo evento" e "+ Nova hospedagem" viraram UM formulário
+// (#formCompromisso) — o contexto diz se é numa conta ou em outro local.
+// Envia o formulário e espera fechar; se não fechar, diz o porquê.
+async function enviarCompromisso(rotulo) {
+  await modal().locator('button[type=submit]').click();
+  try {
+    await admin.waitForFunction(() => !document.querySelector('dialog[open] #formCompromisso'), null, { timeout: 10000 });
+    return true;
+  } catch {
+    const msg = await modal().locator('[data-msg]').innerText().catch(() => '?');
+    check(`${rotulo}: o modal fechou`, false, msg);
+    await admin.keyboard.press('Escape');
+    return false;
+  }
+}
+const telaLivre = (id) =>
+  admin.waitForFunction(
+    (t) => /livre/.test(document.querySelector(`dialog[open] [name="telas"][value="${t}"]`)?.closest('label')?.textContent || ''),
+    id,
+    { timeout: 8000 },
+  );
+await irAdmin(`#rede/pontos/${REDE}`, '[data-rede-cabecalho] [data-novo-compromisso]');
+check('compromissos: vazio, com o botão', /Nenhum compromisso agora ou programado/.test(await admin.locator('[data-compromissos]').innerText()));
+await admin.click('[data-rede-cabecalho] [data-novo-compromisso]');
 await modal().waitFor();
-check('evento: "Operar durante todo o período" marcado', await modal().locator('[data-todo-periodo]').isChecked());
-check('evento: telas participantes', /Telas participantes/.test(await modal().innerText()));
-await admin.fill('#evNome', 'Feira de Negócios');
-await admin.fill('#evLocal', 'Parque de Exposições');
-await admin.fill('#evEndereco', 'Av. das Feiras, 100');
-await admin.fill('#evPublico', '600').catch(() => {});
-await admin.fill('#evInicio', parede(-1 * HORA));
-await admin.fill('#evFim', parede(DIA));
-await admin.locator('#evFim').dispatchEvent('change');
-await admin.waitForFunction(
-  (id) => /livre/.test(document.querySelector(`[data-livre="${id}"]`)?.textContent || ''),
-  TELA_A,
-  { timeout: 8000 },
-);
-await modal().locator(`[name="telas"][value="${TELA_A}"]`).check();
-await modal().locator('button[type=submit]').click();
-await admin.waitForSelector('[data-agenda] [data-evento-id]', { timeout: 10000 });
+await admin.click('label:has([name="contexto"][value="externo"])');
+check('outro local: sem conta e sem benefício', !(await admin.isVisible('#cmpConta')) && !(await admin.isVisible('[data-beneficio]')));
+check('outro local: "Telas" (várias)', (await modal().locator('[data-telas-titulo]').innerText()) === 'Telas');
+await admin.fill('#cmpNome', 'Feira de Negócios');
+await admin.fill('#cmpLocal', 'Parque de Exposições');
+await admin.fill('#cmp_cep', '15990-000');
+await admin.fill('#cmp_logradouro', 'Avenida das Feiras');
+await admin.fill('#cmp_numero', '100');
+await admin.fill('#cmp_bairro', 'Jardim');
+// Já começou há 1 h e vai até daqui a 23 h: período de até 24 h.
+await admin.fill('#cmpInicio', parede(-1 * HORA));
+await admin.fill('#cmpFim', parede(23 * HORA));
+await admin.dispatchEvent('#cmpFim', 'change');
+await telaLivre(TELA_A);
+check('período curto: "Operar durante todo o período" marcado', await admin.isChecked('[name="horario_modo"][value="periodo"]'));
+check('outro local: telas em caixas (várias)', (await admin.getAttribute(`[name="telas"][value="${TELA_A}"]`, 'type')) === 'checkbox');
+await admin.check(`[name="telas"][value="${TELA_A}"]`);
+await shot(modal(), 'compromisso-externo');
+await enviarCompromisso('compromisso em outro local');
 await redeQuieta(admin);
 const EVENTO = PG(`SELECT id FROM pontos_moveis_eventos WHERE ponto_id = ${REDE}`);
-await admin.click(`[data-evento-acao="iniciar"][data-evento="${EVENTO}"]`);
-await modal().waitFor();
-await modal().locator('button.btn.primary, button[data-confirmar]').last().click();
-await admin.waitForSelector('[data-operacao-agora]', { timeout: 10000 });
+check('outro local: evento com a tela A, durante todo o período', PG(`SELECT nome || '|' || (horario_operacao IS NULL) FROM pontos_moveis_eventos WHERE id = ${EVENTO}`) === 'Feira de Negócios|true');
+check(
+  'outro local: endereço composto das partes',
+  /Avenida das Feiras, 100/.test(PG(`SELECT endereco FROM pontos_moveis_eventos WHERE id = ${EVENTO}`)),
+);
+await admin.waitForSelector(`[data-proximos] [data-compromisso="e${EVENTO}"][data-contexto="externo"]`, { timeout: 10000 });
+await admin.click(`[data-comp-acao="iniciar"][data-ref="e${EVENTO}"]`);
+await admin.waitForSelector('dialog[open] [data-confirmar]');
+await admin.click('dialog[open] [data-confirmar]');
+await admin.waitForSelector(`[data-agora] [data-compromisso="e${EVENTO}"]`, { timeout: 10000 });
 await redeQuieta(admin);
-const futuro = await apiAdmin(`/admin/pontos/${REDE}/eventos`, 'POST', {
+const futuro = await apiAdmin(`/admin/pontos/${REDE}/compromissos`, 'POST', {
+  contexto: 'externo',
   nome: 'Festa do Peão',
   local: 'Recinto de Rodeios',
-  endereco: 'Rod. SP-310, km 300',
+  endereco_origem: 'outro',
+  endereco_partes: { cep: '15990-000', logradouro: 'Rodovia SP-310', numero: '300', bairro: 'Zona Rural', cidade: 'Matão', uf: 'SP' },
   inicio: parede(3 * DIA),
   fim: parede(3 * DIA + 5 * HORA),
+  horario_modo: 'periodo',
   telas: [Number(TELA_A)],
-  publico_estimado: 5000,
 });
-check('evento futuro cadastrado', futuro.status === 201, JSON.stringify(futuro.json));
-await irAdmin(`#rede/pontos/${REDE}`, '[data-nova-hospedagem]');
-await admin.click('#pontoInformacoes [data-nova-hospedagem]');
+check('compromisso futuro cadastrado', futuro.status === 201, JSON.stringify(futuro.json));
+
+// Na conta: busca a conta, o endereço dela, a tela B; a A está ocupada.
+await admin.click('[data-rede-cabecalho] [data-novo-compromisso]');
 await modal().waitFor();
-await admin.fill('#hoInicio', parede(-1 * HORA));
-await admin.fill('#hoFim', parede(2 * DIA));
-await admin.locator('#hoFim').dispatchEvent('change');
-await admin.waitForFunction(
-  (id) => [...document.querySelectorAll('#hoTela option')].some((o) => o.value === String(id) && !o.disabled && /livre/.test(o.textContent)),
-  TELA_B,
-  { timeout: 8000 },
-);
-check(
-  'hospedagem: a tela A (no evento) aparece ocupada',
-  await admin.evaluate((id) => document.querySelector(`#hoTela option[value="${id}"]`)?.disabled === true, TELA_A),
-);
-check('hospedagem: rede listada com a cidade', /Mostraí Móvel · Matão\/SP/.test(await modal().locator('#hoRede').innerText()));
-await admin.selectOption('#hoTela', String(TELA_B));
-await admin.fill('#hoConta', `Padaria Central (#${ANF})`);
-await admin.locator('#hoConta').dispatchEvent('change');
-await admin.fill('#hoLocal', 'Padaria Central');
-await admin.fill('#hoEndereco', 'Rua Nove, 90');
-await modal().locator('button[type=submit]').click();
-await admin.waitForSelector('[data-agenda] [data-hospedagem-id]', { timeout: 10000 });
+check('na conta: contexto padrão', await admin.isChecked('[name="contexto"][value="conta"]'));
+await admin.fill('#cmpConta', 'Padaria');
+await admin.waitForSelector('#cmpContaLista [role="option"]');
+const opcoes = await admin.$$eval('#cmpContaLista [role="option"]', (ls) => ls.map((l) => l.innerText));
+check('busca de conta: a Padaria Central, com a cidade', opcoes.length === 1 && /Padaria Central/.test(opcoes[0]) && /Matão\/SP/.test(opcoes[0]), opcoes.join(' | '));
+await admin.click('#cmpContaLista [role="option"]');
+await admin.waitForSelector('[data-conta-escolhida]:not([hidden]) b');
+check('conta escolhida: Padaria Central', (await modal().locator('[data-conta-escolhida] b').innerText()) === 'Padaria Central');
+await admin.waitForSelector('[name="endereco_origem"]');
+check('endereço da conta já escolhido', await admin.isChecked('[name="endereco_origem"][value="conta"]'));
+check('benefício na conta', /Benefício/.test(await modal().locator('[data-beneficio]').innerText()));
+await admin.fill('#cmpInicio', parede(-1 * HORA));
+await admin.fill('#cmpFim', parede(2 * DIA));
+await admin.dispatchEvent('#cmpFim', 'change');
+await telaLivre(TELA_B);
+check('na conta: a tela A (no outro local) aparece ocupada', await admin.isDisabled(`[name="telas"][value="${TELA_A}"]`));
+check('na conta: uma tela só (rádio)', (await admin.getAttribute(`[name="telas"][value="${TELA_B}"]`, 'type')) === 'radio');
+check('vários dias sem horário do local: nada marcado', (await admin.$$eval('[name="horario_modo"]:checked', (r) => r.length)) === 0 && !(await admin.isVisible('[data-modo-local]')));
+await admin.check(`[name="telas"][value="${TELA_B}"]`);
+await admin.check('[name="horario_modo"][value="periodo"]');
+await shot(modal(), 'compromisso-conta');
+await enviarCompromisso('compromisso na conta');
 await redeQuieta(admin);
 const HOSP = PG(`SELECT id FROM pontos_moveis_hospedagens WHERE ponto_id = ${REDE}`);
-const linhaHosp = admin.locator(`[data-hospedagem-id="${HOSP}"]`);
+check(
+  'na conta: hospedagem programada da Padaria na tela B, endereço da conta',
+  PG(`SELECT conta_id || '|' || dispositivo_id || '|' || estado || '|' || local || '|' || endereco FROM pontos_moveis_hospedagens WHERE id = ${HOSP}`).startsWith(
+    `${ANF}|${TELA_B}|programada|Padaria Central|Rua Nove, 90`,
+  ),
+  PG(`SELECT conta_id || '|' || dispositivo_id || '|' || estado || '|' || local || '|' || endereco FROM pontos_moveis_hospedagens WHERE id = ${HOSP}`),
+);
+const linhaHosp = admin.locator(`[data-compromisso="h${HOSP}"]`);
+await linhaHosp.waitFor({ timeout: 10000 });
 check('termo físico: Pendente', (await linhaHosp.locator('[data-termo-fisico]').innerText()) === 'Pendente');
-check('iniciar travado sem o termo', await linhaHosp.locator('[data-hosp-acao="iniciar"]').isDisabled());
-await linhaHosp.locator('[data-hosp-acao="termo"]').click();
+check('iniciar travado sem o termo', await linhaHosp.locator('[data-comp-acao="iniciar"]').isDisabled());
+await linhaHosp.locator('[data-comp-acao="termo"]').click();
 await modal().waitFor();
 await modal().locator('[name="assinado"]').check();
 await modal().locator('button[type=submit]').click();
-await admin.waitForSelector(`[data-hospedagem-id="${HOSP}"] [data-termo-fisico="assinado"]`, { timeout: 10000 });
+await admin.waitForSelector(`[data-compromisso="h${HOSP}"] [data-termo-fisico="assinado"]`, { timeout: 10000 });
 await redeQuieta(admin);
-await admin.click(`[data-hospedagem-id="${HOSP}"] [data-hosp-acao="iniciar"]`);
+await admin.click(`[data-comp-acao="iniciar"][data-ref="h${HOSP}"]`);
 await modal().waitFor();
+check('iniciar na conta: registra a entrega do equipamento', /Itens/.test(await modal().innerText()) && /Condição/.test(await modal().innerText()));
 await modal().locator('button[type=submit]').click();
-await admin.waitForFunction(
-  (id) => document.querySelector(`[data-hospedagem-id="${id}"]`)?.textContent.includes('Hospedado agora'),
-  HOSP,
-  { timeout: 10000 },
-);
+await admin.waitForSelector(`[data-agora] [data-compromisso="h${HOSP}"]`, { timeout: 10000 });
 await redeQuieta(admin);
-const operacao = await admin.locator('[data-operacao-agora]').innerText();
-check('operação agora: A no evento', operacao.includes(CODIGO_A) && /Em evento · Feira de Negócios/.test(operacao), operacao);
-check('operação agora: B hospedada', operacao.includes(CODIGO_B) && /Hospedada · Padaria Central/.test(operacao), operacao);
-check('cabeçalho: "Telas comerciais ativas agora 2 de 2"', /Telas comerciais ativas agora\s*2 de 2/.test(await admin.locator('#pontoInformacoes').innerText()));
-await shot(admin.locator('.ponto-detalhe-grid'), 'ficha-rede', { animations: 'disabled' });
-const conflito = await apiAdmin(`/admin/pontos/${REDE}/eventos`, 'POST', {
+check(
+  'hospedagem em curso, com a entrega registrada',
+  PG(
+    `SELECT h.estado || '|' || (SELECT COUNT(*) FROM hospedagem_movimentacoes m WHERE m.hospedagem_id = h.id AND m.tipo = 'entrega') FROM pontos_moveis_hospedagens h WHERE h.id = ${HOSP}`,
+  ) === 'ativa|1',
+);
+// As duas TVs comunicando agora (o Player bate a cada 15 s) — o estado
+// "operando" não depende de quanto tempo o roteiro levou até aqui.
+PG(
+  `UPDATE dispositivos SET ultima_vez_online = now(), player_estado = 'PLAYING', config_versao_aplicada = config_versao_desejada WHERE ponto_id = ${REDE}`,
+);
+await admin.reload();
+await admin.waitForSelector('[data-rede-cabecalho]');
+await redeQuieta(admin);
+const linhaA = await admin.locator(`[data-tela-linha="${TELA_A}"]`).innerText();
+const linhaB = await admin.locator(`[data-tela-linha="${TELA_B}"]`).innerText();
+check('tela A: operando, no outro local', linhaA.includes(CODIGO_A) && /Operando/.test(linhaA) && /Em Parque de Exposições até/.test(linhaA), linhaA);
+check('tela B: operando, na conta', linhaB.includes(CODIGO_B) && /Operando/.test(linhaB) && /Em Padaria Central até/.test(linhaB), linhaB);
+const agora = await admin.locator('[data-agora]').innerText();
+check('Agora: os dois compromissos', /Feira de Negócios/.test(agora) && /Padaria Central/.test(agora), agora);
+check('Próximos: a Festa do Peão', /Festa do Peão/.test(await admin.locator('[data-proximos]').innerText()));
+check(
+  'cabeçalho: 2 telas · 2 operando · 1 compromisso futuro',
+  /2 telas · 2 operando · 1 compromisso futuro/.test(await admin.locator('[data-rede-cabecalho]').innerText()),
+  await admin.locator('[data-rede-cabecalho]').innerText(),
+);
+await shot(admin.locator('#conteudo'), 'ficha-rede', { animations: 'disabled' });
+const conflito = await apiAdmin(`/admin/pontos/${REDE}/compromissos`, 'POST', {
+  contexto: 'externo',
   nome: 'Outro evento',
   local: 'Ginásio',
-  endereco: 'Rua X, 1',
+  endereco_origem: 'outro',
+  endereco_partes: { cep: '15990-000', logradouro: 'Rua X', numero: '1', bairro: 'Centro', cidade: 'Matão', uf: 'SP' },
   inicio: parede(2 * HORA),
   fim: parede(5 * HORA),
+  horario_modo: 'periodo',
   telas: [Number(TELA_B)],
 });
-check('evento com a tela B ocupada: 409', conflito.status === 409, JSON.stringify(conflito.json));
+check('compromisso com a tela B ocupada: 409 na tela', conflito.status === 409 && conflito.json?.campo === 'telas', JSON.stringify(conflito.json));
 
 console.log('== A. Admin: Agenda móvel sob demanda ==');
 await irAdmin('#rede/pontos', '.colecao');
@@ -485,9 +566,12 @@ await admin.locator('.colecao .chip', { hasText: 'Móveis' }).click();
 await admin.click('[data-barra-moveis] [data-agenda-movel]');
 await admin.waitForSelector('dialog[open] [data-agenda-admin]', { timeout: 10000 });
 const agendaAdmin = await modal().innerText();
-check('agenda móvel: colunas', ['Data', 'Horário', 'Rede', 'Tela(s)', 'Tipo', 'Local', 'Estado'].every((c) => agendaAdmin.includes(c)), agendaAdmin.slice(0, 200));
+check('agenda móvel: colunas (Onde no lugar de Tipo)', ['Data', 'Horário', 'Rede', 'Tela(s)', 'Onde', 'Local', 'Estado'].every((c) => agendaAdmin.includes(c)) && !/\bTipo\b/.test(agendaAdmin), agendaAdmin.slice(0, 200));
 check('agenda móvel: evento, hospedagem e o futuro', /Feira de Negócios/.test(agendaAdmin) && /Padaria Central/.test(agendaAdmin) && /Festa do Peão/.test(agendaAdmin));
 check('agenda móvel: 3 linhas (agora + futuro)', (await modal().locator('[data-agenda-admin] tbody tr').count()) === 3);
+const onde = await modal().locator('[data-agenda-admin] tbody tr').evaluateAll((trs) => trs.map((tr) => `${tr.dataset.agendaTipo}:${tr.children[4].textContent.trim()}`).sort());
+check('agenda móvel: "Na conta" e "Outro local"', JSON.stringify(onde) === JSON.stringify(['evento:Outro local', 'evento:Outro local', 'hospedagem:Na conta']), JSON.stringify(onde));
+check('agenda móvel: rede com a cidade', /Mostraí Móvel\s*Matão\/SP/.test(await modal().locator('[data-agenda-admin] tbody tr').first().locator('td').nth(2).innerText()));
 await shot(modal(), 'agenda-movel-admin');
 await modal().locator('[data-agenda-modo="1"]').click();
 await admin.waitForSelector('dialog[open] [data-agenda-corpo] .empty-state, dialog[open] [data-agenda-admin]', { timeout: 10000 });
@@ -499,7 +583,7 @@ console.log('== C. Anunciante: rede em operação ==');
 await recarregarQuieto(anun);
 await anun.waitForSelector(`.ponto-escolha[data-ponto-id="${REDE}"]`, { timeout: 10000 });
 textoCard = await anun.locator(`.ponto-escolha[data-ponto-id="${REDE}"]`).innerText();
-check('card: "2 locais em operação"', /Atual\s*2 locais em operação/i.test(textoCard), textoCard);
+check('card: "2 locais em operação"', /Local atual\s*2 locais em operação/i.test(textoCard), textoCard);
 check('card: próxima localização = o evento futuro', /Próxima localização\s*Festa do Peão · Recinto de Rodeios ·/i.test(textoCard), textoCard);
 check('card: sem público estimado', !/pessoas|público/i.test(textoCard));
 await anun.locator(`.ponto-escolha[data-ponto-id="${REDE}"] [data-agenda-rede]`).click();
@@ -564,13 +648,24 @@ await modal().waitFor();
 check('ver histórico do benefício (mesmo sem alteração)', /Histórico do benefício/.test(await modal().innerText()));
 await modal().locator('[data-fechar]').first().click();
 await modal().waitFor({ state: 'detached' }).catch(() => {});
+check('interesse: botão "Agendar compromisso"', (await admin.locator('[data-interesse-acao="agendar"]').first().innerText()).trim() === 'Agendar compromisso');
 await admin.click('[data-interesse-acao="agendar"]');
-await modal().waitFor();
-await admin.waitForFunction(() => document.querySelector('#hoTela')?.options.length > 0);
-check('agendar: conta pré-preenchida', (await admin.inputValue('#hoConta')) === `Padaria Central (#${ANF})`);
-check('agendar: local pré-preenchido', (await admin.inputValue('#hoLocal')) === 'Padaria Central');
-check('agendar: endereço pré-preenchido', (await admin.inputValue('#hoEndereco')).length > 0);
-check('agendar: rede escolhida (única)', (await admin.inputValue('#hoRede')) === REDE);
+await admin.waitForSelector('dialog[open] #formCompromisso');
+await admin.waitForSelector('dialog[open] [data-conta-escolhida]:not([hidden]) b');
+await admin.waitForSelector('dialog[open] [name="endereco_origem"]');
+await admin.waitForSelector('dialog[open] [name="telas"]');
+check('agendar: contexto "Numa conta"', await admin.isChecked('[name="contexto"][value="conta"]'));
+check('agendar: conta pré-preenchida', (await modal().locator('[data-conta-escolhida] b').innerText()) === 'Padaria Central');
+check(
+  'agendar: endereço da conta pré-escolhido (o local do interesse)',
+  (await admin.isChecked('[name="endereco_origem"][value="conta"]')) &&
+    /Rua Nove, 90/.test(await modal().locator('label:has([name="endereco_origem"][value="conta"])').innerText()),
+);
+check(
+  'agendar: rede escolhida (única, sem seletor) com as telas dela',
+  !(await modal().locator('#cmpRede').count()) && (await modal().locator('[name="telas"]').count()) === 2,
+);
+await shot(modal(), 'agendar-interesse');
 await modal().locator('[data-fechar]').first().click();
 
 // ---------------------------------------------------------------------------

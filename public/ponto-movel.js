@@ -7,7 +7,9 @@
 (() => {
   const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
   window.PONTO_MOVEL = {
-    selo: 'Itinerante',
+    // MÓVEL (Rede Front V3): o selo da rede no Admin e no card público — o
+    // CSS põe em caixa alta.
+    selo: 'Móvel',
     // A ideia comercial (pedido do dono): mobilidade e eventos — nunca
     // promessa de audiência.
     explica: (cidade) => `Rede móvel de eventos e ações${cidade ? ` em ${cidade}` : ''}.`,

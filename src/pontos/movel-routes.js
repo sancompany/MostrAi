@@ -4,6 +4,7 @@ const os = require('node:os');
 const multer = require('multer');
 const movel = require('./movel');
 const hospedagem = require('./hospedagem');
+const compromissos = require('./compromissos');
 const interesses = require('./hospedagem-interesse');
 const equipamento = require('./hospedagem-equipamento');
 const sse = require('../lib/sse');
@@ -280,6 +281,69 @@ router.put(
     const r = await hospedagem.alterarPeriodo(id, req.params.hid, req.body);
     await avisar(id, [r.contaId]);
     res.json({ ok: true, inicio: r.inicio, fim: r.fim });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Compromisso (estação Rede Front V3): UM fluxo para conta anfitriã e local
+// externo — src/pontos/compromissos.js decide; hospedagem e evento executam.
+// As rotas de hospedagens/eventos acima continuam (compatibilidade e as ações
+// próprias da conta: termo físico, retirada, fotos).
+// ---------------------------------------------------------------------------
+router.get(
+  '/admin/compromissos/contas',
+  simples(async (req, res) => {
+    res.json(await compromissos.buscarContas(req.query.q));
+  }),
+);
+
+router.get(
+  '/admin/compromissos/contas/:id/locais',
+  simples(async (req, res) => {
+    const locais = await compromissos.locaisDaConta(req.params.id);
+    if (!locais) return res.status(404).json({ erro: 'conta não encontrada' });
+    res.json(locais);
+  }),
+);
+
+router.get(
+  '/admin/pontos/:id/compromissos',
+  rota(async (_req, res, id) => {
+    const lista = await compromissos.listar(id);
+    if (!lista) return res.status(404).json({ erro: 'rede não encontrada' });
+    res.json(lista);
+  }),
+);
+
+router.post(
+  '/admin/pontos/:id/compromissos',
+  rota(async (req, res, id) => {
+    const r = await compromissos.criar(id, req.body, adminDe(req));
+    if (r.contexto === 'conta' && req.body?.interesse_id) {
+      await require('../pendencias/repository')
+        .resolver(`HOSPEDAGEM_INTERESSE:${Number(req.body.interesse_id)}`, { resolucao: 'agendada', por: adminDe(req) })
+        .catch(() => {});
+    }
+    await avisar(id, [r.contaId]);
+    res.status(201).json(r);
+  }),
+);
+
+router.patch(
+  '/admin/pontos/:id/compromissos/:ref',
+  rota(async (req, res, id) => {
+    const r = await compromissos.editar(id, req.params.ref, req.body);
+    await avisar(id, [r.contaId]);
+    res.json({ ok: true, ref: r.ref });
+  }),
+);
+
+router.post(
+  '/admin/pontos/:id/compromissos/:ref/:acao',
+  rota(async (req, res, id) => {
+    const r = await compromissos.agir(id, req.params.ref, req.params.acao, req.body, adminDe(req));
+    await avisar(id, [r?.contaId]);
+    res.json({ ok: true, ...(r?.tempoSegundos !== undefined ? r : {}) });
   }),
 );
 

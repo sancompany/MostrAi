@@ -191,11 +191,28 @@ router.post('/seja-um-ponto', (_req, res) => {
 // decididos daqui (src/pontos/movel.js), nunca do navegador.
 router.get('/admin/pontos', async (_req, res) => {
   const pontos = await repo.listar();
-  const [beneficios, moveis] = await Promise.all([
+  const dispositivosRepo = require('../dispositivos/repository');
+  const [beneficios, moveis, telas] = await Promise.all([
     situacaoDosPontos(pontos.map((p) => p.id)),
     situacaoDasRedes(pontos.filter((p) => p.tipo === 'movel').map((p) => p.id)),
+    dispositivosRepo.listarTodos(),
   ]);
-  res.json(pontos.map((p) => ({ ...p, beneficio: beneficios.get(p.id) || null, movel: moveis.get(p.id) || null })));
+  // Estado das telas JÁ classificado pelo servidor (src/lib/status-tela.js):
+  // a grade, os filtros e o resumo do topo só somam — nunca reclassificam.
+  const porPonto = new Map();
+  for (const t of telas) porPonto.set(t.pontoId, [...(porPonto.get(t.pontoId) || []), t]);
+  res.json(
+    pontos.map((p) => {
+      const dela = porPonto.get(p.id) || [];
+      return {
+        ...p,
+        beneficio: beneficios.get(p.id) || null,
+        movel: moveis.get(p.id) || null,
+        estadoTelas: dispositivosRepo.resumoDeTelas(dela),
+        codigosTelas: dela.map((t) => t.codigo),
+      };
+    }),
+  );
 });
 
 // G.7 (docs/PENDENCIAS.md, pedido do dono 18/09/2026): quem ocupa cada ponto,
