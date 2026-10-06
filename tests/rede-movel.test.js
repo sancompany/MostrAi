@@ -71,6 +71,14 @@ test.after(async () => {
   await require('../src/lib/eventos').aguardarGravacoes();
   for (const id of criadas.pontos) {
     const telas = 'SELECT id FROM dispositivos WHERE ponto_id = $1';
+    // As métricas anônimas que citam a rede ou a tela de teste
+    // ("ponto:movel_criado" não tem conta).
+    await pool.query(
+      `DELETE FROM eventos WHERE anunciante_id IS NULL
+          AND (propriedades->>'ponto_id' = $1::int::text
+               OR propriedades->>'dispositivo_id' IN (SELECT id::text FROM dispositivos WHERE ponto_id = $1::int))`,
+      [id],
+    );
     const hosp = 'SELECT id FROM pontos_moveis_hospedagens WHERE ponto_id = $1';
     await pool.query(`DELETE FROM saldo_hospedagem_lancamentos WHERE hospedagem_id IN (${hosp})`, [id]);
     await pool.query(`DELETE FROM hospedagem_movimentacoes WHERE hospedagem_id IN (${hosp})`, [id]);
@@ -105,7 +113,12 @@ test.after(async () => {
 const cidadeUnica = () => `Cidade ${randomUUID().slice(0, 8)}`;
 
 async function criarRede(corpo = {}) {
-  const r = await admin('POST', '/admin/pontos-moveis', { cidade: cidadeUnica(), uf: 'SP', ...corpo });
+  const r = await admin('POST', '/admin/pontos-moveis', {
+    nome: 'Mostraí Móvel',
+    cidade: cidadeUnica(),
+    uf: 'SP',
+    ...corpo,
+  });
   assert.strictEqual(r.status, 201, JSON.stringify(r.json));
   criadas.pontos.push(r.json.id);
   return r.json;
@@ -240,20 +253,29 @@ const ENTREGA = { itens: { tela: true, suporte: true }, condicao: 'ok' };
 const ficha = async (redeId) => (await admin('GET', `/admin/pontos/${redeId}/movel`)).json;
 
 // ---------- a rede ----------
-test('rede: cidade e UF obrigatórias, nome padrão "Mostraí Móvel — {Cidade}", nasce SEM tela, uma por cidade', async () => {
-  assert.strictEqual((await admin('POST', '/admin/pontos-moveis', { uf: 'SP' })).status, 400, 'sem cidade');
-  assert.strictEqual((await admin('POST', '/admin/pontos-moveis', { cidade: cidadeUnica() })).status, 400, 'sem UF');
-  assert.strictEqual(
-    (await admin('POST', '/admin/pontos-moveis', { cidade: cidadeUnica(), uf: 'XX' })).status,
-    400,
-    'UF inválida',
-  );
+test('rede: nome, cidade e UF obrigatórios e independentes; nasce SEM tela, uma por cidade', async () => {
+  const nome = 'Mostraí Móvel';
+  for (const [corpo, campo] of [
+    [{ nome, uf: 'SP' }, 'cidade'],
+    [{ nome, cidade: cidadeUnica() }, 'uf'],
+    [{ nome, cidade: cidadeUnica(), uf: 'XX' }, 'uf'],
+    [{ cidade: cidadeUnica(), uf: 'SP' }, 'nome'],
+    [{ nome: '  ', cidade: cidadeUnica(), uf: 'SP' }, 'nome'],
+  ]) {
+    const r = await admin('POST', '/admin/pontos-moveis', corpo);
+    assert.strictEqual(r.status, 400, JSON.stringify(corpo));
+    assert.strictEqual(r.json.campo, campo, JSON.stringify(corpo));
+  }
   const cidade = cidadeUnica();
   const rede = await criarRede({ cidade });
-  assert.strictEqual(rede.nome, `Mostraí Móvel — ${cidade}`);
+  assert.deepStrictEqual(
+    [rede.nome, rede.cidade, rede.uf],
+    ['Mostraí Móvel', cidade, 'SP'],
+    'o nome é o que o Admin digitou — a cidade não entra nele',
+  );
   const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM dispositivos WHERE ponto_id = $1', [rede.id]);
   assert.strictEqual(rows[0].n, 0, 'nenhuma Tela 1 automática');
-  const dup = await admin('POST', '/admin/pontos-moveis', { cidade: ` ${cidade.toUpperCase()} `, uf: 'SP' });
+  const dup = await admin('POST', '/admin/pontos-moveis', { nome, cidade: ` ${cidade.toUpperCase()} `, uf: 'SP' });
   assert.strictEqual(dup.status, 409, 'mesma cidade + UF (sem diferença de caixa/espaço)');
   assert.match(dup.json.erro, /Já existe uma rede móvel/);
   const outraUf = await criarRede({ cidade, uf: 'MG', nome: 'Rede de teste' });
@@ -550,8 +572,16 @@ test('cobertura: o anunciante vê a rede com 0 tela em operação e a escolhe (1
   assert.ok(card, 'a rede aparece sempre');
   assert.strictEqual(card.tipo, 'movel');
   assert.strictEqual(card.inventario, false);
-  assert.strictEqual(card.movel.telas, 4);
-  assert.strictEqual(card.movel.emOperacao, 0);
+  assert.strictEqual(card.bloqueado, false, 'sem localização agora, continua aberta para escolha');
+  // O card não fala de telas nem de operação: sem localização agora é
+  // "0 locais", e sem próximo compromisso, `proximo: null`.
+  assert.deepStrictEqual(card.movel, {
+    cidade: rede.cidade,
+    uf: 'SP',
+    foto: null,
+    agora: { quantidade: 0, nome: null },
+    proximo: null,
+  });
   const escolha = await nav('PUT', '/anunciantes/me/pontos', { pontos: [rede.id] });
   assert.strictEqual(escolha.status, 200, JSON.stringify(escolha.json));
   const depois = await nav('GET', '/anunciantes/me/pontos-disponiveis');

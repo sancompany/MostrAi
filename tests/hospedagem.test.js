@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const pool = require('../src/db/pool');
@@ -201,7 +202,11 @@ async function novaCategoria(prefixo = 'Ramo') {
 // na hospedagem = "operar durante todo o período": a suíte não depende da
 // hora em que roda.
 async function criarMovel() {
-  const r = await admin('POST', '/admin/pontos-moveis', { cidade: `Cidade ${randomUUID().slice(0, 8)}`, uf: 'SP' });
+  const r = await admin('POST', '/admin/pontos-moveis', {
+    nome: 'Mostraí Móvel',
+    cidade: `Cidade ${randomUUID().slice(0, 8)}`,
+    uf: 'SP',
+  });
   assert.strictEqual(r.status, 201, JSON.stringify(r.json));
   criadas.pontos.push(r.json.id);
   await tirarDoSorteio(r.json.id);
@@ -403,13 +408,18 @@ test('5 e 6. tipo imutável e móvel nunca recebe dono — nem hospedando', asyn
   assert.deepStrictEqual(rows[0], { tipo: 'movel', anunciante_id: null });
 });
 
-test('8. foto da rede: só no móvel, só pelo Admin, e a ficha e a central a expõem', async () => {
+// Um JPEG de verdade (2×2, cinza, gerado pelo FFmpeg): a rota confere os
+// primeiros bytes (src/lib/imagem.js), não o tipo que o navegador declara.
+const JPEG_PEQUENO = Buffer.from(
+  '/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYwLjMxLjEwMgD/2wBDAAg+Pkk+SVVVVVVVVWRdZGhoaGRkZGRoaGhwcHCDg4NwcHBoaHBwfHyDg4+Tj4eHg4eTk5ubm7q6srLZ2eD/////xABNAAEBAAAAAAAAAAAAAAAAAAAABgEBAQEAAAAAAAAAAAAAAAAAAAYHEAEAAAAAAAAAAAAAAAAAAAAAEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAAgACAwESAAISAAMSAP/aAAwDAQACEQMRAD8ArRjouh//2Q==',
+  'base64',
+);
+
+test('8. foto do ponto (fixo ou rede): só pelo Admin, só imagem de verdade, e a ficha e a lista de pontos a expõem', async () => {
   const m = await criarMovel();
   const fixo = await pontoFixo();
-  const semArquivo = await admin('POST', `/admin/pontos/${m.id}/foto-movel`);
-  assert.strictEqual(semArquivo.status, 400);
-  const fd = new FormData();
-  fd.append('arquivo', new Blob([Buffer.from('x')], { type: 'image/jpeg' }), 'f.jpg');
+  const semArquivo = await admin('POST', `/admin/pontos/${m.id}/foto`);
+  assert.strictEqual(semArquivo.status, 400, 'sem arquivo');
   const cookie = await (async () => {
     // O navegador do admin guarda o cookie; reaproveita pelo fetch cru.
     const r = await fetch(`${base}/admin/login`, {
@@ -422,27 +432,47 @@ test('8. foto da rede: só no móvel, só pelo Admin, e a ficha e a central a ex
       .map((c) => c.split(';')[0])
       .join('; ');
   })();
-  const r = await fetch(`${base}/admin/pontos/${fixo.id}/foto-movel`, {
-    method: 'POST',
-    body: fd,
-    headers: { cookie, 'x-forwarded-for': IP },
-  });
-  assert.strictEqual(r.status, 409, 'ponto fixo não tem foto de rede móvel');
-  const html = new FormData();
-  html.append('arquivo', new Blob([Buffer.from('<script>')], { type: 'text/html' }), 'f.html');
-  const naoImagem = await fetch(`${base}/admin/pontos/${m.id}/foto-movel`, {
-    method: 'POST',
-    body: html,
-    headers: { cookie, 'x-forwarded-for': IP },
-  });
-  assert.strictEqual(naoImagem.status, 400, 'só imagem vai para o bucket público');
-  const anon = await fetch(`${base}/admin/pontos/${m.id}/foto-movel`, { method: 'POST', body: fd });
-  assert.strictEqual(anon.status, 401);
+  const enviar = async (pontoId, bytes, { tipo = 'image/jpeg', nome = 'f.jpg', comSessao = true } = {}) => {
+    const fd = new FormData();
+    fd.append('arquivo', new Blob([bytes], { type: tipo }), nome);
+    const r = await fetch(`${base}/admin/pontos/${pontoId}/foto`, {
+      method: 'POST',
+      body: fd,
+      headers: { 'x-forwarded-for': IP, ...(comSessao ? { cookie } : {}) },
+    });
+    return { status: r.status, json: await r.json().catch(() => null) };
+  };
+  // O upload vai para uma pasta local (STORAGE_CAPTURA, fora de produção) —
+  // nunca para o bucket de verdade.
+  const pasta = fs.mkdtempSync(path.join(os.tmpdir(), 'mostrai-foto-hosp-'));
+  const capturaAntes = process.env.STORAGE_CAPTURA;
+  process.env.STORAGE_CAPTURA = pasta;
+  try {
+    for (const ponto of [fixo, m]) {
+      const r = await enviar(ponto.id, JPEG_PEQUENO);
+      assert.strictEqual(r.status, 200, `fixo e rede aceitam (${ponto.tipo}): ${JSON.stringify(r.json)}`);
+      assert.match(r.json.url, new RegExp(`^/e2e-storage/ponto-${ponto.id}\\.jpg\\?v=\\d+$`));
+    }
+    const html = await enviar(m.id, Buffer.from('<html><script>alert(1)</script></html>'));
+    assert.strictEqual(html.status, 400, 'HTML declarado como image/jpeg não vai para o bucket público');
+    const anon = await enviar(m.id, JPEG_PEQUENO, { comSessao: false });
+    assert.strictEqual(anon.status, 401);
+    const inexistente = await enviar(999999999, JPEG_PEQUENO);
+    assert.strictEqual(inexistente.status, 404);
+  } finally {
+    if (capturaAntes === undefined) delete process.env.STORAGE_CAPTURA;
+    else process.env.STORAGE_CAPTURA = capturaAntes;
+    fs.rmSync(pasta, { recursive: true, force: true });
+  }
   await pool.query(`UPDATE pontos SET foto_instalacao_url = 'https://exemplo.test/movel.jpg' WHERE id = $1`, [m.id]);
   const ficha = (await admin('GET', `/admin/pontos/${m.id}/movel`)).json;
   assert.strictEqual(ficha.foto, 'https://exemplo.test/movel.jpg');
-  const lista = (await admin('GET', '/admin/pontos-moveis')).json.redes.find((x) => x.id === m.id);
-  assert.strictEqual(lista.foto, 'https://exemplo.test/movel.jpg');
+  // A rede aparece no MESMO grid dos fixos (GET /admin/pontos), com a foto
+  // em `movel.foto`; o fixo traz a dele na própria linha.
+  const pontos = (await admin('GET', '/admin/pontos')).json;
+  assert.strictEqual(pontos.find((p) => p.id === m.id).movel.foto, 'https://exemplo.test/movel.jpg');
+  assert.match(pontos.find((p) => p.id === fixo.id).foto_instalacao_url, /^\/e2e-storage\/ponto-\d+\.jpg\?v=\d+$/);
+  assert.strictEqual(pontos.find((p) => p.id === fixo.id).movel, null);
 });
 
 // =====================================================================
@@ -1869,7 +1899,8 @@ test('67. conta não forja nada: rotas do móvel e da hospedagem exigem o Admin'
   const nav = await entrar(conta);
   const m = await criarMovel();
   for (const [metodo, caminho, corpo] of [
-    ['GET', '/admin/pontos-moveis'],
+    ['GET', '/admin/pontos-moveis/agenda'],
+    ['POST', `/admin/pontos/${m.id}/foto`],
     [
       'POST',
       `/admin/pontos/${m.id}/hospedagens`,
