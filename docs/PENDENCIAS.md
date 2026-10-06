@@ -6003,6 +6003,23 @@ sem mexer (fora do escopo do hotfix):
       lote seguinte que já existia (renovação paga adiantada). Era assim
       antes; com o desconto agora só no fechamento, isso aparece na virada
       do ciclo em vez de durante ele.
+- SV3 [ ] Deadlock no gatilho `marcar_playlists_desatualizadas` (migration
+      083): cada disparo grava em TODAS as telas ativas. Dois comandos que
+      disparam o gatilho ao mesmo tempo travam um no outro, porque pegam as
+      mesmas linhas de `dispositivos` em ordem diferente. Exemplo: o
+      `UPDATE pontos SET status` de `sincronizarStatusPonto` e um
+      `DELETE FROM dispositivos WHERE ponto_id`. O Postgres derruba um deles
+      e a requisição volta 500.
+      Visto no CI do PR #121 (run 37530703481): o "revogar credencial" de
+      `tests/player-mvp.test.js` caiu enquanto outro arquivo de teste apagava
+      telas no mesmo banco. Em produção a chance é baixa (pouca escrita
+      concorrente), mas o efeito seria o mesmo.
+      Caminhos possíveis, a decidir:
+      - (a) o gatilho só sobe UMA versão global e o `GET /playlist` compara
+        com a versão da tela, sem varrer as telas;
+      - (b) repetir o comando quando o Postgres derrubar por deadlock
+        (SQLSTATE 40P01) nos caminhos que disparam o gatilho.
+      Fora do escopo do hotfix; nada mudou nesse código.
 
       (d) (Codex, PR #114) um ajuste NEGATIVO do Admin feito no mesmo
       instante em que o gerador reserva a hora da conta pode deixar a rede
