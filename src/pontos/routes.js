@@ -341,7 +341,15 @@ router.post('/anunciantes/me/comodato/trocar-por-tela', exigirAnuncianteLogado, 
 // por ponto (upsert) + `?v=` para o navegador não mostrar a foto antiga.
 // Na rede móvel é a foto/capa da REDE (nunca de uma tela).
 const uploadFoto = multer({ dest: os.tmpdir(), limits: { fileSize: 10 * 1024 * 1024 } });
-router.post('/admin/pontos/:id/foto', uploadFoto.single('arquivo'), async (req, res) => {
+// O limite da foto é o DESTA rota (10 MB) — o tratador global fala do
+// limite dos vídeos.
+const receberFoto = (req, res, next) =>
+  uploadFoto.single('arquivo')(req, res, (err) =>
+    err?.code === 'LIMIT_FILE_SIZE'
+      ? res.status(413).json({ erro: 'foto grande demais — o máximo é 10 MB' })
+      : next(err),
+  );
+router.post('/admin/pontos/:id/foto', receberFoto, async (req, res) => {
   try {
     const id = idDaRota(req.params.id);
     if (!req.file) return res.status(400).json({ erro: 'envie uma imagem (JPG, PNG ou WebP)' });

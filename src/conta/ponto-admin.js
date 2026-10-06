@@ -27,6 +27,9 @@ const sse = require('../lib/sse');
 //   POST /admin/anunciantes/:id/pontos
 const router = express.Router();
 
+// As partes do endereço que o ponto exige (src/lib/endereco.js: só o
+// complemento é opcional) — para o 400 apontar o campo que falta.
+const OBRIGATORIAS = ['cep', 'logradouro', 'numero', 'bairro', 'cidade', 'uf'];
 const LIMITES = { nome: 120, responsavel: 120, contato: 40, observacoes: 1000, fluxoMaximo: 10_000_000 };
 const erro = (status, mensagem, campo) => Object.assign(new Error(mensagem), { status, ...(campo ? { campo } : {}) });
 
@@ -49,7 +52,7 @@ async function lerPonto(corpo, conta) {
   if (problema) throw erro(400, problema.erro, problema.campo);
   const endereco = colunasDoEndereco(corpo);
   const falta = parteQueFalta(endereco);
-  if (falta) throw erro(400, `Endereço: preencha ${falta}`, 'logradouro');
+  if (falta) throw erro(400, `Endereço: preencha ${falta}`, OBRIGATORIAS.find((p) => !endereco[p]) || 'logradouro');
   const responsavel = texto(corpo.responsavel_nome, 'responsavel_nome', 'Responsável no local', LIMITES.responsavel);
   const contato = texto(corpo.responsavel_contato, 'responsavel_contato', 'Telefone do responsável', LIMITES.contato);
   let categoria = null;
@@ -102,9 +105,16 @@ router.post('/admin/anunciantes/:id/pontos', async (req, res) => {
       // passam os dois pela checagem de estabelecimento repetido.
       await c.query('SELECT pg_advisory_xact_lock(116, $1)', [conta.id]);
       await adicionarPapel(conta.id, 'ponto', c);
-      return materializarPonto({ ...dados, origem: 'admin', criado_por: admin }, conta, c, { incluirPedidos: true });
+      // Sem `aceitou_termos_em`: ninguém da conta aceitou nada neste ato —
+      // quem criou foi o Admin (a origem e o usuário ficam gravados).
+      return materializarPonto({ ...dados, origem: 'admin', criado_por: admin, aceitou_termos_em: null }, conta, c, {
+        incluirPedidos: true,
+      });
     });
   } catch (err) {
+    // O horário é validado no INSERT (src/pontos/repository.js#criar), que
+    // não sabe o nome do campo.
+    if (err.status === 400 && !err.campo && /hor[aá]rio/i.test(err.message)) err.campo = 'horario_semanal';
     if (err.status)
       return res.status(err.status).json({ erro: err.message, ...(err.campo ? { campo: err.campo } : {}) });
     throw err;

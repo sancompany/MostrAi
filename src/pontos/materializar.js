@@ -44,10 +44,10 @@ async function materializarPonto(dados, conta, db, { sufixoDoConflito = '', incl
     { incluirPedidos },
   );
   if (motivo) throw Object.assign(new Error(`${motivo}${sufixoDoConflito}`), { status: 409 });
-  const ponto = await pontosRepo.criar(
-    { ...dados, anunciante_id: conta.id, aceitou_termos_em: dados.aceitou_termos_em || new Date() },
-    db,
-  );
+  // Candidatura: o aceite vale do momento da aprovação. Quem chama pode
+  // dizer que não houve aceite (o Admin criando o ponto: `null`).
+  const aceite = Object.hasOwn(dados, 'aceitou_termos_em') ? dados.aceitou_termos_em : new Date();
+  const ponto = await pontosRepo.criar({ ...dados, anunciante_id: conta.id, aceitou_termos_em: aceite }, db);
   if (!(await indicacoesRepo.buscarCupomPorConta(conta.id, db))) {
     await indicacoesRepo.criarCupom(conta.id, conta.nome_empresa, db);
   }

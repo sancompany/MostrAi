@@ -878,6 +878,7 @@ test('7. Admin cria ponto FIXO na ficha da conta: sem candidatura, origem "admin
     },
   );
   assert.ok(p.horario_semanal?.seg, 'horário de funcionamento gravado');
+  assert.strictEqual(p.aceitou_termos_em, null, 'ninguém da conta aceitou termo neste ato: fica vazio');
   const telas = await pool.query('SELECT 1 FROM dispositivos WHERE ponto_id = $1', [p.id]);
   assert.strictEqual(telas.rowCount, 0, 'sem tela: nasce a instalar');
   const { rows: contaDepois } = await pool.query('SELECT papeis FROM anunciantes WHERE id = $1', [conta.id]);
@@ -969,7 +970,7 @@ test('7. Admin cria ponto FIXO na ficha da conta: sem candidatura, origem "admin
   const semNumero = await criar(conta.id, sem('numero'));
   assert.strictEqual(semNumero.status, 400, JSON.stringify(semNumero.json));
   assert.match(semNumero.json.erro, /número/);
-  assert.ok(semNumero.json.campo, 'aponta um campo do endereço');
+  assert.strictEqual(semNumero.json.campo, 'numero', 'aponta o campo que falta, não o logradouro');
   // Categoria desativada também não serve.
   await pool.query('UPDATE categorias SET ativo = false WHERE id = $1', [ramo.id]);
   const inativa = await criar(conta.id, { ...corpo, nome: 'Com ramo desativado' });
@@ -983,6 +984,7 @@ test('7. Admin cria ponto FIXO na ficha da conta: sem candidatura, origem "admin
     horario_semanal: { seg: { abre: '25:00', fecha: '10:00' } },
   });
   assert.strictEqual(horario.status, 400, JSON.stringify(horario.json));
+  assert.strictEqual(horario.json.campo, 'horario_semanal');
   const { rows: total } = await pool.query('SELECT COUNT(*)::int AS n FROM pontos WHERE anunciante_id = $1', [
     conta.id,
   ]);
@@ -993,16 +995,17 @@ test('7. Admin cria ponto FIXO na ficha da conta: sem candidatura, origem "admin
   const excluida = await novaConta();
   await pool.query('UPDATE anunciantes SET excluido_em = now() WHERE id = $1', [excluida.id]);
   assert.strictEqual((await criar(excluida.id, corpo)).status, 404, 'conta excluída');
+  // A conta própria é única no banco (índice único) e outros arquivos a
+  // criam/usam em paralelo: confere só quando ela já existe, sem criar.
   const { rows: propria } = await pool.query('SELECT id FROM anunciantes WHERE conta_propria LIMIT 1');
-  const propriaId = propria[0]?.id ?? (await novaConta()).id;
-  if (!propria[0]) await pool.query('UPDATE anunciantes SET conta_propria = true WHERE id = $1', [propriaId]);
-  const antes = (await pool.query('SELECT COUNT(*)::int AS n FROM pontos WHERE anunciante_id = $1', [propriaId]))
-    .rows[0].n;
-  assert.strictEqual((await criar(propriaId, { ...corpo, nome: 'Ponto da Mostraí' })).status, 409, 'conta própria');
-  assert.strictEqual(
-    (await pool.query('SELECT COUNT(*)::int AS n FROM pontos WHERE anunciante_id = $1', [propriaId])).rows[0].n,
-    antes,
-  );
+  if (propria[0]) {
+    const pontosDaPropria = async () =>
+      (await pool.query('SELECT COUNT(*)::int AS n FROM pontos WHERE anunciante_id = $1', [propria[0].id])).rows[0].n;
+    const antes = await pontosDaPropria();
+    const r409 = await criar(propria[0].id, { ...corpo, nome: 'Ponto da Mostraí' });
+    assert.strictEqual(r409.status, 409, 'conta própria');
+    assert.strictEqual(await pontosDaPropria(), antes);
+  }
   // Só o Admin: conta logada e anônimo recebem 401.
   const logada = await entrar(conta);
   for (const quem of [logada, navegador()]) {
@@ -1032,10 +1035,11 @@ test('7. Admin cria ponto FIXO na ficha da conta: sem candidatura, origem "admin
   const aprovada = await admin('POST', `/admin/candidaturas/${cand.id}/liberar`);
   assert.strictEqual(aprovada.status, 200, JSON.stringify(aprovada.json));
   const { rows: daCandidatura } = await pool.query(
-    'SELECT tipo, anunciante_id, origem, criado_por FROM pontos WHERE candidatura_id = $1',
+    `SELECT tipo, anunciante_id, origem, criado_por, aceitou_termos_em IS NOT NULL AS com_aceite
+       FROM pontos WHERE candidatura_id = $1`,
     [cand.id],
   );
   assert.deepStrictEqual(daCandidatura, [
-    { tipo: 'fixo', anunciante_id: candidata.id, origem: 'candidatura', criado_por: null },
+    { tipo: 'fixo', anunciante_id: candidata.id, origem: 'candidatura', criado_por: null, com_aceite: true },
   ]);
 });
