@@ -1656,7 +1656,9 @@ sem encerramento — pelo significado, nunca por id. (2) Entrega agregada por
 hora; uma entrega só paga lote cujo início é anterior ao fim da hora dela;
 sem lote elegível, é excedente do lote vigente. (3) Invalidação global:
 uma linha por transação em `playlist_mudancas` (INSERT não disputa trava);
-a tela compara com `playlist_gerada_desde`. Mesma função do gatilho — todos
+o `em` é carimbado no COMMIT por um gatilho de restrição adiado (a ordem
+do `em` é a de visibilidade — revisão Codex do PR #122); a tela compara com
+`playlist_gerada_desde`. Mesma função do gatilho — todos
 os fatos que invalidavam continuam invalidando. Contrato do Player intacto.
 
 **Recusado.** Retry de 40P01 (esconde, não tira o deadlock); linha única

@@ -126,6 +126,36 @@ test('SV3 transação: várias mudanças na mesma transação gravam UMA linha',
   }
 });
 
+test('SV3: transações que fecham fora de ordem têm a marca na ordem do COMMIT (revisão do PR #122)', async () => {
+  // T1 muda primeiro mas fecha por último. Com o relógio do comando, a marca
+  // de T1 ficaria ANTES da de T2 e uma playlist entregue entre os dois
+  // COMMITs esconderia a mudança de T1 pra sempre.
+  const p1 = await novoPonto();
+  const p2 = await novoPonto();
+  const t1 = await pool.connect();
+  const t2 = await pool.connect();
+  try {
+    await t1.query('BEGIN');
+    await t1.query("UPDATE pontos SET status = 'em_operacao' WHERE id = $1", [p1]);
+    const [{ id: id1 }] = (await t1.query('SELECT max(id) AS id FROM playlist_mudancas')).rows;
+    await t2.query('BEGIN');
+    await t2.query("UPDATE pontos SET status = 'em_operacao' WHERE id = $1", [p2]);
+    const [{ id: id2 }] = (await t2.query('SELECT max(id) AS id FROM playlist_mudancas')).rows;
+    await t2.query('COMMIT');
+    await new Promise((r) => setTimeout(r, 50));
+    await t1.query('COMMIT');
+    const em = async (id) =>
+      new Date((await pool.query('SELECT em FROM playlist_mudancas WHERE id = $1', [id])).rows[0].em).getTime();
+    assert.ok(Number(id1) < Number(id2), 'T1 gravou primeiro');
+    assert.ok((await em(id1)) > (await em(id2)), 'mas a marca de T1 é posterior: ficou visível depois');
+  } finally {
+    await t1.query('ROLLBACK').catch(() => {});
+    await t2.query('ROLLBACK').catch(() => {});
+    t1.release();
+    t2.release();
+  }
+});
+
 test('SV3 7: uma mudança com várias telas ativas NÃO escreve em nenhuma linha de dispositivos', async () => {
   const pid = await novoPonto();
   const telas = [];

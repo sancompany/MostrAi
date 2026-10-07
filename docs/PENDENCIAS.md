@@ -6032,7 +6032,7 @@ Corrigidos no código; cada item vira [x] só depois do smoke em produção:
   Limite registrado: lote que nasce no meio da hora recebe a entrega da hora
   em que nasceu (renovação começa sempre na virada do dia, hora cheia).
 - SV3 → invalidação global: o gatilho grava UMA linha por transação em
-  `playlist_mudancas`; `GET /playlist` grava `playlist_gerada_desde`; o
+  `playlist_mudancas` (com `em` = instante do COMMIT); `GET /playlist` grava `playlist_gerada_desde`; o
   heartbeat compara. Nenhuma escrita em `dispositivos` por mudança.
 
       (d) (Codex, PR #114) um ajuste NEGATIVO do Admin feito no mesmo

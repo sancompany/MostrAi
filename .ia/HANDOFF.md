@@ -10,7 +10,8 @@ normaliza lote de benefício por créditos ativo/aberto/sem encerramento.
 SV2: `dadosDasContas` agrega a entrega por HORA (`periodoMs`) e
 `calcularSaldo` só paga lote com `inicio <= fim da hora` (excedente vai pro
 lote vigente). SV3: `marcar_playlists_desatualizadas()` agora insere UMA
-linha por transação em `playlist_mudancas` (GUC local `mostrai.playlist_mudou`),
+linha por transação em `playlist_mudancas` (GUC local `mostrai.playlist_mudou`;
+`em` carimbado no COMMIT pelo gatilho adiado `playlist_mudanca_no_commit`),
 sem tocar `dispositivos`; `playlist/routes.js` grava `playlist_gerada_desde`;
 `player/sinal.js#sinalizarPlaylist` compara a última mudança global com a
 cobertura e com a marca direcionada (`playlist_desatualizada_em`, ainda usada

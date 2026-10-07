@@ -78,23 +78,32 @@ ALTER TABLE dispositivos ADD COLUMN IF NOT EXISTS playlist_gerada_desde timestam
 
 -- Mesma função (os gatilhos da 083 continuam ligados a ela, com as mesmas
 -- condições — todo fato que invalidava continua invalidando): só o corpo
--- muda. Uma linha por transação: a primeira mudança grava e guarda o id na
+-- muda. Uma linha por transação: a primeira mudança grava e marca a
 -- transação (`set_config(..., true)` vale só até o COMMIT/ROLLBACK e volta
--- junto num ROLLBACK TO SAVEPOINT); as seguintes só puxam o `em` da PRÓPRIA
--- linha pra frente (ninguém mais a vê antes do COMMIT, então não há disputa),
--- com a mesma folga de 1 s da 083 — numa transação longa, a marca é a da
--- última mudança, como antes.
+-- junto num ROLLBACK TO SAVEPOINT); as seguintes não gravam de novo.
 CREATE OR REPLACE FUNCTION marcar_playlists_desatualizadas() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE
-  minha text := current_setting('mostrai.playlist_mudou', true);
-  nova bigint;
 BEGIN
-  IF minha IS NULL OR minha = '' THEN
-    INSERT INTO playlist_mudancas DEFAULT VALUES RETURNING id INTO nova;
-    PERFORM set_config('mostrai.playlist_mudou', nova::text, true);
-  ELSE
-    UPDATE playlist_mudancas SET em = clock_timestamp()
-     WHERE id = minha::bigint AND em < clock_timestamp() - interval '1 second';
+  IF current_setting('mostrai.playlist_mudou', true) IS DISTINCT FROM 'sim' THEN
+    INSERT INTO playlist_mudancas DEFAULT VALUES;
+    PERFORM set_config('mostrai.playlist_mudou', 'sim', true);
   END IF;
   RETURN NULL;
 END $$;
+
+-- O `em` vale o instante do COMMIT, não o do comando: gatilho de restrição
+-- ADIADO na própria linha, que roda no fim da transação. Assim duas
+-- transações que fecham fora de ordem (a mais velha commitando depois) têm
+-- `em` na ordem em que ficaram visíveis — senão a mais velha nasceria com
+-- `em` anterior ao de uma playlist já entregue e a tela nunca seria avisada
+-- (revisão do PR #122). Atualiza só a própria linha, ainda invisível aos
+-- outros: não disputa trava com ninguém. A folga de 5 s do GET /playlist
+-- cobre o intervalo entre este carimbo e o COMMIT.
+CREATE OR REPLACE FUNCTION carimbar_playlist_mudanca() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  UPDATE playlist_mudancas SET em = clock_timestamp() WHERE id = NEW.id;
+  RETURN NULL;
+END $$;
+
+DROP TRIGGER IF EXISTS playlist_mudanca_no_commit ON playlist_mudancas;
+CREATE CONSTRAINT TRIGGER playlist_mudanca_no_commit AFTER INSERT ON playlist_mudancas
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION carimbar_playlist_mudanca();
