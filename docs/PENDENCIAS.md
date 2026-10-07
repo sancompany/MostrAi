@@ -6021,6 +6021,20 @@ sem mexer (fora do escopo do hotfix):
         (SQLSTATE 40P01) nos caminhos que disparam o gatilho.
       Fora do escopo do hotfix; nada mudou nesse código.
 
+**Estação focal SV1 + SV2 + SV3 (07/10/2026, migration 117, ADR-042).**
+Corrigidos no código; cada item vira [x] só depois do smoke em produção:
+- SV1 → benefício por CRÉDITOS = cota exata do ciclo (horas/mês × meses,
+  `segundosDoBeneficio`); cortesia administrativa continua por dias. A 117
+  normaliza só lote de benefício por créditos ativo, aberto e sem
+  encerramento (em produção: 1 linha, conta 14, 98.295 → 97.200 s).
+- SV2 → entrega por HORA (`janela_hora`) e só paga lote que já valia na
+  hora da exibição; antes do início da renovação, é bônus do ciclo em curso.
+  Limite registrado: lote que nasce no meio da hora recebe a entrega da hora
+  em que nasceu (renovação começa sempre na virada do dia, hora cheia).
+- SV3 → invalidação global: o gatilho grava UMA linha por transação em
+  `playlist_mudancas` (com `em` = instante do COMMIT); `GET /playlist` grava `playlist_gerada_desde`; o
+  heartbeat compara. Nenhuma escrita em `dispositivos` por mudança.
+
       (d) (Codex, PR #114) um ajuste NEGATIVO do Admin feito no mesmo
       instante em que o gerador reserva a hora da conta pode deixar a rede
       entregar alguns segundos além do saldo (no máximo a reserva de uma

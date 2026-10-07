@@ -924,3 +924,257 @@ test('SALDO HOTFIX 9: peça pausada pelo cliente registra a responsabilidade del
   const fechado = await obrigacao.saldoDaConta(conta.id, { agora: await depoisDoFim(conta.id) });
   assert.strictEqual(fechado.saldoSegundos, 0, 'no fechamento nada passa pra frente');
 });
+
+// ===========================================================================
+// SV1 — benefício por CRÉDITOS = cota exata do ciclo resgatado (07/10/2026)
+// ===========================================================================
+// A conta real 14 nasceu com 98.295 s (27h18): o lote do Essencial mensal era
+// proporcional aos dias corridos de uma ativação às 15:53 até o fim do último
+// dia inclusivo. O resgate compra um CICLO do plano — horas/mês × meses.
+
+// Benefício já ativo, registrado como a ativação faz (planos_administrativos
+// + registrarBeneficio), num instante escolhido.
+async function beneficioEm(conta, planoId, agora, { origem = 'indicacao' } = {}) {
+  const plano = await planoDb(planoId);
+  const validoAte = new Date(agora.getTime() + Number(plano.compromisso_meses) * 30 * DIA).toISOString().slice(0, 10);
+  const {
+    rows: [h],
+  } = await pool.query(
+    `INSERT INTO planos_administrativos (anunciante_id, plano_id, valido_ate, origem, status, ativado_em)
+     VALUES ($1, $2, $3, $4, 'ativo', $5) RETURNING *`,
+    [conta.id, planoId, validoAte, origem, agora],
+  );
+  const lote = await obrigacao.registrarBeneficio(pool, {
+    anuncianteId: conta.id,
+    planoAdministrativoId: h.id,
+    planoId,
+    validoAte,
+    agora,
+  });
+  return { h, lote };
+}
+
+for (const [rotulo, quando] of [
+  ['no meio do dia (15:53 de Matão, o caso real)', '2026-10-05T18:53:13Z'],
+  ['à meia-noite (00:00 de Matão)', '2026-10-06T03:00:00Z'],
+  ['às 23:50 de Matão', '2026-10-07T02:50:00Z'],
+]) {
+  test(`SV1: Essencial mensal por créditos começando ${rotulo} = 27 h exatas`, async () => {
+    const conta = await novaConta();
+    const { lote: l } = await beneficioEm(conta, 'essencial-1m', new Date(quando));
+    assert.strictEqual(Number(l.segundos), 27 * H, `não ${Number(l.segundos)} s`);
+    assert.strictEqual(l.motivo, 'benefício Essencial (1 mês)');
+  });
+}
+
+test('SV1: Pro trimestral = 84 h × 3; Prime semestral = 180 h × 6', async () => {
+  const pro = await beneficioEm(await novaConta(), 'destaque-3m', new Date('2026-10-05T18:53:13Z'));
+  assert.strictEqual(Number(pro.lote.segundos), 84 * H * 3);
+  const prime = await beneficioEm(await novaConta(), 'maximo-6m', new Date('2026-10-05T18:53:13Z'));
+  assert.strictEqual(Number(prime.lote.segundos), 180 * H * 6);
+});
+
+test('SV1: resgate pelo caminho real (resgatarOuConcederBeneficio) grava 27 h exatas', async () => {
+  const conta = await novaConta();
+  await planoAdministrativo.resgatarOuConcederBeneficio({
+    conta,
+    plano: await planoDb('essencial-1m'),
+    diasDeBeneficio: 30,
+    observacao: 'resgate de créditos',
+    origem: 'indicacao',
+  });
+  const [l] = await lancamentos(conta.id);
+  assert.strictEqual(l.tipo, 'beneficio');
+  assert.strictEqual(Number(l.segundos), 27 * H);
+  const s = await obrigacao.saldoDaConta(conta.id);
+  assert.strictEqual(s.saldoSegundos, 27 * H, 'ciclo aberto, 0 POP: 27 h');
+  assert.strictEqual(s.cicloAtual.contratadoSegundos, 27 * H);
+});
+
+test('SV1: benefício por créditos encerrado na metade sai só a parte futura da cota exata', async () => {
+  const conta = await novaConta();
+  const { h, lote: l } = await beneficioEm(conta, 'essencial-1m', new Date('2026-10-05T18:53:13Z'));
+  const inicio = new Date(l.inicio).getTime();
+  const fim = new Date(l.fim).getTime();
+  const meio = new Date(inicio + (fim - inicio) / 2);
+  const encerrado = await obrigacao.encerrarBeneficio(pool, { planoAdministrativoId: h.id, agora: meio });
+  assert.ok(Math.abs(Number(encerrado.segundos) + (27 * H) / 2) <= 1, `${encerrado.segundos}`);
+  const s = await obrigacao.saldoDaConta(conta.id, { agora: meio });
+  assert.ok(Math.abs(s.saldoSegundos - (27 * H) / 2) <= 1, 'fica a metade que já tinha passado');
+  assert.ok(s.saldoSegundos >= 0, 'nunca dívida do cliente');
+});
+
+test('SV1: cortesia administrativa arbitrária continua proporcional aos dias (régua anterior)', async () => {
+  const conta = await novaConta();
+  const { lote: l } = await beneficioEm(conta, 'essencial-1m', new Date('2026-10-05T18:53:13Z'), {
+    origem: 'admin',
+  });
+  const dias = (new Date(l.fim) - new Date(l.inicio)) / DIA;
+  assert.ok(Math.abs(Number(l.segundos) - (27 * H * dias) / 30) <= 1);
+  assert.notStrictEqual(Number(l.segundos), 27 * H, 'cortesia de X dias não vira cota de ciclo');
+});
+
+test('SV1: migration 117 normaliza só benefício por créditos ativo e aberto, pelo significado (não por id)', async () => {
+  const sql = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '../src/db/migrations/117_saldo_beneficio_e_playlist_global.sql'),
+    'utf8',
+  );
+  const update = sql.slice(
+    sql.indexOf('UPDATE obrigacoes_veiculacao'),
+    sql.indexOf(';', sql.indexOf('UPDATE obrigacoes_veiculacao')),
+  );
+  const velho = 98_295;
+  const agora = new Date(Date.now() - 2 * DIA);
+  const casos = {};
+  for (const nome of ['creditos', 'cortesia', 'fechado', 'encerrado']) {
+    const conta = await novaConta();
+    const { h, lote: l } = await beneficioEm(conta, 'essencial-1m', agora, {
+      origem: nome === 'cortesia' ? 'admin' : 'indicacao',
+    });
+    await pool.query('UPDATE obrigacoes_veiculacao SET segundos = $2 WHERE id = $1', [l.id, velho]);
+    if (nome === 'fechado')
+      await pool.query("UPDATE obrigacoes_veiculacao SET fim = now() - interval '1 hour' WHERE id = $1", [l.id]);
+    if (nome === 'encerrado') await obrigacao.encerrarBeneficio(pool, { planoAdministrativoId: h.id });
+    casos[nome] = l.id;
+  }
+  await pool.query(update);
+  await pool.query(update); // idempotente
+  const valor = async (id) =>
+    Number((await pool.query('SELECT segundos FROM obrigacoes_veiculacao WHERE id = $1', [id])).rows[0].segundos);
+  assert.strictEqual(await valor(casos.creditos), 27 * H, 'créditos, ativo, aberto: 27 h exatas');
+  assert.strictEqual(await valor(casos.cortesia), velho, 'cortesia administrativa intacta');
+  assert.strictEqual(await valor(casos.fechado), velho, 'histórico fechado intacto');
+  assert.strictEqual(
+    await valor(casos.encerrado),
+    velho,
+    'encerrado antes do fim: intacto (o encerramento usou o valor dele)',
+  );
+});
+
+// ===========================================================================
+// SV2 — POP não paga ciclo futuro (07/10/2026)
+// ===========================================================================
+// Uma entrega só paga lote que já valia na hora em que ela aconteceu. A
+// renovação paga adiantada existe no livro antes de começar; entrega de antes
+// do início dela é bônus do ciclo em curso.
+const HORA = 3_600_000;
+const t = (iso) => new Date(iso);
+const loteEm = (segundos, inicio, fim, criado = inicio, tipo = 'ciclo') => ({
+  id: seq++,
+  tipo,
+  segundos,
+  inicio: t(inicio),
+  fim: t(fim),
+  criado_em: t(criado),
+  motivo: `${tipo} de teste`,
+});
+const naHora = (iso, segundos) => ({ dia: t(iso), periodoMs: HORA, entregue: segundos, basico: 0 });
+// Ciclo A (01/10 → 01/11) e a renovação B já paga (01/11 → 01/12), registrada em 02/10.
+const cicloA = () => loteEm(27 * H, '2026-10-01T03:00:00Z', '2026-11-01T03:00:00Z');
+const renovacaoB = () => loteEm(27 * H, '2026-11-01T03:00:00Z', '2026-12-01T03:00:00Z', '2026-10-02T12:00:00Z');
+
+test('SV2 1/5: A quitado, B (renovação paga adiantada) começa amanhã, 30 min a mais hoje → B intacto, 30 min de bônus', () => {
+  const A = cicloA();
+  const B = renovacaoB();
+  const s = obrigacao.calcularSaldo({
+    lancamentos: [A, B],
+    dias: [naHora('2026-10-29T15:00:00Z', 27 * H), naHora('2026-10-30T15:00:00Z', 1800)],
+    agora: t('2026-10-31T12:00:00Z'),
+  });
+  const [a, b] = s.lotes;
+  assert.strictEqual(a.entregueSegundos, 27 * H);
+  assert.strictEqual(a.excedenteSegundos, 1800, '+30 min = bônus do ciclo A');
+  assert.strictEqual(b.entregueSegundos, 0);
+  assert.strictEqual(b.pendenteSegundos, 27 * H, 'B continua devendo 27 h — não 26h30');
+  assert.strictEqual(s.saldoSegundos, 27 * H);
+  assert.strictEqual(s.excedenteSegundos, 1800);
+});
+
+test('SV2 2: depois que B começa, o POP paga B normalmente', () => {
+  const s = obrigacao.calcularSaldo({
+    lancamentos: [cicloA(), renovacaoB()],
+    dias: [naHora('2026-10-29T15:00:00Z', 27 * H), naHora('2026-11-01T15:00:00Z', 1800)],
+    agora: t('2026-11-02T12:00:00Z'),
+  });
+  assert.strictEqual(s.lotes[1].entregueSegundos, 1800);
+  assert.strictEqual(s.saldoSegundos, 27 * H - 1800);
+  assert.strictEqual(s.excedenteSegundos, 0);
+});
+
+test('SV2 3: dois lotes já começados e pendentes → FIFO normal (paga o mais antigo primeiro)', () => {
+  const s = obrigacao.calcularSaldo({
+    lancamentos: [cicloA(), renovacaoB()],
+    dias: [naHora('2026-11-02T15:00:00Z', 10 * H)],
+    agora: t('2026-11-03T12:00:00Z'),
+  });
+  assert.strictEqual(s.lotes[0].entregueSegundos, 10 * H, 'A, o mais antigo, recebe');
+  assert.strictEqual(s.lotes[1].entregueSegundos, 0);
+  assert.strictEqual(s.saldoSegundos, 44 * H);
+});
+
+test('SV2 4: entrega sem nenhum lote elegível é excedente/bônus — o lote futuro não muda', () => {
+  const B = renovacaoB();
+  const s = obrigacao.calcularSaldo({
+    lancamentos: [B],
+    dias: [naHora('2026-10-20T15:00:00Z', 2 * H)],
+    agora: t('2026-10-21T12:00:00Z'),
+  });
+  assert.strictEqual(s.lotes[0].pendenteSegundos, 27 * H);
+  assert.strictEqual(s.excedenteSegundos, 2 * H);
+  assert.strictEqual(s.saldoSegundos, 27 * H);
+});
+
+test('SV2 6: benefício registrado com início futuro não recebe POP antes de começar', () => {
+  const beneficio = loteEm(27 * H, '2026-11-01T03:00:00Z', '2026-12-01T03:00:00Z', '2026-10-10T12:00:00Z', 'beneficio');
+  const s = obrigacao.calcularSaldo({
+    lancamentos: [cicloA(), beneficio],
+    dias: [naHora('2026-10-05T15:00:00Z', 27 * H), naHora('2026-10-20T15:00:00Z', 3 * H)],
+    agora: t('2026-10-21T12:00:00Z'),
+  });
+  assert.strictEqual(s.lotes[1].entregueSegundos, 0);
+  assert.strictEqual(s.lotes[1].pendenteSegundos, 27 * H);
+});
+
+test('SV2 7: fronteira exata — a hora que termina no início de B não o paga; a hora que começa nele paga', () => {
+  const antes = obrigacao.calcularSaldo({
+    lancamentos: [cicloA(), renovacaoB()],
+    dias: [naHora('2026-10-29T15:00:00Z', 27 * H), naHora('2026-11-01T02:00:00Z', 600)],
+    agora: t('2026-11-01T02:59:00Z'),
+  });
+  assert.strictEqual(antes.lotes[1].entregueSegundos, 0, '02:00–03:00 é antes de B');
+  assert.strictEqual(antes.excedenteSegundos, 600);
+  const na = obrigacao.calcularSaldo({
+    lancamentos: [cicloA(), renovacaoB()],
+    dias: [naHora('2026-10-29T15:00:00Z', 27 * H), naHora('2026-11-01T03:00:00Z', 600)],
+    agora: t('2026-11-01T04:00:00Z'),
+  });
+  assert.strictEqual(na.lotes[1].entregueSegundos, 600, '03:00–04:00 já é de B');
+});
+
+test('SV2 banco: entrega agregada por HORA — POP da manhã não paga lote que começa à tarde do mesmo dia', async () => {
+  const conta = await novaConta({ criativo: false });
+  const ponto = await novoPonto();
+  const lancar = (tipo, segundos, inicio, fim, criado) =>
+    pool.query(
+      `INSERT INTO obrigacoes_veiculacao (anunciante_id, tipo, chave, segundos, inicio, fim, motivo, criado_em)
+       VALUES ($1, $2, $3, $4, $5, $6, 'teste SV2', $7)`,
+      [conta.id, tipo, `sv2:${randomUUID()}`, segundos, inicio, fim, criado],
+    );
+  await lancar('ciclo', 3600, '2026-09-01T03:00:00Z', '2026-09-10T15:00:00Z', '2026-09-01T03:00:00Z');
+  await lancar('ciclo', 7200, '2026-09-10T15:00:00Z', '2026-10-10T15:00:00Z', '2026-09-02T12:00:00Z');
+  const pop = (hora, vezes) =>
+    pool.query(
+      `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_confirmadas, duracao_segundos)
+       VALUES ($1, $2, $3, $4, $4, 60)`,
+      [conta.id, ponto.telaId, hora, vezes],
+    );
+  await pop('2026-09-10T10:00:00Z', 90); // 5.400 s às 07:00 de Matão: A (3.600) + 30 min além
+  const manha = await obrigacao.saldoDaConta(conta.id, { agora: t('2026-09-10T14:30:00Z') });
+  assert.strictEqual(manha.lotes[0].entregueSegundos, 3600);
+  assert.strictEqual(manha.lotes[1].entregueSegundos, 0, 'pelo dia, este POP pareceria posterior ao início de B');
+  assert.strictEqual(manha.excedenteSegundos, 1800);
+  await pop('2026-09-10T15:00:00Z', 10); // 600 s já com B valendo
+  const tarde = await obrigacao.saldoDaConta(conta.id, { agora: t('2026-09-10T16:30:00Z') });
+  assert.strictEqual(tarde.lotes[1].entregueSegundos, 600);
+  assert.strictEqual(tarde.saldoSegundos, 7200 - 600);
+});

@@ -1,6 +1,24 @@
 # Current Handoff
 
 ## Updated
+2026-10-07 — **Estação focal SV1 + SV2 + SV3** (migration 117; ADR-042; branch
+`claude/busy-noether-hheir2`). SV1: `obrigacao-do-ciclo.js#segundosDoBeneficio`
+— benefício com `planos_administrativos.origem = 'indicacao'` = cota exata
+(`segundosPorMesDoPlano × plano.compromisso_meses`); cortesia admin segue
+por dias; `encerrarBeneficio` inalterado (cota × restante ÷ duração). A 117
+normaliza lote de benefício por créditos ativo/aberto/sem encerramento.
+SV2: `dadosDasContas` agrega a entrega por HORA (`periodoMs`) e
+`calcularSaldo` só paga lote com `inicio <= fim da hora` (excedente vai pro
+lote vigente). SV3: `marcar_playlists_desatualizadas()` agora insere UMA
+linha por transação em `playlist_mudancas` (GUC local `mostrai.playlist_mudou`;
+`em` carimbado no COMMIT pelo gatilho adiado `playlist_mudanca_no_commit`),
+sem tocar `dispositivos`; `playlist/routes.js` grava `playlist_gerada_desde`;
+`player/sinal.js#sinalizarPlaylist` compara a última mudança global com a
+cobertura e com a marca direcionada (`playlist_desatualizada_em`, ainda usada
+por `fila-entrada.js#pedirAtualizacaoDasTelas`). Testes: "SV1/SV2" em
+`tests/obrigacao-do-ciclo.test.js`, `tests/playlist-invalidacao.test.js`.
+Review-Master segue PAUSADA.
+
 2026-10-06 — **Hotfix Saldo de veiculação** (sem migration; ADR-041; branch
 `claude/busy-noether-hheir2`). `src/bancohoras/obrigacao-do-ciclo.js#calcularSaldo`:
 com o lote ABERTO, saldo = contratado − Proof-of-Play confirmado — a

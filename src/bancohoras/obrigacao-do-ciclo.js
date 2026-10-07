@@ -39,7 +39,7 @@ const { confirmadasPagasSql, confirmadasBancoSql } = require('../lib/partes-da-h
 // 45 min por ciclo é anomalia operacional (alerta interno, sem compensação).
 
 const DIA_MS = 86_400_000;
-const FUSO = 'America/Sao_Paulo';
+const HORA_MS = 3_600_000;
 // Excedente tolerado por ciclo antes de virar anomalia (spec, R2 "Entrega
 // excedente" e R3 §42/§6: até 45 min é bônus; acima, alerta interno).
 const EXCEDENTE_TOLERADO_SEGUNDOS = 45 * 60;
@@ -182,32 +182,54 @@ async function registrarTroca(db, { anuncianteId, planoNovo, planoAnteriorId, ci
   });
 }
 
-// BENEFÍCIO por créditos ou cortesia administrativa ativado: o plano vale
-// pelos dias de validade (`validoAte`, o último dia, inclusivo), e a
-// obrigação é a do plano nesses dias.
+// Obrigação de um benefício. Por CRÉDITOS (`origem = 'indicacao'`) o cliente
+// resgatou um CICLO do plano (o resgate escolhe o plano pelo
+// `compromisso_meses` = meses resgatados — creditos/routes.js): a obrigação é
+// a cota exata do ciclo, horas/mês × meses (Essencial mensal = 27 h). A hora
+// do dia em que começou e a régua do último dia inclusivo NÃO somam minutos
+// (SV1, 07/10/2026: a conta 14 nasceu com 27h18). Cortesia administrativa tem
+// validade escolhida à mão, em dias — continua proporcional aos dias.
+function segundosDoBeneficio(plano, origem, dias) {
+  if (origem === 'indicacao') return segundosPorMesDoPlano(plano) * (Number(plano?.compromisso_meses) || 1);
+  return (segundosPorMesDoPlano(plano) * dias) / 30;
+}
+
+// BENEFÍCIO por créditos ou cortesia administrativa ativado: vale de agora
+// até o fim de `validoAte` (o último dia, inclusivo) — é o período do lote
+// (ritmo, indisponibilidade, encerramento); o tamanho sai de
+// `segundosDoBeneficio`.
 async function registrarBeneficio(db, { anuncianteId, planoAdministrativoId, planoId, validoAte, agora = new Date() }) {
   const plano = await planoPorId(db, planoId);
+  const {
+    rows: [historico],
+  } = await db.query('SELECT origem FROM planos_administrativos WHERE id = $1', [planoAdministrativoId]);
+  const porCreditos = historico?.origem === 'indicacao';
   const inicio = new Date(agora);
   const ate = fimDaCobertura(validoAte);
   const fim = ate && ate > inicio ? ate : inicio;
   const dias = (fim.getTime() - inicio.getTime()) / DIA_MS;
+  const meses = Number(plano?.compromisso_meses) || 1;
   const lote = await lancar(db, {
     anuncianteId,
     tipo: 'beneficio',
     chave: `beneficio:${planoAdministrativoId}`,
-    segundos: (segundosPorMesDoPlano(plano) * dias) / 30,
+    segundos: segundosDoBeneficio(plano, historico?.origem, dias),
     planoId,
     planoAdministrativoId,
     inicio,
     fim,
-    motivo: `benefício ${plano?.nome || planoId} (${Math.round(dias)} dias)`,
+    motivo: porCreditos
+      ? `benefício ${plano?.nome || planoId} (${meses} ${meses === 1 ? 'mês' : 'meses'})`
+      : `benefício ${plano?.nome || planoId} (${Math.round(dias)} dias)`,
   });
   if (lote) await avaliarDisponibilidade(anuncianteId, { agora, db });
   return lote;
 }
 
 // Benefício encerrado antes do fim (admin cancelou, ou um plano pago maior o
-// superou — os créditos não voltam, e o tempo que faltava sai junto).
+// superou — os créditos não voltam, e o tempo que faltava sai junto). Sai a
+// parte FUTURA: a cota do lote × tempo restante ÷ duração do lote — por
+// créditos, a cota exata do ciclo; nunca cria dívida do cliente.
 async function encerrarBeneficio(db, { planoAdministrativoId, agora = new Date() }) {
   const {
     rows: [lote],
@@ -367,20 +389,22 @@ async function avaliarTodas({ agora = new Date(), apenasContas = null } = {}) {
 // Função PURA (testável sem banco). Entradas:
 //   lancamentos: linhas de `obrigacoes_veiculacao` (ordem de criação);
 //   indisponibilidades: janelas [inicio, fim) da conta (fim null = até agora);
-//   dias: [{ dia: Date (início do dia em Matão), entregue, basico }] —
-//         `entregue` = segundos CONFIRMADOS por Proof-of-Play no dia (toda
+//   dias: [{ dia: Date (início do período), periodoMs, entregue, basico }]
+//         — o período é a HORA (dadosDasContas; sem `periodoMs`, o dia);
+//         `entregue` = segundos CONFIRMADOS por Proof-of-Play nele (toda
 //         camada: base, compensação, reposição e devolução de saldo);
-//         `basico` = obrigação do Plano Básico do ponto no dia (o Básico
+//         `basico` = obrigação do Plano Básico do ponto no período (o Básico
 //         continua nascendo da tela — ele mesmo é um benefício da tela).
 //
 // FIFO: cada entrega paga o lote mais antigo que ainda deve. Entrega além de
 // tudo o que se deve é excedente (bônus) — não fica como crédito pro ciclo
 // seguinte. Só o reembolso cria saldo técnico negativo.
 //
-// limite: as entregas são agrupadas por dia e entram no FIM do dia — num dia
-// com compra ou reembolso, a ordem dentro do dia é aproximada. Conta a conta
-// o custo é um dia por linha; se a base crescer, materializar o resultado até
-// a data em que nenhum comprovante pode mais chegar (7 dias) e somar só o resto.
+// limite: as entregas são agrupadas por hora e entram no FIM da hora — numa
+// hora com compra ou reembolso, a ordem dentro dela é aproximada. Conta a
+// conta o custo é uma linha por hora com exibição; se a base crescer,
+// materializar o resultado até a data em que nenhum comprovante pode mais
+// chegar (7 dias) e somar só o resto.
 function calcularSaldo({ lancamentos = [], indisponibilidades = [], dias = [], agora = new Date() }) {
   const agoraMs = new Date(agora).getTime();
   const janelas = indisponibilidades.map((j) => ({
@@ -443,6 +467,9 @@ function calcularSaldo({ lancamentos = [], indisponibilidades = [], dias = [], a
   }
   for (const d of dias) {
     const dia = new Date(d.dia).getTime();
+    // Tamanho do período agregado: a hora (dadosDasContas) ou, nas entradas
+    // que não dizem, o dia.
+    const periodo = Number(d.periodoMs) || DIA_MS;
     if (Number(d.basico) > 0) {
       // Só horas já fechadas (dadosDasContas): o Básico do dia já é devido
       // por inteiro — período de duração zero, sem parte "por vir".
@@ -463,15 +490,23 @@ function calcularSaldo({ lancamentos = [], indisponibilidades = [], dias = [], a
         },
       });
     }
+    // A entrega entra no FIM do período: ordena com compra/reembolso e é o
+    // instante contra o qual se pergunta se o lote já valia (SV2).
     if (Number(d.entregue) > 0)
-      eventos.push({ em: dia + DIA_MS - 1, ordem: 4, tipo: 'entrega', segundos: Number(d.entregue) });
+      eventos.push({
+        em: dia + periodo - 1,
+        periodo,
+        ordem: 4,
+        tipo: 'entrega',
+        segundos: Number(d.entregue),
+      });
   }
-  // Reembolso no meio de um dia com entrega: o que o dia entregou já tinha
-  // sido entregue ao ciclo reembolsado (vira negativo técnico, nunca bônus) —
-  // o reembolso vai pro fim do dia, depois da entrega.
+  // Reembolso no meio de um período com entrega: o que o período entregou já
+  // tinha sido entregue ao ciclo reembolsado (vira negativo técnico, nunca
+  // bônus) — o reembolso vai pro fim do período, depois da entrega.
   for (const r of eventos) {
     if (r.tipo !== 'reembolso') continue;
-    const dia = eventos.find((e) => e.tipo === 'entrega' && e.em >= r.em && e.em - DIA_MS < r.em);
+    const dia = eventos.find((e) => e.tipo === 'entrega' && e.em >= r.em && e.em - e.periodo < r.em);
     if (dia) {
       r.em = dia.em;
       r.ordem = 5;
@@ -531,10 +566,19 @@ function calcularSaldo({ lancamentos = [], indisponibilidades = [], dias = [], a
       alvo.restante = 0;
       alvo.cancelado = true;
     } else if (ev.tipo === 'entrega') {
+      // FIFO só entre lotes que já valiam na hora da entrega (SV2,
+      // 07/10/2026): a renovação paga adiantada (ou qualquer lote com início
+      // futuro) já está no livro, mas ainda não deve nada — entrega de antes
+      // do início dela é bônus do ciclo em curso, nunca pagamento antecipado.
+      // limite: `janela_hora` é a menor granularidade da entrega. Lote
+      // registrado adiantado começa na virada do dia (hora cheia), então a
+      // fronteira é exata; lote que nasce no meio da hora (compra, benefício
+      // ativado agora) recebe a entrega da hora em que nasceu — senão a
+      // primeira exibição depois da compra não abateria nada.
       let resta = ev.segundos;
       for (const l of lotes) {
         if (resta <= 0) break;
-        if (l.cancelado || l.restante <= 0) continue;
+        if (l.cancelado || l.restante <= 0 || l.inicio > ev.em) continue;
         const paga = Math.min(resta, l.restante);
         l.restante -= paga;
         l.alocado += paga;
@@ -669,9 +713,13 @@ async function dadosDasContas(ids, db = pool, agora = new Date()) {
     db.query(`SELECT anunciante_id, inicio, fim FROM indisponibilidade_cliente WHERE anunciante_id = ANY($1::int[])`, [
       ids,
     ]),
+    // Por HORA (a granularidade real de `janela_hora`), não por dia: com o dia,
+    // a entrega de 00:00–18:00 parecia posterior a um lote que começou às
+    // 18:53 e podia pagá-lo (SV2).
     db.query(
       `SELECT e.anunciante_id,
-              (date_trunc('day', e.janela_hora AT TIME ZONE '${FUSO}') AT TIME ZONE '${FUSO}') AS dia,
+              date_trunc('hour', e.janela_hora) AS dia,
+              ${HORA_MS}::int AS "periodoMs",
               SUM(${confirmadasPagasSql('e.')} * COALESCE(e.duracao_segundos, $2))::bigint AS entregue,
               SUM(CASE WHEN e.janela_hora + interval '1 hour' <= $3::timestamptz
                        THEN COALESCE(e.segundos_obrigacao_basico, 0) ELSE 0 END)::bigint AS basico
