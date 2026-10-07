@@ -5995,15 +5995,15 @@ Ficou para depois (nada bloqueia):
 cliente deixou de reduzir o saldo com o ciclo aberto (saldo = contratado −
 POP); só no fechamento ela decide o que passa pra frente. Ficou registrado,
 sem mexer (fora do escopo do hotfix):
-- SV1 [ ] O lote de BENEFÍCIO nasce proporcional aos dias do período
+- SV1 [x] O lote de BENEFÍCIO nasce proporcional aos dias do período
       (`registrarBeneficio`): a conta real 14 tem um Essencial de
       05/10 18:53 a 05/11 03:00 = 98.295 s, e o painel mostra "27h 18min",
       não "27h". É a regra do benefício pelos dias, não deste hotfix.
-- SV2 [ ] FIFO: entrega além da parte da Mostraí de um ciclo pode pagar o
+- SV2 [x] FIFO: entrega além da parte da Mostraí de um ciclo pode pagar o
       lote seguinte que já existia (renovação paga adiantada). Era assim
       antes; com o desconto agora só no fechamento, isso aparece na virada
       do ciclo em vez de durante ele.
-- SV3 [ ] Deadlock no gatilho `marcar_playlists_desatualizadas` (migration
+- SV3 [x] Deadlock no gatilho `marcar_playlists_desatualizadas` (migration
       083): cada disparo grava em TODAS as telas ativas. Dois comandos que
       disparam o gatilho ao mesmo tempo travam um no outro, porque pegam as
       mesmas linhas de `dispositivos` em ordem diferente. Exemplo: o
@@ -6022,7 +6022,10 @@ sem mexer (fora do escopo do hotfix):
       Fora do escopo do hotfix; nada mudou nesse código.
 
 **Estação focal SV1 + SV2 + SV3 (07/10/2026, migration 117, ADR-042).**
-Corrigidos no código; cada item vira [x] só depois do smoke em produção:
+Corrigidos (PR #122, `d724f51`) e conferidos no smoke de produção de
+07/10/2026 — migration 117 aplicada; conta 14 = 97.200 s (27 h) com 0 POP,
+constante em +1 h/+3 d/+20 d; gatilho sem escrita em `dispositivos`; tela 10
+intacta:
 - SV1 → benefício por CRÉDITOS = cota exata do ciclo (horas/mês × meses,
   `segundosDoBeneficio`); cortesia administrativa continua por dias. A 117
   normaliza só lote de benefício por créditos ativo, aberto e sem

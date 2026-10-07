@@ -17,6 +17,8 @@ sem tocar `dispositivos`; `playlist/routes.js` grava `playlist_gerada_desde`;
 cobertura e com a marca direcionada (`playlist_desatualizada_em`, ainda usada
 por `fila-entrada.js#pedirAtualizacaoDasTelas`). Testes: "SV1/SV2" em
 `tests/obrigacao-do-ciclo.test.js`, `tests/playlist-invalidacao.test.js`.
+No ar: PR #122 → `d724f51`, 117 aplicada, smoke somente leitura OK (conta 14 =
+97.200 s; backup antes: `/backups/mostrai-20261007-015224.sql.gz`).
 Review-Master segue PAUSADA.
 
 2026-10-06 — **Hotfix Saldo de veiculação** (sem migration; ADR-041; branch
