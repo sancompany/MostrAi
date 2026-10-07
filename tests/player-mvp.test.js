@@ -707,7 +707,13 @@ test('heartbeat: playlist.atualizar vem UMA vez por mudança', async () => {
   const tela = await novaTela(pid);
   const p = await instalarPlayer(tela.id);
   await bater(p); // consome qualquer marca da instalação
-  await pool.query('UPDATE dispositivos SET playlist_desatualizada_em = now() WHERE id = $1', [tela.id]);
+  // A marca DIRECIONADA desta tela é o que se testa: a cobertura infinita a
+  // isola do livro global (migration 117), onde os outros arquivos de teste
+  // gravam mudanças em paralelo — cada uma pediria a playlist de novo.
+  await pool.query(
+    "UPDATE dispositivos SET playlist_desatualizada_em = clock_timestamp(), playlist_gerada_desde = 'infinity' WHERE id = $1",
+    [tela.id],
+  );
   assert.equal((await bater(p)).json.playlist.atualizar, true);
   assert.equal((await bater(p)).json.playlist.atualizar, false);
 });

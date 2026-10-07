@@ -173,12 +173,23 @@ async function registrarHeartbeat(telaId, corpo, player) {
 }
 
 // `playlist.atualizar` UMA vez por mudança (contrato §6.2): true só se há
-// marca de "desatualizada" que ainda não foi avisada, e já grava que avisou.
+// mudança que a última playlist entregue não cobre e que ainda não foi
+// avisada, e já grava que avisou. A mudança é a marca direcionada da tela
+// (`playlist_desatualizada_em`) ou a última do livro global (migration 117,
+// SV3) — o gatilho não escreve mais em cada tela.
 async function sinalizarPlaylist(telaId, db = pool) {
   const { rowCount } = await db.query(
-    `UPDATE dispositivos SET playlist_sinalizada_em = now()
-      WHERE id = $1 AND playlist_desatualizada_em IS NOT NULL
-        AND (playlist_sinalizada_em IS NULL OR playlist_sinalizada_em < playlist_desatualizada_em)`,
+    `WITH g AS (SELECT max(em) AS em FROM playlist_mudancas),
+          d AS (
+            SELECT d.id,
+                   GREATEST(d.playlist_desatualizada_em,
+                            CASE WHEN g.em > COALESCE(d.playlist_gerada_desde, '-infinity') THEN g.em END) AS mudou_em
+              FROM dispositivos d, g
+             WHERE d.id = $1)
+     UPDATE dispositivos x SET playlist_sinalizada_em = clock_timestamp()
+       FROM d
+      WHERE x.id = d.id AND d.mudou_em IS NOT NULL
+        AND (x.playlist_sinalizada_em IS NULL OR x.playlist_sinalizada_em < d.mudou_em)`,
     [telaId],
   );
   return rowCount > 0;

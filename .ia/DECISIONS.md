@@ -1636,3 +1636,33 @@ pacing não mudam.
 **Recusado.** Lançar crédito manual ou corrigir dados (o saldo é
 derivado); descontar horas de relógio da indisponibilidade.
 
+## ADR-042 — Benefício por créditos é ciclo; POP só paga lote vigente; invalidação de playlist global (07/10/2026)
+
+**Contexto.** Pendências SV1–SV3 do hotfix de Saldo de veiculação (ADR-041).
+SV1: o lote do benefício nascia proporcional aos dias corridos entre a
+ativação e o fim do último dia inclusivo — o Essencial mensal da conta 14
+nasceu com 98.295 s (27h18). SV2: o FIFO podia pagar com POP antigo uma
+renovação já registrada mas ainda não iniciada; agregado por dia, POP da
+manhã parecia posterior a lote que começava à tarde. SV3: o gatilho da 083
+gravava em toda tela ativa a cada mudança; duas transações concorrentes
+travavam `dispositivos` em ordem cruzada (40P01 no CI do PR #121).
+
+**Decisão.** (1) Benefício por créditos (`origem = 'indicacao'`) = cota
+exata do ciclo resgatado (horas/mês × `compromisso_meses` do plano, o mesmo
+que o resgate usou para escolher o plano); datas só dão o período. Cortesia
+administrativa (validade em dias escolhida à mão) continua proporcional. A
+migration 117 normaliza só lote de benefício por créditos ativo, aberto e
+sem encerramento — pelo significado, nunca por id. (2) Entrega agregada por
+hora; uma entrega só paga lote cujo início é anterior ao fim da hora dela;
+sem lote elegível, é excedente do lote vigente. (3) Invalidação global:
+uma linha por transação em `playlist_mudancas` (INSERT não disputa trava);
+a tela compara com `playlist_gerada_desde`. Mesma função do gatilho — todos
+os fatos que invalidavam continuam invalidando. Contrato do Player intacto.
+
+**Recusado.** Retry de 40P01 (esconde, não tira o deadlock); linha única
+versionada (UPDATE serializaria escritas até o COMMIT e criaria outra ordem
+de travas); SEQUENCE pura (o `nextval` é visível antes do COMMIT: uma
+geração no meio leria versão nova com dados velhos); exigir que o lote
+tenha começado no INÍCIO da hora (a primeira exibição depois de uma compra
+não abateria nada).
+

@@ -27,8 +27,8 @@ const pool = require('../db/pool');
 // sinal na instalação — a playlist não precisa registrar primeiro contato.
 
 // Folga contra a corrida entre a geração e uma mudança commitada durante ela
-// (o gatilho da migration 083 marca com o relógio do statement, antes do
-// commit): só limpa marcas feitas antes do início da geração menos isto.
+// (o gatilho marca com o relógio do statement, antes do commit): a playlist
+// entregue só cobre mudanças feitas antes do início da geração menos isto.
 const FOLGA_DESATUALIZADA_MS = 5000;
 
 router.get('/playlist/:dispositivoId', exigirAparelho(), async (req, res) => {
@@ -41,11 +41,14 @@ router.get('/playlist/:dispositivoId', exigirAparelho(), async (req, res) => {
   const hora = new Date();
   hora.setMinutes(0, 0, 0);
   const envelope = await gerarPlaylistDaHora(req.dispositivo, hora);
-  // Entregue: a marca de "playlist desatualizada" anterior a esta geração
-  // está resolvida — nunca fica true pra sempre.
+  // Entregue: o que mudou antes desta geração está coberto — a marca
+  // direcionada desta tela some, e `playlist_gerada_desde` diz até onde o
+  // livro global de mudanças (migration 117) já chegou nela.
   await pool.query(
     `UPDATE dispositivos
         SET playlist_entregue_em = now(),
+            playlist_gerada_desde = GREATEST(playlist_gerada_desde,
+                                             $2::timestamptz - ($3::int * interval '1 millisecond')),
             playlist_desatualizada_em = CASE WHEN playlist_desatualizada_em <= $2::timestamptz - ($3::int * interval '1 millisecond')
                                              THEN NULL ELSE playlist_desatualizada_em END
       WHERE id = $1`,

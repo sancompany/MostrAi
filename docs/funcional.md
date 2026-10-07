@@ -1037,9 +1037,15 @@ Pro pagava, recebia 0 h, devia-se 0 h e o painel mostrava "Em dia".
     diferença de horas/mês pelos dias que faltavam até o vencimento — a
     mesma conta do acerto do Checkout. O rebaixamento tira do lote em curso
     e nunca deixa saldo negativo; o saldo anterior nunca se perde.
-  - `beneficio` / `beneficio_encerrado` — benefício por créditos ou cortesia:
-    obrigação do plano pelos dias do benefício; encerrado antes (por plano
-    pago maior ou pelo admin), sai só o que faltava do período.
+  - `beneficio` / `beneficio_encerrado` — **benefício por créditos** é um
+    CICLO do plano resgatado: a obrigação é a cota exata, horas/mês × meses
+    (Essencial mensal = 27 h, Pro trimestral = 84 h × 3, Prime semestral =
+    180 h × 6) — a hora em que começou não soma minutos (SV1, 07/10/2026; a
+    migration 117 normalizou os lotes ainda abertos). **Cortesia
+    administrativa** tem validade escolhida em dias e continua proporcional
+    aos dias. Encerrado antes (por plano pago maior ou pelo admin), sai só a
+    parte futura: cota × tempo que faltava ÷ duração; créditos não voltam e
+    nunca vira dívida do cliente.
   - `reembolso` — reembolso integral (arrependimento): o ciclo some. O que já
     tinha sido entregue dele vira **saldo técnico negativo** (interno — o
     cliente vê 0, nunca "você deve"), descontado da próxima contratação:
@@ -1050,7 +1056,13 @@ Pro pagava, recebia 0 h, devia-se 0 h e o painel mostrava "Em dia".
   `PLAYING` no heartbeat não entrega nada.
 - **Ordem (FIFO).** Cada entrega paga o lote mais antigo que ainda deve. Por
   isso entregar além do ciclo atual quando há saldo anterior não é
-  sobre-entrega — é a dívida antiga sendo paga.
+  sobre-entrega — é a dívida antiga sendo paga. **Só paga lote que já
+  valia na hora da exibição** (SV2, 07/10/2026): a renovação paga adiantada
+  (ou qualquer lote com início futuro) está no livro, mas exibição de antes
+  do início dela é bônus do ciclo em curso — ex.: ciclo A quitado em 30/10,
+  +30 min exibidos, renovação B começa 01/11 → B continua 27 h. A entrega é
+  contada por hora (`janela_hora`); lote que nasce no meio da hora (compra
+  agora) recebe a entrega da hora em que nasceu.
 - **Sobre-entrega.** Entrega além de tudo o que se deve é bônus: não vira
   crédito pro ciclo seguinte nem desconto. Até 45 min por ciclo é tolerância
   operacional; acima disso o ciclo abre a pendência `SOBREENTREGA_ANOMALA`
@@ -1416,7 +1428,11 @@ heartbeat devolve a versão e o Player informa qual aplicou; a ficha só chama
 de "pendente" depois de 2 min. Playlist funciona igual: qualquer mudança que
 altere o que uma tela deve tocar (criativo, anunciante, cota, ponto, vínculo)
 marca a playlist como desatualizada, e o próximo heartbeat pede ao Player que
-busque de novo — sem esperar a virada da hora. Não existe atualização remota
+busque de novo — sem esperar a virada da hora. Desde a migration 117 (SV3,
+07/10/2026) a marca é GLOBAL: cada transação que muda algo grava uma linha no
+livro `playlist_mudancas`, e a tela compara com até onde a última playlist
+que recebeu cobria (`playlist_gerada_desde`) — o gatilho não escreve mais em
+cada tela, o que tirava o deadlock entre mudanças concorrentes. Não existe atualização remota
 do app (OTA): instalar versão nova do APK é trabalho de campo. *Violada:* —
 *Quem vê:* o administrador.
 
