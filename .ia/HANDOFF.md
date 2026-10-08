@@ -6,14 +6,21 @@ branch `claude/busy-noether-hheir2`). Causa: o APK apaga (cartão local,
 `OUT_OF_SCHEDULE`) fora do `config.operacao`, que era o horário do ponto (ou
 do compromisso da tela móvel). O backend já respondia playlist válida fora do
 horário. Correção só no servidor: `src/player/config.js#montarConfig` manda
-`operacao: operacaoDoPonto(null)` (dia inteiro, `feriados: {}`) sempre; a 118
-sobe `config_versao_desejada` de todas as telas (mesma operação da 093). O
-horário continua no backend: `minutosAbertos`/obrigação/programada só em hora
-aberta (fora dela a campanha toca como bônus; POP → `janela_desconhecida`,
-não credita), `fora_do_horario` informativo em `status-tela.js`, atenção sem
-comunicação só no horário. Testes: `tests/player-sempre-ativo.test.js`; o
-teste de config de `tests/player-mvp.test.js` passou a exigir o dia inteiro.
-APK não mudou. Review-Master segue PAUSADA.
+`operacao: operacaoDoPonto(null)` (dia inteiro, `feriados: {}`) sempre. A 118
+só cria `dispositivos.config_versao_entregue`: `GET /config` grava a versão
+servida (`registrarEntrega`) e o heartbeat sobe a desejada em +1 quando a
+aplicada = desejada e não foi entregue pelo código novo
+(`reenviarSeNaoEntregue`) — subir na migration seria visto pelo contêiner
+antigo durante o deploy (revisão Codex do PR #124). O horário continua no
+backend: `minutosAbertos`/obrigação/programada só em hora aberta (fora dela a
+campanha toca como bônus; POP → `janela_desconhecida`, não credita), e na
+hora parcialmente aberta o POP cujo `iniciadoEm` cai em minuto fechado também
+→ `janela_desconhecida` (`gerador.js#minutoFechado`, horário do ponto passado
+por `confirmarLote` → `confirmarComDedup`); `fora_do_horario` informativo em
+`status-tela.js`, atenção sem comunicação só no horário. Testes:
+`tests/player-sempre-ativo.test.js`; o teste de config de
+`tests/player-mvp.test.js` passou a exigir o dia inteiro. APK não mudou.
+Review-Master segue PAUSADA.
 
 2026-10-07 — **Estação focal SV1 + SV2 + SV3** (migration 117; ADR-042; branch
 `claude/busy-noether-hheir2`). SV1: `obrigacao-do-ciclo.js#segundosDoBeneficio`

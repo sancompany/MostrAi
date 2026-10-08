@@ -1,3 +1,4 @@
+const pool = require('../db/pool');
 const { operacaoDoPonto } = require('../lib/operacao-tela');
 
 // Corpo de GET /player/:dispositivoId/config (docs/player-mvp-contract.md
@@ -40,4 +41,26 @@ function margensDaTela(tela) {
   };
 }
 
-module.exports = { montarConfig, margensDaTela, TETO_MARGEM };
+// O que ESTE código entregou (migration 118): GET /config grava a versão que
+// acabou de servir com o `operacao` do dia inteiro.
+async function registrarEntrega(telaId, versao, db = pool) {
+  await db.query('UPDATE dispositivos SET config_versao_entregue = $2 WHERE id = $1', [telaId, versao]);
+}
+
+// Heartbeat: a TV já aplicou a versão desejada, mas não foi este código que a
+// entregou (config de antes do Player sempre ativo, ou servida pelo contêiner
+// antigo durante um deploy) → sobe a versão para ela buscar de novo. Só com a
+// versão aplicada: enquanto a busca está pendente, não sobe à toa. Devolve a
+// versão desejada nova, ou null quando nada mudou.
+async function reenviarSeNaoEntregue(telaId, db = pool) {
+  const { rows } = await db.query(
+    `UPDATE dispositivos SET config_versao_desejada = config_versao_desejada + 1, config_alterada_em = now()
+      WHERE id = $1 AND config_versao_aplicada = config_versao_desejada
+        AND config_versao_entregue IS DISTINCT FROM config_versao_desejada
+      RETURNING config_versao_desejada`,
+    [telaId],
+  );
+  return rows[0]?.config_versao_desejada ?? null;
+}
+
+module.exports = { montarConfig, margensDaTela, registrarEntrega, reenviarSeNaoEntregue, TETO_MARGEM };

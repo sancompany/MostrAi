@@ -242,3 +242,86 @@ test('heartbeat fora do horário: 200, tela comunicando, "fora do horário" info
   assert.strictEqual(playlist.status, 200);
   assert.ok(playlist.json.itens.length > 0);
 });
+
+// Revisão Codex do PR #124 (1): numa hora PARCIALMENTE aberta a TV agora toca
+// também a parte fechada — o POP dela não pode creditar (seria entrega antes
+// de o ponto abrir). A hora inteira fechada já não credita (sem contador).
+test('POP em hora parcialmente aberta: o minuto fechado não credita; o aberto credita', async () => {
+  const noveEMeia = Object.fromEntries([...SEMANA, 'feriados'].map((d) => [d, { abre: '09:30', fecha: '18:30' }]));
+  const { pid, tela, p } = await telaInstalada(noveEMeia);
+  const conta = await contaNoPonto(pid);
+  const dispositivo = await dispositivosRepo.buscarComPonto(tela.id);
+  const hora = ontemAs(9); // 09:00–10:00 de Matão: 30 min abertos
+  const envelope = await gerador.gerarPlaylistDaHora(dispositivo, hora, new Date(hora.getTime() + 60_000));
+  const itens = envelope.itens.filter((i) => i.anuncianteId === conta);
+  assert.ok(itens.length >= 2, 'a campanha está na hora');
+  const enviar = (item, execucaoId, minuto) =>
+    app.chamar('POST', `/player/${p.dispositivoId}/played`, {
+      chave: p.chaveAparelho,
+      corpo: {
+        eventos: [
+          {
+            execucaoId,
+            janelaId: envelope.janelaId,
+            itemProgramacaoId: item.itemProgramacaoId,
+            criativoId: String(item.criativoId),
+            iniciadoEm: new Date(hora.getTime() + minuto * 60_000).toISOString(),
+            terminadoEm: new Date(hora.getTime() + minuto * 60_000 + 15_000).toISOString(),
+          },
+        ],
+      },
+    });
+  let r = await enviar(itens[0], `sempre-ativo-${conta}-fechado`, 10); // 09:10, fechado
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.json.resultados[0].status, 'janela_desconhecida', '09:10: loja fechada, bônus');
+  r = await enviar(itens[1], `sempre-ativo-${conta}-aberto`, 40); // 09:40, aberto
+  assert.strictEqual(r.json.resultados[0].status, 'contabilizado', '09:40: loja aberta, conta');
+  const { rows } = await pool.query(
+    'SELECT vezes_confirmadas FROM exibicoes_contador WHERE anunciante_id = $1 AND dispositivo_id = $2 AND janela_hora = $3',
+    [conta, tela.id, hora],
+  );
+  assert.strictEqual(rows[0].vezes_confirmadas, 1, 'só a exibição do minuto aberto');
+});
+
+// Revisão Codex do PR #124 (2): a versão nova da config não pode depender de
+// uma migration (o contêiner antigo ainda atende enquanto ela roda). O
+// heartbeat do código novo manda buscar de novo sempre que a TV aplicou uma
+// versão que o código novo não entregou.
+test('config: versão aplicada que o código novo não entregou é reenviada; depois de entregue, estabiliza', async () => {
+  const { tela, p } = await telaInstalada(NOVE_AS_22);
+  const bater = (aplicada) =>
+    app.chamar('POST', `/player/${p.dispositivoId}/heartbeat`, {
+      chave: p.chaveAparelho,
+      corpo: { estado: 'PLAYING', configVersionAplicada: aplicada },
+    });
+  const linha = async () =>
+    (
+      await pool.query(
+        'SELECT config_versao_desejada AS d, config_versao_aplicada AS a, config_versao_entregue AS e FROM dispositivos WHERE id = $1',
+        [tela.id],
+      )
+    ).rows[0];
+
+  // TV que aplicou a config de ANTES (com horário): nunca foi entregue por este código.
+  const v0 = (await linha()).d;
+  let r = await bater(v0);
+  assert.strictEqual(r.json.configVersion, v0 + 1, 'manda buscar de novo');
+  assert.strictEqual(await (await bater(v0)).json.configVersion, v0 + 1, 'busca pendente: não sobe de novo');
+
+  // Busca no código novo: dia inteiro, e fica registrado.
+  const cfg = await configDe(p);
+  assert.strictEqual(cfg.json.configVersion, v0 + 1);
+  assertDiaInteiro(cfg.json.operacao, 'config reenviada');
+  assert.strictEqual((await linha()).e, v0 + 1);
+  r = await bater(v0 + 1);
+  assert.strictEqual(r.json.configVersion, v0 + 1, 'aplicada a versão entregue: estável');
+  assert.strictEqual((await linha()).d, v0 + 1);
+
+  // O contêiner ANTIGO serviu uma versão nova no meio do deploy (sem registrar a
+  // entrega): ao ser aplicada, o código novo manda buscar outra vez.
+  await pool.query('UPDATE dispositivos SET config_versao_desejada = config_versao_desejada + 1 WHERE id = $1', [
+    tela.id,
+  ]);
+  r = await bater(v0 + 2);
+  assert.strictEqual(r.json.configVersion, v0 + 3, 'versão servida pelo código antigo é reenviada');
+});

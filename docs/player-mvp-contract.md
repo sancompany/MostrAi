@@ -218,7 +218,8 @@ o comércio que abre mais cedo, fecha mais tarde ou fica aberto fora do
 habitual não fica com a TV ligada sem anúncio. O horário do ponto (e o do
 compromisso) continua no backend como informação operacional e comercial —
 obrigação só nas horas abertas (fora delas o que tocar é bônus, sem
-programada, POP não credita), estado "Fora do horário" na ficha (informativo,
+programada, POP de minuto fechado não credita — inclusive na hora
+parcialmente aberta), estado "Fora do horário" na ficha (informativo,
 nunca problema), atenção de sem comunicação só no horário. Nenhum campo novo;
 o Player não muda — ele segue aplicando o `operacao` que recebe, que agora
 nunca o apaga. O resto desta seção descreve o FORMATO do bloco (o mesmo de
@@ -257,8 +258,12 @@ por tela).
 - fora do `operacao` recebido o Player não exibe anúncios (mostra o cartão
   local) e manda `estado: OUT_OF_SCHEDULE` — com o bloco sempre no dia
   inteiro, isso não acontece mais. Guardar a última `operacao` recebida é o
-  que permite decidir o horário **offline** (a migration 118 subiu a
-  `configVersion` de todas as telas para a config do dia inteiro chegar).
+  que permite decidir o horário **offline**. Para a config do dia inteiro
+  chegar às telas que já tinham aplicado a antiga, o heartbeat devolve uma
+  `configVersion` a mais quando a versão aplicada não foi entregue pelo
+  backend novo (coluna `config_versao_entregue`, migration 118, gravada no
+  `GET /config`); depois da busca, estabiliza. Mesma mecânica de sempre do
+  lado do Player.
 
 ### PIN de saída
 

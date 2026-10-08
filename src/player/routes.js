@@ -6,7 +6,7 @@ const execucoesRepo = require('../playlist/execucoes-repository');
 const dispositivosRepo = require('../dispositivos/repository');
 const sinal = require('./sinal');
 const operacao = require('./operacao');
-const { montarConfig } = require('./config');
+const { montarConfig, registrarEntrega, reenviarSeNaoEntregue } = require('./config');
 const pinSaida = require('./pin-saida');
 const eventos = require('../lib/eventos');
 const sse = require('../lib/sse');
@@ -77,8 +77,11 @@ router.post('/player/:dispositivoId/heartbeat', exigirAparelho({ operacao: false
   const tela = req.dispositivo;
   const r = await sinal.registrarHeartbeat(tela.id, req.body, req.player);
   avisarMudanca(tela, { transicao: r.eventos.length > 0 });
+  // Config aplicada que este código não entregou → manda buscar de novo
+  // (Player sempre ativo, migration 118).
+  const reenviada = await reenviarSeNaoEntregue(tela.id);
   res.json({
-    configVersion: tela.config_versao_desejada,
+    configVersion: reenviada ?? tela.config_versao_desejada,
     playlist: { atualizar: await sinal.sinalizarPlaylist(tela.id) },
   });
 });
@@ -89,7 +92,9 @@ router.post('/player/:dispositivoId/heartbeat', exigirAparelho({ operacao: false
 router.get('/player/:dispositivoId/config', exigirAparelho({ operacao: false }), async (req, res) => {
   // Leva o PIN de saída: nada de cache no caminho.
   res.set('Cache-Control', 'no-store');
-  res.json(montarConfig(req.dispositivo, await pinSaida.obter()));
+  const config = montarConfig(req.dispositivo, await pinSaida.obter());
+  await registrarEntrega(req.dispositivo.id, config.configVersion);
+  res.json(config);
 });
 
 // ---------------------------------------------------------------------------
@@ -140,7 +145,11 @@ async function confirmarLote(dispositivo, eventosRecebidos) {
       resultados.push({ execucaoId: execucaoId.slice(0, 100), status: 'item_invalido' });
       continue;
     }
-    resultados.push(await execucoesRepo.confirmarComDedup(dispositivo.id, { ...evento, execucaoId }, agora));
+    resultados.push(
+      await execucoesRepo.confirmarComDedup(dispositivo.id, { ...evento, execucaoId }, agora, {
+        horario: dispositivo.ponto_horario_semanal,
+      }),
+    );
   }
 
   const porStatus = {};

@@ -1680,15 +1680,21 @@ obrigação).
 **Decisão.** Regra do dono: TV ligada + Player saudável = reprodução contínua.
 `montarConfig` manda `operacao` sempre como o dia inteiro (o bloco de ponto
 sem horário, que o APK já entende) — nada muda no APK nem no formato. A
-migration 118 sobe a versão desejada de todas as telas para a config nova
-chegar. O horário continua sendo informação operacional/comercial no
-backend: obrigação, programada e POP creditado só em hora aberta (fora dela a
-campanha toca como bônus e o POP responde `janela_desconhecida`, sem mexer no
-saldo), estado "Fora do horário" na ficha (informativo), atenção de sem
-comunicação só no horário. Tela móvel sem compromisso continua só
-institucional (sem local comercial falso).
+config nova chega pelo heartbeat: a migration 118 só cria
+`config_versao_entregue`, gravada pelo `GET /config` do código novo, e o
+heartbeat sobe a versão desejada em +1 da tela que já aplicou uma versão que
+o código novo não entregou. O horário continua sendo informação
+operacional/comercial no backend: obrigação e programada só em hora aberta,
+POP creditado só em MINUTO aberto (fora dele a campanha toca como bônus e o
+POP responde `janela_desconhecida`, sem mexer no saldo — inclusive na hora
+parcialmente aberta, pelo `iniciadoEm`), estado "Fora do horário" na ficha
+(informativo), atenção de sem comunicação só no horário. Tela móvel sem
+compromisso continua só institucional (sem local comercial falso).
 
 **Recusado.** Estado novo de "operação extraordinária"; exigir evento ou
 compromisso; mexer no APK; creditar POP fora do horário (mudaria saldo e
-obrigação — fora do escopo).
+obrigação — fora do escopo); subir a versão de todas as telas na própria
+migration, como a 093 (o contêiner antigo ainda serve durante o deploy: a TV
+buscaria a config com horário, aplicaria a versão nova e nunca mais buscaria
+— revisão Codex do PR #124).
 
