@@ -20,6 +20,8 @@
     // escolhível.
     semLocal: 'Sem localização no momento',
     semProximo: 'Nenhuma programada',
+    // "Onde estamos" (site público): rótulo "Próximo".
+    semProximoCompromisso: 'Nenhum programado',
     locais: (n) => `${n} locais em operação`,
     tipo: (t) => (t === 'evento' ? 'Evento' : 'Estabelecimento'),
   };

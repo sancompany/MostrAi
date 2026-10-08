@@ -158,7 +158,8 @@ const compromissoPublico = (c) =>
   };
 
 // Os locais de AGORA da rede, um por compromisso (evento com 3 telas é UM
-// local), e o PRÓXIMO compromisso que ainda vai começar.
+// local), e o PRÓXIMO compromisso que ainda vai começar. `evento`: o nome do
+// evento em curso (null na hospedagem, onde o local já é o comércio).
 function locaisEProximo(redeId, dela, compromissos) {
   const vistos = new Set();
   const locaisAgora = [];
@@ -166,7 +167,12 @@ function locaisEProximo(redeId, dela, compromissos) {
     const chave = `${t.alocacao.tipo}:${t.alocacao.id}`;
     if (vistos.has(chave)) continue;
     vistos.add(chave);
-    locaisAgora.push({ origem: t.alocacao.tipo, nome: t.alocacao.local, endereco: t.alocacao.endereco });
+    locaisAgora.push({
+      origem: t.alocacao.tipo,
+      nome: t.alocacao.local,
+      endereco: t.alocacao.endereco,
+      evento: t.alocacao.tipo === 'evento' ? t.alocacao.nome : null,
+    });
   }
   const agora = Date.now();
   const futuro = compromissos
@@ -206,6 +212,20 @@ async function situacaoDasRedes(redeIds, db = pool) {
     });
   }
   return mapa;
+}
+
+// "Onde estamos" (site público, GET /pontos): a rede móvel é UM card por
+// cidade, com ou sem localização — nunca um card por tela nem por alocação,
+// nunca endereço-base. Só a foto da rede, os locais de AGORA (o endereço vira
+// o "Ver no mapa"; sem local, sem mapa) e o PRÓXIMO compromisso. Nada
+// técnico: telas, operação e status da rede ficam de fora.
+function redePublica(m) {
+  if (!m) return null;
+  return {
+    foto: m.foto || null,
+    agora: (m.locaisAgora || []).map(({ nome, endereco, evento }) => ({ nome, endereco, evento })),
+    proximo: m.proximo ? { nome: m.proximo.nome, local: m.proximo.local, inicio: m.proximo.inicio } : null,
+  };
 }
 
 // AGENDA MÓVEL do Admin (Rede → Pontos, filtro Móveis → "Agenda móvel"):
@@ -853,6 +873,7 @@ async function contasInteressadas(pontoId, extras = []) {
 module.exports = {
   LIMITES,
   situacaoDasRedes,
+  redePublica,
   agendaDasRedes,
   agendaPublicaDaRede,
   fichaDaRede,

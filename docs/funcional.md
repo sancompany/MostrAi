@@ -1825,8 +1825,13 @@ hospedagem ativa, o horário e a categoria protegida dela e a "casa" é o
 anfitrião; no evento em andamento, o horário e a categoria dele, sem casa;
 **sem alocação, a tela não é inventário** — sem campanha, saldo, mídia
 própria ou obrigação, e se ligada toca só o institucional. "Onde estamos"
-mostra só as alocações reais de agora (um card por hospedagem ou evento,
-com o local e o endereço) — nunca um pino da rede. **O anunciante escolhe a
+(estação de 08/10/2026) mostra **UM card por rede**, sempre (salvo
+arquivada) — foto da rede com o selo MÓVEL, nome, cidade/UF, **Local atual**
+(um por compromisso em curso, com "Ver no mapa" pelo endereço real; sem
+nenhum, "Sem localização no momento" e nenhum mapa) e **Próximo** (nome ·
+local — "12/10 às 18h"; "Nenhum programado"). Nunca um pino da rede, nunca
+endereço-base, nunca um card por tela; tela parada não tira a rede do site;
+compromisso futuro nunca é o local atual. **O anunciante escolhe a
 REDE, nunca uma tela**: o card da rede (estação Rede/Admin V2) é curto —
 FOTO (a capa da rede, mesmo formato 16:9 dos outros cards) com o selo
 MÓVEL, nome, cidade/UF, **Local atual** (o local de agora; "N locais em

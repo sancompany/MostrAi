@@ -6083,3 +6083,17 @@ Encontrado no caminho, sem mexer:
       Correção: gravar o horário com a hora congelada
       (`playlist_hora_congelada`, na geração) e julgar o POP por ele.
 
+
+**Estação "Onde estamos" com o Mostraí Móvel (08/10/2026, ADR-044).** A
+rede móvel some do site sem alocação → agora UM card por rede, sempre (salvo
+arquivada): foto da rede, selo MÓVEL, cidade/UF, "Local atual" (um por
+compromisso em curso, com "Ver no mapa" pelo endereço real; sem nenhum, "Sem
+localização no momento" e nenhum mapa) e "Próximo" (ou "Nenhum programado").
+Fixos sem mudança. Ficou de fora, sem mexer:
+- OE1 [ ] "Ver agenda" no card público: a agenda pública existe
+      (`agendaPublicaDaRede`), mas só pela rota da conta logada
+      (`/anunciantes/me/redes-moveis/:id/agenda`). Expor ao visitante pede
+      uma rota pública nova — decisão do dono.
+- OE2 [ ] Pin no mapa embutido: a página tem um mapa fixo de Matão e o "Ver
+      no mapa" por card (busca pelo endereço). Pin por ponto exigiria
+      coordenada, que o sistema não guarda por decisão (src/pontos/endereco.js).

@@ -420,9 +420,14 @@ test('contexto por tela: evento numa, hospedagem noutra, a terceira sem alocaç�
   assert.strictEqual(f.telas.find((t) => t.id === b).alocacao.tipo, 'hospedagem');
   assert.strictEqual(f.telas.find((t) => t.id === c).alocacao, null);
 
-  // "Onde estamos": as alocações reais, nunca um pino da rede.
+  // "Onde estamos": UMA linha da rede (3 telas), com as alocações reais de
+  // agora — nunca um pino da rede, nunca um card por tela.
   const publicos = (await navegador()('GET', '/pontos')).json.filter((p) => p.id === rede.id);
-  assert.deepStrictEqual(publicos.map((p) => p.local_atual).sort(), ['Padaria Central', 'Parque de Exposições']);
+  assert.strictEqual(publicos.length, 1);
+  assert.deepStrictEqual(publicos[0].movel.agora.map((l) => l.nome).sort(), [
+    'Padaria Central',
+    'Parque de Exposições',
+  ]);
 
   // Encerrar a hospedagem de B não mexe no evento de A.
   const fim = await admin('POST', `/admin/pontos/${rede.id}/hospedagens/${h.json.id}/encerrar`, {});

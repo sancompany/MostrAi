@@ -40,6 +40,8 @@ fetch(`${API_BASE_URL}/pontos`)
   .then((pontos) => {
     const grid = document.getElementById('pontosGrid');
     if (!Array.isArray(pontos)) throw new Error('resposta inesperada');
+    // Rede móvel: `em_operacao` só com local atual (GET /pontos), nunca o
+    // estado técnico das telas.
     const ativos = pontos.filter((p) => p.status === 'em_operacao').length;
     const emConstrucao = pontos.filter(
       (p) => p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal',
@@ -79,35 +81,61 @@ fetch(`${API_BASE_URL}/pontos`)
       aguardando_primeiro_sinal: { texto: 'Em instalação', classe: 'badge-pendente' },
       em_reparo: { texto: 'Em reparo', classe: 'badge-pendente' },
     };
-    grid.innerHTML = pontos
-      .map((p) => {
-        // Linha do endereço com a mesma regra do resto do sistema
-        // (window.linhaEndereco — D5, 24/09/2026): rua, número e bairro.
-        // Rede móvel (migration 115): cada linha é uma ALOCAÇÃO real de
-        // agora (uma tela hospedada ou um evento em andamento) — o endereço é
-        // o do local; nunca um pino da rede.
-        const movel = p.tipo === 'movel' && window.PONTO_MOVEL;
-        const linha = movel ? '' : window.linhaEndereco(p);
-        const enderecoCompleto = movel
-          ? [p.local_atual, p.local_endereco !== p.local_atual ? p.local_endereco : ''].filter(Boolean).join(', ')
-          : `${linha ? linha + ', ' : ''}${p.cidade}`;
-        const mapaUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCompleto)}`;
-        const st = STATUS_LABEL[p.status] || STATUS_LABEL.a_instalar;
-        const onde = movel
-          ? `Agora em: ${esc(p.local_atual || '')}${p.evento_nome ? ` · ${esc(p.evento_nome)}` : ''}`
-          : `${esc(p.cidade)}${linha ? ', ' + esc(linha) : ''}`;
-        return `
+    const linkDoMapa = (endereco) =>
+      `<a class="mapa-link" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(endereco)}" target="_blank" rel="noopener">📍 Ver no mapa</a>`;
+    const fixo = (p) => {
+      // Linha do endereço com a mesma regra do resto do sistema
+      // (window.linhaEndereco — D5, 24/09/2026): rua, número e bairro.
+      const linha = window.linhaEndereco(p);
+      const st = STATUS_LABEL[p.status] || STATUS_LABEL.a_instalar;
+      return `
       <div class="ponto-card">
         <div class="ponto-card-media">${fotoOuPlaceholder(p.foto_instalacao_url, p.nome)}</div>
-        <span class="badge ${st.classe}">${st.texto}</span>${movel ? ` <span class="badge badge-info">${esc(window.PONTO_MOVEL.selo)}</span>` : ''}
+        <span class="badge ${st.classe}">${st.texto}</span>
         <h4>${esc(p.nome)}</h4>
-        <p>${onde}</p>
-        ${movel ? `<p class="u-dim">${esc(window.PONTO_MOVEL.explica(p.cidade))}</p>` : ''}
-        <a class="mapa-link" href="${mapaUrl}" target="_blank" rel="noopener">📍 Ver no mapa</a>
+        <p>${esc(p.cidade)}${linha ? ', ' + esc(linha) : ''}</p>
+        ${linkDoMapa(`${linha ? linha + ', ' : ''}${p.cidade}`)}
       </div>
     `;
-      })
-      .join('');
+    };
+    // MOSTRAÍ MÓVEL — UM card por rede (cidade/UF), com ou sem localização:
+    // a foto da rede com o selo MÓVEL, "Local atual" e "Próximo". O mapa só
+    // aparece para o local REAL de agora (o endereço da alocação em curso);
+    // sem local, nenhum mapa — a rede não tem base nem coordenada.
+    const movel = (p) => {
+      const PM = window.PONTO_MOVEL;
+      const m = p.movel || {};
+      const agora = Array.isArray(m.agora) ? m.agora : [];
+      const cidade = PM.cidade(p.cidade, p.uf);
+      const onde = (rotulo, valor, vazio) =>
+        `<p class="ponto-movel-onde${vazio ? ' vazio' : ''}"><span class="ponto-movel-rotulo">${rotulo}</span><span class="ponto-movel-valor">${esc(valor)}</span></p>`;
+      const atual = agora.length
+        ? agora
+            .map(
+              (l) =>
+                `${onde('Local atual', [l.evento, l.nome].filter(Boolean).join(' · '), false)}${
+                  l.endereco || l.nome
+                    ? linkDoMapa([...new Set([l.nome, l.endereco, cidade].filter(Boolean))].join(', '))
+                    : ''
+                }`,
+            )
+            .join('')
+        : onde('Local atual', PM.semLocal, true);
+      const proximo = m.proximo
+        ? `${[m.proximo.nome, m.proximo.local].filter(Boolean).join(' · ')} — ${PM.quando(m.proximo.inicio)}`
+        : PM.semProximoCompromisso;
+      return `
+      <div class="ponto-card ponto-card-movel">
+        <div class="ponto-card-media">${fotoOuPlaceholder(m.foto, p.nome)}<span class="selo-movel">${esc(PM.selo)}</span></div>
+        <h4>${esc(p.nome)}</h4>
+        <p>${esc(cidade)}</p>
+        <p class="u-dim">${esc(PM.explica(p.cidade))}</p>
+        ${atual}
+        ${onde('Próximo', proximo, !m.proximo)}
+      </div>
+    `;
+    };
+    grid.innerHTML = pontos.map((p) => (p.tipo === 'movel' && window.PONTO_MOVEL ? movel(p) : fixo(p))).join('');
   })
   .catch((err) => {
     // Erro tem que ser distinguivel de "a rede esta vazia": a faixa de

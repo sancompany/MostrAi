@@ -1698,3 +1698,25 @@ migration, como a 093 (o contêiner antigo ainda serve durante o deploy: a TV
 buscaria a config com horário, aplicaria a versão nova e nunca mais buscaria
 — revisão Codex do PR #124).
 
+
+## ADR-044 — "Onde estamos": UM card por rede móvel, com ou sem localização (08/10/2026)
+
+**Contexto.** `GET /pontos` (página pública "Onde estamos") listava a rede
+móvel só pelas alocações em curso — uma linha por hospedagem ativa ou evento
+em andamento. Sem alocação, a rede sumia do site (o Mostraí Móvel de Matão
+não aparecia); com duas alocações, viravam dois cards.
+
+**Decisão.** A rede móvel é inventário real mesmo entre duas alocações:
+`listarPublicos` devolve UMA linha por rede não arquivada, sem endereço-base,
+sem ramo e sem status técnico; `GET /pontos` anexa `movel` pela MESMA fonte
+do Admin e do anunciante (`situacaoDasRedes` → `redePublica`): foto da rede,
+um local por compromisso EM CURSO (com endereço, para o "Ver no mapa") e o
+próximo compromisso ainda não iniciado. `status` da rede = presença
+comercial (`em_operacao` com local atual, senão null). O "pin" é o "Ver no
+mapa" do card (o sistema não guarda coordenada — src/pontos/endereco.js):
+só para o local real de agora.
+
+**Recusado.** Endereço-base ou última hospedagem como localização; card por
+tela ou por alocação; status das telas como presença pública; coordenada
+inventada; "Ver agenda" público (a rota de agenda exige conta logada — rota
+pública nova ficou fora do escopo).
