@@ -340,12 +340,14 @@ check(
   await mercado.locator('.ponto-end').innerText(),
 );
 check('segmento', (await mercado.locator('.ponto-segmento').innerText()) === 'Mercado / Supermercado');
+// Horário de funcionamento e hora vendida saíram do card (pedido do dono,
+// 08/10/2026): estabelecimento, localização e ramo.
+const SEM_HORAS = /vendid|Seg-sex|Sáb|Dom |Horário|feriado/i;
 check(
-  'horário resumido',
-  (await mercado.locator('.ponto-horario').innerText()) === 'Seg-sex 07:00-21:00 · Sáb 07:00-21:00 · Dom 08:00-13:00',
-  await mercado.locator('.ponto-horario').innerText(),
+  'sem horário de funcionamento nem hora vendida no card',
+  (await mercado.locator('.ponto-horario, .ponto-ocupacao').count()) === 0 && !SEM_HORAS.test(await mercado.innerText()),
+  await mercado.innerText(),
 );
-check('ocupação', (await mercado.locator('.ponto-ocupacao').innerText()) === '20% vendido');
 check('pé diz "Selecionar ponto"', (await acao(p, P.mercado)) === 'Selecionar ponto');
 check(
   'nome acessível da caixa é o nome do ponto',
@@ -354,7 +356,7 @@ check(
 
 const farmacia = card(p, P.farmacia);
 check('sem foto: placeholder oficial, sem <img>', (await farmacia.locator('.ponto-foto-placeholder').count()) === 1 && (await farmacia.locator('img').count()) === 0);
-check('sem foto: resto do card igual', (await farmacia.locator('.ponto-ocupacao').innerText()) === '45% vendido');
+check('sem foto: resto do card igual (endereço e ramo)', (await farmacia.locator('.ponto-end').count()) === 1 && !SEM_HORAS.test(await farmacia.innerText()));
 
 await p.waitForFunction(
   (id) => document.querySelector(`.ponto-escolha[data-ponto-id="${id}"] img`)?.complete,
@@ -367,7 +369,7 @@ check(
     .evaluate((img) => getComputedStyle(img).objectFit === 'cover' && !img.classList.contains('foto-contida')),
 );
 check('aguardando primeiro sinal', (await card(p, P.barbearia).locator('.badge').innerText()) === 'Aguardando primeiro sinal');
-check('em instalação: sem hora vendida', (await card(p, P.academia).locator('.ponto-ocupacao').innerText()) === 'Ainda sem hora vendida');
+check('em instalação: nada de "hora vendida"', !SEM_HORAS.test(await card(p, P.academia).innerText()));
 check('em reparo', (await card(p, P.pet).locator('.badge').innerText()) === 'Em reparo');
 const nomeLongo = card(p, P.pet).locator('.ponto-nome');
 check('nome longo inteiro no title', (await nomeLongo.getAttribute('title')) === NOME_LONGO);
@@ -389,12 +391,12 @@ check('destaque próprio (classe seu-ponto)', await proprio.evaluate((el) => el.
 console.log('== sem espaço e bloqueado: apagados, sem escolha nova ==');
 const sorveteria = card(p, P.sorveteria);
 check('sem espaço: caixa desligada', await sorveteria.locator('input').isDisabled());
-check('sem espaço: "Sem espaço agora"', (await sorveteria.locator('.ponto-ocupacao').innerText()) === 'Sem espaço agora');
+check('sem espaço: sem texto de capacidade no card', !SEM_HORAS.test(await sorveteria.innerText()) && !/Sem espaço/.test(await sorveteria.innerText()));
 check('sem espaço: pé diz "Indisponível para escolha"', (await acao(p, P.sorveteria)) === 'Indisponível para escolha');
 check('sem espaço: apagado', await sorveteria.evaluate((el) => Number(getComputedStyle(el.querySelector('.ponto-card-corpo')).opacity) < 1));
 const otica = card(p, P.otica);
 check('bloqueado: caixa desligada', await otica.locator('input').isDisabled());
-check('bloqueado: "não aceita novas escolhas"', /85% vendido · não aceita novas escolhas/.test(await otica.locator('.ponto-ocupacao').innerText()));
+check('bloqueado: sem percentual vendido no card', !SEM_HORAS.test(await otica.innerText()));
 check('desktop: sem rolagem lateral', await semRolagemLateral(p));
 check('desktop: nada vaza dos cards', (await semVazamento(p)).length === 0, (await semVazamento(p)).join(' | '));
 check('desktop: a lista rola por dentro', (await p.$eval('#listaPontos', (el) => getComputedStyle(el).overflowY)) === 'auto');
