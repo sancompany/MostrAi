@@ -14,7 +14,12 @@ const pool = require('../db/pool');
 // transação para decidir a nova leva usando exatamente o estado protegido
 // pelo lock. Repetições dentro da leva são intencionais (frequência); o que
 // não pode acontecer é duas requisições anexarem a mesma leva.
-async function resolver(dispositivoId, horaAtual, baseProposta, calcularExtras) {
+//
+// `horario`: o horário em vigor na tela quando a hora nasce (migration 119)
+// — gravado só pela primeira geração, como a base; é por ele que o POP
+// daquela hora é julgado (gerador.js#confirmarExecucao). `undefined` = não
+// informado (linha sem registro).
+async function resolver(dispositivoId, horaAtual, baseProposta, calcularExtras, horario) {
   const client = await pool.connect();
   const horaEpoch = Math.floor(new Date(horaAtual).getTime() / 3_600_000);
 
@@ -31,10 +36,16 @@ async function resolver(dispositivoId, horaAtual, baseProposta, calcularExtras) 
 
     if (!rows[0]) {
       const criada = await client.query(
-        `INSERT INTO playlist_hora_congelada (dispositivo_id, janela_hora, base, extras)
-         VALUES ($1, $2, $3::jsonb, '[]'::jsonb)
+        `INSERT INTO playlist_hora_congelada (dispositivo_id, janela_hora, base, extras, horario_semanal, horario_registrado)
+         VALUES ($1, $2, $3::jsonb, '[]'::jsonb, $4::jsonb, $5)
          RETURNING base, extras`,
-        [dispositivoId, horaAtual, JSON.stringify(baseProposta)],
+        [
+          dispositivoId,
+          horaAtual,
+          JSON.stringify(baseProposta),
+          horario == null ? null : JSON.stringify(horario),
+          horario !== undefined,
+        ],
       );
       rows = criada.rows;
     }

@@ -6069,7 +6069,7 @@ Encontrado no caminho, sem mexer:
       uma vez em `tests/distribuicao.test.js` 18, rodando em paralelo). Em
       produção a conta já existe. Correção pequena: `INSERT ... ON CONFLICT` ou
       reler depois do erro de unicidade.
-- PA2 [ ] (Codex, PR #124, mergeado por decisão do dono) o POP é julgado
+- PA2 [x] (Codex, PR #124, mergeado por decisão do dono) o POP é julgado
       pelo horário em vigor quando CHEGA, não pelo da hora em que tocou
       (`limite:` em `gerador.js#confirmarExecucao`). A janela é o atraso
       entre tocar e o POP chegar: o lote normal (a cada 60 s, ver
@@ -6082,6 +6082,12 @@ Encontrado no caminho, sem mexer:
         que terminou: o horário vira `null`, que é o dia inteiro.
       Correção: gravar o horário com a hora congelada
       (`playlist_hora_congelada`, na geração) e julgar o POP por ele.
+      **Feito (08/10/2026, migration 119, ADR-045):** a primeira geração
+      da hora grava `horario_semanal` + `horario_registrado = true`, e
+      `confirmarExecucao` julga o minuto por ele; hora congelada sem
+      registro (anterior à 119, ou gravada pelo contêiner antigo no deploy)
+      segue com o horário de agora. Teste nos dois sentidos e no sem
+      registro: `tests/player-sempre-ativo.test.js`.
 
 
 **Estação "Onde estamos" com o Mostraí Móvel (08/10/2026, ADR-044).** A

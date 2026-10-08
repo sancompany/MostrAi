@@ -219,7 +219,8 @@ habitual não fica com a TV ligada sem anúncio. O horário do ponto (e o do
 compromisso) continua no backend como informação operacional e comercial —
 obrigação só nas horas abertas (fora delas o que tocar é bônus, sem
 programada, POP de minuto fechado não credita — inclusive na hora
-parcialmente aberta), estado "Fora do horário" na ficha (informativo,
+parcialmente aberta; fechado pelo horário de quando a hora tocou, não pelo
+de quando o POP chega), estado "Fora do horário" na ficha (informativo,
 nunca problema), atenção de sem comunicação só no horário. Nenhum campo novo;
 o Player não muda — ele segue aplicando o `operacao` que recebe, que agora
 nunca o apaga. O resto desta seção descreve o FORMATO do bloco (o mesmo de
@@ -373,7 +374,7 @@ resultado. Os 6 status são **finais** — o evento sai da fila:
 | `contabilizado` | creditado ao anunciante (ou, pra `midia:N`, ao contador da Mídia Mostraí) |
 | `duplicado` | este `execucaoId` já foi processado (retentativa) |
 | `teto_atingido` | a hora já tem todas as exibições programadas confirmadas |
-| `janela_desconhecida` | a janela/item não pertence a esta tela, ou o item não estava na playlist congelada daquela hora |
+| `janela_desconhecida` | a janela/item não pertence a esta tela, o item não estava na playlist congelada daquela hora, ou tocou (`iniciadoEm`) em minuto fechado pelo horário de quando a hora tocou (bônus, não credita) |
 | `janela_expirada` | chegou mais de **7 dias** depois do fim da janela (ou a janela está no futuro) |
 | `item_invalido` | evento malformado (campo ausente, vazio ou de tipo errado; `execucaoId` fora do formato; ids que não são exatamente os da playlist; item que não conta, como institucional ou autoanúncio) |
 

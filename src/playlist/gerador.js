@@ -947,10 +947,16 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   // congelada (migration 064): toda geração seguinte reprocessa a MESMA
   // `base` pela mesma semente — determinístico, sempre a mesma sequência —
   // e quem não estava nela ainda entra em `extras`, sempre no fim.
-  const congelada = await congelamentoRepo.resolver(dispositivo.id, horaAtual, entrada, (base, extras) => {
-    const idsConhecidos = new Set([...base.map((e) => e.id), ...extras]);
-    return sequenciaAdicional(entrada.filter((e) => !idsConhecidos.has(e.id)));
-  });
+  const congelada = await congelamentoRepo.resolver(
+    dispositivo.id,
+    horaAtual,
+    entrada,
+    (base, extras) => {
+      const idsConhecidos = new Set([...base.map((e) => e.id), ...extras]);
+      return sequenciaAdicional(entrada.filter((e) => !idsConhecidos.has(e.id)));
+    },
+    dispositivo.ponto_horario_semanal ?? null,
+  );
   const daHora = montarHoraDeTv(congelada.base, semente, videoInstitucional?.duracaoSegundos ?? DURACAO_INSTITUCIONAL);
   const idsExtras = congelada.extras;
 
@@ -1289,15 +1295,18 @@ async function existeConfirmacao(anuncianteId, dispositivoId, janela, db = pool)
 // O anunciante estava na playlist CONGELADA desta tela nesta hora (base ou
 // extras, migration 064)? Fato do servidor, gravado quando a hora foi
 // servida — não depende de nada que a TV mande além do id.
-async function estavaNaHoraCongelada(dispositivoId, janela, anuncianteId, db = pool) {
+// A hora congelada daquela tela, se o item estava nela (null se não), com o
+// horário que valia quando ela nasceu (migration 119; sem registro, linha
+// anterior a ela).
+async function horaCongeladaDoItem(dispositivoId, janela, anuncianteId, db = pool) {
   const { rows } = await db.query(
-    `SELECT 1 FROM playlist_hora_congelada
+    `SELECT horario_semanal, horario_registrado FROM playlist_hora_congelada
       WHERE dispositivo_id = $1 AND janela_hora = $2
         AND (EXISTS (SELECT 1 FROM jsonb_array_elements(base) b WHERE b->>'id' = $3)
              OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(extras) x WHERE x = $3))`,
     [dispositivoId, janela, String(anuncianteId)],
   );
-  return rows.length > 0;
+  return rows[0] || null;
 }
 
 // Quando a exibição aconteceu, pra "primeira/última exibição": o servidor não
@@ -1430,21 +1439,23 @@ async function confirmarExecucao(dispositivoIdEsperado, itemProgramacaoId, janel
 
   // Fato do servidor: estava na playlist congelada daquela tela e hora (a
   // mídia entra na base como `midia:N`, o anunciante pelo id).
-  if (!(await estavaNaHoraCongelada(dispositivoIdEsperado, horaJanela, midia ? tipo : idNumerico, db))) {
-    return 'janela_desconhecida';
-  }
+  const congelada = await horaCongeladaDoItem(dispositivoIdEsperado, horaJanela, midia ? tipo : idNumerico, db);
+  if (!congelada) return 'janela_desconhecida';
   // PLAYER SEMPRE ATIVO (08/10/2026): a TV toca também fora do horário, e o
   // que tocar ali é bônus — a hora inteira fechada nem tem contador. Numa hora
   // PARCIALMENTE aberta (09:30–18:30 → a das 09h existe), a parte fechada
   // também não credita: decide pelo `iniciadoEm` informado dentro da hora (o
   // mesmo relógio com que o Player tocou). Sem ele, vale a regra de sempre
   // (credita até o teto). Mesmo status da hora fechada — nenhum novo.
-  // limite: `horario` é o que vale na tela quando o POP CHEGA, não quando
-  // tocou — POP que chega (lote de 60 s ou fila offline) depois de trocar o
-  // horário do ponto ou a alocação da tela móvel é julgado pelo horário novo,
-  // e pode errar nos dois sentidos; guardar o horário junto da hora congelada
-  // resolve (docs/PENDENCIAS.md, PA2).
-  if (extra.horario !== undefined && minutoFechado(extra.horario, extra.iniciadoEm, horaJanela)) {
+  // O horário é o da HORA CONGELADA (migration 119, PA2): o lote de 60 s ou a
+  // fila offline que chegam depois de mudar o horário do ponto ou a alocação
+  // da tela móvel são julgados pelo horário de quando a hora tocou. Hora
+  // congelada sem registro (anterior à 119): o horário de agora, de quem chama.
+  // limite: é o horário da PRIMEIRA geração da hora (a rota só gera a hora
+  // corrente) — horário editado no meio da hora vale para o POP a partir da
+  // seguinte; gravar a linha do tempo (desde, horário) por hora, se pesar.
+  const horario = congelada.horario_registrado ? congelada.horario_semanal : extra.horario;
+  if (horario !== undefined && minutoFechado(horario, extra.iniciadoEm, horaJanela)) {
     return 'janela_desconhecida';
   }
   const instante = instanteDaExibicao(extra.iniciadoEm, horaJanela, agora);

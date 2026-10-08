@@ -283,6 +283,67 @@ test('POP em hora parcialmente aberta: o minuto fechado não credita; o aberto c
   assert.strictEqual(rows[0].vezes_confirmadas, 1, 'só a exibição do minuto aberto');
 });
 
+// PA2 (docs/PENDENCIAS.md; revisão Codex do PR #124): o POP que chega depois
+// de mudar o horário (lote de 60 s, fila offline) é julgado pelo horário de
+// quando a hora tocou — o gravado com a hora congelada (migration 119) —, nos
+// dois sentidos. Hora congelada sem registro (anterior à 119): o de agora.
+test('POP é julgado pelo horário da hora congelada, não pelo de quando chega', async () => {
+  const noveEMeia = Object.fromEntries([...SEMANA, 'feriados'].map((d) => [d, { abre: '09:30', fecha: '18:30' }]));
+  const hora = ontemAs(9);
+  const as910 = (p, envelope, item, execucaoId) =>
+    app.chamar('POST', `/player/${p.dispositivoId}/played`, {
+      chave: p.chaveAparelho,
+      corpo: {
+        eventos: [
+          {
+            execucaoId,
+            janelaId: envelope.janelaId,
+            itemProgramacaoId: item.itemProgramacaoId,
+            criativoId: String(item.criativoId),
+            iniciadoEm: new Date(hora.getTime() + 10 * 60_000).toISOString(),
+            terminadoEm: new Date(hora.getTime() + 10 * 60_000 + 15_000).toISOString(),
+          },
+        ],
+      },
+    });
+  // Gera a hora das 09h com `antes`, troca o horário do ponto para `depois`
+  // e manda o POP das 09:10.
+  const caso = async (rotulo, antes, depois, ajustarCongelada) => {
+    const { pid, tela, p } = await telaInstalada(antes);
+    const conta = await contaNoPonto(pid);
+    const dispositivo = await dispositivosRepo.buscarComPonto(tela.id);
+    const envelope = await gerador.gerarPlaylistDaHora(dispositivo, hora, new Date(hora.getTime() + 60_000));
+    const item = envelope.itens.find((i) => i.anuncianteId === conta);
+    assert.ok(item, `${rotulo}: a campanha está na hora`);
+    await pool.query('UPDATE pontos SET horario_semanal = $2 WHERE id = $1', [pid, depois]);
+    if (ajustarCongelada) await ajustarCongelada(tela.id);
+    const r = await as910(p, envelope, item, `sempre-ativo-${conta}-pa2`);
+    assert.strictEqual(r.status, 200, rotulo);
+    return r.json.resultados[0].status;
+  };
+
+  assert.strictEqual(
+    await caso('fechado → aberto', noveEMeia, null),
+    'janela_desconhecida',
+    '09:10 estava fechado quando tocou: abrir depois não credita',
+  );
+  assert.strictEqual(
+    await caso('aberto → fechado', null, noveEMeia),
+    'contabilizado',
+    '09:10 estava aberto quando tocou: fechar depois não tira o crédito',
+  );
+  assert.strictEqual(
+    await caso('sem registro', noveEMeia, null, (id) =>
+      pool.query(
+        'UPDATE playlist_hora_congelada SET horario_semanal = NULL, horario_registrado = false WHERE dispositivo_id = $1',
+        [id],
+      ),
+    ),
+    'contabilizado',
+    'hora congelada anterior à 119: vale o horário de agora (aberto)',
+  );
+});
+
 // Revisão Codex do PR #124 (2): a versão nova da config não pode depender de
 // uma migration (o contêiner antigo ainda atende enquanto ela roda). O
 // heartbeat do código novo manda buscar de novo sempre que a TV aplicou uma

@@ -1429,7 +1429,9 @@ bloco de operação vai SEMPRE como o dia inteiro — TV ligada + Player saudáv
 na tela móvel; sem campanha elegível, toca o institucional/Mídia Mostraí. O
 horário segue no backend como informação operacional e comercial: obrigação e
 programada só nas horas abertas, POP creditado só no minuto aberto (fora dele
-o que tocar é bônus, inclusive na hora parcialmente aberta), "Fora do
+o que tocar é bônus, inclusive na hora parcialmente aberta) — aberto pelo
+horário de quando a hora tocou, gravado com a hora congelada (migration 119):
+o POP que chega depois de mudar o horário não muda de lado —, "Fora do
 horário" na ficha (informativo, nunca problema) e atenção de sem comunicação
 só no horário. A config nova chega pelo heartbeat: a tela cuja versão
 aplicada não foi entregue pelo backend novo (`config_versao_entregue`,

@@ -177,8 +177,10 @@ são finais:
 - `duplicado` — `execucaoId` já processado (da mesma TV ou de outra); nada
   conta duas vezes.
 - `teto_atingido` — a hora já tem todas as exibições programadas confirmadas.
-- `janela_desconhecida` — janela/item de outra tela, ou anunciante que não
-  estava na playlist congelada daquela tela e hora.
+- `janela_desconhecida` — janela/item de outra tela, anunciante que não
+  estava na playlist congelada daquela tela e hora, ou exibição (`iniciadoEm`)
+  em minuto fechado pelo horário gravado com essa hora (bônus, não credita;
+  migration 119).
 - `janela_expirada` — chegou mais de 7 dias depois do fim da janela, ou a
   janela está no futuro.
 - `item_invalido` — campo ausente, vazio ou de tipo errado; `execucaoId` fora

@@ -1720,3 +1720,25 @@ só para o local real de agora.
 tela ou por alocação; status das telas como presença pública; coordenada
 inventada; "Ver agenda" público (a rota de agenda exige conta logada — rota
 pública nova ficou fora do escopo).
+
+
+## ADR-045 — O POP é julgado pelo horário da hora congelada (08/10/2026)
+
+**Contexto.** Desde a ADR-043, o POP de minuto fechado não credita
+(`gerador.js#confirmarExecucao`, pelo `iniciadoEm`). Mas o horário usado era
+o da tela quando o POP CHEGA: o lote de 60 s ou a fila offline (até 7 dias)
+que chegam depois de mudar o horário do ponto, ou a alocação da tela móvel,
+eram julgados pelo horário novo — recusando minuto que estava aberto ou
+creditando minuto que estava fechado (revisão Codex do PR #124; PA2).
+
+**Decisão.** O horário em vigor na tela entra na hora congelada
+(`playlist_hora_congelada`, migration 119) na primeira geração da hora, como
+a base — nunca é reescrito depois. O POP daquela hora é julgado por ele.
+`horario_registrado` separa "sem horário" (`null` = dia inteiro) de linha
+sem registro (anterior à 119, ou gravada pelo contêiner antigo durante o
+deploy): sem registro, vale o horário de agora, como antes.
+
+**Recusado.** Julgar pelo histórico de horários do ponto (não existe
+histórico do horário do ponto fixo, e a tela móvel teria de reconstruir a
+alocação do instante); gravar o horário por POP ou por item (a hora é a
+unidade que já está congelada).
