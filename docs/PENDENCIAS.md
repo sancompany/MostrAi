@@ -6058,9 +6058,9 @@ smoke somente leitura:
 - a playlist da hora em curso, gerada como se o ponto estivesse fechado, é
   válida: 3.600 s, todo item com id e duração;
 - gerada numa transação `READ ONLY`, com 0 escritas;
-- a única tela de produção (10, móvel, sem alocação, offline desde 00:40)
-  recebe só institucional, sem local falso, com versões intactas (1/1); a
-  config nova chega na primeira batida dela.
+- tela móvel sem alocação recebe só institucional, sem local falso, e as
+  versões de config ficaram intactas; a config nova chega na próxima batida
+  de cada tela.
 
 Encontrado no caminho, sem mexer:
 - PA1 [ ] `src/anunciantes/repository.js#ensureContaMostrai` cria a conta
@@ -6071,13 +6071,15 @@ Encontrado no caminho, sem mexer:
       reler depois do erro de unicidade.
 - PA2 [ ] (Codex, PR #124, mergeado por decisão do dono) o POP é julgado
       pelo horário em vigor quando CHEGA, não pelo da hora em que tocou
-      (`limite:` em `gerador.js#confirmarExecucao`). Quebra num caso só:
-      - a TV fica offline com POP na fila (até 7 dias);
-      - nesse intervalo, o horário do ponto fixo muda, ou a tela móvel
-        passa para outra alocação com grade diferente;
-      - um POP de minuto que estava aberto pode ser recusado
-        (`janela_desconhecida`).
-      Se a alocação só terminou, o horário vira `null` e o POP credita como
-      antes. Correção: gravar o horário com a hora congelada
+      (`limite:` em `gerador.js#confirmarExecucao`). A janela é o atraso
+      entre tocar e o POP chegar: o lote normal (a cada 60 s, ver
+      `docs/player-mvp-contract.md`) ou a fila offline (até 7 dias).
+      Se, nessa janela, o horário do ponto
+      fixo muda, ou a alocação da tela móvel muda ou termina, o POP é
+      julgado pelo horário novo. Erra nos dois sentidos:
+      - recusa (`janela_desconhecida`) um POP de minuto que estava aberto;
+      - credita um POP de minuto que estava fechado. Isso inclui a alocação
+        que terminou: o horário vira `null`, que é o dia inteiro.
+      Correção: gravar o horário com a hora congelada
       (`playlist_hora_congelada`, na geração) e julgar o POP por ele.
 
