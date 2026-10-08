@@ -20,7 +20,12 @@ por `confirmarLote` → `confirmarComDedup`); `fora_do_horario` informativo em
 `status-tela.js`, atenção sem comunicação só no horário. Testes:
 `tests/player-sempre-ativo.test.js`; o teste de config de
 `tests/player-mvp.test.js` passou a exigir o dia inteiro. APK não mudou.
-Review-Master segue PAUSADA.
+No ar: PR #124 (`6ebe9cc`), mergeado sem esperar a 2ª revisão do Codex, por
+decisão do dono. Backup `mostrai-20261008-173835.sql.gz`. Smoke somente
+leitura OK (gerador em transação `READ ONLY` com a hora congelada em
+memória, 0 escritas). Aberto: PA2 em `docs/PENDENCIAS.md` — o POP atrasado é
+julgado pelo horário que vale quando chega; a correção é gravar o horário
+com a hora congelada. Review-Master segue PAUSADA.
 
 2026-10-07 — **Estação focal SV1 + SV2 + SV3** (migration 117; ADR-042; branch
 `claude/busy-noether-hheir2`). SV1: `obrigacao-do-ciclo.js#segundosDoBeneficio`
