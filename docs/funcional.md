@@ -1155,8 +1155,10 @@ sobra `FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS` (15 minutos) de espaço real —
 sem essa folga, o próximo anunciante a cair ali reblocaria o ponto minutos
 depois de liberado, e o clique não teria significado nenhum. *Violada:*
 não há caminho de usuário — a escolha (manual ou automática) recusa antes
-de gravar. *Quem vê:* o anunciante, na tela de escolha de pontos (com o %
-de ocupação de cada um); e o admin, na aba "Ocupação dos pontos".
+de gravar. *Quem vê:* o anunciante, na tela de escolha de pontos, só o
+efeito — a caixa travada com "Indisponível para escolha" (desde
+08/10/2026 o card não mostra o % de ocupação); e o admin, com o número, na
+aba "Ocupação dos pontos".
 
 **RN-56 — Seis momentos da conta avisam por e-mail, sempre fire-and-forget.**
 *(Pedido do dono, 18/09/2026 — completa a lista que já existia: pagamento
