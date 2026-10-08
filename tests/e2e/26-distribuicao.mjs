@@ -208,7 +208,9 @@ check('modo automático ativo', /Distribuição automática ativa/.test(await co
 // O card em si (foto, segmento, estados, limite, responsivo) é o roteiro 35;
 // aqui basta o que a distribuição usa.
 const linhaCentro = conta.locator(`.ponto-escolha[data-ponto-id="${CENTRO.id}"]`);
-check('card mostra estado operacional e horário', /Ativo/.test(await linhaCentro.textContent()) && /24h/.test(await linhaCentro.textContent()), await linhaCentro.textContent());
+// Horário de funcionamento saiu do card (PR #128) — a ausência é o roteiro 35.
+const textoCentro = await linhaCentro.textContent();
+check('card mostra o estado operacional', /Ativo/.test(textoCentro), textoCentro);
 await shot(conta, 'pontos-antes');
 
 await linhaProprio.locator('input').check();
