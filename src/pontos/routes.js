@@ -14,17 +14,30 @@ const { colunasDoEndereco, problemaNoEndereco, numeroConfirmado, PARTES } = requ
 const { alterarEnderecoDoPonto, historicoDoPonto } = require('./endereco');
 const candidaturasRepo = require('../candidaturas/repository');
 const { sincronizarContaSemFalhar } = require('../pendencias/endereco');
-const { situacaoDasRedes } = require('./movel');
+const { situacaoDasRedes, redePublica } = require('./movel');
 
 const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 20 * 1024 * 1024 } });
 // Vídeo, não foto — mesmo teto de src/midias/routes.js (upload de vídeo pra
 // mídia própria), bem maior que o das fotos deste arquivo.
 const uploadVideo = multer({ dest: os.tmpdir(), limits: { fileSize: 95 * 1024 * 1024 } });
 
-// Pública — "onde estamos" (módulo 7)
+// Pública — "onde estamos" (módulo 7). A rede móvel leva `movel` (foto,
+// locais de agora, próximo compromisso), decidido no servidor pela MESMA
+// fonte do Admin e do anunciante (src/pontos/movel.js#situacaoDasRedes). O
+// `status` dela é a presença comercial, nunca o estado das telas:
+// `em_operacao` com local atual (a régua do inventário), senão null — a
+// vitrine e o checkout contam "no ar" por ele (planos.page.js,
+// confirmar-plano.page.js).
 router.get('/pontos', async (_req, res) => {
   const pontos = await repo.listarPublicos();
-  res.json(pontos);
+  const redes = await situacaoDasRedes(pontos.filter((p) => p.tipo === 'movel').map((p) => p.id));
+  res.json(
+    pontos.map((p) => {
+      if (p.tipo !== 'movel') return p;
+      const movel = redePublica(redes.get(p.id));
+      return { ...p, status: movel?.agora.length ? 'em_operacao' : null, movel };
+    }),
+  );
 });
 
 // Pública — soma de fluxo estimado dos pontos ativos, pra home/planos (prova

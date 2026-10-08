@@ -301,35 +301,21 @@ async function sincronizarStatusPonto(pontoId, db = pool) {
 // antes, então entra na mesma lista — só `inativo` (tela(s) cadastrada(s),
 // nenhuma funcionando) é o caso realmente novo que faz sentido esconder.
 //
-// Rede móvel (migration 115): nunca um pino da rede — só as ALOCAÇÕES
-// REAIS de agora, uma linha por lugar: cada hospedagem ativa (o nome e o
-// endereço do local) e cada evento em andamento (o local e o endereço do
-// evento, uma linha só mesmo com várias telas lá), de tela ativa no
-// cadastro. Sem alocação, a rede não aparece. Nunca a conta anfitriã, o
-// período, o percentual ou a agenda.
+// Rede móvel (estação "Onde estamos", 08/10/2026): UMA linha por rede não
+// arquivada, com ou sem localização — é inventário real mesmo entre duas
+// alocações. Sem endereço (a rede não tem base) e sem status: o status da
+// rede é derivado das telas, técnico. Onde ela está agora e o próximo
+// compromisso vêm de src/pontos/movel.js#situacaoDasRedes (GET /pontos).
 async function listarPublicos() {
   const { rows } = await pool.query(
-    `SELECT x.* FROM (
-       SELECT p.id, p.nome, p.cidade, p.endereco, p.bairro, p.status, p.foto_instalacao_url,
-              c.nome AS categoria_nome, p.tipo, NULL::text AS local_atual, NULL::text AS local_endereco,
-              NULL::text AS evento_nome
-         FROM pontos p LEFT JOIN categorias c ON c.id = p.categoria_id
-        WHERE p.status = ANY($1::text[]) AND p.tipo <> 'movel'
-       UNION ALL
-       SELECT DISTINCT ON (h.id) p.id, p.nome, p.cidade, NULL, NULL, 'em_operacao', p.foto_instalacao_url,
-              NULL, p.tipo, h.local, h.endereco, NULL
-         FROM pontos_moveis_hospedagens h JOIN pontos p ON p.id = h.ponto_id
-         JOIN dispositivos d ON d.id = h.dispositivo_id AND d.status = 'ativo'
-        WHERE h.estado = 'ativa' AND p.status <> 'arquivado'
-       UNION ALL
-       SELECT DISTINCT ON (e.id) p.id, p.nome, p.cidade, NULL, NULL, 'em_operacao', p.foto_instalacao_url,
-              NULL, p.tipo, e.local, COALESCE(e.endereco, e.local), e.nome
-         FROM pontos_moveis_eventos e JOIN pontos p ON p.id = e.ponto_id
-         JOIN pontos_moveis_evento_telas et ON et.evento_id = e.id
-         JOIN dispositivos d ON d.id = et.dispositivo_id AND d.status = 'ativo'
-        WHERE e.estado = 'em_andamento' AND p.status <> 'arquivado'
-     ) x
-     ORDER BY (x.status = 'em_operacao') DESC, x.nome, x.local_atual`,
+    `SELECT p.id, p.nome, p.cidade, p.uf,
+            CASE WHEN p.tipo = 'movel' THEN NULL ELSE p.endereco END AS endereco,
+            CASE WHEN p.tipo = 'movel' THEN NULL ELSE p.bairro END AS bairro,
+            CASE WHEN p.tipo = 'movel' THEN NULL ELSE p.status END AS status,
+            p.foto_instalacao_url, CASE WHEN p.tipo = 'movel' THEN NULL ELSE c.nome END AS categoria_nome, p.tipo
+       FROM pontos p LEFT JOIN categorias c ON c.id = p.categoria_id
+      WHERE (p.tipo <> 'movel' AND p.status = ANY($1::text[])) OR (p.tipo = 'movel' AND p.status <> 'arquivado')
+      ORDER BY (p.tipo <> 'movel' AND p.status = 'em_operacao') DESC, (p.tipo = 'movel') DESC, p.nome, p.id`,
     [STATUS_NA_REDE],
   );
   return rows;

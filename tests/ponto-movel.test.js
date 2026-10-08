@@ -508,8 +508,9 @@ test('5 a 9. evento em andamento aloca SÓ as telas dele (local, inventário, "O
   const ponto = await criarMovel({}, { telas: 2 });
   const [a, b] = ponto.telas;
   await tirarDoSorteio(ponto.id);
-  // Sem alocação: nenhum local, nada na agenda, fora do inventário e de
-  // "Onde estamos" (a rede não tem base nem pino próprio).
+  // Sem alocação: nenhum local, nada na agenda, fora do inventário — e em
+  // "Onde estamos" como UM card sem localização (a rede não tem base nem
+  // pino próprio).
   let f = await ficha(ponto.id);
   assert.strictEqual(f.tipo, 'movel');
   assert.deepStrictEqual(f.agenda, []);
@@ -517,7 +518,11 @@ test('5 a 9. evento em andamento aloca SÓ as telas dele (local, inventário, "O
   assert.strictEqual(f.base, undefined, 'a ficha não tem base');
   assert.ok(f.telas.every((t) => t.alocacao === null && t.proximo === null));
   assert.strictEqual(await noInventario(ponto.id), false, 'fora do inventário (pontosEmOperacao/telasNaRede)');
-  assert.ok(!(await publicos()).some((p) => p.id === ponto.id), 'fora de "Onde estamos"');
+  assert.deepStrictEqual(
+    (await publicos()).filter((p) => p.id === ponto.id).map((p) => p.movel.agora),
+    [[]],
+    '"Onde estamos": a rede, sem localização',
+  );
 
   const eventoId = await eventoEmAndamento(ponto, { nome: 'Copa de Judô', telas: [a] });
   f = await ficha(ponto.id);
@@ -537,7 +542,7 @@ test('5 a 9. evento em andamento aloca SÓ as telas dele (local, inventário, "O
   const naSituacao = await situacao(ponto.id);
   assert.deepStrictEqual(
     [naSituacao.telas, naSituacao.emOperacao, naSituacao.locaisAgora],
-    [2, 1, [{ origem: 'evento', nome: 'Ginásio Municipal', endereco: 'Rua do Ginásio, 50' }]],
+    [2, 1, [{ origem: 'evento', nome: 'Ginásio Municipal', endereco: 'Rua do Ginásio, 50', evento: 'Copa de Judô' }]],
   );
   // A Agenda móvel do Admin: o evento em curso, com SÓ a tela dele.
   assert.deepStrictEqual(
@@ -546,11 +551,12 @@ test('5 a 9. evento em andamento aloca SÓ as telas dele (local, inventário, "O
   );
   assert.strictEqual(await noInventario(ponto.id), true, 'uma tela alocada: a rede é inventário');
   const publico = (await publicos()).filter((p) => p.id === ponto.id);
-  assert.strictEqual(publico.length, 1, 'aparece pela alocação real, uma linha');
+  assert.strictEqual(publico.length, 1, 'uma linha: a rede');
   assert.strictEqual(publico[0].tipo, 'movel');
-  assert.strictEqual(publico[0].local_atual, 'Ginásio Municipal');
-  assert.strictEqual(publico[0].local_endereco, 'Rua do Ginásio, 50');
-  assert.strictEqual(publico[0].evento_nome, 'Copa de Judô');
+  assert.deepStrictEqual(publico[0].movel.agora, [
+    { nome: 'Ginásio Municipal', endereco: 'Rua do Ginásio, 50', evento: 'Copa de Judô' },
+  ]);
+  assert.strictEqual(publico[0].endereco, null, 'sem endereço-base');
   assert.strictEqual(publico[0].base_nome, undefined);
 
   // A tela A está num lugar só: período cruzando nem entra; um evento de
@@ -592,7 +598,9 @@ test('5 a 9. evento em andamento aloca SÓ as telas dele (local, inventário, "O
   assert.strictEqual(encerrado.encerramento, 'manual');
   assert.ok(encerrado.iniciadoEm && encerrado.encerradoEm);
   assert.strictEqual(await noInventario(ponto.id), false);
-  assert.ok(!(await publicos()).some((p) => p.id === ponto.id), 'some de "Onde estamos"');
+  const depois = (await publicos()).find((p) => p.id === ponto.id);
+  assert.deepStrictEqual(depois.movel.agora, [], 'encerrado: "Onde estamos" sem localização');
+  assert.strictEqual(depois.movel.proximo.nome, 'Outro', 'o próximo é o programado, nunca o encerrado');
   assert.strictEqual((await acaoNoEvento(ponto.id, eventoId, 'iniciar')).status, 409, 'encerrado não recomeça');
   assert.strictEqual((await acaoNoEvento(ponto.id, outro, 'encerrar')).status, 409, 'programado não encerra');
   assert.strictEqual((await acaoNoEvento(ponto.id, outro, 'pausar')).status, 404, 'ação desconhecida');
@@ -1176,4 +1184,101 @@ test('situacaoDasRedes ignora ponto fixo e id inválido; "Meus pontos" não tem 
     locaisAgora: [],
     proximo: null,
   });
+});
+
+// ---------- "Onde estamos" (site público): UM card por rede móvel ----------
+// Estação "Onde estamos" (08/10/2026): a rede móvel é inventário real mesmo
+// entre duas alocações — aparece sempre (salvo arquivada), uma linha por
+// rede (nunca por tela ou por alocação), sem endereço-base nem status técnico;
+// "agora" só com compromisso EM CURSO, "próximo" só o futuro ainda não
+// iniciado, encerrado em lugar nenhum. Mesma fonte do Admin e do anunciante
+// (src/pontos/movel.js#situacaoDasRedes).
+const daRede = async (id) => (await publicos()).filter((p) => p.id === id);
+const TECNICO = /heartbeat|player|versao|online|erro|telas|emOperacao|percentual|saldo|conta/i;
+
+test('Onde estamos: o fixo segue igual; a rede sem compromisso aparece UMA vez, sem local, sem próximo e sem base', async () => {
+  const fixo = await aprovar(await novaConta());
+  const m = await criarMovel({}, { telas: 3 });
+  const lista = await publicos();
+  const f = lista.find((p) => p.id === fixo.id);
+  assert.ok(f, 'o ponto fixo aparece');
+  assert.strictEqual(f.tipo, 'fixo');
+  assert.ok(f.endereco && f.status, 'o fixo mantém endereço e status');
+  assert.strictEqual(f.movel, undefined, 'o fixo não ganha bloco móvel');
+  const rede = lista.filter((p) => p.id === m.id);
+  assert.strictEqual(rede.length, 1, 'UMA linha para a rede de 3 telas');
+  assert.deepStrictEqual(
+    [rede[0].nome, rede[0].cidade, rede[0].uf, rede[0].tipo],
+    ['Mostraí Móvel', m.cidade, 'SP', 'movel'],
+  );
+  assert.deepStrictEqual(rede[0].movel, { foto: null, agora: [], proximo: null });
+  assert.deepStrictEqual(
+    [rede[0].endereco, rede[0].bairro, rede[0].status, rede[0].categoria_nome],
+    [null, null, null, null],
+    'sem endereço-base, sem status técnico, sem ramo',
+  );
+  assert.doesNotMatch(JSON.stringify(rede[0]), TECNICO);
+  // Tela parada (reparo, sem comunicação) não tira a rede do site.
+  await pool.query(`UPDATE dispositivos SET status = 'reparo' WHERE ponto_id = $1`, [m.id]);
+  assert.strictEqual((await daRede(m.id)).length, 1, 'tela parada não some com a rede');
+  // Arquivada sai.
+  await pool.query(
+    `UPDATE pontos SET status = 'arquivado', arquivado_em = now(), motivo_arquivamento = 'teste' WHERE id = $1`,
+    [m.id],
+  );
+  assert.strictEqual((await daRede(m.id)).length, 0, 'rede arquivada não aparece');
+});
+
+test('Onde estamos: a foto do card é a da própria rede', async () => {
+  const m = await criarMovel({}, { telas: 2 });
+  await pool.query(`UPDATE pontos SET foto_instalacao_url = 'https://exemplo.test/rede-movel.jpg' WHERE id = $1`, [
+    m.id,
+  ]);
+  const [r] = await daRede(m.id);
+  assert.strictEqual(r.movel.foto, 'https://exemplo.test/rede-movel.jpg');
+});
+
+test('Onde estamos: compromisso só futuro (ou que ainda não começou) é o "Próximo", nunca o local atual', async () => {
+  const m = await criarMovel();
+  await cadastrarEvento(m, { nome: 'Feira do Livro', inicio: paredeMais(48), fim: paredeMais(52) });
+  let [r] = await daRede(m.id);
+  assert.deepStrictEqual(r.movel.agora, [], 'sem localização antes do início');
+  assert.deepStrictEqual([r.movel.proximo.nome, r.movel.proximo.local], ['Feira do Livro', 'Ginásio Municipal']);
+  assert.ok(r.movel.proximo.inicio);
+  assert.doesNotMatch(JSON.stringify(r.movel.proximo), /tipo|publico|organizacao|tela/i, 'próximo só com dado público');
+  // A hora chegou, mas o compromisso não foi iniciado: continua "Próximo".
+  const outra = await criarMovel();
+  await cadastrarEvento(outra, { nome: 'Ainda não começou', inicio: paredeMais(-1), fim: paredeMais(3) });
+  [r] = await daRede(outra.id);
+  assert.deepStrictEqual(r.movel.agora, []);
+  assert.strictEqual(r.movel.proximo.nome, 'Ainda não começou');
+});
+
+test('Onde estamos: compromisso em curso é o local atual (com endereço real); encerrado sai de "agora" e não volta como "Próximo"', async () => {
+  const m = await criarMovel({}, { telas: 2 });
+  const [a] = m.telas;
+  const ev = await eventoEmAndamento(m, { nome: 'Copa', telas: [a] });
+  let [r] = await daRede(m.id);
+  assert.deepStrictEqual(r.movel.agora, [
+    { nome: 'Ginásio Municipal', endereco: 'Rua do Ginásio, 50', evento: 'Copa' },
+  ]);
+  assert.strictEqual(r.movel.proximo, null);
+  assert.strictEqual(r.status, 'em_operacao', 'com local atual, a rede conta como no ar');
+  assert.strictEqual((await acaoNoEvento(m.id, ev, 'encerrar')).status, 200);
+  [r] = await daRede(m.id);
+  assert.deepStrictEqual(r.movel, { foto: null, agora: [], proximo: null }, 'encerrado: sem local e sem próximo');
+  assert.strictEqual(r.status, null, 'sem local, nenhum status');
+});
+
+test('Onde estamos: várias telas em vários locais continuam UM card da rede, com um local por compromisso', async () => {
+  const m = await criarMovel({}, { telas: 3 });
+  const [a, b, c] = m.telas;
+  await eventoEmAndamento(m, { nome: 'Copa', telas: [a, b] });
+  await eventoEmAndamento(m, { nome: 'Feira', local: 'Praça Central', endereco: 'Praça da Matriz, 1', telas: [c] });
+  const rede = await daRede(m.id);
+  assert.strictEqual(rede.length, 1, 'uma linha, não uma por tela nem por local');
+  assert.deepStrictEqual(rede[0].movel.agora.map((l) => [l.evento, l.nome]).sort(), [
+    ['Copa', 'Ginásio Municipal'],
+    ['Feira', 'Praça Central'],
+  ]);
 });

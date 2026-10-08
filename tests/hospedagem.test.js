@@ -1882,12 +1882,13 @@ test('65 e 66. card do anunciante: a tela "agora em" o anfitrião, sem conta, pe
     return v;
   });
   assert.ok(!chaves.some((k) => /conta|anfitri/i.test(k)), `chaves: ${chaves.join(',')}`);
-  // "Onde estamos": a alocação real (o local da hospedagem), nunca a conta.
+  // "Onde estamos": a rede, com a alocação real de agora (o local da
+  // hospedagem), nunca a conta.
   const publico = await navegador()('GET', '/pontos');
   const daLista = publico.json.filter((p) => p.id === m.id);
   assert.deepStrictEqual(
-    daLista.map((p) => p.local_atual),
-    [anfitria.nome_empresa],
+    daLista.map((p) => p.movel.agora.map((l) => l.nome)),
+    [[anfitria.nome_empresa]],
   );
   assert.doesNotMatch(JSON.stringify(daLista), /percentual|hospedagem|saldo|conta/i);
   // Hospedagem futura não aparece no card.
@@ -1898,7 +1899,12 @@ test('65 e 66. card do anunciante: a tela "agora em" o anfitrião, sem conta, pe
     [],
     'sem alocação: nenhum local',
   );
-  assert.ok(!(await navegador()('GET', '/pontos')).json.some((p) => p.id === m.id), 'fora do "Onde estamos"');
+  // "Onde estamos": a rede continua, sem localização; a hospedagem futura é
+  // só o "Próximo", nunca o local atual.
+  const depois = (await navegador()('GET', '/pontos')).json.find((p) => p.id === m.id);
+  assert.deepStrictEqual(depois.movel.agora, [], 'sem localização');
+  assert.ok(depois.movel.proximo, 'a hospedagem programada é o próximo');
+  assert.doesNotMatch(JSON.stringify(depois), /percentual|hospedagem|saldo|conta/i);
 });
 
 test('67. conta não forja nada: rotas do móvel e da hospedagem exigem o Admin', async () => {
@@ -1970,7 +1976,11 @@ test('E2E §78: Rede móvel → interesse → hospedagem 20% → operação → 
     [],
     'sem alocação: nenhum local',
   );
-  assert.ok(!(await navegador()('GET', '/pontos')).json.some((p) => p.id === m.id), 'fora do "Onde estamos"');
+  assert.deepStrictEqual(
+    (await navegador()('GET', '/pontos')).json.find((p) => p.id === m.id).movel.agora,
+    [],
+    '"Onde estamos": a rede, sem localização',
+  );
   const saldo = (await nav('GET', '/anunciantes/me/hospedagem')).json.saldo.disponivelSegundos;
   assert.strictEqual(saldo, fim.json.beneficioSegundos);
   // O plano dela vence; sem plano, a conta usa as horas: peça aprovada →

@@ -1,6 +1,20 @@
 # Current Handoff
 
 ## Updated
+2026-10-08 — **"Onde estamos" com o Mostraí Móvel** (ADR-044; branch
+`claude/busy-noether-hheir2`). Causa: `src/pontos/repository.js#listarPublicos`
+só listava a rede móvel pelas alocações em curso — sem alocação, sumia do
+site. Agora UMA linha por rede não arquivada (sem endereço/ramo/status
+técnico) e `GET /pontos` anexa `movel` = `src/pontos/movel.js#redePublica`
+sobre `situacaoDasRedes` (foto, `agora` = locais em curso com endereço e
+nome do evento, `proximo` = {nome, local, inicio}); `status` da rede =
+`em_operacao` só com local atual. `public/pontos.page.js` desenha o card da
+rede (selo MÓVEL, "Local atual", "Próximo", "Ver no mapa" só no local real).
+`locaisAgora` ganhou `evento`. Testes: bloco "Onde estamos" em
+`tests/ponto-movel.test.js`; E2E 50 seção D. Sem migration. Pendências OE1
+(agenda pública) e OE2 (pin = coordenada) em `docs/PENDENCIAS.md`.
+Review-Master segue PAUSADA.
+
 2026-10-08 — **Player sempre ativo fora do horário** (migration 118; ADR-043;
 branch `claude/busy-noether-hheir2`). Causa: o APK apaga (cartão local,
 `OUT_OF_SCHEDULE`) fora do `config.operacao`, que era o horário do ponto (ou

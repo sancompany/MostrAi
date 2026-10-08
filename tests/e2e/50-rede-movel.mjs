@@ -18,6 +18,9 @@
 //     com 0 tela em operação, 0 evento e 0 alocação a caixa está HABILITADA
 //     (nunca "Indisponível para escolha") e a escolha conta 1 posição;
 //     "Ver agenda" mostra só presente e futuro; 390px sem rolagem lateral.
+//   D. Site público "Onde estamos" — UM card da rede (selo MÓVEL, foto da rede),
+//     "Ver no mapa" só nos locais reais de agora; sem alocação, "Sem
+//     localização no momento" e nenhum mapa; o card fixo continua.
 // Banco zerado, servidor na 3999 (o roteiro o reinicia com STORAGE_CAPTURA)
 // e o .env carregado:
 //   tests/e2e/reset-db.sh && tests/e2e/restart.sh
@@ -670,9 +673,43 @@ await modal().locator('[data-fechar]').first().click();
 
 // ---------------------------------------------------------------------------
 console.log('== Onde estamos e dados ==');
+// UM card por rede (estação "Onde estamos", 08/10/2026): com os locais
+// reais de agora, sem endereço-base nem status técnico.
 const publico = await (await fetch(`${B}/pontos`)).json();
-const daRede = publico.filter((p) => String(p.id) === REDE).map((p) => p.local_atual).sort();
+const linhasDaRede = publico.filter((p) => String(p.id) === REDE);
+check('"Onde estamos": UMA linha da rede', linhasDaRede.length === 1, JSON.stringify(linhasDaRede));
+const daRede = (linhasDaRede[0]?.movel?.agora || []).map((l) => l.nome).sort();
 check('"Onde estamos": os dois locais reais', JSON.stringify(daRede) === JSON.stringify(['Padaria Central', 'Parque de Exposições']), JSON.stringify(daRede));
+check(
+  '"Onde estamos": sem endereço-base nem dado técnico',
+  linhasDaRede[0]?.endereco === null && linhasDaRede[0]?.status === 'em_operacao' && !/heartbeat|player|versao|online|telas/i.test(JSON.stringify(linhasDaRede[0])),
+);
+const site = await pagina(1280, 900, 'onde-estamos');
+await irQuieto(site, `${B}/pontos.html`);
+await site.waitForSelector('#pontosGrid .ponto-card');
+const cardMovelSite = site.locator('#pontosGrid .ponto-card-movel');
+check('site: UM card do Mostraí Móvel', (await cardMovelSite.count()) === 1);
+check('site: selo MÓVEL e foto da rede', (await cardMovelSite.locator('.ponto-card-media .selo-movel').count()) === 1 && (await cardMovelSite.locator('.ponto-card-media img').count()) === 1);
+const textoRede = (await cardMovelSite.innerText()).replace(/\s+/g, ' ');
+check('site: Local atual com os dois locais', /Padaria Central/.test(textoRede) && /Parque de Exposições/.test(textoRede), textoRede);
+check('site: "Ver no mapa" só nos locais reais (2)', (await cardMovelSite.locator('.mapa-link').count()) === 2);
+check('site: card fixo continua, com "Ver no mapa"', (await site.locator('#pontosGrid .ponto-card:not(.ponto-card-movel) .mapa-link').count()) >= 1);
+await shot(site, 'onde-estamos-com-local', { fullPage: true });
+// Encerrados os dois compromissos: a rede continua, sem localização e sem mapa.
+const hospAtiva = PG(`SELECT id FROM pontos_moveis_hospedagens WHERE ponto_id = ${REDE} AND estado = 'ativa'`);
+const eventoEmCurso = PG(`SELECT id FROM pontos_moveis_eventos WHERE ponto_id = ${REDE} AND estado = 'em_andamento'`);
+check('encerra a hospedagem', (await apiAdmin(`/admin/pontos/${REDE}/hospedagens/${hospAtiva}/encerrar`, 'POST', {})).status === 200);
+check('encerra o evento', (await apiAdmin(`/admin/pontos/${REDE}/eventos/${eventoEmCurso}/encerrar`, 'POST', {})).status === 200);
+await irQuieto(site, `${B}/pontos.html`);
+await site.waitForSelector('#pontosGrid .ponto-card-movel');
+const semLocal = (await cardMovelSite.innerText()).replace(/\s+/g, ' ');
+check('site sem alocação: o card continua, "Sem localização no momento"', /Sem localização no momento/.test(semLocal), semLocal);
+check('site sem alocação: nenhum "Ver no mapa" na rede', (await cardMovelSite.locator('.mapa-link').count()) === 0);
+const celular = await pagina(390, 844, 'onde-estamos-390');
+await irQuieto(celular, `${B}/pontos.html`);
+await celular.waitForSelector('#pontosGrid .ponto-card-movel');
+check('site 390px: sem rolagem lateral', await semRolagemLateral(celular));
+await shot(celular, 'onde-estamos-sem-local-390', { fullPage: true });
 check('rota antiga da central: 404', (await apiAdmin('/admin/pontos-moveis')).status === 404);
 check('rota do termo eletrônico: 410', (await apiAdmin('/admin/hospedagem/termos')).status === 410);
 
