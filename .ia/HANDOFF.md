@@ -1,6 +1,19 @@
 # Current Handoff
 
 ## Updated
+2026-10-08 — **PA2: POP julgado pelo horário da hora congelada** (migration
+119; ADR-045; branch `claude/busy-noether-hheir2`). Causa: o POP atrasado
+(lote de 60 s, fila offline) era julgado pelo horário em vigor quando
+CHEGA — mudar o horário do ponto ou a alocação da tela móvel no meio
+recusava minuto aberto ou creditava minuto fechado. A 119 cria
+`playlist_hora_congelada.horario_semanal` + `horario_registrado`;
+`congelamentoRepo.resolver` grava o horário da tela só na criação da hora
+(como a base); `gerador.js#confirmarExecucao` lê a linha
+(`horaCongeladaDoItem`) e julga por ela; sem registro, o horário de agora
+(`extra.horario`, como antes). Testes: `tests/player-sempre-ativo.test.js`
+("POP é julgado pelo horário da hora congelada…"). Review-Master segue
+PAUSADA.
+
 2026-10-08 — **"Onde estamos" com o Mostraí Móvel** (ADR-044; branch
 `claude/busy-noether-hheir2`). Causa: `src/pontos/repository.js#listarPublicos`
 só listava a rede móvel pelas alocações em curso — sem alocação, sumia do
@@ -37,9 +50,9 @@ por `confirmarLote` → `confirmarComDedup`); `fora_do_horario` informativo em
 No ar: PR #124 (`6ebe9cc`), mergeado sem esperar a 2ª revisão do Codex, por
 decisão do dono. Backup `mostrai-20261008-173835.sql.gz`. Smoke somente
 leitura OK (gerador em transação `READ ONLY` com a hora congelada em
-memória, 0 escritas). Aberto: PA2 em `docs/PENDENCIAS.md` — o POP atrasado é
-julgado pelo horário que vale quando chega; a correção é gravar o horário
-com a hora congelada. Review-Master segue PAUSADA.
+memória, 0 escritas). PA2 (o POP atrasado julgado pelo horário de quando
+chega) resolvido depois, na migration 119 (entrada acima). Review-Master
+segue PAUSADA.
 
 2026-10-07 — **Estação focal SV1 + SV2 + SV3** (migration 117; ADR-042; branch
 `claude/busy-noether-hheir2`). SV1: `obrigacao-do-ciclo.js#segundosDoBeneficio`
