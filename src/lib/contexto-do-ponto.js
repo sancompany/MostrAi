@@ -14,8 +14,9 @@
 // A agenda garante no máximo uma alocação em curso por tela (migration 115,
 // `movel_tela_ocupada`); duas telas da mesma rede podem estar em lugares
 // diferentes ao mesmo tempo, cada uma com o seu contexto.
-// O horário da alocação vai para a TV pelo contrato de sempre
-// (`config.operacao`). Nenhuma obrigação nasce de hora em que a tela não
+// O horário da alocação é informação operacional/comercial: não vai mais
+// para a TV como liga/desliga (`config.operacao` é sempre o dia inteiro —
+// src/player/config.js). Nenhuma obrigação nasce de hora em que a tela não
 // pediu nada (src/bancohoras/obrigacao.js pula o ponto móvel).
 // Quem lê: a config da TV e o gerador (SELECT_TELA,
 // src/dispositivos/repository.js), as métricas por tela, a régua "no ar" do

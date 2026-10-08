@@ -1668,3 +1668,33 @@ geração no meio leria versão nova com dados velhos); exigir que o lote
 tenha começado no INÍCIO da hora (a primeira exibição depois de uma compra
 não abateria nada).
 
+## ADR-043 — Horário do ponto não apaga mais a TV: `config.operacao` sempre o dia inteiro (08/10/2026)
+
+**Contexto.** O APK aplica o bloco `operacao` da config: fora dele mostra o
+cartão local e manda `OUT_OF_SCHEDULE` (contrato §6). O bloco era o horário do
+ponto — ou o do compromisso, na tela móvel —, então o comércio aberto mais
+cedo, mais tarde ou fora do habitual ficava com a TV ligada sem anúncio. O
+backend já respondia a playlist fora do horário (base + institucional, sem
+obrigação).
+
+**Decisão.** Regra do dono: TV ligada + Player saudável = reprodução contínua.
+`montarConfig` manda `operacao` sempre como o dia inteiro (o bloco de ponto
+sem horário, que o APK já entende) — nada muda no APK nem no formato. A
+config nova chega pelo heartbeat: a migration 118 só cria
+`config_versao_entregue`, gravada pelo `GET /config` do código novo, e o
+heartbeat sobe a versão desejada em +1 da tela que já aplicou uma versão que
+o código novo não entregou. O horário continua sendo informação
+operacional/comercial no backend: obrigação e programada só em hora aberta,
+POP creditado só em MINUTO aberto (fora dele a campanha toca como bônus e o
+POP responde `janela_desconhecida`, sem mexer no saldo — inclusive na hora
+parcialmente aberta, pelo `iniciadoEm`), estado "Fora do horário" na ficha
+(informativo), atenção de sem comunicação só no horário. Tela móvel sem
+compromisso continua só institucional (sem local comercial falso).
+
+**Recusado.** Estado novo de "operação extraordinária"; exigir evento ou
+compromisso; mexer no APK; creditar POP fora do horário (mudaria saldo e
+obrigação — fora do escopo); subir a versão de todas as telas na própria
+migration, como a 093 (o contêiner antigo ainda serve durante o deploy: a TV
+buscaria a config com horário, aplicaria a versão nova e nunca mais buscaria
+— revisão Codex do PR #124).
+

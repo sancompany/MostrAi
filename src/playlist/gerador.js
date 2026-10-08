@@ -21,7 +21,7 @@ const congelamentoRepo = require('./congelamento-repository');
 const midiasRepo = require('../midias/repository');
 const basicoRepo = require('../pontos/basico');
 const hospedagem = require('../pontos/hospedagem');
-const { operacaoDoPonto, minutosOperando } = require('../lib/operacao-tela');
+const { operacaoDoPonto, minutosOperando, deveriaOperar } = require('../lib/operacao-tela');
 const { telaNoInventarioSql } = require('../lib/contexto-do-ponto');
 
 // Quem chega no meio da hora (ponto escolhido agora, criativo aprovado
@@ -529,10 +529,10 @@ function numerosDaConta(conta, pontosCobertos, telasDoPonto) {
 // credita. Conta o que foi de fato pra playlist servida (depois do corte da
 // hora cheia e com quem entrou no fim), não a frequência configurada.
 //
-// Só grava se o ponto opera em algum momento da hora: o Player continua
-// buscando a playlist com a loja fechada (só não toca — conferido no app,
-// PlayerActivity#aplicarHorarioOperacional), e contar isso como programado
-// transformaria toda madrugada em "entrega atrasada".
+// Só grava se o ponto opera em algum momento da hora: a TV ligada fora do
+// horário busca e TOCA a playlist (Player sempre ativo, 08/10/2026), mas
+// contar isso como programado transformaria toda madrugada em "entrega
+// atrasada" — fora do horário é bônus, não obrigação.
 //
 // Sobrescreve (como `gravarProgramados`): a base da hora é congelada, então a
 // contagem só muda quando alguém entra no fim. Mídia que saiu no meio da
@@ -629,9 +629,10 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   const horaAnterior = new Date(horaAtual);
   horaAnterior.setHours(horaAnterior.getHours() - 1);
   const fimDaHora = new Date(horaAtual.getTime() + 3_600_000);
-  // PONTO FECHADO ≠ FALHA DE ENTREGA (Saldo de Veiculação, 27/09/2026). O
-  // Player continua pedindo playlist com a loja fechada (só não toca), e
-  // até aqui a hora fechada gravava programada comercial: o não confirmado
+  // PONTO FECHADO ≠ FALHA DE ENTREGA (Saldo de Veiculação, 27/09/2026). A
+  // TV ligada fora do horário pede e toca a playlist (Player sempre ativo,
+  // 08/10/2026 — a hora fechada responde base + institucional, o que tocar é
+  // bônus), e até aqui a hora fechada gravava programada comercial: o não confirmado
   // rolava a madrugada inteira e virava saldo falso na abertura. Hora sem
   // nenhum minuto aberto responde a playlist (técnico), mas não nasce
   // obrigação, programada, reposição nem banco. Hora parcial deve só os
@@ -1310,6 +1311,16 @@ async function estavaNaHoraCongelada(dispositivoId, janela, anuncianteId, db = p
 // ausente — vale a chegada (revisão Codex do PR #83): preso ao início da
 // hora, ele caía antes da aprovação de uma peça aprovada no meio da hora, e
 // ela nunca virava "no ar" apesar de creditada.
+// O `iniciadoEm` informado cai num minuto em que o horário da tela diz
+// fechado? Só com instante válido DENTRO da hora da janela; qualquer outra
+// coisa (ausente, ilegível, fora da hora) = não sabe → não recusa.
+function minutoFechado(horario, iniciadoEm, horaJanela) {
+  const t = typeof iniciadoEm === 'string' ? new Date(iniciadoEm).getTime() : Number.NaN;
+  const inicio = horaJanela.getTime();
+  if (!Number.isFinite(t) || t < inicio || t >= inicio + 3_600_000) return false;
+  return !deveriaOperar(operacaoDoPonto(horario, new Date(t)), new Date(t));
+}
+
 function instanteDaExibicao(iniciadoEm, horaJanela, agora) {
   const inicio = horaJanela.getTime();
   const chegada = new Date(agora).getTime();
@@ -1420,6 +1431,19 @@ async function confirmarExecucao(dispositivoIdEsperado, itemProgramacaoId, janel
   // Fato do servidor: estava na playlist congelada daquela tela e hora (a
   // mídia entra na base como `midia:N`, o anunciante pelo id).
   if (!(await estavaNaHoraCongelada(dispositivoIdEsperado, horaJanela, midia ? tipo : idNumerico, db))) {
+    return 'janela_desconhecida';
+  }
+  // PLAYER SEMPRE ATIVO (08/10/2026): a TV toca também fora do horário, e o
+  // que tocar ali é bônus — a hora inteira fechada nem tem contador. Numa hora
+  // PARCIALMENTE aberta (09:30–18:30 → a das 09h existe), a parte fechada
+  // também não credita: decide pelo `iniciadoEm` informado dentro da hora (o
+  // mesmo relógio com que o Player tocou). Sem ele, vale a regra de sempre
+  // (credita até o teto). Mesmo status da hora fechada — nenhum novo.
+  // limite: `horario` é o que vale na tela quando o POP CHEGA, não quando
+  // tocou — POP offline que chega depois de trocar o horário do ponto (ou a
+  // alocação da tela móvel) é julgado pelo horário novo; guardar o horário
+  // junto da hora congelada resolve, se aparecer caso real.
+  if (extra.horario !== undefined && minutoFechado(extra.horario, extra.iniciadoEm, horaJanela)) {
     return 'janela_desconhecida';
   }
   const instante = instanteDaExibicao(extra.iniciadoEm, horaJanela, agora);

@@ -19,7 +19,10 @@ const { confirmarExecucao } = require('./gerador');
 // (docs/player-mvp-contract.md §8) — quem chama (src/player/routes.js) já
 // validou a forma do evento. Um `execucaoId` repetido, venha da mesma TV ou
 // de outra, é `duplicado`: nada conta duas vezes.
-async function confirmarComDedup(dispositivoId, evento, agora) {
+// `horario`: o horário em vigor na tela (o do ponto, ou o do compromisso da
+// tela móvel) — o POP de um minuto fechado não credita (gerador.js
+// #confirmarExecucao). `undefined` = sem horário conhecido: credita como sempre.
+async function confirmarComDedup(dispositivoId, evento, agora, { horario } = {}) {
   const { execucaoId, itemProgramacaoId, janelaId } = evento;
 
   const client = await pool.connect();
@@ -37,7 +40,7 @@ async function confirmarComDedup(dispositivoId, evento, agora) {
     }
 
     const entradas = [];
-    const extra = { criativoId: evento.criativoId, iniciadoEm: evento.iniciadoEm, entradas };
+    const extra = { criativoId: evento.criativoId, iniciadoEm: evento.iniciadoEm, entradas, horario };
     const status = await confirmarExecucao(dispositivoId, itemProgramacaoId, janelaId, agora, client, extra);
     // Rede móvel (migrations 112 e 115): a exibição contabilizada guarda em
     // qual evento aconteceu — o evento DESTA TELA em andamento no instante

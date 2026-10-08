@@ -6046,3 +6046,17 @@ intacta:
       pede o gerador e o ajuste sob a mesma trava por conta — evolução se
       aparecer caso real.
 
+**Estação Player sempre ativo (08/10/2026, migration 118, ADR-043).** O
+`config.operacao` vai sempre como o dia inteiro; o horário ficou só como
+informação no backend (POP de minuto fechado não credita, mesmo dentro de
+hora parcialmente aberta). A config nova chega pelo heartbeat: a tela cuja
+versão aplicada não foi entregue pelo código novo recebe uma versão a mais
+(`config_versao_entregue`, sem subir nada na migration, por causa do
+contêiner antigo no deploy). Encontrado no caminho, sem mexer:
+- PA1 [ ] `src/anunciantes/repository.js#ensureContaMostrai` cria a conta
+      própria com e-mail fixo sem trava: em banco LIMPO, duas criações da
+      primeira mídia própria ao mesmo tempo colidem no UNIQUE do e-mail (viu-se
+      uma vez em `tests/distribuicao.test.js` 18, rodando em paralelo). Em
+      produção a conta já existe. Correção pequena: `INSERT ... ON CONFLICT` ou
+      reler depois do erro de unicidade.
+

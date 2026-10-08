@@ -1,0 +1,17 @@
+-- 118 — Player sempre ativo fora do horário (08/10/2026, decisão do dono).
+--
+-- O bloco `operacao` de GET /player/:id/config passou a ir SEMPRE como o dia
+-- inteiro (src/player/config.js). A TV que já aplicou a config antiga
+-- (com horário) precisa buscá-la de novo — mas subir a versão desejada AQUI
+-- seria visível enquanto o contêiner antigo ainda atende (o Dockerfile roda
+-- as migrations antes de o servidor novo subir): uma batida no servidor
+-- antigo veria a versão nova e buscaria a config ANTIGA com ela, e depois a
+-- TV daria a versão por aplicada para sempre (revisão Codex do PR #124).
+--
+-- Por isso a migration só cria o registro do que o CÓDIGO NOVO entregou:
+-- `config_versao_entregue` = a versão que GET /player/:id/config (do código
+-- novo) entregou por último. O heartbeat do código novo sobe a versão quando
+-- a TV aplicou uma versão que o código novo nunca entregou — inclusive a que
+-- o servidor antigo tenha servido no meio do deploy. Coluna nova não muda
+-- nada para o código antigo.
+ALTER TABLE dispositivos ADD COLUMN IF NOT EXISTS config_versao_entregue integer;

@@ -9,9 +9,10 @@ const { operacaoDoPonto, deveriaOperar } = require('../lib/operacao-tela');
 // período. Este módulo é a régua única de período e horário das duas:
 //   · período: [inicio, fim) — instantes; `data_inicio`/`data_fim` (colunas
 //     antigas) são derivadas daqui;
-//   · horário: o formato de `pontos.horario_semanal` (o mesmo que vira
-//     `config.operacao` para a TV — docs/player-mvp-contract.md §6). 24 h é
-//     00:00–24:00 escolhido explicitamente; nunca é o padrão;
+//   · horário: o formato de `pontos.horario_semanal` — informação
+//     operacional/comercial (a TV não apaga por ele: `config.operacao` é
+//     sempre o dia inteiro, src/player/config.js). 24 h é 00:00–24:00
+//     escolhido explicitamente; nunca é o padrão;
 //   · tempo válido: o que a tela comprovou ∩ o período ∩ o horário.
 
 const erro = (status, mensagem, campo) => Object.assign(new Error(mensagem), { status, ...(campo ? { campo } : {}) });
