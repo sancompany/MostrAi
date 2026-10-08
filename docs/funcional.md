@@ -1607,13 +1607,13 @@ e-mail.
 
 **RN-63 — O anunciante escolhe os pontos; o próprio ponto é opcional.**
 *(Estação de distribuição, 27/09/2026.)* "Onde seu anúncio aparece" lista
-cada ponto da rede com localização, estado operacional, horário, ocupação e
-se está selecionado, e o contador "X de N pontos selecionados" (N =
+cada ponto da rede com localização, estado operacional, ramo e se está
+selecionado, e o contador "X de N pontos selecionados" (N =
 `pontos_incluidos` do plano, do servidor). Desde 28/09/2026 (estação dos
 cards do cliente, ADR-029) cada ponto é um **card no molde do card de Rede >
 Pontos do admin**: foto da fachada (ou o placeholder oficial), nome com o
-estado ao lado, endereço com bairro e cidade, segmento, horário, ocupação,
-"Ver no mapa" sobre a foto e, no pé, a caixa de seleção com o estado
+estado ao lado, endereço com bairro e cidade, segmento (ramo), "Ver no
+mapa" sobre a foto e, no pé, a caixa de seleção com o estado
 escrito — "Selecionar ponto", "Selecionado" (borda da marca), "Limite do
 plano atingido" ou "Indisponível para escolha" (sem espaço ou fechado pra
 escolha nova, card apagado; nunca na rede móvel, que tem card próprio —
@@ -1622,7 +1622,10 @@ Rede/Admin V2). Clicar em qualquer parte do card marca; no
 mapa, não. Foto, segmento e bairro vêm da vitrine pública (`GET /pontos`);
 se ela falhar ou passar de 3 s, o card fica com o placeholder e a escolha
 segue igual. Só a apresentação mudou: limite, trava, salvamento e contador
-são os de antes. Salvamento (PR #90, integrado em 29/09/2026): um pedido por
+são os de antes. Desde 08/10/2026 (pedido do dono) o card **não mostra
+horário de funcionamento, dias, feriados nem hora vendida/ocupação**: o
+anunciante decide por estabelecimento, localização e ramo; a ocupação segue
+só travando a caixa (RN-55) e o horário segue no sistema e no Admin. Salvamento (PR #90, integrado em 29/09/2026): um pedido por
 vez — dois cliques seguidos não viram dois PUTs em paralelo, e vale o último;
 se o servidor recusar, as caixas voltam ao último estado salvo, com o
 motivo. Vale pra plano pago **e** pra benefício (créditos/cortesia)

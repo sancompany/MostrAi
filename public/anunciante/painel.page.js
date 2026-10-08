@@ -493,8 +493,6 @@ const ICONES_PONTO = {
     '<path d="M12 21.5s7.25-7.35 7.25-12.25a7.25 7.25 0 1 0-14.5 0c0 4.9 7.25 12.25 7.25 12.25Z"/><circle cx="12" cy="9.25" r="2.75"/>',
   segmento:
     '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.4"/>',
-  horario: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/>',
-  ocupacao: '<path d="M4 20h16M7 16v-4M12 16V7M17 16v-6"/>',
   casa: '<path d="M3.5 11 12 4l8.5 7M6 9.5V20h12V9.5"/>',
   evento: '<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
   movel: '<rect x="7" y="5" width="14" height="10" rx="1.5"/><path d="M10 19h8M14 15v4M2 8h3M2 12h3"/>',
@@ -526,8 +524,11 @@ async function buscarVitrineDosPontos() {
 // Um card por ponto (estação dos cards do cliente, 28/09/2026): o MESMO
 // molde de Rede > Pontos do admin e da prévia da candidatura
 // (`.ponto-card.com-corpo`, style.css) — foto da fachada ou o placeholder
-// oficial, nome com o estado ao lado, endereço, segmento, horário e ocupação
-// — e a seleção no pé do card, dita em texto e não só na cor. O próprio
+// oficial, nome com o estado ao lado, endereço e segmento — e a seleção no
+// pé do card, dita em texto e não só na cor. Horário de funcionamento e hora
+// vendida saíram do card (pedido do dono, 08/10/2026): o anunciante decide
+// por estabelecimento, localização e ramo; a ocupação continua só decidindo
+// se a caixa trava (`.cheio`, "Indisponível para escolha"). O próprio
 // ponto (a conta é dona do comércio) vem na MESMA lista, com o selo "Seu
 // ponto" na foto e o texto que explica a escolha — nunca marcado por isso:
 // se marcado, conta no limite do plano como qualquer outro.
@@ -551,13 +552,6 @@ function htmlPontoEscolha(p, vitrine = {}) {
   const fechado = !p.escolhido && (cheio || p.bloqueado);
   const enderecoCompleto = `${p.endereco ? `${p.endereco}, ` : ''}${p.cidade || ''}`;
   const mapaUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCompleto)}`;
-  const ocupacao = instalando
-    ? 'Ainda sem hora vendida'
-    : cheio
-      ? 'Sem espaço agora'
-      : p.bloqueado && !p.escolhido
-        ? `${p.ocupacao}% vendido · não aceita novas escolhas`
-        : `${p.ocupacao}% vendido`;
   const estado = window.ROTULOS.ponto[p.status] || p.status;
   const classeEstado = window.ROTULOS.pontoClasse[p.status] || 'badge-neutro';
   // Endereço com a regra do resto do sistema (window.linhaEndereco — D5):
@@ -569,10 +563,10 @@ function htmlPontoEscolha(p, vitrine = {}) {
   const foto = vitrine.foto_instalacao_url
     ? `<img src="${esc(vitrine.foto_instalacao_url)}" alt="" loading="lazy" data-foto>`
     : `<span class="ponto-foto-placeholder" aria-hidden="true">${CANDIDATURA_FOTO_PLACEHOLDER_SVG}</span>`;
-  const linha = (classe, icone, texto, id = '') =>
-    `<span class="ponto-linha ${classe}"${id ? ` id="${id}"` : ''}>${iconePonto(icone)}<span>${esc(texto)}</span></span>`;
+  const linha = (classe, icone, texto) =>
+    `<span class="ponto-linha ${classe}">${iconePonto(icone)}<span>${esc(texto)}</span></span>`;
   // O nome acessível do checkbox é o nome do ponto (e o selo), não o card
-  // inteiro; estado, ocupação e a frase do pé entram como descrição.
+  // inteiro; o estado e a frase do pé entram como descrição.
   const id = `ponto-escolha-${p.id}`;
   // <a> fica FORA do <label> de propósito: um link dentro de um label ainda
   // ativa o checkbox quando o clique borbulha até ele. O <label> é
@@ -588,8 +582,6 @@ function htmlPontoEscolha(p, vitrine = {}) {
           </span>
           ${local ? linha('ponto-end', 'endereco', local) : ''}
           ${vitrine.categoria_nome ? linha('ponto-segmento', 'segmento', vitrine.categoria_nome) : ''}
-          ${linha('ponto-horario', 'horario', p.horario || 'Horário não informado')}
-          ${linha('ponto-ocupacao', 'ocupacao', ocupacao, `${id}-ocupacao`)}
           ${
             p.seuPonto
               ? `<span class="ponto-proprio"><span class="ponto-proprio-rotulo">Veicular no próprio ponto</span><span class="ponto-proprio-texto">${TEXTO_SEU_PONTO}</span></span>`
@@ -597,7 +589,7 @@ function htmlPontoEscolha(p, vitrine = {}) {
           }
         </span>
         <span class="ponto-escolha-acao">
-          <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${fechado ? 'disabled' : ''} aria-labelledby="${id}-nome${p.seuPonto ? ` ${id}-selo` : ''}" aria-describedby="${id}-estado ${id}-ocupacao ${id}-acao">
+          <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${fechado ? 'disabled' : ''} aria-labelledby="${id}-nome${p.seuPonto ? ` ${id}-selo` : ''}" aria-describedby="${id}-estado ${id}-acao">
           <span class="ponto-acao-texto" id="${id}-acao"><span class="acao-livre">Selecionar ponto</span><span class="acao-marcado">Selecionado</span><span class="acao-limite">Limite do plano atingido</span><span class="acao-fechado">Indisponível para escolha</span></span>
         </span>
       </label>
