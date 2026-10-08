@@ -6052,11 +6052,32 @@ informação no backend (POP de minuto fechado não credita, mesmo dentro de
 hora parcialmente aberta). A config nova chega pelo heartbeat: a tela cuja
 versão aplicada não foi entregue pelo código novo recebe uma versão a mais
 (`config_versao_entregue`, sem subir nada na migration, por causa do
-contêiner antigo no deploy). Encontrado no caminho, sem mexer:
+contêiner antigo no deploy). PR #124 (`6ebe9cc`), no ar em 08/10/2026, com
+smoke somente leitura:
+- migration 118 aplicada; config de dia inteiro;
+- a playlist da hora em curso, gerada como se o ponto estivesse fechado, é
+  válida: 3.600 s, todo item com id e duração;
+- gerada numa transação `READ ONLY`, com 0 escritas;
+- a única tela de produção (10, móvel, sem alocação, offline desde 00:40)
+  recebe só institucional, sem local falso, com versões intactas (1/1); a
+  config nova chega na primeira batida dela.
+
+Encontrado no caminho, sem mexer:
 - PA1 [ ] `src/anunciantes/repository.js#ensureContaMostrai` cria a conta
       própria com e-mail fixo sem trava: em banco LIMPO, duas criações da
       primeira mídia própria ao mesmo tempo colidem no UNIQUE do e-mail (viu-se
       uma vez em `tests/distribuicao.test.js` 18, rodando em paralelo). Em
       produção a conta já existe. Correção pequena: `INSERT ... ON CONFLICT` ou
       reler depois do erro de unicidade.
+- PA2 [ ] (Codex, PR #124, mergeado por decisão do dono) o POP é julgado
+      pelo horário em vigor quando CHEGA, não pelo da hora em que tocou
+      (`limite:` em `gerador.js#confirmarExecucao`). Quebra num caso só:
+      - a TV fica offline com POP na fila (até 7 dias);
+      - nesse intervalo, o horário do ponto fixo muda, ou a tela móvel
+        passa para outra alocação com grade diferente;
+      - um POP de minuto que estava aberto pode ser recusado
+        (`janela_desconhecida`).
+      Se a alocação só terminou, o horário vira `null` e o POP credita como
+      antes. Correção: gravar o horário com a hora congelada
+      (`playlist_hora_congelada`, na geração) e julgar o POP por ele.
 
