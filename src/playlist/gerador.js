@@ -1440,9 +1440,10 @@ async function confirmarExecucao(dispositivoIdEsperado, itemProgramacaoId, janel
   // mesmo relógio com que o Player tocou). Sem ele, vale a regra de sempre
   // (credita até o teto). Mesmo status da hora fechada — nenhum novo.
   // limite: `horario` é o que vale na tela quando o POP CHEGA, não quando
-  // tocou — POP offline que chega depois de trocar o horário do ponto (ou a
-  // alocação da tela móvel) é julgado pelo horário novo; guardar o horário
-  // junto da hora congelada resolve, se aparecer caso real.
+  // tocou — POP que chega (lote de 60 s ou fila offline) depois de trocar o
+  // horário do ponto ou a alocação da tela móvel é julgado pelo horário novo,
+  // e pode errar nos dois sentidos; guardar o horário junto da hora congelada
+  // resolve (docs/PENDENCIAS.md, PA2).
   if (extra.horario !== undefined && minutoFechado(extra.horario, extra.iniciadoEm, horaJanela)) {
     return 'janela_desconhecida';
   }
