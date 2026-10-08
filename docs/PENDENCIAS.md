@@ -6038,6 +6038,16 @@ intacta:
   `playlist_mudancas` (com `em` = instante do COMMIT); `GET /playlist` grava `playlist_gerada_desde`; o
   heartbeat compara. Nenhuma escrita em `dispositivos` por mudança.
 
+**Estação Player sempre ativo (08/10/2026, migration 118, ADR-043).** O
+`config.operacao` vai sempre como o dia inteiro; o horário ficou só como
+informação no backend. Encontrado no caminho, sem mexer:
+- PA1 [ ] `src/anunciantes/repository.js#ensureContaMostrai` cria a conta
+      própria com e-mail fixo sem trava: em banco LIMPO, duas criações da
+      primeira mídia própria ao mesmo tempo colidem no UNIQUE do e-mail (viu-se
+      uma vez em `tests/distribuicao.test.js` 18, rodando em paralelo). Em
+      produção a conta já existe. Correção pequena: `INSERT ... ON CONFLICT` ou
+      reler depois do erro de unicidade.
+
       (d) (Codex, PR #114) um ajuste NEGATIVO do Admin feito no mesmo
       instante em que o gerador reserva a hora da conta pode deixar a rede
       entregar alguns segundos além do saldo (no máximo a reserva de uma

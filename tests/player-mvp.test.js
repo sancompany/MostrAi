@@ -482,37 +482,42 @@ test('config: margem muda a versão e chega na config; campo que não vai na con
   assert.equal(await versaoDesejada(tela.id), v0 + 1);
 });
 
-test('config: toda tela segue o horário do ponto; mudar o horário sobe a versão de TODAS as telas dele', async () => {
+// PLAYER SEMPRE ATIVO (08/10/2026): o horário do ponto não apaga mais a TV —
+// `operacao` vai sempre como o dia inteiro, com qualquer horário cadastrado.
+// Mudar o horário ainda sobe a versão das telas do ponto (gatilho da 093):
+// inofensivo, a TV recebe a mesma config de dia inteiro.
+test('config: operacao é sempre o dia inteiro, com qualquer horário do ponto; mudar o horário sobe a versão das telas dele', async () => {
+  const diaInteiro = [{ inicio: '00:00', fim: '24:00' }];
   const semana9a18 = Object.fromEntries(SEMANA.map((d) => [d, { abre: '09:00', fecha: '18:00' }]));
-  const pid = await novoPonto({ horario: { ...semana9a18, dom: null } });
+  const pid = await novoPonto({ horario: { ...semana9a18, dom: null, feriados: null } });
   const outroPonto = await novoPonto();
   const [t1, t2, t3] = [await novaTela(pid), await novaTela(pid), await novaTela(outroPonto)];
   const p1 = await instalarPlayer(t1.id);
   const antes = { t1: await versaoDesejada(t1.id), t2: await versaoDesejada(t2.id), t3: await versaoDesejada(t3.id) };
 
+  // Ponto das 09:00 às 18:00, fechado no domingo e nos feriados: a TV recebe 24 h.
   let r = await configDe(p1);
-  assert.deepEqual(r.json.operacao.porDiaDaSemana.seg, [{ inicio: '09:00', fim: '18:00' }]);
-  assert.deepEqual(r.json.operacao.porDiaDaSemana.dom, []);
+  for (const dia of SEMANA) assert.deepEqual(r.json.operacao.porDiaDaSemana[dia], diaInteiro, dia);
+  assert.deepEqual(r.json.operacao.feriados, {}, 'feriado fechado também não apaga');
 
-  // Ponto passa a ser 24 h (00:00–24:00).
-  const vinte4 = Object.fromEntries([...SEMANA, 'feriados'].map((d) => [d, { abre: '00:00', fecha: '24:00' }]));
   const pontosRepo = require('../src/pontos/repository');
+  const vinte4 = Object.fromEntries([...SEMANA, 'feriados'].map((d) => [d, { abre: '00:00', fecha: '24:00' }]));
   await pontosRepo.atualizar(pid, { horario_semanal: vinte4 });
   assert.equal(await versaoDesejada(t1.id), antes.t1 + 1);
   assert.equal(await versaoDesejada(t2.id), antes.t2 + 1, 'tela sem Player também');
   assert.equal(await versaoDesejada(t3.id), antes.t3, 'tela de outro ponto não muda');
   r = await configDe(p1);
   assert.equal(r.json.configVersion, antes.t1 + 1);
-  for (const dia of SEMANA) assert.deepEqual(r.json.operacao.porDiaDaSemana[dia], [{ inicio: '00:00', fim: '24:00' }]);
+  for (const dia of SEMANA) assert.deepEqual(r.json.operacao.porDiaDaSemana[dia], diaInteiro);
 
   // Salvar o mesmo horário não sobe versão.
   await pontosRepo.atualizar(pid, { horario_semanal: vinte4 });
   assert.equal(await versaoDesejada(t1.id), antes.t1 + 1);
 
-  // Ponto sem horário cadastrado = 24 h todos os dias, sem feriados especiais.
+  // Ponto sem horário cadastrado: o mesmo bloco.
   const p3 = await instalarPlayer(t3.id);
   r = await configDe(p3);
-  for (const dia of SEMANA) assert.deepEqual(r.json.operacao.porDiaDaSemana[dia], [{ inicio: '00:00', fim: '24:00' }]);
+  for (const dia of SEMANA) assert.deepEqual(r.json.operacao.porDiaDaSemana[dia], diaInteiro);
   assert.deepEqual(r.json.operacao.feriados, {});
 });
 

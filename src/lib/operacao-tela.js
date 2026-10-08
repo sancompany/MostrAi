@@ -1,12 +1,11 @@
 const { feriadosNacionais } = require('./horario-semanal');
 
-// Horário de operação da tela — regra ÚNICA do backend para duas perguntas:
-//   1. o que vai no bloco `operacao` de GET /player/:id/config
-//      (docs/player-mvp-contract.md §6);
-//   2. "esta tela deveria estar operando agora?" (saúde, alertas).
-// As duas saem do mesmo objeto, e (2) repete a semântica que o contrato
-// pede ao Player: o admin nunca chama de "Sem sinal" uma tela que o próprio
-// Player apagou por horário, nem o contrário.
+// Horário de operação da tela — regra ÚNICA do backend para "esta tela
+// deveria estar operando agora?" (saúde, alertas, obrigação por minutos
+// abertos, métricas). Desde 08/10/2026 o Player não apaga mais por horário:
+// o bloco `operacao` de GET /player/:id/config (docs/player-mvp-contract.md
+// §6) vai sempre como dia inteiro — `operacaoDoPonto(null)` — e o horário
+// fica só como informação operacional/comercial (src/player/config.js).
 //
 // Toda tela segue o horário do PONTO — não existe horário por tela. Ponto
 // 24 h é um ponto com 00:00–24:00 (ou sem horário cadastrado).
@@ -192,7 +191,8 @@ function deveriaOperar(operacao, agora = new Date()) {
 // Quantos minutos o ponto opera em [de, ate) — a mesma régua de
 // `deveriaOperar`, avaliada no meio de cada fatia de `passoMin` minutos.
 // Usada pra "quanto a Mídia Mostraí DEVERIA ter tocado" (esperado), que não
-// pode ser frequência × 24: loja fechada não exibe (o Player apaga).
+// pode ser frequência × 24: fora do horário não se espera exibição (o que a
+// TV ligada tocar ali é bônus).
 // limite: resolução de 5 min — um horário que abre às 09:07 conta a fatia
 // inteira de 09:05 ou nada; o erro é de no máximo uma fatia por borda.
 const PASSO_PADRAO_MIN = 5;

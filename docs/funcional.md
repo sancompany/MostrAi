@@ -1420,8 +1420,16 @@ padrão. *Violada:* código errado/expirado/usado → 401; chave errada, vazia o
 revogada → 401. *Quem vê:* o administrador.
 
 **RN-60 — Configuração da tela é versionada: desejada × aplicada.**
-*(Player MVP, 26/09/2026.)* A config é margens da tela + horário do ponto +
-PIN de saída global. Mudar a área segura sobe `config_versao_desejada` por
+*(Player MVP, 26/09/2026.)* A config é margens da tela + bloco de operação +
+PIN de saída global. **Player sempre ativo (08/10/2026, decisão do dono):** o
+bloco de operação vai SEMPRE como o dia inteiro — TV ligada + Player saudável
+= reprodução contínua, com qualquer horário do ponto e com ou sem compromisso
+na tela móvel; sem campanha elegível, toca o institucional/Mídia Mostraí. O
+horário segue no backend como informação operacional e comercial: obrigação,
+programada e POP creditado só nas horas abertas (fora delas o que tocar é
+bônus), "Fora do horário" na ficha (informativo, nunca problema) e atenção de
+sem comunicação só no horário (migration 118 reenviou a config a todas as
+telas). Mudar a área segura sobe `config_versao_desejada` por
 gatilho no banco (migration 093); mudar o horário do ponto sobe a de todas as
 telas dele; trocar o PIN de saída sobe a de todas as telas da rede. O
 heartbeat devolve a versão e o Player informa qual aplicou; a ficha só chama

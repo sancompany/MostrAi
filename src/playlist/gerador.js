@@ -529,10 +529,10 @@ function numerosDaConta(conta, pontosCobertos, telasDoPonto) {
 // credita. Conta o que foi de fato pra playlist servida (depois do corte da
 // hora cheia e com quem entrou no fim), não a frequência configurada.
 //
-// Só grava se o ponto opera em algum momento da hora: o Player continua
-// buscando a playlist com a loja fechada (só não toca — conferido no app,
-// PlayerActivity#aplicarHorarioOperacional), e contar isso como programado
-// transformaria toda madrugada em "entrega atrasada".
+// Só grava se o ponto opera em algum momento da hora: a TV ligada fora do
+// horário busca e TOCA a playlist (Player sempre ativo, 08/10/2026), mas
+// contar isso como programado transformaria toda madrugada em "entrega
+// atrasada" — fora do horário é bônus, não obrigação.
 //
 // Sobrescreve (como `gravarProgramados`): a base da hora é congelada, então a
 // contagem só muda quando alguém entra no fim. Mídia que saiu no meio da
@@ -629,9 +629,10 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   const horaAnterior = new Date(horaAtual);
   horaAnterior.setHours(horaAnterior.getHours() - 1);
   const fimDaHora = new Date(horaAtual.getTime() + 3_600_000);
-  // PONTO FECHADO ≠ FALHA DE ENTREGA (Saldo de Veiculação, 27/09/2026). O
-  // Player continua pedindo playlist com a loja fechada (só não toca), e
-  // até aqui a hora fechada gravava programada comercial: o não confirmado
+  // PONTO FECHADO ≠ FALHA DE ENTREGA (Saldo de Veiculação, 27/09/2026). A
+  // TV ligada fora do horário pede e toca a playlist (Player sempre ativo,
+  // 08/10/2026 — a hora fechada responde base + institucional, o que tocar é
+  // bônus), e até aqui a hora fechada gravava programada comercial: o não confirmado
   // rolava a madrugada inteira e virava saldo falso na abertura. Hora sem
   // nenhum minuto aberto responde a playlist (técnico), mas não nasce
   // obrigação, programada, reposição nem banco. Hora parcial deve só os

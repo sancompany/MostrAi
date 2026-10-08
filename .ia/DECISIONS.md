@@ -1668,3 +1668,27 @@ geração no meio leria versão nova com dados velhos); exigir que o lote
 tenha começado no INÍCIO da hora (a primeira exibição depois de uma compra
 não abateria nada).
 
+## ADR-043 — Horário do ponto não apaga mais a TV: `config.operacao` sempre o dia inteiro (08/10/2026)
+
+**Contexto.** O APK aplica o bloco `operacao` da config: fora dele mostra o
+cartão local e manda `OUT_OF_SCHEDULE` (contrato §6). O bloco era o horário do
+ponto — ou o do compromisso, na tela móvel —, então o comércio aberto mais
+cedo, mais tarde ou fora do habitual ficava com a TV ligada sem anúncio. O
+backend já respondia a playlist fora do horário (base + institucional, sem
+obrigação).
+
+**Decisão.** Regra do dono: TV ligada + Player saudável = reprodução contínua.
+`montarConfig` manda `operacao` sempre como o dia inteiro (o bloco de ponto
+sem horário, que o APK já entende) — nada muda no APK nem no formato. A
+migration 118 sobe a versão desejada de todas as telas para a config nova
+chegar. O horário continua sendo informação operacional/comercial no
+backend: obrigação, programada e POP creditado só em hora aberta (fora dela a
+campanha toca como bônus e o POP responde `janela_desconhecida`, sem mexer no
+saldo), estado "Fora do horário" na ficha (informativo), atenção de sem
+comunicação só no horário. Tela móvel sem compromisso continua só
+institucional (sem local comercial falso).
+
+**Recusado.** Estado novo de "operação extraordinária"; exigir evento ou
+compromisso; mexer no APK; creditar POP fora do horário (mudaria saldo e
+obrigação — fora do escopo).
+

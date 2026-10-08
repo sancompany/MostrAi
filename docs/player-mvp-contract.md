@@ -210,7 +210,22 @@ inteira vem de uma leitura só (versão e conteúdo nunca divergem).
 
 ### Operação (horário)
 
-Toda tela segue o **horário do ponto** (não existe horário por tela).
+**Player sempre ativo (08/10/2026, decisão do dono): o backend manda
+`operacao` SEMPRE como o dia inteiro** — todos os dias `00:00`–`24:00`,
+`feriados: {}` —, com qualquer horário cadastrado no ponto e com ou sem
+compromisso na tela móvel. TV ligada + Player saudável = reprodução contínua;
+o comércio que abre mais cedo, fecha mais tarde ou fica aberto fora do
+habitual não fica com a TV ligada sem anúncio. O horário do ponto (e o do
+compromisso) continua no backend como informação operacional e comercial —
+obrigação só nas horas abertas (fora delas o que tocar é bônus, sem
+programada, POP não credita), estado "Fora do horário" na ficha (informativo,
+nunca problema), atenção de sem comunicação só no horário. Nenhum campo novo;
+o Player não muda — ele segue aplicando o `operacao` que recebe, que agora
+nunca o apaga. O resto desta seção descreve o FORMATO do bloco (o mesmo de
+sempre) e de onde vinha o horário antes.
+
+Até 08/10/2026 toda tela seguia o **horário do ponto** (não existe horário
+por tela).
 
 - `timezone`: fuso do ponto. Hoje é sempre `America/Sao_Paulo`.
 - `porDiaDaSemana`: sempre os 7 dias (`seg`…`dom`). Lista vazia = fechado o
@@ -239,9 +254,11 @@ Toda tela segue o **horário do ponto** (não existe horário por tela).
 - `feriados`: data (`AAAA-MM-DD`) → faixas daquele dia. **Substitui** o dia
   da semana, inclusive a madrugada que viria da véspera. Feriados nacionais
   do ano corrente e dos dois seguintes; `{}` = sem regra especial.
-- fora do horário o Player não exibe anúncios (mostra o cartão local) e
-  manda `estado: OUT_OF_SCHEDULE`. Guardar a última `operacao` recebida é o
-  que permite decidir o horário **offline**.
+- fora do `operacao` recebido o Player não exibe anúncios (mostra o cartão
+  local) e manda `estado: OUT_OF_SCHEDULE` — com o bloco sempre no dia
+  inteiro, isso não acontece mais. Guardar a última `operacao` recebida é o
+  que permite decidir o horário **offline** (a migration 118 subiu a
+  `configVersion` de todas as telas para a config do dia inteiro chegar).
 
 ### PIN de saída
 

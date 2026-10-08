@@ -1,6 +1,20 @@
 # Current Handoff
 
 ## Updated
+2026-10-08 — **Player sempre ativo fora do horário** (migration 118; ADR-043;
+branch `claude/busy-noether-hheir2`). Causa: o APK apaga (cartão local,
+`OUT_OF_SCHEDULE`) fora do `config.operacao`, que era o horário do ponto (ou
+do compromisso da tela móvel). O backend já respondia playlist válida fora do
+horário. Correção só no servidor: `src/player/config.js#montarConfig` manda
+`operacao: operacaoDoPonto(null)` (dia inteiro, `feriados: {}`) sempre; a 118
+sobe `config_versao_desejada` de todas as telas (mesma operação da 093). O
+horário continua no backend: `minutosAbertos`/obrigação/programada só em hora
+aberta (fora dela a campanha toca como bônus; POP → `janela_desconhecida`,
+não credita), `fora_do_horario` informativo em `status-tela.js`, atenção sem
+comunicação só no horário. Testes: `tests/player-sempre-ativo.test.js`; o
+teste de config de `tests/player-mvp.test.js` passou a exigir o dia inteiro.
+APK não mudou. Review-Master segue PAUSADA.
+
 2026-10-07 — **Estação focal SV1 + SV2 + SV3** (migration 117; ADR-042; branch
 `claude/busy-noether-hheir2`). SV1: `obrigacao-do-ciclo.js#segundosDoBeneficio`
 — benefício com `planos_administrativos.origem = 'indicacao'` = cota exata
