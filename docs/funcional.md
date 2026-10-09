@@ -2148,8 +2148,10 @@ muda e a pessoa tenta de novo), a conta é suspensa e o anúncio sai do ar na
 hora — salvo quando ainda há dias **pagos** de um contrato anterior (cancelou
 com cobertura e comprou de novo): aí a cobertura volta ao fim que o anterior
 pagou, no plano dele, e só a obrigação de veiculação do contrato desistido é
-revertida; a confirmação da devolução pela Asaas não encolhe a cobertura de
-novo —, e o valor **integral** já pago vira um pedido de devolução na fila do
+revertida; com um benefício em vigor, o pago desistido estava guardado na
+fila atrás dele: sai só da fila, e o benefício segue no ar, sem suspender; a
+confirmação da devolução pela Asaas não mexe de novo na cobertura nem na
+fila —, e o valor **integral** já pago vira um pedido de devolução na fila do
 admin — não há pró-rata pelos dias em que o anúncio rodou, o direito não é
 proporcional. Desde 09/10/2026 (RN-73, migration 120) cada cobrança com
 dinheiro a voltar vira um pedido de estorno `desistencia`: o cliente só

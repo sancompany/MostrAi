@@ -1135,6 +1135,66 @@ async function desistirComDiasDoAnterior({ semChargeIdNaHora }) {
   );
 }
 
+test('desistência de um pago GUARDADO atrás de um benefício: sai só da fila; o benefício segue no ar, sem suspender (revisão Codex do PR #130)', async () => {
+  const conta = await criarConta();
+  const ate = vigencia.somarDias(vigencia.hojeComercial(), 40);
+  await pool.query(
+    `UPDATE anunciantes SET plano_id = 'maximo-1m', plano_cortesia = true, cortesia_motivo = 'Benefício por créditos',
+            data_expiracao = $2 WHERE id = $1`,
+    [conta.id, ate],
+  );
+  const {
+    rows: [beneficio],
+  } = await pool.query(
+    `INSERT INTO planos_administrativos (anunciante_id, plano_id, valido_ate, status, origem, ativado_em)
+     VALUES ($1, 'maximo-1m', $2, 'ativo', 'indicacao', now()) RETURNING id`,
+    [conta.id, ate],
+  );
+  const pago = await pagar(conta);
+  assert.equal(
+    (await linha('SELECT plano_pago_guardado_id FROM anunciantes WHERE id = $1', [conta.id])).plano_pago_guardado_id,
+    PLANO,
+    'o pago ficou na fila',
+  );
+
+  await entrar(conta);
+  const r = await conta.nav('POST', '/titular/arrependimento');
+  assert.equal(r.status, 201, r.texto);
+  assert.equal(r.json.pedido.plano_id, PLANO, 'o pedido é do plano pago, não do benefício');
+  const conferir = async (quando) => {
+    const c = await linha(
+      `SELECT suspenso, plano_id, plano_cortesia, data_expiracao, plano_pago_guardado_id, plano_pago_guardado_dias
+         FROM anunciantes WHERE id = $1`,
+      [conta.id],
+    );
+    assert.equal(c.suspenso, false, `${quando}: o benefício continua no ar`);
+    assert.equal(c.plano_id, 'maximo-1m', quando);
+    assert.equal(c.plano_cortesia, true, quando);
+    assert.equal(vigencia.diaTexto(c.data_expiracao), ate, `${quando}: a validade do benefício não muda`);
+    assert.equal(c.plano_pago_guardado_id, null, `${quando}: os dias pagos desistidos saíram da fila`);
+    assert.equal(c.plano_pago_guardado_dias, null, quando);
+  };
+  await conferir('no pedido');
+  assert.equal(
+    (await linha('SELECT status FROM planos_administrativos WHERE id = $1', [beneficio.id])).status,
+    'ativo',
+  );
+  const pendencias = async () =>
+    (
+      await linhas("SELECT motivo FROM eventos_assinatura_pendentes WHERE (payload->>'arrependimentoId')::int = $1", [
+        r.json.pedido.id,
+      ])
+    ).map((p) => p.motivo);
+  assert.deepEqual(await pendencias(), [], 'ajustou sozinho: nada a conferir à mão');
+
+  await estornoDoPsp(pago.assinatura, conta, pago.chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+  await conferir('na confirmação da Asaas');
+  assert.equal(
+    (await linha('SELECT status FROM arrependimentos WHERE id = $1', [r.json.pedido.id])).status,
+    'estornado',
+  );
+});
+
 test('desistência do contrato novo não leva os dias PAGOS do anterior: cobertura volta ao fim dele e só o lote novo sai (revisão Codex do PR #130)', () =>
   desistirComDiasDoAnterior({ semChargeIdNaHora: false }));
 

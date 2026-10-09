@@ -212,6 +212,23 @@ async function cancelar({ estornoId, motivo, operador }) {
   throw recusa(agora[0]);
 }
 
+// Os dias que um ciclo pago pôs na fila guardada: a mesma conta da fila
+// (plano-administrativo.js#aplicarPagamentoNaFila), a partir do dia em que
+// ele entrou.
+const diasNaFila = (ciclo) =>
+  planoAdministrativo.diasDeMeses(ciclo.ciclo_meses, vigencia.hojeComercial(new Date(ciclo.criado_em)));
+
+// Tira `dias` da fila guardada; zerou, a fila some.
+async function tirarDaFila(db, anuncianteId, dias) {
+  await db.query(
+    `UPDATE anunciantes
+        SET plano_pago_guardado_dias = CASE WHEN plano_pago_guardado_dias > $2 THEN plano_pago_guardado_dias - $2 END,
+            plano_pago_guardado_id = CASE WHEN plano_pago_guardado_dias > $2 THEN plano_pago_guardado_id END
+      WHERE id = $1`,
+    [anuncianteId, dias],
+  );
+}
+
 // Efeito do estorno TOTAL confirmado (decisão do dono, 09/10/2026): o ciclo
 // pago por esta cobrança é desfeito — o lote de horas sai (reembolso, a
 // regra que já existia) e a cobertura daquele ciclo sai. Não cancela a
@@ -240,6 +257,10 @@ async function aplicarEstornoTotal(db, cobranca, motivo, { coberturaJaDesfeita =
     [cobranca.anunciante_id],
   );
   if (!ciclo || !conta) return avisos;
+  // Devolução de uma desistência: a cobertura do contrato (ou a fila guardada
+  // dele) já foi desfeita no pedido (src/titular/routes.js) — tirar de novo
+  // comeria os dias pagos do contrato anterior que ela preservou.
+  if (coberturaJaDesfeita) return avisos;
   // A cobertura de agora só contém este ciclo se ela vem da MESMA assinatura
   // (renovações dela se empilham). Ciclo de uma assinatura antiga — o cliente
   // cancelou e voltou ao mesmo plano depois — não encolhe a cobertura paga
@@ -256,20 +277,9 @@ async function aplicarEstornoTotal(db, cobranca, motivo, { coberturaJaDesfeita =
   // (revisão Codex do PR #130). O benefício não muda: é pago com créditos,
   // não com o dinheiro devolvido.
   if (conta.plano_cortesia && conta.plano_pago_guardado_id === cobranca.plano_id && mesmaCobertura) {
-    const dias = planoAdministrativo.diasDeMeses(ciclo.ciclo_meses, vigencia.hojeComercial(new Date(ciclo.criado_em)));
-    await db.query(
-      `UPDATE anunciantes
-          SET plano_pago_guardado_dias = CASE WHEN plano_pago_guardado_dias > $2 THEN plano_pago_guardado_dias - $2 END,
-              plano_pago_guardado_id = CASE WHEN plano_pago_guardado_dias > $2 THEN plano_pago_guardado_id END
-        WHERE id = $1`,
-      [conta.id, dias],
-    );
+    await tirarDaFila(db, conta.id, diasNaFila(ciclo));
     return avisos;
   }
-  // Devolução de uma desistência: a cobertura do contrato já foi desfeita no
-  // pedido (src/titular/routes.js) — encolher de novo comeria os dias pagos
-  // do contrato anterior que ela preservou.
-  if (coberturaJaDesfeita) return avisos;
   if (!conta.data_expiracao) return avisos; // nada pago em vigor (ex.: desistência já zerou)
   if (conta.plano_cortesia || conta.plano_id !== cobranca.plano_id || !mesmaCobertura) {
     avisos.push(
@@ -485,7 +495,7 @@ async function ciclosDoContrato(db, anuncianteId, desde) {
     `WITH k AS (SELECT min(c.id) AS id FROM ciclos_contratados c
                   JOIN cobrancas_confirmadas cc ON cc.id = c.cobranca_confirmada_id
                  WHERE c.anunciante_id = $1 AND c.origem = 'compra' AND cc.pago_em >= $2::timestamptz)
-     SELECT k.id AS k, c.id, c.origem, c.ciclo_meses
+     SELECT k.id AS k, c.id, c.origem, c.ciclo_meses, c.plano_id, c.criado_em
        FROM k LEFT JOIN ciclos_contratados c
          ON c.anunciante_id = $1 AND c.id >= k.id
         AND NOT EXISTS (SELECT 1 FROM ciclos_contratados a WHERE a.assinatura_id = c.assinatura_id AND a.id < k.id)`,
@@ -529,6 +539,32 @@ async function coberturaAnterior(db, { anuncianteId, desde, dataExpiracao }) {
     meses,
   ]);
   return fim > vigencia.hojeComercial() ? { planoId: anterior.plano_id, fim } : null;
+}
+
+// Desistência com benefício em vigor (conta em cortesia): o pago deste
+// contrato não está na cobertura de agora — espera GUARDADO atrás do
+// benefício (plano-administrativo.js#aplicarPagamentoNaFila). Sai da fila só
+// o que os ciclos dele puseram, pela mesma conta do estorno total; o
+// benefício segue no ar (revisão Codex do PR #130). Fila vazia ou de outro
+// plano não é deste contrato: vira aviso, nunca adivinha.
+async function tirarContratoDaFila(db, { anuncianteId, desde }) {
+  const pagos = ((await ciclosDoContrato(db, anuncianteId, desde)) || []).filter(
+    (c) => c.origem === 'compra' || c.origem === 'renovacao',
+  );
+  const {
+    rows: [conta],
+  } = await db.query('SELECT plano_pago_guardado_id FROM anunciantes WHERE id = $1', [anuncianteId]);
+  if (!pagos.some((c) => c.plano_id === conta?.plano_pago_guardado_id)) {
+    return [
+      'desistência com benefício em vigor: os dias pagos deste contrato não estão na fila guardada — conferir a cobertura à mão',
+    ];
+  }
+  await tirarDaFila(
+    db,
+    anuncianteId,
+    pagos.reduce((t, c) => t + diasNaFila(c), 0),
+  );
+  return [];
 }
 
 // Chargeback numa cobrança: o dinheiro está em disputa — estado próprio,
@@ -638,4 +674,5 @@ module.exports = {
   restanteDesde,
   ciclosDoContrato,
   coberturaAnterior,
+  tirarContratoDaFila,
 };

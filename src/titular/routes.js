@@ -154,7 +154,8 @@ router.post('/titular/arrependimento', exigirAnuncianteLogado, async (req, res) 
       {
         anuncianteId: id,
         assinaturaId: assinatura ? assinatura.id : null,
-        planoId: anunciante.plano_id || primeira.plano_id,
+        // Em benefício, o plano da conta é o do benefício; o desistido é o pago.
+        planoId: (!anunciante.plano_cortesia && anunciante.plano_id) || primeira.plano_id,
         valor: await estornos.restanteDesde(id, primeira.confirmado_em, cliente),
         contratadoEm: primeira.confirmado_em,
       },
@@ -186,20 +187,28 @@ router.post('/titular/arrependimento', exigirAnuncianteLogado, async (req, res) 
   // Fora do ar na hora: o direito é desfazer ESTA contratação, não continuar
   // exibindo até o fim do ciclo pago. Dias PAGOS de um contrato anterior
   // (cancelou com cobertura e comprou de novo) não voltam com ela: a
-  // cobertura volta ao fim deles, no plano deles (revisão Codex do PR #130).
-  const anterior = anunciante.plano_cortesia
-    ? null
-    : await estornos.coberturaAnterior(pool, {
-        anuncianteId: id,
-        desde: primeira.confirmado_em,
-        dataExpiracao: anunciante.data_expiracao,
-      });
-  await anunciantesRepo.atualizar(
-    id,
-    anterior
-      ? { plano_id: anterior.planoId, data_expiracao: anterior.fim }
-      : { suspenso: true, plano_id: null, data_expiracao: null },
-  );
+  // cobertura volta ao fim deles, no plano deles. Com benefício em vigor, o
+  // pago deste contrato espera na fila guardada: sai só ele da fila, e o
+  // benefício segue no ar (revisões Codex do PR #130).
+  if (anunciante.plano_cortesia) {
+    for (const aviso of await estornos.tirarContratoDaFila(pool, { anuncianteId: id, desde: primeira.confirmado_em })) {
+      await checkout
+        .registrarPendencia({ evento: 'desistencia', arrependimentoId: pedido.id }, aviso)
+        .catch((err) => console.error('pendência da desistência não registrada:', err.message));
+    }
+  } else {
+    const anterior = await estornos.coberturaAnterior(pool, {
+      anuncianteId: id,
+      desde: primeira.confirmado_em,
+      dataExpiracao: anunciante.data_expiracao,
+    });
+    await anunciantesRepo.atualizar(
+      id,
+      anterior
+        ? { plano_id: anterior.planoId, data_expiracao: anterior.fim }
+        : { suspenso: true, plano_id: null, data_expiracao: null },
+    );
+  }
   // Reembolso integral: a obrigação de veiculação dos ciclos pagos DESTE
   // contrato some; o que já tinha sido entregue vira saldo técnico negativo
   // (interno — a próxima contratação desconta), nunca dívida mostrada ao
