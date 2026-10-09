@@ -2169,7 +2169,9 @@ desistiu, e voltou tem contrato novo, com 7 dias próprios contados desse
 pagamento; renovação e troca de plano seguem no mesmo contrato), e só as
 cobranças dele voltam e contam para fechar a desistência — pagas desde a
 compra **e** de uma assinatura que nasceu nele (a comprada ou a nova de uma
-troca); cobrança em atraso de uma assinatura anterior, paga depois da compra
+troca), até a compra seguinte (quem compra de novo antes da devolução
+confirmar abre outro contrato, que não segura o fechamento do anterior);
+cobrança em atraso de uma assinatura anterior, paga depois da compra
 nova, é do contrato velho e fica de fora; a devolução de uma
 desistência (inclusive um pedido do Admin que ela adotou) não se cancela pelo
 painel.

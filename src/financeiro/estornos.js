@@ -452,24 +452,40 @@ async function fecharDesistenciaAtendida(db, anuncianteId) {
   );
 }
 
+// Um contrato é a fatia de ciclos entre o seu ciclo `compra` e o `compra`
+// seguinte, por ASSINATURA: um ciclo é dele quando a assinatura dele nasceu
+// nessa fatia (a comprada, ou a nova de uma troca de plano depois — a troca
+// grava o primeiro ciclo dela). Renovação atrasada de uma assinatura
+// ANTERIOR, paga depois da compra nova, tem a data dentro do contrato mas é
+// do contrato velho; e a compra SEGUINTE (outro plano comprado antes da
+// devolução confirmar) já é outro contrato (revisões Codex do PR #130).
+// Compara ids de ciclo, não relógios.
+const primeiroDaAssinatura = (ciclo) =>
+  `COALESCE((SELECT min(p.id) FROM ciclos_contratados p WHERE p.assinatura_id = ${ciclo}.assinatura_id), ${ciclo}.id)`;
+const compraDoContrato = (conta, desde) =>
+  `(SELECT COALESCE(min(k.id), 0) FROM ciclos_contratados k JOIN cobrancas_confirmadas kc ON kc.id = k.cobranca_confirmada_id
+     WHERE k.anunciante_id = ${conta} AND k.origem = 'compra' AND kc.pago_em >= ${desde})`;
+// 0 sem compra no contrato (conta sem esse histórico): nada vem depois.
+const compraSeguinte = (conta, compra) =>
+  `(SELECT min(n.id) FROM ciclos_contratados n WHERE n.anunciante_id = ${conta} AND n.origem = 'compra'
+       AND n.id > ${compra} AND ${compra} > 0)`;
+
 // A cobrança `c` é do contrato que começou em `desde` (o pagamento do ciclo
-// `compra` dele)? Paga desde então E de uma assinatura que nasceu nele: a
-// comprada, ou a nova de uma troca de plano depois (a troca grava o primeiro
-// ciclo dela). Renovação atrasada de uma assinatura ANTERIOR, paga depois da
-// compra nova, tem a data dentro do contrato mas é do contrato velho — a
-// assinatura dela já tinha ciclo antes do ciclo `compra` (revisão Codex do
-// PR #130). Compara ids de ciclo, não relógios. Cobrança sem ciclo (acerto de
-// troca) vale pela data: não tem assinatura pra conferir.
+// `compra` dele)? Paga desde então e com o ciclo dentro da fatia acima.
+// Cobrança sem ciclo (acerto de troca) vale pela data: não tem assinatura pra
+// conferir — até a compra seguinte.
 function doContrato(c, desde) {
+  const compra = compraDoContrato(`${c}.anunciante_id`, desde);
+  const seguinte = compraSeguinte(`${c}.anunciante_id`, compra);
   return `${c}.pago_em >= ${desde}
     AND NOT EXISTS (
       SELECT 1 FROM ciclos_contratados dela
-        JOIN ciclos_contratados antes ON antes.assinatura_id = dela.assinatura_id
        WHERE dela.cobranca_confirmada_id = ${c}.id
-         AND antes.id < (SELECT COALESCE(min(k.id), 0) FROM ciclos_contratados k
-                           JOIN cobrancas_confirmadas kc ON kc.id = k.cobranca_confirmada_id
-                          WHERE k.anunciante_id = ${c}.anunciante_id AND k.origem = 'compra'
-                            AND kc.pago_em >= ${desde}))`;
+         AND (${primeiroDaAssinatura('dela')} < ${compra}
+              OR ${primeiroDaAssinatura('dela')} >= COALESCE(${seguinte}, 2147483647)))
+    AND (EXISTS (SELECT 1 FROM ciclos_contratados dela WHERE dela.cobranca_confirmada_id = ${c}.id)
+         OR NOT EXISTS (SELECT 1 FROM ciclos_contratados n JOIN cobrancas_confirmadas nc ON nc.id = n.cobranca_confirmada_id
+                         WHERE n.id = ${seguinte} AND nc.pago_em <= ${c}.pago_em))`;
 }
 
 // A cobrança é de um contrato desistido (paga até o pedido)? A cobertura dele
@@ -486,19 +502,17 @@ async function deContratoDesistido(db, cobrancaId) {
   return rows.length > 0;
 }
 
-// Os ciclos do mesmo contrato (o critério de `doContrato`, para ciclos): do
-// ciclo `compra` dele em diante, de assinatura que nasceu nele. `null` quando
+// Os ciclos do mesmo contrato (a fatia de `doContrato`, para ciclos). `null` quando
 // não há ciclo `compra` desde `desde` — conta sem esse histórico: aí o
 // contrato é a conta inteira, como sempre foi.
 async function ciclosDoContrato(db, anuncianteId, desde) {
   const { rows } = await db.query(
-    `WITH k AS (SELECT min(c.id) AS id FROM ciclos_contratados c
-                  JOIN cobrancas_confirmadas cc ON cc.id = c.cobranca_confirmada_id
-                 WHERE c.anunciante_id = $1 AND c.origem = 'compra' AND cc.pago_em >= $2::timestamptz)
+    `WITH k AS (SELECT NULLIF(${compraDoContrato('$1', '$2::timestamptz')}, 0) AS id)
      SELECT k.id AS k, c.id, c.origem, c.ciclo_meses, c.plano_id, c.criado_em
        FROM k LEFT JOIN ciclos_contratados c
          ON c.anunciante_id = $1 AND c.id >= k.id
-        AND NOT EXISTS (SELECT 1 FROM ciclos_contratados a WHERE a.assinatura_id = c.assinatura_id AND a.id < k.id)`,
+        AND ${primeiroDaAssinatura('c')} >= k.id
+        AND ${primeiroDaAssinatura('c')} < COALESCE(${compraSeguinte('$1', 'k.id')}, 2147483647)`,
     [anuncianteId, desde],
   );
   if (!rows[0]?.k) return null;

@@ -1195,6 +1195,54 @@ test('desistência de um pago GUARDADO atrás de um benefício: sai só da fila;
   );
 });
 
+test('compra NOVA antes da devolução confirmar é outro contrato: a desistência antiga fecha, os dias novos ficam e a nova tem prazo próprio (revisão Codex do PR #130)', async () => {
+  const conta = await criarConta();
+  const ate = vigencia.somarDias(vigencia.hojeComercial(), 40);
+  await pool.query(
+    `UPDATE anunciantes SET plano_id = 'maximo-1m', plano_cortesia = true, cortesia_motivo = 'Benefício por créditos',
+            data_expiracao = $2 WHERE id = $1`,
+    [conta.id, ate],
+  );
+  await pool.query(
+    `INSERT INTO planos_administrativos (anunciante_id, plano_id, valido_ate, status, origem, ativado_em)
+     VALUES ($1, 'maximo-1m', $2, 'ativo', 'indicacao', now())`,
+    [conta.id, ate],
+  );
+  const a = await pagar(conta, { ocorridoEm: new Date(Date.now() - 60_000).toISOString() });
+  await entrar(conta);
+  const ra = await conta.nav('POST', '/titular/arrependimento');
+  assert.equal(ra.status, 201, ra.texto);
+
+  // Com o benefício no ar, a conta segue ativa e compra de novo antes da
+  // Asaas confirmar a devolução de A.
+  const b = await pagar(conta);
+  const fila = await linha('SELECT plano_pago_guardado_id, plano_pago_guardado_dias FROM anunciantes WHERE id = $1', [
+    conta.id,
+  ]);
+  assert.equal(fila.plano_pago_guardado_id, PLANO, 'os dias pagos de B entram na fila');
+  assert.ok(fila.plano_pago_guardado_dias >= 28);
+
+  await estornoDoPsp(a.assinatura, conta, a.chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+  assert.equal(
+    (await linha('SELECT status FROM arrependimentos WHERE id = $1', [ra.json.pedido.id])).status,
+    'estornado',
+    'a desistência de A fecha: a cobrança de B não é do contrato dela',
+  );
+  assert.deepEqual(
+    await linha('SELECT plano_pago_guardado_id, plano_pago_guardado_dias FROM anunciantes WHERE id = $1', [conta.id]),
+    fila,
+    'a confirmação de A não mexe nos dias de B',
+  );
+
+  const rb = await conta.nav('POST', '/titular/arrependimento');
+  assert.equal(rb.status, 201, `B tem prazo próprio: ${rb.texto}`);
+  const pedidosB = await linhas('SELECT cobranca_id FROM estornos WHERE arrependimento_id = $1', [rb.json.pedido.id]);
+  assert.deepEqual(
+    pedidosB.map((p) => p.cobranca_id),
+    [b.cobranca.id],
+  );
+});
+
 test('desistência do contrato novo não leva os dias PAGOS do anterior: cobertura volta ao fim dele e só o lote novo sai (revisão Codex do PR #130)', () =>
   desistirComDiasDoAnterior({ semChargeIdNaHora: false }));
 
