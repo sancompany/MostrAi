@@ -217,16 +217,28 @@ async function aplicarEstornoTotal(db, cobranca, motivo) {
 
   const {
     rows: [ciclo],
-  } = await db.query('SELECT ciclo_meses FROM ciclos_contratados WHERE cobranca_confirmada_id = $1', [cobranca.id]);
+  } = await db.query('SELECT ciclo_meses, assinatura_id FROM ciclos_contratados WHERE cobranca_confirmada_id = $1', [
+    cobranca.id,
+  ]);
   const {
     rows: [conta],
   } = await db.query('SELECT id, plano_id, plano_cortesia, data_expiracao FROM anunciantes WHERE id = $1 FOR UPDATE', [
     cobranca.anunciante_id,
   ]);
   if (!ciclo || !conta?.data_expiracao) return avisos; // nada pago em vigor (ex.: desistência já zerou)
-  if (conta.plano_cortesia || conta.plano_id !== cobranca.plano_id) {
+  // A cobertura de agora só contém este ciclo se ela vem da MESMA assinatura
+  // (renovações dela se empilham). Ciclo de uma assinatura antiga — o cliente
+  // cancelou e voltou ao mesmo plano depois — não encolhe a cobertura paga
+  // pela nova (revisão Codex do PR #130).
+  const {
+    rows: [ultimo],
+  } = await db.query('SELECT assinatura_id FROM ciclos_contratados WHERE anunciante_id = $1 ORDER BY id DESC LIMIT 1', [
+    cobranca.anunciante_id,
+  ]);
+  const mesmaCobertura = !!ciclo.assinatura_id && ultimo?.assinatura_id === ciclo.assinatura_id;
+  if (conta.plano_cortesia || conta.plano_id !== cobranca.plano_id || !mesmaCobertura) {
     avisos.push(
-      'estorno total confirmado — horas do ciclo revertidas; a cobertura NÃO foi ajustada sozinha (a conta está em benefício ou em outro plano agora) — revisar',
+      'estorno total confirmado — horas do ciclo revertidas; a cobertura NÃO foi ajustada sozinha (a conta está em benefício, em outro plano ou em outra assinatura agora) — revisar',
     );
     return avisos;
   }

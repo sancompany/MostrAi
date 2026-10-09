@@ -2019,8 +2019,10 @@ entra como estorno "externo" e vira aviso pra conferir o motivo.
 daquela cobrança — o lote de horas dela é revertido (a mesma regra de
 reembolso da RN-53/migration 111) e a cobertura encolhe o tamanho do ciclo
 (se o que sobra acabaria hoje, acaba ontem e a rotina diária encerra o plano
-vencido); conta em benefício ou em outro plano → a cobertura não é mexida
-sozinha e vira aviso. Acerto de troca de plano não desfaz nada sozinho
+vencido); conta em benefício, em outro plano ou com a cobertura vinda de
+OUTRA assinatura (cancelou e voltou ao mesmo plano — o ciclo devolvido não
+faz parte da cobertura de agora) → a cobertura não é mexida sozinha e vira
+aviso. Acerto de troca de plano não desfaz nada sozinho
 (pendência `troca_revertida`, decisão de gente). Contestação (chargeback) é
 estado próprio — `contestado`, dinheiro em disputa — e continua suspendendo a
 conta (RN-54); não conta como estorno. A receita do Admin (Visão geral,

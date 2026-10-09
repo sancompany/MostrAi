@@ -604,6 +604,33 @@ test('corrida "cancelar pedido" × confirmação do PSP: um estado só, nunca ca
   }
 });
 
+test('estorno total de ciclo de assinatura ANTIGA não encolhe a cobertura paga pela assinatura nova (aviso)', async () => {
+  const conta = await criarConta();
+  const antiga = await pagar(conta);
+  // Cancelou e voltou ao mesmo plano: assinatura nova, ciclo novo, cobertura nova.
+  await pool.query("UPDATE assinaturas SET status = 'cancelada' WHERE id = $1", [antiga.assinatura.id]);
+  await pagar(conta);
+  const antes = (await linha('SELECT data_expiracao FROM anunciantes WHERE id = $1', [conta.id])).data_expiracao;
+
+  const r = await admin('POST', `/admin/cobrancas/${antiga.cobranca.id}/estornos`, {
+    tipo: 'excepcional',
+    categoria: 'duplicidade',
+    motivo: 'cobrança antiga em dobro',
+  });
+  assert.equal(r.status, 201, r.texto);
+  await estornoDoPsp(antiga.assinatura, conta, antiga.chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+
+  const depois = (await linha('SELECT data_expiracao FROM anunciantes WHERE id = $1', [conta.id])).data_expiracao;
+  assert.equal(vigencia.diaTexto(depois), vigencia.diaTexto(antes), 'a cobertura da assinatura nova fica como estava');
+  const pend = await linhas("SELECT motivo FROM eventos_assinatura_pendentes WHERE payload->>'chargeId' = $1", [
+    antiga.chargeId,
+  ]);
+  assert.ok(
+    pend.some((p) => /cobertura NÃO foi ajustada/.test(p.motivo)),
+    'o Admin é avisado pra revisar',
+  );
+});
+
 test('estorno feito direto na Asaas, sem pedido: registrado como externo + pendência; chargeback marca contestada', async () => {
   const conta = await criarConta();
   const { assinatura, chargeId, cobranca } = await pagar(conta);
