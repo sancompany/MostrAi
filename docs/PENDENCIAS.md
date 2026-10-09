@@ -6103,3 +6103,49 @@ Fixos sem mudança. Ficou de fora, sem mexer:
 - OE2 [ ] Pin no mapa embutido: a página tem um mapa fixo de Matão e o "Ver
       no mapa" por card (busca pelo endereço). Pin por ponto exigiria
       coordenada, que o sistema não guarda por decisão (src/pontos/endereco.js).
+
+
+**Estação Pagamentos — cancelamento ≠ estorno (09/10/2026, migration 120,
+ADR-046, RN-73).** Cancelar a assinatura só para a recorrência; estornar
+devolve o dinheiro de UMA cobrança e não cancela nada — nenhum dispara o
+outro. Estorno só pelo Admin (Financeiro → Cobranças), com motivo
+obrigatório, modal com o aviso "ESTORNO NÃO É CANCELAMENTO" e confirmação
+explícita. O ordinário vale 7 dias corridos de `pago_em` (a confirmação na
+Asaas), por cobrança; fora disso, o botão some e só resta o excepcional
+(com categoria). O pedido nasce `solicitado`, com operador (usuário do
+admin + e-mail do Access), motivo, valor, chargeId e o estado do dinheiro
+antes. O operador devolve **na Asaas**, e só o webhook `cobranca_estornada`
+confirma. Total confirmado desfaz o ciclo daquela cobrança (horas e
+cobertura); parcial é só dinheiro. A desistência (art. 49) segue pela mesma
+trilha: o cliente pede e cada cobrança vira um pedido; fecha quando a Asaas
+confirmar a última. "Registrar comprovante" saiu (410). A receita do Admin é
+líquida do que foi estornado.
+
+A primeira cobrança real (paga e depois cancelada) foi conferida somente
+leitura antes da estação: o cancelamento não estornou nada, e a migration
+120 a preserva — ganha `charge_id` e `pago_em` pelo significado do webhook
+guardado, sem id fixo. A demora até ativar foi de ~110 s, quase toda dentro
+da Asaas (~51 s até confirmar o cartão e ~58 s até entregar o webhook). O
+Checkout levou ~1,5 s e a Mostraí ~0,3 s. É comportamento normal do PSP, e
+não se criou polling.
+
+Ficou de fora, sem mexer:
+- PG1 [ ] Estorno de cobrança de assinatura pela API do San Checkout. Hoje o
+      `/estornar` dele só alcança pedido avulso (procura por `pedido_id`), por
+      isso a devolução é feita à mão no painel da Asaas (RUNBOOK §6.3). Levar
+      para a API é uma estação do Checkout, não desta.
+- PG2 [ ] Cobrança sem `charge_id`: a de antes da migration 120 cujo webhook
+      não casou no backfill, ou a aplicada pela conciliação v1 sem
+      `chargeId`. Ela não tem estorno pelo painel (a confirmação não teria
+      como casar). Se aparecer, devolver na Asaas e conferir à mão. A
+      desistência transforma isso em aviso na fila, e ela fica aberta em
+      Devoluções, porque o dinheiro dessa cobrança não tem como ser
+      confirmado. Fechar à mão foi recusado de propósito.
+- PG3 [ ] `limite:` uma renovação devolvida exatamente no último dia do
+      ciclo anterior perde o resto desse dia de cobertura
+      (`estornos.js#aplicarEstornoTotal`). Distinguir os dois casos pediria
+      guardar a cobertura de antes de cada ciclo.
+- PG4 [ ] O backfill da 120 lê `webhooks_recebidos`, que guarda 30 dias. Por
+      isso a migration tem de rodar antes de ~08/11/2026. Depois disso, uma
+      cobrança antiga sem match fica com `pago_em` = hora do registro (marcada
+      `registro`).

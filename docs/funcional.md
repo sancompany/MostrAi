@@ -1982,6 +1982,55 @@ sem comunicação, nunca comunicou, sem Player) e operação (exibindo, fora do
 horário, erro relatado; **desconhecida** sem comunicação). O anunciante vê só
 "Sem comunicação com a Mostraí no momento", sem horário nem detalhe técnico.
 
+**RN-73 — CANCELAR ≠ ESTORNAR; estorno só pelo Admin, e só conta quando a
+Asaas confirma.** (Estação Pagamentos, 09/10/2026; ADR-046; migration 120.)
+**Cancelar** a assinatura para a recorrência — nada além: o dinheiro já pago
+fica pago e o ciclo pago corre até o fim. **Estornar** devolve o dinheiro de
+UMA cobrança — e não cancela a assinatura nem suspende a conta. Nenhum dos
+dois dispara o outro (se a recorrência também deve parar, cancela-se à
+parte, na ficha da conta). A única regra em que andam juntos continua sendo a
+desistência do art. 49 (RN-26), que o próprio cliente pede.
+*Quem pode:* só o Admin (`POST /admin/cobrancas/:id/estornos`, sob o login do
+admin e o Cloudflare Access). O anunciante **vê** a cobrança estornada
+("Pagamento do plano · estornado", "· R$ x estornados", "· contestado no
+cartão") e não tem rota nem botão para pedir. *Janela:* o estorno
+**ordinário** vale por 7 dias corridos contados de quando a Asaas confirmou
+aquele pagamento (`pago_em` = `ocorridoEm` do evento; sem hora do PSP, a hora
+do registro, marcada como tal), **por cobrança** — cada renovação tem os seus
+7 dias. Fora dela, o botão "Estornar pagamento" some e a linha diz "Fora da
+janela de estorno pelo painel."; sobra só o **excepcional**, em botão
+separado, com categoria obrigatória (duplicidade, cobrança indevida, erro
+operacional, obrigação legal, decisão administrativa). A janela, o valor e o
+estado são conferidos no servidor com a cobrança travada — a data, a conta e
+o valor pago nunca vêm do navegador. *Como acontece:* o Admin abre o modal
+(cliente, cobrança e chargeId, plano/ciclo, pago, quanto ainda pode voltar,
+assinatura — "continua assim"), escreve o motivo, marca "Entendi — estornar
+não cancela a assinatura" e registra: nasce um pedido `solicitado` com
+operador (usuário do admin + e-mail do Access), data, motivo, valor, chargeId
+e o estado do dinheiro antes. A Mostraí **não move dinheiro**: o `/estornar`
+do San Checkout só alcança pedido avulso, e cobrança de assinatura não é
+pedido — o operador devolve **no painel da Asaas** (RUNBOOK). O pedido só
+vira `confirmado` quando chega o webhook `cobranca_estornada` daquela
+cobrança (casada pelo chargeId), com o id do evento do PSP e o estado depois.
+Sem confirmação, fica `solicitado` à vista no Admin; pedido que não vai ser
+executado se cancela com motivo. Devolução feita direto na Asaas, sem pedido,
+entra como estorno "externo" e vira aviso pra conferir o motivo.
+*Efeito:* **parcial** é só dinheiro. **Total** confirmado desfaz o ciclo
+daquela cobrança — o lote de horas dela é revertido (a mesma regra de
+reembolso da RN-53/migration 111) e a cobertura encolhe o tamanho do ciclo
+(se o que sobra acabaria hoje, acaba ontem e a rotina diária encerra o plano
+vencido); conta em benefício ou em outro plano → a cobertura não é mexida
+sozinha e vira aviso. Acerto de troca de plano não desfaz nada sozinho
+(pendência `troca_revertida`, decisão de gente). Contestação (chargeback) é
+estado próprio — `contestado`, dinheiro em disputa — e continua suspendendo a
+conta (RN-54); não conta como estorno. A receita do Admin (Visão geral,
+Financeiro, métricas) é **líquida** do que a Asaas confirmou ter devolvido.
+*Violada:* um segundo pedido aberto na mesma cobrança (índice único, 409);
+valor acima do que ainda pode voltar (400); ordinário fora da janela (409);
+aviso repetido ou fora de ordem do PSP (o acumulado só anda pra frente, nada
+muda). *Quem vê:* o Admin em Financeiro → Cobranças (estado, prazo, trilha) e
+→ Devoluções; o anunciante, no Financeiro do painel.
+
 **RN-15 — Exclusão de conta é soft-delete de 60 dias.** A conta some do sistema
 na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.
 *Violada:* conta excluída não loga. *Quem vê:* quem excluiu.
@@ -2082,9 +2131,17 @@ cancelada no San Checkout **antes** de qualquer mudança aqui (se falhar, nada
 muda e a pessoa tenta de novo), a conta é suspensa e o anúncio sai do ar na
 hora, e o valor **integral** já pago vira um pedido de devolução na fila do
 admin — não há pró-rata pelos dias em que o anúncio rodou, o direito não é
-proporcional. O estorno em si é executado no painel do Checkout/Asaas, porque a
-API dele não expõe estorno; o admin registra o comprovante pra fechar o pedido.
-*Violada:* o índice único barra um segundo pedido em aberto por conta.
+proporcional. Desde 09/10/2026 (RN-73, migration 120) cada cobrança com
+dinheiro a voltar vira um pedido de estorno `desistencia`: o cliente só
+**pede**; o Admin executa a devolução no painel da Asaas (o `/estornar` da API
+do San Checkout só alcança pedido avulso, não cobrança de assinatura); e a
+desistência fecha **sozinha** quando a Asaas confirma a devolução e não resta
+mais nada a voltar na conta (webhook) — o antigo "Registrar comprovante"
+saiu (410). Cobrança sem chargeId vira aviso na fila e mantém a desistência
+aberta. O que a Asaas já
+devolveu não entra de novo no valor. *Violada:* o índice único barra um
+segundo pedido em aberto por conta; desistência já atendida não se pede de
+novo (409); a devolução de uma desistência não se cancela pelo painel.
 *Quem vê:* o titular, no perfil; o administrador, na pendência da visão geral
 (clica e abre a fila `#financeiro/devolucoes` — sem página fixa desde a
 rodada Financeiro de 22/09/2026).
@@ -2219,7 +2276,7 @@ página de política que ninguém abre.
 - **Confirmação da contratação** — e-mail de pagamento confirmado (seção 6).
 - **Direito de arrependimento (7 dias)** — `POST /titular/arrependimento`
   (RN-26): cancela a cobrança, tira o anúncio do ar e abre a devolução na fila
-  do admin.
+  do admin (um pedido de estorno por cobrança, confirmado pela Asaas — RN-73).
 - **Termos de uso e Política de privacidade** — as páginas existem; o conteúdo
   é revisado na Estação 7 (skill `legal`).
 
