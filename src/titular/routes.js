@@ -183,25 +183,38 @@ router.post('/titular/arrependimento', exigirAnuncianteLogado, async (req, res) 
       .catch((err) => console.error('pendência da desistência não registrada:', err.message));
   }
 
-  // Fora do ar na hora: o direito é desfazer a contratação, não continuar
-  // exibindo até o fim do ciclo pago.
-  await anunciantesRepo.atualizar(id, {
-    suspenso: true,
-    plano_id: null,
-    data_expiracao: null,
-  });
-  // Reembolso integral: a obrigação de veiculação dos ciclos pagos some; o que
-  // já tinha sido entregue vira saldo técnico negativo (interno — a próxima
-  // contratação desconta), nunca dívida mostrada ao cliente (migration 111).
-  // O pedido já vale: se o lançamento falhar aqui, a conciliação diária lança
-  // (`conferirReembolsos`) — o erro não desfaz o direito exercido.
-  await obrigacaoDoCiclo
-    .registrarReembolsoDaConta(pool, {
+  // Fora do ar na hora: o direito é desfazer ESTA contratação, não continuar
+  // exibindo até o fim do ciclo pago. Dias PAGOS de um contrato anterior
+  // (cancelou com cobertura e comprou de novo) não voltam com ela: a
+  // cobertura volta ao fim deles, no plano deles (revisão Codex do PR #130).
+  const anterior = anunciante.plano_cortesia
+    ? null
+    : await estornos.coberturaAnterior(pool, {
+        anuncianteId: id,
+        desde: primeira.confirmado_em,
+        dataExpiracao: anunciante.data_expiracao,
+      });
+  await anunciantesRepo.atualizar(
+    id,
+    anterior
+      ? { plano_id: anterior.planoId, data_expiracao: anterior.fim }
+      : { suspenso: true, plano_id: null, data_expiracao: null },
+  );
+  // Reembolso integral: a obrigação de veiculação dos ciclos pagos DESTE
+  // contrato some; o que já tinha sido entregue vira saldo técnico negativo
+  // (interno — a próxima contratação desconta), nunca dívida mostrada ao
+  // cliente (migration 111). O pedido já vale: se o lançamento falhar aqui, a
+  // conciliação diária lança (`conferirReembolsos`) — o erro não desfaz o
+  // direito exercido.
+  await (async () => {
+    const ciclos = await estornos.ciclosDoContrato(pool, id, primeira.confirmado_em);
+    await obrigacaoDoCiclo.registrarReembolsoDaConta(pool, {
       anuncianteId: id,
       motivo: `arrependimento (reembolso integral, pedido ${pedido.id})`,
       ate: pedido.pedido_em,
-    })
-    .catch((err) => console.error(`reembolso do pedido ${pedido.id} não lançado agora: ${err.message}`));
+      ciclos: ciclos?.map((c) => c.id),
+    });
+  })().catch((err) => console.error(`reembolso do pedido ${pedido.id} não lançado agora: ${err.message}`));
 
   // E-mail que falha não pode desfazer um direito já exercido — o registro
   // no banco é o que vale. Pela fila: antes o erro era engolido em silêncio

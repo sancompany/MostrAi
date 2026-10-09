@@ -2145,7 +2145,11 @@ cobrança confirmada do contrato atual.** É o art. 49 do CDC, e a venda é a co
 distância. O botão só existe dentro do prazo. Ao pedir: a assinatura é
 cancelada no San Checkout **antes** de qualquer mudança aqui (se falhar, nada
 muda e a pessoa tenta de novo), a conta é suspensa e o anúncio sai do ar na
-hora, e o valor **integral** já pago vira um pedido de devolução na fila do
+hora — salvo quando ainda há dias **pagos** de um contrato anterior (cancelou
+com cobertura e comprou de novo): aí a cobertura volta ao fim que o anterior
+pagou, no plano dele, e só a obrigação de veiculação do contrato desistido é
+revertida; a confirmação da devolução pela Asaas não encolhe a cobertura de
+novo —, e o valor **integral** já pago vira um pedido de devolução na fila do
 admin — não há pró-rata pelos dias em que o anúncio rodou, o direito não é
 proporcional. Desde 09/10/2026 (RN-73, migration 120) cada cobrança com
 dinheiro a voltar vira um pedido de estorno `desistencia`: o cliente só

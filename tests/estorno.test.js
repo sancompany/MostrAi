@@ -26,6 +26,7 @@ const app = require('../src/server');
 const sc = require('../src/financeiro/san-checkout');
 const estornos = require('../src/financeiro/estornos');
 const assinaturasRepo = require('../src/financeiro/assinaturas-repository');
+const obrigacao = require('../src/bancohoras/obrigacao-do-ciclo');
 const vigencia = require('../src/lib/vigencia');
 
 const PLANO = 'essencial-1m';
@@ -1069,6 +1070,76 @@ test('renovação ATRASADA da assinatura antiga, paga depois da compra nova, nã
     'fecha sem esperar a cobrança do contrato antigo',
   );
 });
+
+// `semChargeIdNaHora`: a cobrança nova ainda sem chargeId quando a pessoa
+// desiste (vira aviso, não pedido) e a devolução da Asaas chega depois, sem
+// pedido nenhum — a cobertura também não encolhe de novo.
+async function desistirComDiasDoAnterior({ semChargeIdNaHora }) {
+  const conta = await criarConta();
+  const expiracao = async () =>
+    vigencia.diaTexto((await linha('SELECT data_expiracao FROM anunciantes WHERE id = $1', [conta.id])).data_expiracao);
+  // Pagou há 20 dias, cancelou com a cobertura valendo e comprou o mesmo
+  // plano de novo: a compra nova somou um mês por cima do que ainda restava.
+  const antiga = await pagar(conta, { ocorridoEm: new Date(Date.now() - 20 * DIA).toISOString() });
+  await pool.query("UPDATE assinaturas SET status = 'cancelada' WHERE id = $1", [antiga.assinatura.id]);
+  const fimAntigo = await expiracao();
+  const nova = await pagar(conta);
+  assert.ok((await expiracao()) > fimAntigo, 'a compra nova estendeu a cobertura que ainda valia');
+  if (semChargeIdNaHora) {
+    await pool.query('UPDATE cobrancas_confirmadas SET charge_id = NULL WHERE id = $1', [nova.cobranca.id]);
+  }
+
+  await entrar(conta);
+  const r = await conta.nav('POST', '/titular/arrependimento');
+  assert.equal(r.status, 201, r.texto);
+  const depois = await linha('SELECT suspenso, plano_id FROM anunciantes WHERE id = $1', [conta.id]);
+  assert.equal(depois.suspenso, false, 'os dias pagos do contrato anterior continuam no ar');
+  assert.equal(depois.plano_id, PLANO, 'no plano que o contrato anterior pagou');
+  const fimDepois = await expiracao();
+  assert.ok(
+    Math.abs(new Date(fimDepois) - new Date(fimAntigo)) <= 3 * DIA,
+    `a cobertura volta ao fim que o anterior pagou (${fimDepois} × ${fimAntigo})`,
+  );
+  const lotesRevertidos = async () =>
+    (
+      await linhas(
+        `SELECT cic.cobranca_confirmada_id AS cobranca FROM obrigacoes_veiculacao r
+           JOIN ciclos_contratados cic ON cic.id = r.ciclo_contratado_id
+          WHERE r.anunciante_id = $1 AND r.tipo = 'reembolso' ORDER BY r.id`,
+        [conta.id],
+      )
+    ).map((l) => l.cobranca);
+  assert.deepEqual(await lotesRevertidos(), [nova.cobranca.id], 'só a obrigação da compra desistida some');
+  await obrigacao.conferirReembolsos();
+  assert.deepEqual(
+    await lotesRevertidos(),
+    [nova.cobranca.id],
+    'a rede de segurança diária também não reverte o anterior',
+  );
+
+  // A Asaas confirma a devolução: a cobertura já foi desfeita no pedido — não
+  // encolhe outro mês por cima dos dias do anterior.
+  if (semChargeIdNaHora) {
+    assert.equal((await linhas('SELECT 1 FROM estornos WHERE arrependimento_id = $1', [r.json.pedido.id])).length, 0);
+    // A conciliação reconhece a cobrança depois e anota o id.
+    await pool.query('UPDATE cobrancas_confirmadas SET charge_id = $2 WHERE id = $1', [
+      nova.cobranca.id,
+      nova.chargeId,
+    ]);
+  }
+  await estornoDoPsp(nova.assinatura, conta, nova.chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+  assert.equal(await expiracao(), fimDepois, 'a confirmação não mexe de novo na cobertura');
+  assert.equal(
+    (await linha('SELECT status FROM arrependimentos WHERE id = $1', [r.json.pedido.id])).status,
+    'estornado',
+  );
+}
+
+test('desistência do contrato novo não leva os dias PAGOS do anterior: cobertura volta ao fim dele e só o lote novo sai (revisão Codex do PR #130)', () =>
+  desistirComDiasDoAnterior({ semChargeIdNaHora: false }));
+
+test('… e a devolução que chega SEM pedido (cobrança sem chargeId na hora da desistência) também não encolhe a cobertura de novo', () =>
+  desistirComDiasDoAnterior({ semChargeIdNaHora: true }));
 
 test('desistência atendida vale para AQUELE contrato: compra nova depois abre prazo próprio', async () => {
   const conta = await criarConta();

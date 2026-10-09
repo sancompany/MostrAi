@@ -310,6 +310,7 @@ async function listarArrependimentos() {
            COALESCE((SELECT json_agg(json_build_object(
                        'id', e.id, 'cobranca_id', e.cobranca_id, 'valor', e.valor, 'status', e.status,
                        'charge_id', e.psp_charge_id, 'confirmado_em', e.confirmado_em,
+                       'valor_confirmado', e.valor_confirmado,
                        'status_financeiro', c.status_financeiro) ORDER BY e.id)
                        FROM estornos e JOIN cobrancas_confirmadas c ON c.id = e.cobranca_id
                       WHERE e.arrependimento_id = a.id), '[]') AS devolucoes

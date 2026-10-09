@@ -218,7 +218,7 @@ async function cancelar({ estornoId, motivo, operador }) {
 // assinatura, não suspende a conta. Parcial nunca chega aqui: é só dinheiro.
 // Devolve avisos para a fila do Admin quando algo não pôde ser ajustado
 // sozinho (nunca adivinha).
-async function aplicarEstornoTotal(db, cobranca, motivo) {
+async function aplicarEstornoTotal(db, cobranca, motivo, { coberturaJaDesfeita = false } = {}) {
   const avisos = [];
   // Acerto de troca de plano: a decisão de voltar ou não ao plano anterior é
   // de pessoa (pendência `troca_revertida`), não daqui.
@@ -266,6 +266,10 @@ async function aplicarEstornoTotal(db, cobranca, motivo) {
     );
     return avisos;
   }
+  // Devolução de uma desistência: a cobertura do contrato já foi desfeita no
+  // pedido (src/titular/routes.js) — encolher de novo comeria os dias pagos
+  // do contrato anterior que ela preservou.
+  if (coberturaJaDesfeita) return avisos;
   if (!conta.data_expiracao) return avisos; // nada pago em vigor (ex.: desistência já zerou)
   if (conta.plano_cortesia || conta.plano_id !== cobranca.plano_id || !mesmaCobertura) {
     avisos.push(
@@ -388,7 +392,11 @@ async function registrarEstornoDoPsp(payload) {
     }
 
     if (novoStatus === 'estornado') {
-      avisos.push(...(await aplicarEstornoTotal(cliente, cobranca, `estorno total da cobrança ${cobranca.id}`)));
+      avisos.push(
+        ...(await aplicarEstornoTotal(cliente, cobranca, `estorno total da cobrança ${cobranca.id}`, {
+          coberturaJaDesfeita: await deContratoDesistido(cliente, cobranca.id),
+        })),
+      );
     }
 
     await fecharDesistenciaAtendida(cliente, cobranca.anunciante_id);
@@ -452,6 +460,75 @@ function doContrato(c, desde) {
                            JOIN cobrancas_confirmadas kc ON kc.id = k.cobranca_confirmada_id
                           WHERE k.anunciante_id = ${c}.anunciante_id AND k.origem = 'compra'
                             AND kc.pago_em >= ${desde}))`;
+}
+
+// A cobrança é de um contrato desistido (paga até o pedido)? A cobertura dele
+// já foi desfeita no pedido (src/titular/routes.js) — tenha ou não pedido de
+// estorno dela (sem chargeId na hora, vira aviso e a devolução chega sem
+// pedido).
+async function deContratoDesistido(db, cobrancaId) {
+  const { rows } = await db.query(
+    `SELECT 1 FROM arrependimentos a JOIN cobrancas_confirmadas c ON c.id = $1
+      WHERE a.anunciante_id = c.anunciante_id AND c.pago_em <= a.pedido_em AND ${doContrato('c', 'a.contratado_em')}
+      LIMIT 1`,
+    [cobrancaId],
+  );
+  return rows.length > 0;
+}
+
+// Os ciclos do mesmo contrato (o critério de `doContrato`, para ciclos): do
+// ciclo `compra` dele em diante, de assinatura que nasceu nele. `null` quando
+// não há ciclo `compra` desde `desde` — conta sem esse histórico: aí o
+// contrato é a conta inteira, como sempre foi.
+async function ciclosDoContrato(db, anuncianteId, desde) {
+  const { rows } = await db.query(
+    `WITH k AS (SELECT min(c.id) AS id FROM ciclos_contratados c
+                  JOIN cobrancas_confirmadas cc ON cc.id = c.cobranca_confirmada_id
+                 WHERE c.anunciante_id = $1 AND c.origem = 'compra' AND cc.pago_em >= $2::timestamptz)
+     SELECT k.id AS k, c.id, c.origem, c.ciclo_meses
+       FROM k LEFT JOIN ciclos_contratados c
+         ON c.anunciante_id = $1 AND c.id >= k.id
+        AND NOT EXISTS (SELECT 1 FROM ciclos_contratados a WHERE a.assinatura_id = c.assinatura_id AND a.id < k.id)`,
+    [anuncianteId, desde],
+  );
+  if (!rows[0]?.k) return null;
+  return rows.filter((r) => r.id != null);
+}
+
+// Desistência de um contrato quando a conta ainda tem dias PAGOS de um
+// contrato anterior (cancelou com cobertura e comprou de novo): devolver este
+// não tira aqueles. A cobertura volta ao fim que o anterior pagou — o fim de
+// agora menos os meses pagos por este contrato —, no plano do anterior
+// (revisão Codex do PR #130). `null` quando não sobra nada depois de hoje (o
+// caso comum: primeira compra, ou a anterior já vencida). Compra de OUTRO
+// plano (ou outra versão) começa hoje e já descarta, na própria compra, os
+// dias do anterior (san-checkout.js, `calcularExpiracao`): aqui também não
+// voltam.
+// limite: o ciclo pago soma meses com `setMonth` (san-checkout.js) e aqui se
+// subtrai com o calendário do Postgres — perto do fim do mês o fim devolvido
+// pode variar uns dias; guardar a cobertura de antes de cada ciclo resolve
+// isso e o caso do outro plano.
+async function coberturaAnterior(db, { anuncianteId, desde, dataExpiracao }) {
+  if (!dataExpiracao) return null;
+  const ciclos = await ciclosDoContrato(db, anuncianteId, desde);
+  if (!ciclos) return null;
+  const meses = ciclos
+    .filter((c) => c.origem === 'compra' || c.origem === 'renovacao')
+    .reduce((t, c) => t + Number(c.ciclo_meses), 0);
+  const {
+    rows: [anterior],
+  } = await db.query(
+    'SELECT plano_id FROM ciclos_contratados WHERE anunciante_id = $1 AND NOT (id = ANY($2::int[])) ORDER BY id DESC LIMIT 1',
+    [anuncianteId, ciclos.map((c) => c.id)],
+  );
+  if (!anterior) return null;
+  const {
+    rows: [{ fim }],
+  } = await db.query('SELECT ($1::date - make_interval(months => $2))::date::text AS fim', [
+    vigencia.diaTexto(dataExpiracao),
+    meses,
+  ]);
+  return fim > vigencia.hojeComercial() ? { planoId: anterior.plano_id, fim } : null;
 }
 
 // Chargeback numa cobrança: o dinheiro está em disputa — estado próprio,
@@ -559,4 +636,6 @@ module.exports = {
   marcarContestada,
   solicitarDevolucoesDaDesistencia,
   restanteDesde,
+  ciclosDoContrato,
+  coberturaAnterior,
 };

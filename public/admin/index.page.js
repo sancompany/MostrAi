@@ -8848,7 +8848,10 @@ async function renderFilaDevolucoes(el) {
                     const [classe, rotulo] = emEspera
                       ? ['badge-err', 'Em espera · chargeback — não devolver na Asaas']
                       : ESTADO_ESTORNO[d.status] || ['badge-neutro', d.status];
-                    return `<span class="celula-sub"><span class="badge ${classe}">${esc(rotulo)}</span> ${fmt(d.valor)} · cobrança PSP ${esc(d.charge_id || '—')}</span>`;
+                    // Confirmado mostra o que a Asaas devolveu, não o que foi pedido.
+                    const valor =
+                      d.status === 'confirmado' && d.valor_confirmado != null ? d.valor_confirmado : d.valor;
+                    return `<span class="celula-sub"><span class="badge ${classe}">${esc(rotulo)}</span> ${fmt(valor)} · cobrança PSP ${esc(d.charge_id || '—')}</span>`;
                   })
                   .join('')
               : '<span class="celula-sub">Sem cobrança com identificador do PSP — ver Eventos do Checkout.</span>'
