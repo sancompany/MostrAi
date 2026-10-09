@@ -9,7 +9,11 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        # Espelho oficial da AWS (ECR Public) da mesma imagem `postgres:16`
+        # do Docker Hub: o pull anônimo do Docker Hub nos runners do GitHub
+        # bateu no limite de taxa e depois em timeout (09/10/2026, PR #130),
+        # derrubando o job antes de qualquer teste.
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_USER: mostrai
           POSTGRES_PASSWORD: mostrai
