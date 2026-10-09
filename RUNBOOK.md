@@ -498,6 +498,11 @@ SELECT id, status_financeiro, valor, valor_estornado, pago_em, pago_em_fonte
   FROM cobrancas_confirmadas WHERE charge_id IS NULL;  -- sem estorno pelo painel
 ```
 
+Cobrança sem `charge_id` que a conciliação diária reconhece (o primeiro ciclo
+que entrou antes de a Asaas revelar o id) ganha o id sozinha na próxima
+varredura. A que continua sem id depois disso é devolvida na Asaas e conferida
+à mão.
+
 ## 7. Incidente com dado pessoal
 
 O Mostraí guarda nome, CNPJ/CPF, e-mail, telefone e endereço de anunciantes,

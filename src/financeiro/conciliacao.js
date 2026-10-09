@@ -90,8 +90,9 @@ async function avisarRenovacao(assinatura, ultima) {
   return true;
 }
 
+// Devolve as cobranças que casaram (vazio = não registrada).
 async function cobrancaJaRegistrada(assinatura, ultima) {
-  if (!ultima?.criadoEm) return false;
+  if (!ultima?.criadoEm) return [];
   // Sem a pré-condição `criada|<assinatura>` (24/09/2026): com o contrato
   // v2 o webhook deduplica pelo `eventoId` e nunca grava essa chave — a
   // cobrança registrada perto da hora da Asaas é a prova que importa.
@@ -100,15 +101,31 @@ async function cobrancaJaRegistrada(assinatura, ultima) {
   // o ciclo desta sumir. Ciclo sem `assinatura_id` (backfill da 087) ou
   // cobrança sem ciclo continuam contando — é o comportamento de antes.
   const { rows } = await pool.query(
-    `SELECT 1 FROM cobrancas_confirmadas cc
+    `SELECT cc.id, cc.charge_id FROM cobrancas_confirmadas cc
        LEFT JOIN ciclos_contratados cic ON cic.cobranca_confirmada_id = cc.id
       WHERE cc.anunciante_id = $1 AND cc.plano_id = $2
         AND cc.criado_em BETWEEN $3::timestamptz - interval '10 minutes' AND $3::timestamptz + interval '1 day'
-        AND (cic.assinatura_id IS NULL OR cic.assinatura_id = $4)
-      LIMIT 1`,
+        AND (cic.assinatura_id IS NULL OR cic.assinatura_id = $4)`,
     [assinatura.anunciante_id, assinatura.plano_id, ultima.criadoEm, assinatura.id],
   );
-  return rows.length > 0;
+  return rows;
+}
+
+// A cobrança que o `criada` v1 gravou antes de a Asaas revelar o chargeId
+// fica sem ele — e sem chargeId não há estorno pelo Admin nem aviso do PSP
+// que a ache (revisão Codex do PR #130). Anota agora, só quando não há
+// dúvida: uma candidata sem id, nenhuma com este id, e nenhuma outra
+// cobrança daqui usando ele.
+async function anotarChargeId(registradas, chargeId) {
+  if (!chargeId || registradas.some((c) => c.charge_id === chargeId)) return;
+  const semId = registradas.filter((c) => !c.charge_id);
+  if (semId.length !== 1) return;
+  await pool.query(
+    `UPDATE cobrancas_confirmadas SET charge_id = $2
+      WHERE id = $1 AND charge_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM cobrancas_confirmadas WHERE charge_id = $2)`,
+    [semId[0].id, chargeId],
+  );
 }
 
 // `apenasContas` (opcional): mesmo escopo de teste dos jobs de benefício —
@@ -237,6 +254,7 @@ async function conciliarAssinaturas({ apenasContas = null } = {}) {
       let jaRegistrada;
       try {
         jaRegistrada = await cobrancaJaRegistrada(assinatura, ultima);
+        if (jaRegistrada.length) await anotarChargeId(jaRegistrada, ultima.chargeId);
       } catch (err) {
         // A chave já está gravada: se a conferência falha (banco fora por um
         // instante), a próxima varredura cairia em `jaProcessadas` e o ciclo
@@ -245,7 +263,7 @@ async function conciliarAssinaturas({ apenasContas = null } = {}) {
         await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]);
         throw err;
       }
-      if (jaRegistrada) {
+      if (jaRegistrada.length) {
         relato.jaProcessadas += 1;
         continue;
       }

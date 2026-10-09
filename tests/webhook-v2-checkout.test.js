@@ -389,4 +389,36 @@ test('conciliação: cobrança de OUTRA assinatura do mesmo plano no mesmo dia n
   }
 });
 
+// Revisão Codex do PR #130: o primeiro ciclo entra antes de a Asaas revelar o
+// chargeId e a cobrança fica sem ele — sem estorno pelo Admin e sem aviso do
+// PSP que a ache. A conciliação, ao reconhecer a cobrança, anota o id.
+test('conciliação: cobrança gravada sem chargeId ganha o id quando a conciliação a reconhece', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  try {
+    const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO, status: 'ativa' });
+    const mock = semCheckout();
+    try {
+      await sc.processarWebhookAssinatura(v2(assinatura, c, rodada, { evento: 'criada', chargeId: null, valor: 30 }));
+    } finally {
+      mock.restaurar();
+    }
+    const chargeId = `pay_tarde_${rodada}`;
+    const restaurar = comConciliacaoRespondendo(
+      { chargeId, status: 'confirmado', valorCobrado: 30, criadoEm: new Date().toISOString() },
+      assinatura.id,
+    );
+    try {
+      await conciliarAssinaturas({ apenasContas: [c.id] });
+    } finally {
+      restaurar();
+    }
+    const { rows } = await pool.query('SELECT charge_id FROM cobrancas_confirmadas WHERE anunciante_id = $1', [c.id]);
+    assert.equal(rows.length, 1, 'não credita de novo');
+    assert.equal(rows[0].charge_id, chargeId, 'a cobrança passa a ter o id do PSP');
+  } finally {
+    await apagar(c.id, rodada);
+  }
+});
+
 test.after(() => pool.end());

@@ -150,6 +150,7 @@ test.after(async () => {
     await pool.query('DELETE FROM estornos WHERE anunciante_id = $1', [id]);
     await pool.query('DELETE FROM arrependimentos WHERE anunciante_id = $1', [id]);
     await pool.query('DELETE FROM obrigacoes_veiculacao WHERE anunciante_id = $1', [id]);
+    await pool.query('DELETE FROM planos_administrativos WHERE anunciante_id = $1', [id]);
     await pool.query('DELETE FROM ciclos_contratados WHERE anunciante_id = $1', [id]);
     await pool.query(
       `DELETE FROM webhooks_processados WHERE split_part(id, '|', 1) IN
@@ -673,6 +674,44 @@ test('estorno feito direto na Asaas, sem pedido: registrado como externo + pend�
     'ativa',
     'chargeback não cancela sozinho',
   );
+});
+
+test('estorno total de um pagamento GUARDADO atrás de um benefício tira os dias dele da fila (revisão Codex do PR #130)', async () => {
+  const conta = await criarConta();
+  // Benefício por créditos (Máximo) em vigor; o Essencial pago fica na fila.
+  const ate = vigencia.somarDias(vigencia.hojeComercial(), 40);
+  await pool.query(
+    `UPDATE anunciantes SET plano_id = 'maximo-1m', plano_cortesia = true, cortesia_motivo = 'Benefício por créditos',
+            data_expiracao = $2 WHERE id = $1`,
+    [conta.id, ate],
+  );
+  await pool.query(
+    `INSERT INTO planos_administrativos (anunciante_id, plano_id, valido_ate, status, origem, ativado_em)
+     VALUES ($1, 'maximo-1m', $2, 'ativo', 'indicacao', now())`,
+    [conta.id, ate],
+  );
+  const { assinatura, chargeId } = await pagar(conta);
+  const guardado = await linha(
+    'SELECT plano_pago_guardado_id, plano_pago_guardado_dias FROM anunciantes WHERE id = $1',
+    [conta.id],
+  );
+  assert.equal(guardado.plano_pago_guardado_id, PLANO, 'o pago ficou na fila');
+  assert.ok(guardado.plano_pago_guardado_dias >= 28);
+
+  await estornoDoPsp(assinatura, conta, chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+  const depois = await linha(
+    'SELECT plano_id, plano_cortesia, data_expiracao, plano_pago_guardado_id, plano_pago_guardado_dias FROM anunciantes WHERE id = $1',
+    [conta.id],
+  );
+  assert.equal(depois.plano_pago_guardado_id, null, 'o ciclo devolvido sai da fila');
+  assert.equal(depois.plano_pago_guardado_dias, null);
+  assert.equal(depois.plano_id, 'maximo-1m', 'o benefício (pago com créditos) continua');
+  assert.equal(depois.plano_cortesia, true);
+  assert.equal(vigencia.diaTexto(depois.data_expiracao), ate);
+  const pend = await linhas("SELECT motivo FROM eventos_assinatura_pendentes WHERE payload->>'chargeId' = $1", [
+    chargeId,
+  ]);
+  assert.ok(!pend.some((p) => /NÃO foi ajustada/.test(p.motivo)), 'ajustou sozinho: nada a revisar');
 });
 
 test('receita do mês: o estorno sai do mês em que a Asaas confirmou; e a exportação do titular traz a trilha (revisão Codex do PR #130)', async () => {

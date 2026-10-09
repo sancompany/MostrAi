@@ -21,6 +21,7 @@
 const pool = require('../db/pool');
 const vigencia = require('../lib/vigencia');
 const obrigacaoDoCiclo = require('../bancohoras/obrigacao-do-ciclo');
+const planoAdministrativo = require('./plano-administrativo');
 
 // Janela do estorno ORDINÁRIO: 7 dias corridos da confirmação do pagamento
 // no PSP (`pago_em`), por cobrança — renovação inclusive (decisão do dono,
@@ -227,15 +228,18 @@ async function aplicarEstornoTotal(db, cobranca, motivo) {
 
   const {
     rows: [ciclo],
-  } = await db.query('SELECT ciclo_meses, assinatura_id FROM ciclos_contratados WHERE cobranca_confirmada_id = $1', [
-    cobranca.id,
-  ]);
+  } = await db.query(
+    'SELECT ciclo_meses, assinatura_id, criado_em FROM ciclos_contratados WHERE cobranca_confirmada_id = $1',
+    [cobranca.id],
+  );
   const {
     rows: [conta],
-  } = await db.query('SELECT id, plano_id, plano_cortesia, data_expiracao FROM anunciantes WHERE id = $1 FOR UPDATE', [
-    cobranca.anunciante_id,
-  ]);
-  if (!ciclo || !conta?.data_expiracao) return avisos; // nada pago em vigor (ex.: desistência já zerou)
+  } = await db.query(
+    `SELECT id, plano_id, plano_cortesia, data_expiracao, plano_pago_guardado_id, plano_pago_guardado_dias
+       FROM anunciantes WHERE id = $1 FOR UPDATE`,
+    [cobranca.anunciante_id],
+  );
+  if (!ciclo || !conta) return avisos;
   // A cobertura de agora só contém este ciclo se ela vem da MESMA assinatura
   // (renovações dela se empilham). Ciclo de uma assinatura antiga — o cliente
   // cancelou e voltou ao mesmo plano depois — não encolhe a cobertura paga
@@ -246,6 +250,23 @@ async function aplicarEstornoTotal(db, cobranca, motivo) {
     cobranca.anunciante_id,
   ]);
   const mesmaCobertura = !!ciclo.assinatura_id && ultimo?.assinatura_id === ciclo.assinatura_id;
+  // Benefício em vigor: os dias pagos esperam na fila (`plano_pago_guardado_*`)
+  // e entrariam quando o benefício acabasse. O ciclo devolvido sai dela — os
+  // dias que ELE pôs, pela mesma conta da fila a partir do dia em que entrou
+  // (revisão Codex do PR #130). O benefício não muda: é pago com créditos,
+  // não com o dinheiro devolvido.
+  if (conta.plano_cortesia && conta.plano_pago_guardado_id === cobranca.plano_id && mesmaCobertura) {
+    const dias = planoAdministrativo.diasDeMeses(ciclo.ciclo_meses, vigencia.hojeComercial(new Date(ciclo.criado_em)));
+    await db.query(
+      `UPDATE anunciantes
+          SET plano_pago_guardado_dias = CASE WHEN plano_pago_guardado_dias > $2 THEN plano_pago_guardado_dias - $2 END,
+              plano_pago_guardado_id = CASE WHEN plano_pago_guardado_dias > $2 THEN plano_pago_guardado_id END
+        WHERE id = $1`,
+      [conta.id, dias],
+    );
+    return avisos;
+  }
+  if (!conta.data_expiracao) return avisos; // nada pago em vigor (ex.: desistência já zerou)
   if (conta.plano_cortesia || conta.plano_id !== cobranca.plano_id || !mesmaCobertura) {
     avisos.push(
       'estorno total confirmado — horas do ciclo revertidas; a cobertura NÃO foi ajustada sozinha (a conta está em benefício, em outro plano ou em outra assinatura agora) — revisar',
