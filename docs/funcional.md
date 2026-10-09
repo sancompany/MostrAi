@@ -2156,7 +2156,10 @@ novo para o mesmo contrato (409). "Contrato" é o atual: começa na cobrança
 do ciclo de compra mais recente (assinatura nova — quem cancelou, ou
 desistiu, e voltou tem contrato novo, com 7 dias próprios contados desse
 pagamento; renovação e troca de plano seguem no mesmo contrato), e só as
-cobranças dele voltam e contam para fechar a desistência; a devolução de uma
+cobranças dele voltam e contam para fechar a desistência — pagas desde a
+compra **e** de uma assinatura que nasceu nele (a comprada ou a nova de uma
+troca); cobrança em atraso de uma assinatura anterior, paga depois da compra
+nova, é do contrato velho e fica de fora; a devolução de uma
 desistência (inclusive um pedido do Admin que ela adotou) não se cancela pelo
 painel.
 *Quem vê:* o titular, no perfil; o administrador, na pendência da visão geral

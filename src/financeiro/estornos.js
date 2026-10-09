@@ -406,11 +406,31 @@ async function fecharDesistenciaAtendida(db, anuncianteId) {
         AND NOT EXISTS (SELECT 1 FROM estornos e WHERE e.arrependimento_id = a.id AND e.status = 'solicitado')
         AND NOT EXISTS (SELECT 1 FROM cobrancas_confirmadas c
                          WHERE c.anunciante_id = a.anunciante_id
-                           AND c.pago_em >= a.contratado_em
+                           AND ${doContrato('c', 'a.contratado_em')}
                            AND c.status_financeiro IN ('confirmado', 'estornado_parcialmente')
                            AND c.valor > c.valor_estornado)`,
     [rows[0].id],
   );
+}
+
+// A cobrança `c` é do contrato que começou em `desde` (o pagamento do ciclo
+// `compra` dele)? Paga desde então E de uma assinatura que nasceu nele: a
+// comprada, ou a nova de uma troca de plano depois (a troca grava o primeiro
+// ciclo dela). Renovação atrasada de uma assinatura ANTERIOR, paga depois da
+// compra nova, tem a data dentro do contrato mas é do contrato velho — a
+// assinatura dela já tinha ciclo antes do ciclo `compra` (revisão Codex do
+// PR #130). Compara ids de ciclo, não relógios. Cobrança sem ciclo (acerto de
+// troca) vale pela data: não tem assinatura pra conferir.
+function doContrato(c, desde) {
+  return `${c}.pago_em >= ${desde}
+    AND NOT EXISTS (
+      SELECT 1 FROM ciclos_contratados dela
+        JOIN ciclos_contratados antes ON antes.assinatura_id = dela.assinatura_id
+       WHERE dela.cobranca_confirmada_id = ${c}.id
+         AND antes.id < (SELECT COALESCE(min(k.id), 0) FROM ciclos_contratados k
+                           JOIN cobrancas_confirmadas kc ON kc.id = k.cobranca_confirmada_id
+                          WHERE k.anunciante_id = ${c}.anunciante_id AND k.origem = 'compra'
+                            AND kc.pago_em >= ${desde}))`;
 }
 
 // Chargeback numa cobrança: o dinheiro está em disputa — estado próprio,
@@ -451,9 +471,10 @@ async function marcarContestada(chargeId) {
 // tem como ser confirmada: vira aviso pro Admin, não pedido mudo.
 async function solicitarDevolucoesDaDesistencia(db, { anuncianteId, desde, arrependimentoId, motivo }) {
   const { rows: cobrancas } = await db.query(
-    `SELECT * FROM cobrancas_confirmadas
-      WHERE anunciante_id = $1 AND pago_em >= $2 AND status_financeiro IN ('confirmado', 'estornado_parcialmente')
-      ORDER BY pago_em FOR UPDATE`,
+    `SELECT c.* FROM cobrancas_confirmadas c
+      WHERE c.anunciante_id = $1 AND ${doContrato('c', '$2::timestamptz')}
+        AND c.status_financeiro IN ('confirmado', 'estornado_parcialmente')
+      ORDER BY c.pago_em FOR UPDATE OF c`,
     [anuncianteId, desde],
   );
   const avisos = [];
@@ -494,14 +515,15 @@ async function solicitarDevolucoesDaDesistencia(db, { anuncianteId, desde, arrep
   return avisos;
 }
 
-// O que ainda pode voltar das cobranças do contrato atual (pagas a partir de
-// `desde`, a cobrança que o abriu), já descontado o que o PSP confirmou. É o
-// "valor integral" da desistência — sem contar duas vezes o que já voltou,
-// nem o contrato anterior.
+// O que ainda pode voltar das cobranças do contrato atual (`doContrato`: o
+// que começou em `desde`, a cobrança que o abriu), já descontado o que o PSP
+// confirmou. É o "valor integral" da desistência — sem contar duas vezes o
+// que já voltou, nem o contrato anterior.
 async function restanteDesde(anuncianteId, desde, db = pool) {
   const { rows } = await db.query(
-    `SELECT COALESCE(SUM(valor - valor_estornado), 0) AS total FROM cobrancas_confirmadas
-      WHERE anunciante_id = $1 AND pago_em >= $2 AND status_financeiro IN ('confirmado', 'estornado_parcialmente')`,
+    `SELECT COALESCE(SUM(c.valor - c.valor_estornado), 0) AS total FROM cobrancas_confirmadas c
+      WHERE c.anunciante_id = $1 AND ${doContrato('c', '$2::timestamptz')}
+        AND c.status_financeiro IN ('confirmado', 'estornado_parcialmente')`,
     [anuncianteId, desde],
   );
   return Number(rows[0].total);

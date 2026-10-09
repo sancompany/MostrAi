@@ -944,6 +944,40 @@ test('cancelou e comprou de novo: contrato novo tem 7 dias próprios e só o din
   );
 });
 
+test('renovação ATRASADA da assinatura antiga, paga depois da compra nova, não entra na desistência do contrato novo (revisão Codex do PR #130)', async () => {
+  const conta = await criarConta();
+  const antiga = await pagar(conta, { ocorridoEm: new Date(Date.now() - 40 * DIA).toISOString() });
+  await pool.query("UPDATE assinaturas SET status = 'cancelada' WHERE id = $1", [antiga.assinatura.id]);
+  const nova = await pagar(conta, { ocorridoEm: new Date(Date.now() - 60_000).toISOString() });
+  // A cobrança em atraso da assinatura antiga é paga na Asaas DEPOIS da
+  // compra nova: a data cai dentro do contrato novo, a assinatura não.
+  const atrasadaId = `pay_${randomUUID().slice(0, 12)}`;
+  await sc.processarWebhookAssinatura(
+    evento(antiga.assinatura, conta, { evento: 'cobranca_confirmada', chargeId: atrasadaId, valor: 134.99 }),
+  );
+  const atrasada = await linha('SELECT * FROM cobrancas_confirmadas WHERE charge_id = $1', [atrasadaId]);
+  assert.ok(atrasada && new Date(atrasada.pago_em) > new Date(nova.cobranca.pago_em), 'paga depois da compra nova');
+
+  await entrar(conta);
+  const consulta = await conta.nav('GET', '/titular/arrependimento');
+  assert.equal(consulta.json.valor_a_estornar, 134.99, 'só a compra nova volta');
+  const r = await conta.nav('POST', '/titular/arrependimento');
+  assert.equal(r.status, 201, r.texto);
+  assert.equal(Number(r.json.pedido.valor_a_estornar), 134.99);
+  const pedidos = await linhas('SELECT cobranca_id FROM estornos WHERE arrependimento_id = $1', [r.json.pedido.id]);
+  assert.deepEqual(
+    pedidos.map((p) => p.cobranca_id),
+    [nova.cobranca.id],
+    'a renovação da assinatura antiga não vira devolução da desistência',
+  );
+  await estornoDoPsp(nova.assinatura, conta, nova.chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+  assert.equal(
+    (await linha('SELECT status FROM arrependimentos WHERE id = $1', [r.json.pedido.id])).status,
+    'estornado',
+    'fecha sem esperar a cobrança do contrato antigo',
+  );
+});
+
 test('desistência atendida vale para AQUELE contrato: compra nova depois abre prazo próprio', async () => {
   const conta = await criarConta();
   const antiga = await pagar(conta);
