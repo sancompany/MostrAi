@@ -503,6 +503,15 @@ async function processarWebhookAssinatura(payload) {
     return registrarPendencia(payload, `sem chargeId pra deduplicar: ${err.message}`);
   }
 
+  // Estorno com chargeId: o efeito já é idempotente pelo próprio dado (o
+  // valor devolvido acumulado na cobrança, `registrarEstornoDoPsp`) e grava
+  // numa transação só. Sem reserva aqui: um processo morto entre a reserva e
+  // o COMMIT da devolução deixava a nova tentativa da inbox cair na dedupe —
+  // e o dinheiro devolvido nunca entrava (revisão Codex do PR #130).
+  if (payload.evento === 'cobranca_estornada' && payload.chargeId) {
+    return aplicarEventoAssinatura(payload, chave, ultima);
+  }
+
   // Reentrega do mesmo evento não pode estender cobertura, gravar outra
   // cobrança nem pagar a comissão do vendedor de novo (migration 018).
   const { rowCount } = await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING', [

@@ -264,12 +264,18 @@ async function aplicarEstornoTotal(db, cobranca, motivo, { coberturaJaDesfeita =
   // A cobertura de agora só contém este ciclo se ela vem da MESMA assinatura
   // (renovações dela se empilham). Ciclo de uma assinatura antiga — o cliente
   // cancelou e voltou ao mesmo plano depois — não encolhe a cobertura paga
-  // pela nova (revisão Codex do PR #130).
+  // pela nova (revisão Codex do PR #130). A assinatura da cobertura é a ATIVA:
+  // a renovação atrasada de uma assinatura já substituída soma dias sem
+  // virar a dona da cobertura (san-checkout.js, `substituida`) — o ciclo
+  // mais novo sozinho não diz de quem ela é. Sem assinatura ativa, vale o
+  // ciclo mais novo.
   const {
     rows: [ultimo],
-  } = await db.query('SELECT assinatura_id FROM ciclos_contratados WHERE anunciante_id = $1 ORDER BY id DESC LIMIT 1', [
-    cobranca.anunciante_id,
-  ]);
+  } = await db.query(
+    `SELECT c.assinatura_id FROM ciclos_contratados c LEFT JOIN assinaturas a ON a.id = c.assinatura_id
+      WHERE c.anunciante_id = $1 ORDER BY (a.status = 'ativa') DESC NULLS LAST, c.id DESC LIMIT 1`,
+    [cobranca.anunciante_id],
+  );
   const mesmaCobertura = !!ciclo.assinatura_id && ultimo?.assinatura_id === ciclo.assinatura_id;
   // Benefício em vigor: os dias pagos esperam na fila (`plano_pago_guardado_*`)
   // e entrariam quando o benefício acabasse. O ciclo devolvido sai dela — os

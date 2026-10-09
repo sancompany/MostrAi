@@ -633,6 +633,66 @@ test('estorno total de ciclo de assinatura ANTIGA não encolhe a cobertura paga 
   );
 });
 
+test('renovação ATRASADA da assinatura substituída não vira dona da cobertura: estorno total da assinatura ativa encolhe a dela (revisão Codex do PR #130)', async () => {
+  const conta = await criarConta();
+  const expiracao = async () =>
+    vigencia.diaTexto((await linha('SELECT data_expiracao FROM anunciantes WHERE id = $1', [conta.id])).data_expiracao);
+  const a = await pagar(conta);
+  await pool.query("UPDATE assinaturas SET status = 'cancelada' WHERE id = $1", [a.assinatura.id]);
+  const b = await pagar(conta);
+  // A renovação de A em trânsito chega depois de B: soma os dias, B segue a escolhida.
+  const atrasada = `pay_${randomUUID().slice(0, 12)}`;
+  await sc.processarWebhookAssinatura(
+    evento(a.assinatura, conta, { evento: 'cobranca_confirmada', chargeId: atrasada, valor: 134.99 }),
+  );
+  const antes = await expiracao();
+
+  const r = await admin('POST', `/admin/cobrancas/${b.cobranca.id}/estornos`, {
+    tipo: 'excepcional',
+    categoria: 'duplicidade',
+    motivo: 'cobrança da assinatura nova em dobro',
+  });
+  assert.equal(r.status, 201, r.texto);
+  await estornoDoPsp(b.assinatura, conta, b.chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+
+  const esperado = (await linha("SELECT ($1::date - interval '1 month')::date::text AS d", [antes])).d;
+  assert.equal(await expiracao(), esperado, 'o mês de B sai da cobertura; os dias da renovação de A ficam');
+  const pend = await linhas("SELECT motivo FROM eventos_assinatura_pendentes WHERE payload->>'chargeId' = $1", [
+    b.chargeId,
+  ]);
+  assert.ok(!pend.some((p) => /NÃO foi ajustada/.test(p.motivo)), 'ajustou sozinho: nada a revisar');
+});
+
+test('estorno cuja reserva de dedupe ficou órfã (processo morto antes do COMMIT) ainda entra na nova tentativa (revisão Codex do PR #130)', async () => {
+  const conta = await criarConta();
+  const pago = await pagar(conta);
+  const ev = evento(pago.assinatura, conta, {
+    evento: 'cobranca_estornada',
+    chargeId: pago.chargeId,
+    statusFinanceiro: 'estornado',
+    valor: 134.99,
+  });
+  // O worker anterior gravou a reserva e morreu antes da devolução commitar.
+  await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1)', [ev.eventoId]);
+  try {
+    await sc.processarWebhookAssinatura(ev);
+    const c = await linha('SELECT status_financeiro, valor_estornado FROM cobrancas_confirmadas WHERE id = $1', [
+      pago.cobranca.id,
+    ]);
+    assert.equal(c.status_financeiro, 'estornado', 'a nova tentativa aplica a devolução');
+    assert.equal(Number(c.valor_estornado), 134.99);
+    // E a reentrega do mesmo aviso continua sem devolver duas vezes.
+    await sc.processarWebhookAssinatura(ev);
+    assert.equal(
+      (await linhas('SELECT 1 FROM estornos WHERE cobranca_id = $1', [pago.cobranca.id])).length,
+      1,
+      'um registro de devolução só',
+    );
+  } finally {
+    await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [ev.eventoId]);
+  }
+});
+
 test('estorno feito direto na Asaas, sem pedido: registrado como externo + pendência; chargeback marca contestada', async () => {
   const conta = await criarConta();
   const { assinatura, chargeId, cobranca } = await pagar(conta);
