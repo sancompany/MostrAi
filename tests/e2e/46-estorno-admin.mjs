@@ -210,8 +210,9 @@ const fixture = `
     await c.query('BEGIN');
     const p = await repo.registrarArrependimento({ anuncianteId: ${desiste.id}, assinaturaId: '${desiste.ass}',
       planoId: '${PLANO}', valor: 134.99, contratadoEm: new Date() }, c);
-    await estornos.solicitarDevolucoesDaDesistencia(c, { anuncianteId: ${desiste.id}, arrependimentoId: p.id,
-      motivo: 'desistência em 7 dias (CDC art. 49), pedido ' + p.id });
+    const primeira = await repo.primeiraCobranca(${desiste.id});
+    await estornos.solicitarDevolucoesDaDesistencia(c, { anuncianteId: ${desiste.id}, desde: primeira.confirmado_em,
+      arrependimentoId: p.id, motivo: 'desistência em 7 dias (CDC art. 49), pedido ' + p.id });
     await c.query('COMMIT');
     c.release();
     await pool.end();

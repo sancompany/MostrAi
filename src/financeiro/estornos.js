@@ -381,7 +381,8 @@ async function registrarEstornoDoPsp(payload) {
 }
 
 // Desistência (art. 49) atendida = nenhuma devolução dela esperando a Asaas E
-// nada mais a voltar na conta — inclusive cobrança sem chargeId, que não vira
+// nada mais a voltar no contrato dela (cobranças pagas desde `contratado_em`)
+// — inclusive cobrança sem chargeId, ou paga depois do pedido, que não vira
 // pedido (só aviso) e por isso não pode fechar a desistência pelos outros
 // pedidos. Fecha sozinha, nunca por clique: chamada na confirmação do PSP e
 // na criação (quando já não havia nada a voltar).
@@ -404,6 +405,7 @@ async function fecharDesistenciaAtendida(db, anuncianteId) {
         AND NOT EXISTS (SELECT 1 FROM estornos e WHERE e.arrependimento_id = a.id AND e.status = 'solicitado')
         AND NOT EXISTS (SELECT 1 FROM cobrancas_confirmadas c
                          WHERE c.anunciante_id = a.anunciante_id
+                           AND c.pago_em >= a.contratado_em
                            AND c.status_financeiro IN ('confirmado', 'estornado_parcialmente')
                            AND c.valor > c.valor_estornado)`,
     [rows[0].id],
@@ -428,12 +430,12 @@ async function marcarContestada(chargeId) {
 // estava aberto passa a contar pra ela). O cliente só PEDIU; quem devolve é
 // o operador na Asaas, e quem confirma é o PSP. Cobrança sem chargeId não
 // tem como ser confirmada: vira aviso pro Admin, não pedido mudo.
-async function solicitarDevolucoesDaDesistencia(db, { anuncianteId, arrependimentoId, motivo }) {
+async function solicitarDevolucoesDaDesistencia(db, { anuncianteId, desde, arrependimentoId, motivo }) {
   const { rows: cobrancas } = await db.query(
     `SELECT * FROM cobrancas_confirmadas
-      WHERE anunciante_id = $1 AND status_financeiro IN ('confirmado', 'estornado_parcialmente')
+      WHERE anunciante_id = $1 AND pago_em >= $2 AND status_financeiro IN ('confirmado', 'estornado_parcialmente')
       ORDER BY pago_em FOR UPDATE`,
-    [anuncianteId],
+    [anuncianteId, desde],
   );
   const avisos = [];
   for (const c of cobrancas) {
@@ -473,14 +475,15 @@ async function solicitarDevolucoesDaDesistencia(db, { anuncianteId, arrependimen
   return avisos;
 }
 
-// O que a conta ainda pode receber de volta (soma do restante de cada
-// cobrança, já descontado o que o PSP confirmou). É o "valor integral" da
-// desistência — sem contar duas vezes o que já voltou.
-async function restanteDaConta(anuncianteId, db = pool) {
+// O que ainda pode voltar das cobranças do contrato atual (pagas a partir de
+// `desde`, a cobrança que o abriu), já descontado o que o PSP confirmou. É o
+// "valor integral" da desistência — sem contar duas vezes o que já voltou,
+// nem o contrato anterior.
+async function restanteDesde(anuncianteId, desde, db = pool) {
   const { rows } = await db.query(
     `SELECT COALESCE(SUM(valor - valor_estornado), 0) AS total FROM cobrancas_confirmadas
-      WHERE anunciante_id = $1 AND status_financeiro IN ('confirmado', 'estornado_parcialmente')`,
-    [anuncianteId],
+      WHERE anunciante_id = $1 AND pago_em >= $2 AND status_financeiro IN ('confirmado', 'estornado_parcialmente')`,
+    [anuncianteId, desde],
   );
   return Number(rows[0].total);
 }
@@ -493,5 +496,5 @@ module.exports = {
   registrarEstornoDoPsp,
   marcarContestada,
   solicitarDevolucoesDaDesistencia,
-  restanteDaConta,
+  restanteDesde,
 };

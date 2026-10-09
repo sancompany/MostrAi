@@ -15,6 +15,14 @@ const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 // confirmação no PSP (`pago_em`, migration 120), como dizem os Termos.
 const DIAS_ARREPENDIMENTO = 7;
 
+// A última desistência atendida, quando o contrato atual é o dela (nenhuma
+// compra paga depois do pedido): o direito já foi exercido.
+async function atendidaSemContratoNovo(anuncianteId, primeira) {
+  const atendido = await repo.arrependimentoAtendido(anuncianteId);
+  if (!atendido) return null;
+  return !primeira || new Date(primeira.confirmado_em) <= new Date(atendido.pedido_em) ? atendido : null;
+}
+
 function dentroDoPrazo(contratadoEm) {
   const limite = new Date(contratadoEm).getTime() + DIAS_ARREPENDIMENTO * 24 * 3600 * 1000;
   return { dentro: Date.now() <= limite, limite: new Date(limite) };
@@ -71,19 +79,18 @@ router.get('/titular/arrependimento', exigirAnuncianteLogado, async (req, res) =
   if (aberto) return res.json({ disponivel: false, pedido: aberto });
   // Desistência já atendida vale para o contrato dela; só uma compra nova,
   // paga depois do pedido, abre outro prazo.
-  const atendido = await repo.arrependimentoAtendido(req.session.anuncianteId);
-  const primeira = await repo.primeiraCobranca(req.session.anuncianteId, atendido?.pedido_em ?? null);
-  if (!primeira) {
-    if (atendido) return res.json({ disponivel: false, pedido: atendido });
-    return res.json({ disponivel: false, motivo: 'nenhuma cobrança confirmada ainda' });
-  }
+  const primeira = await repo.primeiraCobranca(req.session.anuncianteId);
+  const atendido = await atendidaSemContratoNovo(req.session.anuncianteId, primeira);
+  if (atendido) return res.json({ disponivel: false, pedido: atendido });
+  if (!primeira) return res.json({ disponivel: false, motivo: 'nenhuma cobrança confirmada ainda' });
   const { dentro, limite } = dentroDoPrazo(primeira.confirmado_em);
   res.json({
     disponivel: dentro,
     motivo: dentro ? null : 'o prazo de 7 dias já passou',
     prazo_ate: limite,
-    // O que ainda pode voltar — o que o PSP já devolveu não conta de novo.
-    valor_a_estornar: await estornos.restanteDaConta(req.session.anuncianteId),
+    // O que ainda pode voltar DESTE contrato — o que o PSP já devolveu não
+    // conta de novo, e o contrato antigo (cancelado antes) não entra.
+    valor_a_estornar: await estornos.restanteDesde(req.session.anuncianteId, primeira.confirmado_em),
   });
 });
 
@@ -103,11 +110,9 @@ router.post('/titular/arrependimento', exigirAnuncianteLogado, async (req, res) 
 
   // Já atendida e sem compra nova depois dela: o direito sobre aquele
   // contrato foi exercido (devolveria de novo o que já voltou).
-  const atendido = await repo.arrependimentoAtendido(id);
-  const primeira = await repo.primeiraCobranca(id, atendido?.pedido_em ?? null);
-  if (!primeira && atendido) {
-    return res.status(409).json({ erro: 'a desistência desta conta já foi atendida', pedido: atendido });
-  }
+  const primeira = await repo.primeiraCobranca(id);
+  const atendido = await atendidaSemContratoNovo(id, primeira);
+  if (atendido) return res.status(409).json({ erro: 'a desistência desta conta já foi atendida', pedido: atendido });
   if (!primeira) return res.status(400).json({ erro: 'não há cobrança confirmada pra estornar' });
 
   const { dentro, limite } = dentroDoPrazo(primeira.confirmado_em);
@@ -150,7 +155,7 @@ router.post('/titular/arrependimento', exigirAnuncianteLogado, async (req, res) 
         anuncianteId: id,
         assinaturaId: assinatura ? assinatura.id : null,
         planoId: anunciante.plano_id || primeira.plano_id,
-        valor: await estornos.restanteDaConta(id, cliente),
+        valor: await estornos.restanteDesde(id, primeira.confirmado_em, cliente),
         contratadoEm: primeira.confirmado_em,
       },
       cliente,
@@ -161,6 +166,7 @@ router.post('/titular/arrependimento', exigirAnuncianteLogado, async (req, res) 
     }
     avisos = await estornos.solicitarDevolucoesDaDesistencia(cliente, {
       anuncianteId: id,
+      desde: primeira.confirmado_em,
       arrependimentoId: pedido.id,
       motivo: `desistência em 7 dias (CDC art. 49), pedido ${pedido.id}`,
     });

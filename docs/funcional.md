@@ -2127,7 +2127,7 @@ trava da comunicação mora no remetente (`enviarNovidade`), não em quem chama.
 `comunicacoes_revogado_em`.
 
 **RN-26 — Arrependimento em 7 dias devolve tudo, e o prazo conta da primeira
-cobrança confirmada.** É o art. 49 do CDC, e a venda é a consumidor à
+cobrança confirmada do contrato atual.** É o art. 49 do CDC, e a venda é a consumidor à
 distância. O botão só existe dentro do prazo. Ao pedir: a assinatura é
 cancelada no San Checkout **antes** de qualquer mudança aqui (se falhar, nada
 muda e a pessoa tenta de novo), a conta é suspensa e o anúncio sai do ar na
@@ -2143,8 +2143,11 @@ saiu (410). Cobrança sem chargeId vira aviso na fila e mantém a desistência
 aberta. O que a Asaas já
 devolveu não entra de novo no valor. *Violada:* o índice único barra um
 segundo pedido em aberto por conta; desistência já atendida não se pede de
-novo para o mesmo contrato (409) — uma compra nova depois dela é outro
-contrato, com 7 dias próprios contados do pagamento dela; a devolução de uma
+novo para o mesmo contrato (409). "Contrato" é o atual: começa na cobrança
+do ciclo de compra mais recente (assinatura nova — quem cancelou, ou
+desistiu, e voltou tem contrato novo, com 7 dias próprios contados desse
+pagamento; renovação e troca de plano seguem no mesmo contrato), e só as
+cobranças dele voltam e contam para fechar a desistência; a devolução de uma
 desistência (inclusive um pedido do Admin que ela adotou) não se cancela pelo
 painel.
 *Quem vê:* o titular, no perfil; o administrador, na pendência da visão geral

@@ -238,16 +238,24 @@ async function definirComunicacoes(anuncianteId, aceita) {
 // a confirmação do pagamento no PSP (`pago_em`, migration 120; os Termos
 // dizem "contados da confirmação do pagamento"), não a hora em que a
 // Mostraí gravou.
-// `desde` (revisão Codex do PR #130): depois de uma desistência atendida, o
-// contrato que conta é o NOVO — a primeira cobrança paga depois do pedido
-// dela. A contratação antiga já foi desfeita e não abre nem fecha prazo.
-async function primeiraCobranca(anuncianteId, desde = null) {
+// "Primeira" = do CONTRATO ATUAL (revisão Codex do PR #130): a cobrança do
+// ciclo de COMPRA mais recente — cada assinatura nova grava o primeiro ciclo
+// como 'compra'; renovação e troca de plano seguem no mesmo contrato. Quem
+// cancelou e voltou (ou desistiu e voltou) tem contrato novo, com 7 dias
+// próprios. Conta sem ciclo registrado (histórico): a primeira da conta.
+async function primeiraCobranca(anuncianteId) {
   const { rows } = await pool.query(
     `
-    SELECT id, plano_id, valor, pago_em AS confirmado_em FROM cobrancas_confirmadas
-     WHERE anunciante_id = $1 AND ($2::timestamptz IS NULL OR pago_em > $2)
-     ORDER BY pago_em, id LIMIT 1`,
-    [anuncianteId, desde],
+    SELECT * FROM (
+      (SELECT c.id, c.plano_id, c.valor, c.pago_em AS confirmado_em, 0 AS ordem
+         FROM ciclos_contratados cic JOIN cobrancas_confirmadas c ON c.id = cic.cobranca_confirmada_id
+        WHERE cic.anunciante_id = $1 AND cic.origem = 'compra'
+        ORDER BY c.pago_em DESC, c.id DESC LIMIT 1)
+      UNION ALL
+      (SELECT id, plano_id, valor, pago_em AS confirmado_em, 1 AS ordem FROM cobrancas_confirmadas
+        WHERE anunciante_id = $1 ORDER BY pago_em, id LIMIT 1)
+    ) t ORDER BY ordem LIMIT 1`,
+    [anuncianteId],
   );
   return rows[0] || null;
 }
@@ -261,7 +269,7 @@ async function arrependimentoAberto(anuncianteId) {
 
 // A última desistência já atendida (devolução confirmada pelo PSP): o direito
 // sobre AQUELE contrato foi exercido. Uma compra nova depois dela é outro
-// contrato, com prazo próprio (`primeiraCobranca(id, atendido.pedido_em)`).
+// contrato, com prazo próprio (ver `primeiraCobranca`).
 async function arrependimentoAtendido(anuncianteId) {
   const { rows } = await pool.query(
     "SELECT * FROM arrependimentos WHERE anunciante_id = $1 AND status = 'estornado' ORDER BY id DESC LIMIT 1",

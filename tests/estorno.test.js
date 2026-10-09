@@ -770,10 +770,10 @@ test('desistência: cliente só pede; vira pedido de estorno por cobrança; fech
 test('desistência com cobrança sem chargeId: confirmar a outra NÃO fecha — ainda há dinheiro a voltar', async () => {
   const conta = await criarConta();
   const { assinatura, chargeId } = await pagar(conta);
-  // Uma cobrança antiga, sem identificador do PSP (antes da 120, sem match no backfill).
+  // Outra cobrança do mesmo contrato, sem identificador do PSP (ex.: acerto aplicado sem chargeId).
   await pool.query(
     `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status, pago_em, pago_em_fonte)
-     VALUES ($1, $2, 50, 'pendente', now() - interval '1 hour', 'registro')`,
+     VALUES ($1, $2, 50, 'pendente', now(), 'registro')`,
     [conta.id, PLANO],
   );
   await entrar(conta);
@@ -800,7 +800,7 @@ test('desistência com duas cobranças confirmadas AO MESMO TEMPO pela Asaas: fe
     const segunda = `pay_${randomUUID().slice(0, 12)}`;
     await pool.query(
       `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status, charge_id, pago_em, pago_em_fonte)
-       VALUES ($1, $2, 50, 'pendente', $3, now() - interval '1 hour', 'psp')`,
+       VALUES ($1, $2, 50, 'pendente', $3, now(), 'psp')`,
       [conta.id, PLANO, segunda],
     );
     await entrar(conta);
@@ -830,6 +830,31 @@ test('desistência com duas cobranças confirmadas AO MESMO TEMPO pela Asaas: fe
     assert.equal(arr.status, 'estornado', `rodada ${i}: as duas devoluções confirmadas fecham a desistência`);
     assert.equal(arr.comprovante.split(', ').length, 2);
   }
+});
+
+test('cancelou e comprou de novo: contrato novo tem 7 dias próprios e só o dinheiro dele volta', async () => {
+  const conta = await criarConta();
+  const antiga = await pagar(conta, { ocorridoEm: new Date(Date.now() - 10 * DIA).toISOString() });
+  await pool.query("UPDATE assinaturas SET status = 'cancelada' WHERE id = $1", [antiga.assinatura.id]);
+  const nova = await pagar(conta);
+  await entrar(conta);
+  const consulta = await conta.nav('GET', '/titular/arrependimento');
+  assert.equal(consulta.json.disponivel, true, 'a compra de agora abre prazo, mesmo com a antiga de 10 dias atrás');
+  assert.equal(consulta.json.valor_a_estornar, 134.99, 'só o dinheiro do contrato atual');
+  const r = await conta.nav('POST', '/titular/arrependimento');
+  assert.equal(r.status, 201, r.texto);
+  const pedidos = await linhas('SELECT cobranca_id FROM estornos WHERE arrependimento_id = $1', [r.json.pedido.id]);
+  assert.deepEqual(
+    pedidos.map((p) => p.cobranca_id),
+    [nova.cobranca.id],
+    'a cobrança do contrato anterior não entra na desistência',
+  );
+  await estornoDoPsp(nova.assinatura, conta, nova.chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+  assert.equal(
+    (await linha('SELECT status FROM arrependimentos WHERE id = $1', [r.json.pedido.id])).status,
+    'estornado',
+    'fecha com o contrato dela devolvido, sem esperar o contrato anterior',
+  );
 });
 
 test('desistência atendida vale para AQUELE contrato: compra nova depois abre prazo próprio', async () => {
