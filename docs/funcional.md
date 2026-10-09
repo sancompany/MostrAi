@@ -2025,7 +2025,16 @@ faz parte da cobertura de agora) → a cobertura não é mexida sozinha e vira
 aviso. Acerto de troca de plano não desfaz nada sozinho
 (pendência `troca_revertida`, decisão de gente). Contestação (chargeback) é
 estado próprio — `contestado`, dinheiro em disputa — e continua suspendendo a
-conta (RN-54); não conta como estorno. A receita do Admin (Visão geral,
+conta (RN-54); não conta como estorno. Pedido de estorno que estava aberto
+quando o chargeback chegou fica **em espera**: a linha troca "Devolva na
+Asaas" por "Em espera · chargeback — não devolva na Asaas" (em Cobranças e em
+Devoluções), a fila do Admin recebe o aviso, e o pedido não se cancela
+sozinho — a disputa corre no banco, sem aviso de fim, e o que fazer depois é
+decisão de pessoa (o ordinário se cancela com motivo; a devolução da
+desistência fica aberta até lá). Aviso de estorno ou chargeback de uma
+cobrança que **ainda não** está registrada (o aviso do pagamento atrás na
+fila) não vira pendência: o webhook tenta de novo até ela entrar (RUNBOOK
+§6.3). A receita do Admin (Visão geral,
 Financeiro, métricas) é **líquida** do que a Asaas confirmou ter devolvido.
 *Violada:* um segundo pedido aberto na mesma cobrança (índice único, 409);
 valor acima do que ainda pode voltar (400); ordinário fora da janela (409);

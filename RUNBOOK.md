@@ -469,6 +469,20 @@ Se a confirmação não chegar em ~10 min depois de estornar na Asaas:
    com motivo. Nunca marcar como devolvido sem o aviso da Asaas — não existe
    botão pra isso, de propósito.
 
+Aviso de estorno ou chargeback de uma cobrança que **ainda não** está na
+Mostraí (o aviso do pagamento ficou atrás na fila, ou só entra pela
+conciliação) não vira pendência: fica `tentando_de_novo` na inbox até a
+cobrança entrar. Se morrer (`morto`, pendência "webhook não processado…"),
+recolocar na fila pelo §6.2 **depois** que a cobrança aparecer em Cobranças.
+
+**Chargeback com pedido aberto:** a linha mostra "Em espera · chargeback" e a
+fila do Admin recebe "NÃO devolver na Asaas". Não devolver: o banco do
+cliente já está devolvendo pela disputa, e as duas devoluções somariam. A
+disputa corre fora do Checkout e não avisa quando termina. Depois dela, o
+pedido ordinário se cancela com motivo (ou, se a disputa voltou a nosso
+favor e a devolução ainda é devida, devolve-se na Asaas, e a confirmação
+chega pelo aviso de sempre).
+
 Devolução feita direto na Asaas, sem pedido no Admin, também é registrada
 quando o aviso chega (tipo "Feito direto na Asaas") e vira pendência pra
 conferir o motivo. A desistência do art. 49 (Financeiro → **Devoluções**)

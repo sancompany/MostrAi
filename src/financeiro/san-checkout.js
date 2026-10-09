@@ -295,6 +295,19 @@ async function registrarPendencia(payload, motivo) {
   sse.emitirParaAdmin('payment.updated', {});
 }
 
+// Estorno ou chargeback de uma cobrança (chargeId) que ainda não está aqui:
+// o aviso do pagamento pode estar atrás dele na inbox, ou só entrar pela
+// conciliação. Dar o evento por processado (pendência) perdia o dinheiro de
+// volta pra sempre — a cobrança entrava depois como paga e estornável
+// (revisão Codex do PR #130). LANÇAR faz a inbox tentar de novo (30 s … 2 h);
+// se a cobrança não aparecer, o evento morre em pendência e volta à fila
+// depois que ela entrar (RUNBOOK §6.2).
+function cobrancaAindaNaoRegistrada(payload) {
+  return new Error(
+    `${payload.evento} de cobrança que ainda não está registrada aqui (chargeId ${payload.chargeId}) — se não entrar, recolocar na fila depois que ela aparecer (RUNBOOK §6.2)`,
+  );
+}
+
 // Programa de vendedores aposentado (reconstrução de Contas, 23/09/2026,
 // pedido do dono: "sem novas comissões"). A função que gerava comissão ficou
 // desligada atrás de uma constante até a consolidação final (24/09/2026) e
@@ -721,8 +734,11 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
       eventos.registrar('pagamento:chargeback_suspende', { plano_id: assinatura.plano_id }, anunciante);
     }
     // Estado do DINHEIRO da cobrança (migration 120): em disputa — não é
-    // estorno, não confirma pedido nenhum, não cancela nada.
-    await estornos.marcarContestada(payload.chargeId);
+    // estorno, não confirma pedido nenhum, não cancela nada. A suspensão
+    // acima já valeu mesmo se a cobrança ainda não estiver aqui.
+    const contestada = await estornos.marcarContestada(payload.chargeId);
+    if (contestada.semCobranca && payload.chargeId) throw cobrancaAindaNaoRegistrada(payload);
+    for (const aviso of contestada.avisos || []) await registrarPendencia(payload, aviso);
     return registrarPendencia(payload, 'chargeback — conta suspensa automaticamente, revisar antes de reativar');
   }
 
@@ -741,8 +757,13 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
     // O dinheiro do ACERTO (migration 120): contestado, ou devolvido — a
     // cobrança do acerto registra; voltar de plano continua sendo decisão de
     // pessoa (a pendência abaixo).
-    if (payload.statusFinanceiro === 'chargeback') await estornos.marcarContestada(payload.chargeId);
-    else if (payload.chargeId) await estornos.registrarEstornoDoPsp(payload);
+    if (payload.statusFinanceiro === 'chargeback') {
+      const contestada = await estornos.marcarContestada(payload.chargeId);
+      if (contestada.semCobranca && payload.chargeId) throw cobrancaAindaNaoRegistrada(payload);
+      for (const aviso of contestada.avisos || []) await registrarPendencia(payload, aviso);
+    } else if (payload.chargeId && (await estornos.registrarEstornoDoPsp(payload)).semCobranca) {
+      throw cobrancaAindaNaoRegistrada(payload);
+    }
     return registrarPendencia(
       payload,
       `acerto da troca de plano revertido (${payload.statusFinanceiro}, R$ ${payload.valorEstornado ?? '?'}) — ` +
@@ -755,14 +776,18 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
     // pelo chargeId, atualiza o dinheiro da cobrança, confirma o pedido do
     // Admin (ou registra a devolução feita direto na Asaas) e, se TOTAL,
     // desfaz o ciclo (horas e cobertura). Nunca cancela a assinatura nem
-    // suspende a conta. Sem chargeId (v1) ou de cobrança que não é daqui,
-    // continua sendo pendência pra pessoa olhar.
+    // suspende a conta. Cobrança que ainda não está aqui: tenta de novo.
+    // Sem chargeId (v1) não há o que casar — pendência pra pessoa olhar.
     const r = await estornos.registrarEstornoDoPsp(payload);
     if (r.semCobranca) {
+      if (payload.chargeId) throw cobrancaAindaNaoRegistrada(payload);
       const detalhe = payload.estornoParcial
         ? `estorno PARCIAL de R$ ${payload.valorEstornado} sobre R$ ${payload.valor}`
         : `estorno total (${payload.statusFinanceiro || 'estornado'})`;
-      return registrarPendencia(payload, `${detalhe} — nenhuma cobrança daqui com este chargeId; conferir à mão`);
+      return registrarPendencia(
+        payload,
+        `${detalhe} — aviso sem chargeId, não dá pra saber de qual cobrança; conferir à mão`,
+      );
     }
     for (const aviso of r.avisos) await registrarPendencia(payload, aviso);
     if (r.confirmado) {

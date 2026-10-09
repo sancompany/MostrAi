@@ -56,6 +56,7 @@ async function apagar(id, rodada) {
   ]);
   await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM ciclos_contratados WHERE anunciante_id = $1', [id]);
+  await pool.query('DELETE FROM estornos WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM cobrancas_confirmadas WHERE anunciante_id = $1', [id]);
   await pool.query(
     "DELETE FROM eventos_assinatura_pendentes WHERE payload->>'planoId' IN (SELECT id FROM assinaturas WHERE anunciante_id = $1)",
@@ -177,6 +178,17 @@ test('v2: troca_revertida vira pendência com o plano anterior; chargeback suspe
   try {
     const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO });
     await assinaturasRepo.marcarAtiva(assinatura.id);
+    // As cobranças de que os avisos falam já estão aqui (os dois acertos de
+    // troca). Aviso de cobrança que ainda NÃO está aqui não vira pendência:
+    // tenta de novo pela inbox (tests/estorno.test.js).
+    for (const chargeId of [`pay_acerto_${rodada}`, `pay_acerto2_${rodada}`]) {
+      await pool.query(
+        `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, plano_anterior_id, valor, nota_fiscal_status,
+                                            charge_id, pago_em, pago_em_fonte)
+         VALUES ($1, $2, $2, 30, 'pendente', $3, now(), 'psp')`,
+        [c.id, PLANO, chargeId],
+      );
+    }
 
     const mock = semCheckout();
     try {
@@ -194,7 +206,7 @@ test('v2: troca_revertida vira pendência com o plano anterior; chargeback suspe
       await sc.processarWebhookAssinatura(
         v2(assinatura, c, rodada, {
           evento: 'cobranca_estornada',
-          chargeId: `pay_parcial_${rodada}`,
+          chargeId: null, // sem chargeId não há o que casar: pendência pra pessoa
           statusFinanceiro: 'estornado_parcialmente',
           valor: 100,
           valorEstornado: 40,
@@ -225,9 +237,18 @@ test('v2: troca_revertida vira pendência com o plano anterior; chargeback suspe
     const conta2 = (await pool.query('SELECT suspenso FROM anunciantes WHERE id = $1', [c.id])).rows[0];
     assert.equal(conta2.suspenso, true, 'chargeback do acerto suspende a conta, como cobranca_contestada');
     assert.equal(
-      (await pool.query('SELECT 1 FROM cobrancas_confirmadas WHERE anunciante_id = $1', [c.id])).rowCount,
+      (await pool.query('SELECT 1 FROM ciclos_contratados WHERE anunciante_id = $1', [c.id])).rowCount,
       0,
       'nada disso credita ciclo',
+    );
+    const { rows: acertos } = await pool.query(
+      'SELECT status_financeiro FROM cobrancas_confirmadas WHERE anunciante_id = $1 ORDER BY id',
+      [c.id],
+    );
+    assert.deepEqual(
+      acertos.map((a) => a.status_financeiro),
+      ['estornado', 'contestado'],
+      'o dinheiro de cada acerto: devolvido, e em disputa',
     );
   } finally {
     await apagar(c.id, rodada);

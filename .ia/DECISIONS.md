@@ -1773,6 +1773,12 @@ nada. E o `/estornar` do San Checkout não alcança cobrança de assinatura
 - O backfill da migration 120 casa cada cobrança antiga com o webhook
   guardado **pelo significado**: assinatura, evento, status, valor, hora e o
   registro de dedupe. Nunca por id fixo.
+- Estorno ou chargeback de um chargeId que ainda não é de cobrança daqui
+  **tenta de novo** pela inbox (o aviso do pagamento pode estar atrás na
+  fila). Não vira pendência: pendência dava o evento por processado e o
+  dinheiro de volta se perdia.
+- Chargeback com pedido aberto deixa o pedido **em espera** (tela e aviso).
+  Ele não se cancela sozinho, porque a disputa não tem evento de fim.
 
 **Recusado.**
 - Mudar o San Checkout para estornar assinatura pela API (fora da estação;

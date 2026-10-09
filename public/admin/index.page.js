@@ -8642,7 +8642,13 @@ async function renderHistoricoCobrancas(el) {
         const aberto = c.estornos.find((e) => e.status === 'solicitado');
         let estorno;
         if (aberto) {
-          estorno = `<span class="badge badge-atencao">Solicitado · ${fmt(aberto.valor)}</span><span class="celula-sub">Devolva na Asaas (cobrança ${esc(c.charge_id || '—')}). Confirma sozinho quando a Asaas avisar.</span>
+          // Chargeback depois do pedido: devolver agora daria o dinheiro duas
+          // vezes (o banco já devolve pela disputa) — em espera, sem instrução.
+          estorno = `${
+            c.status_financeiro === 'contestado'
+              ? `<span class="badge badge-err">Em espera · chargeback · ${fmt(aberto.valor)}</span><span class="celula-sub">Não devolva na Asaas: a cobrança está em disputa no banco do cliente.</span>`
+              : `<span class="badge badge-atencao">Solicitado · ${fmt(aberto.valor)}</span><span class="celula-sub">Devolva na Asaas (cobrança ${esc(c.charge_id || '—')}). Confirma sozinho quando a Asaas avisar.</span>`
+          }
             <span class="celula-sub">${esc(TIPO_ESTORNO[aberto.tipo] || aberto.tipo)} · ${esc(dataHora(aberto.solicitado_em))} · ${esc(aberto.solicitado_por_access || aberto.solicitado_por || '—')} · “${esc(aberto.motivo)}”</span>
             ${aberto.tipo === 'desistencia' || aberto.arrependimento_id ? '' : `<button type="button" class="btn ghost mini" data-cancelar-estorno="${aberto.id}">Cancelar pedido</button>`}`;
         } else if (eleg.ordinario.pode) {
@@ -8838,7 +8844,10 @@ async function renderFilaDevolucoes(el) {
             p.devolucoes.length
               ? p.devolucoes
                   .map((d) => {
-                    const [classe, rotulo] = ESTADO_ESTORNO[d.status] || ['badge-neutro', d.status];
+                    const emEspera = d.status === 'solicitado' && d.status_financeiro === 'contestado';
+                    const [classe, rotulo] = emEspera
+                      ? ['badge-err', 'Em espera · chargeback — não devolver na Asaas']
+                      : ESTADO_ESTORNO[d.status] || ['badge-neutro', d.status];
                     return `<span class="celula-sub"><span class="badge ${classe}">${esc(rotulo)}</span> ${fmt(d.valor)} · cobrança PSP ${esc(d.charge_id || '—')}</span>`;
                   })
                   .join('')

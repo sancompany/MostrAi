@@ -675,6 +675,93 @@ test('estorno feito direto na Asaas, sem pedido: registrado como externo + pend�
   );
 });
 
+test('estorno que chega ANTES da cobrança não se perde: falha pra inbox tentar de novo e aplica quando ela entra (revisão Codex do PR #130)', async () => {
+  const conta = await criarConta();
+  const assinatura = await assinaturasRepo.criar({ anuncianteId: conta.id, planoId: PLANO });
+  const chargeId = `pay_${randomUUID().slice(0, 12)}`;
+  const estorno = evento(assinatura, conta, { evento: 'cobranca_estornada', chargeId, statusFinanceiro: 'estornado' });
+  const pendentes = () =>
+    linhas("SELECT motivo FROM eventos_assinatura_pendentes WHERE payload->>'chargeId' = $1", [chargeId]);
+
+  // Fila atrasada: o estorno é processado antes do pagamento.
+  await assert.rejects(sc.processarWebhookAssinatura(estorno), /ainda não está registrada/);
+  assert.equal((await pendentes()).length, 0, 'não vira pendência que ninguém consegue aplicar');
+  assert.equal(
+    (await linhas('SELECT 1 FROM webhooks_processados WHERE id = $1', [estorno.eventoId])).length,
+    0,
+    'a reserva de dedupe sai — a nova tentativa da inbox não é descartada',
+  );
+
+  // O pagamento entra; a nova tentativa (o MESMO evento) aplica o estorno.
+  await sc.processarWebhookAssinatura(evento(assinatura, conta, { evento: 'criada', chargeId, valor: 134.99 }));
+  await sc.processarWebhookAssinatura(estorno);
+  const cob = await linha('SELECT * FROM cobrancas_confirmadas WHERE charge_id = $1', [chargeId]);
+  assert.equal(cob.status_financeiro, 'estornado', 'o dinheiro devolvido não fica contado como receita');
+  assert.equal(Number(cob.valor_estornado), 134.99);
+  assert.equal((await linha('SELECT status FROM estornos WHERE cobranca_id = $1', [cob.id])).status, 'confirmado');
+  assert.ok(!(await pendentes()).some((p) => /chargeId/.test(p.motivo)));
+
+  // Chargeback de cobrança que ainda não está aqui: a conta é suspensa já
+  // na primeira tentativa, e o evento também espera a cobrança.
+  const outra = `pay_${randomUUID().slice(0, 12)}`;
+  await assert.rejects(
+    sc.processarWebhookAssinatura(
+      evento(assinatura, conta, { evento: 'cobranca_contestada', chargeId: outra, statusFinanceiro: 'chargeback' }),
+    ),
+    /ainda não está registrada/,
+  );
+  assert.equal((await linha('SELECT suspenso FROM anunciantes WHERE id = $1', [conta.id])).suspenso, true);
+});
+
+test('chargeback com estorno pedido: o pedido fica em espera, a fila avisa e as listas do Admin mostram a disputa (revisão Codex do PR #130)', async () => {
+  // Pedido ordinário do Admin, e depois o chargeback.
+  const conta = await criarConta();
+  const { assinatura, chargeId, cobranca } = await pagar(conta);
+  const r = await admin('POST', `/admin/cobrancas/${cobranca.id}/estornos`, {
+    tipo: 'ordinario',
+    motivo: 'cliente pediu a devolução',
+  });
+  assert.equal(r.status, 201, r.texto);
+  await sc.processarWebhookAssinatura(
+    evento(assinatura, conta, { evento: 'cobranca_contestada', chargeId, statusFinanceiro: 'chargeback' }),
+  );
+  assert.equal(
+    (await linha('SELECT status FROM estornos WHERE id = $1', [r.json.id])).status,
+    'solicitado',
+    'não se cancela sozinho: a disputa não tem evento de fim',
+  );
+  const avisos = await linhas("SELECT motivo FROM eventos_assinatura_pendentes WHERE payload->>'chargeId' = $1", [
+    chargeId,
+  ]);
+  assert.ok(
+    avisos.some((p) => /NÃO devolver na Asaas.*em espera/.test(p.motivo)),
+    avisos.map((p) => p.motivo).join(' | '),
+  );
+  const lista = (await admin('GET', '/admin/cobrancas')).json.find((c) => c.id === cobranca.id);
+  assert.equal(lista.status_financeiro, 'contestado', 'a tela lê a disputa e troca a instrução por "em espera"');
+  assert.equal(lista.elegibilidade.ordinario.pode, false, 'e nenhum pedido novo nasce nela');
+
+  // Devolução de desistência: a lista de Devoluções traz a situação da cobrança.
+  const conta2 = await criarConta();
+  const pago2 = await pagar(conta2);
+  await entrar(conta2);
+  const d = await conta2.nav('POST', '/titular/arrependimento');
+  assert.equal(d.status, 201, d.texto);
+  await sc.processarWebhookAssinatura(
+    evento(pago2.assinatura, conta2, {
+      evento: 'cobranca_contestada',
+      chargeId: pago2.chargeId,
+      statusFinanceiro: 'chargeback',
+    }),
+  );
+  const desistencia = (await admin('GET', '/admin/arrependimentos')).json.find((a) => a.id === d.json.pedido.id);
+  assert.equal(desistencia.status, 'pendente', 'a desistência não fecha por causa da disputa');
+  assert.deepEqual(
+    desistencia.devolucoes.map((x) => [x.status, x.status_financeiro]),
+    [['solicitado', 'contestado']],
+  );
+});
+
 // ---------------------------------------------------------------------------
 // Preço, plano, retorno — nada vem do navegador
 // ---------------------------------------------------------------------------

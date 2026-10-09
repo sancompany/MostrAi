@@ -293,14 +293,17 @@ async function registrarArrependimento({ anuncianteId, assinaturaId, planoId, va
 
 // A fila do Admin: cada desistência com as devoluções dela (uma por
 // cobrança, migration 120) e o estado de cada uma — fecha sozinha quando o
-// PSP confirma a última.
+// PSP confirma a última. A situação da cobrança vai junto: devolução de
+// cobrança contestada (chargeback) fica em espera, não se executa.
 async function listarArrependimentos() {
   const { rows } = await pool.query(`
     SELECT a.*, an.nome_empresa, an.cpf_cnpj, an.contato_email,
            COALESCE((SELECT json_agg(json_build_object(
                        'id', e.id, 'cobranca_id', e.cobranca_id, 'valor', e.valor, 'status', e.status,
-                       'charge_id', e.psp_charge_id, 'confirmado_em', e.confirmado_em) ORDER BY e.id)
-                       FROM estornos e WHERE e.arrependimento_id = a.id), '[]') AS devolucoes
+                       'charge_id', e.psp_charge_id, 'confirmado_em', e.confirmado_em,
+                       'status_financeiro', c.status_financeiro) ORDER BY e.id)
+                       FROM estornos e JOIN cobrancas_confirmadas c ON c.id = e.cobranca_id
+                      WHERE e.arrependimento_id = a.id), '[]') AS devolucoes
       FROM arrependimentos a
       JOIN anunciantes an ON an.id = a.anunciante_id
      ORDER BY (a.status = 'pendente') DESC, a.pedido_em DESC`);

@@ -6,6 +6,8 @@
 //   confirmação explícita → pedido 'solicitado' (a assinatura continua
 //   ativa) → webhook `cobranca_estornada` → "Estornada" / "Confirmado pela
 //   Asaas" → o cliente vê a cobrança como estornada (sem poder pedir nada).
+//   Depois: a desistência vira devolução na fila; e um chargeback que chega
+//   com o pedido aberto deixa a linha "Em espera", sem mandar devolver.
 // Pré-condições: banco zerado (reset-db.sh) e servidor na 3999 (restart.sh).
 import { execSync } from 'node:child_process';
 import { createHmac, randomUUID } from 'node:crypto';
@@ -253,6 +255,61 @@ check(
   'a desistência fecha sozinha quando a Asaas confirma',
   !!(await esperar(() => PG(`SELECT status FROM arrependimentos WHERE anunciante_id = ${desiste.id}`) === 'estornado')),
 );
+
+console.log('== 7. chargeback depois do pedido: em espera, sem instrução de devolver ==');
+const disputa = await contaPaga('disputa', new Date(Date.now() - 60_000).toISOString());
+await admin.evaluate(() => {
+  location.hash = 'financeiro/trocas';
+});
+await admin.waitForTimeout(500);
+await admin.evaluate(() => {
+  location.hash = 'financeiro/cobrancas';
+});
+const linhaDisputa = admin.locator(`tr[data-cobranca="${disputa.cob}"]`);
+await linhaDisputa.waitFor({ timeout: 15000 });
+await linhaDisputa.locator('[data-estornar]').click();
+await modal.waitFor();
+await modal.locator('[data-entendi]').check();
+await modal.locator('#estornoMotivo').fill('cliente pediu a devolução (e2e da disputa)');
+await modal.locator('button[type="submit"]').click();
+await esperar(() => PG(`SELECT status FROM estornos WHERE cobranca_id = ${disputa.cob}`) === 'solicitado');
+const st3 = await webhook({
+  versao: 2,
+  tipo: 'assinatura',
+  eventoId: `evt_${randomUUID()}`,
+  ocorridoEm: new Date().toISOString(),
+  evento: 'cobranca_contestada',
+  planoId: disputa.ass,
+  documento: '52998224725',
+  chargeId: disputa.chargeId,
+  statusFinanceiro: 'chargeback',
+  valor: 134.99,
+});
+check('webhook do chargeback aceito', st3 === 200, String(st3));
+check(
+  'a cobrança fica contestada',
+  !!(await esperar(() => PG(`SELECT status_financeiro FROM cobrancas_confirmadas WHERE id = ${disputa.cob}`) === 'contestado')),
+);
+await admin.evaluate(() => {
+  location.hash = 'financeiro/trocas';
+});
+await admin.waitForTimeout(500);
+await admin.evaluate(() => {
+  location.hash = 'financeiro/cobrancas';
+});
+await linhaDisputa.waitFor({ timeout: 15000 });
+await admin.waitForFunction((id) => /Em espera/.test(document.querySelector(`tr[data-cobranca="${id}"]`)?.innerText || ''), disputa.cob, {
+  timeout: 15000,
+});
+const textoDisputa = await linhaDisputa.innerText();
+check('linha: pedido em espera por chargeback', /Em espera · chargeback/.test(textoDisputa) && /Não devolva na Asaas/.test(textoDisputa), textoDisputa);
+check('linha: sem a instrução de devolver', !/Devolva na Asaas/.test(textoDisputa), textoDisputa);
+check('o pedido continua aberto (decisão de pessoa)', PG(`SELECT status FROM estornos WHERE cobranca_id = ${disputa.cob}`) === 'solicitado');
+check(
+  'a fila do Admin avisa pra não devolver',
+  PG(`SELECT count(*) FROM eventos_assinatura_pendentes WHERE payload->>'chargeId' = '${disputa.chargeId}' AND motivo LIKE '%NÃO devolver na Asaas%'`) === '1',
+);
+await admin.screenshot({ path: `${SAIDA}5-disputa.png`, fullPage: true });
 
 check('sem erro de console nem diálogo nativo', erros.length === 0, erros.join(' | '));
 await b.close();

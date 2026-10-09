@@ -275,8 +275,9 @@ async function aplicarEstornoTotal(db, cobranca, motivo) {
 // `cobranca_estornada`, ou `troca_revertida` com estorno, contrato v2). É a
 // ÚNICA porta para 'confirmado'. Idempotente: o valor acumulado só anda pra
 // frente (aviso repetido ou fora de ordem não muda nada).
-// Devolve { semCobranca } quando o chargeId não é de nenhuma cobrança daqui,
-// ou { avisos, confirmado } para quem chama registrar na fila do Admin.
+// Devolve { semCobranca } quando o chargeId não é de nenhuma cobrança daqui
+// (ainda — quem chama decide se tenta de novo), ou { avisos, confirmado }
+// para quem chama registrar na fila do Admin.
 async function registrarEstornoDoPsp(payload) {
   const chargeId = String(payload.chargeId || '');
   const status = payload.statusFinanceiro;
@@ -414,15 +415,33 @@ async function fecharDesistenciaAtendida(db, anuncianteId) {
 
 // Chargeback numa cobrança: o dinheiro está em disputa — estado próprio,
 // que não é estorno (não confirma pedido nenhum, não desfaz ciclo). A
-// suspensão da conta continua no webhook, como antes.
+// suspensão da conta continua no webhook, como antes. Um pedido de estorno
+// ainda aberto fica EM ESPERA (a tela lê a situação da cobrança): devolvê-lo
+// na Asaas agora devolveria o dinheiro duas vezes, porque o banco do
+// cliente já está devolvendo pela disputa. Não se cancela sozinho: a disputa
+// não tem evento de fim, e o que fazer depois dela é decisão de pessoa —
+// daí o aviso pra fila do Admin (revisão Codex do PR #130).
+// Devolve { semCobranca } quando o chargeId não é de nenhuma cobrança daqui.
 async function marcarContestada(chargeId) {
-  if (!chargeId) return null;
-  const { rows } = await pool.query(
+  if (!chargeId) return { semCobranca: true };
+  const {
+    rows: [cobranca],
+  } = await pool.query('SELECT id FROM cobrancas_confirmadas WHERE charge_id = $1', [String(chargeId)]);
+  if (!cobranca) return { semCobranca: true };
+  await pool.query(
     `UPDATE cobrancas_confirmadas SET status_financeiro = 'contestado'
-      WHERE charge_id = $1 AND status_financeiro IN ('confirmado', 'estornado_parcialmente') RETURNING id`,
-    [String(chargeId)],
+      WHERE id = $1 AND status_financeiro IN ('confirmado', 'estornado_parcialmente')`,
+    [cobranca.id],
   );
-  return rows[0] || null;
+  const {
+    rows: [pedido],
+  } = await pool.query("SELECT valor FROM estornos WHERE cobranca_id = $1 AND status = 'solicitado'", [cobranca.id]);
+  const avisos = pedido
+    ? [
+        `chargeback numa cobrança com estorno pedido (R$ ${Number(pedido.valor).toFixed(2)}) — NÃO devolver na Asaas enquanto a disputa corre; o pedido fica em espera`,
+      ]
+    : [];
+  return { cobrancaId: cobranca.id, avisos };
 }
 
 // Desistência (art. 49) pela trilha nova: cada cobrança da conta que ainda
