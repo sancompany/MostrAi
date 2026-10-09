@@ -8644,7 +8644,7 @@ async function renderHistoricoCobrancas(el) {
         if (aberto) {
           estorno = `<span class="badge badge-atencao">Solicitado · ${fmt(aberto.valor)}</span><span class="celula-sub">Devolva na Asaas (cobrança ${esc(c.charge_id || '—')}). Confirma sozinho quando a Asaas avisar.</span>
             <span class="celula-sub">${esc(TIPO_ESTORNO[aberto.tipo] || aberto.tipo)} · ${esc(dataHora(aberto.solicitado_em))} · ${esc(aberto.solicitado_por_access || aberto.solicitado_por || '—')} · “${esc(aberto.motivo)}”</span>
-            ${aberto.tipo === 'desistencia' ? '' : `<button type="button" class="btn ghost mini" data-cancelar-estorno="${aberto.id}">Cancelar pedido</button>`}`;
+            ${aberto.tipo === 'desistencia' || aberto.arrependimento_id ? '' : `<button type="button" class="btn ghost mini" data-cancelar-estorno="${aberto.id}">Cancelar pedido</button>`}`;
         } else if (eleg.ordinario.pode) {
           estorno = `<span class="celula-sub">Até ${esc(dataHora(eleg.prazoAte))} · pode voltar ${fmt(eleg.restante)}</span>
             <button type="button" class="btn perigo-sutil mini" data-estornar="${c.id}">Estornar pagamento</button>`;

@@ -832,6 +832,64 @@ test('desistência com duas cobranças confirmadas AO MESMO TEMPO pela Asaas: fe
   }
 });
 
+test('desistência atendida vale para AQUELE contrato: compra nova depois abre prazo próprio', async () => {
+  const conta = await criarConta();
+  const antiga = await pagar(conta);
+  await entrar(conta);
+  const r1 = await conta.nav('POST', '/titular/arrependimento');
+  assert.equal(r1.status, 201, r1.texto);
+  await estornoDoPsp(antiga.assinatura, conta, antiga.chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+  assert.equal(
+    (await linha('SELECT status FROM arrependimentos WHERE id = $1', [r1.json.pedido.id])).status,
+    'estornado',
+  );
+
+  // Sem compra nova: segue barrada, mostrando a atendida.
+  await pool.query('UPDATE anunciantes SET suspenso = false WHERE id = $1', [conta.id]);
+  await entrar(conta);
+  const semNova = await conta.nav('GET', '/titular/arrependimento');
+  assert.equal(semNova.json.disponivel, false);
+  assert.equal(semNova.json.pedido.status, 'estornado');
+  assert.equal((await conta.nav('POST', '/titular/arrependimento')).status, 409);
+
+  // Voltou e pagou de novo: contrato novo, 7 dias novos, só o dinheiro novo volta.
+  const nova = await pagar(conta);
+  const consulta = await conta.nav('GET', '/titular/arrependimento');
+  assert.equal(consulta.json.disponivel, true, JSON.stringify(consulta.json));
+  assert.equal(consulta.json.valor_a_estornar, 134.99);
+  const r2 = await conta.nav('POST', '/titular/arrependimento');
+  assert.equal(r2.status, 201, r2.texto);
+  const pedidos = await linhas(
+    "SELECT cobranca_id FROM estornos WHERE arrependimento_id = $1 AND tipo = 'desistencia'",
+    [r2.json.pedido.id],
+  );
+  assert.deepEqual(
+    pedidos.map((p) => p.cobranca_id),
+    [nova.cobranca.id],
+    'a cobrança antiga, já devolvida, não volta de novo',
+  );
+});
+
+test('pedido de estorno adotado pela desistência não se cancela pelo Admin', async () => {
+  const conta = await criarConta();
+  const { cobranca } = await pagar(conta);
+  const pedido = await admin('POST', `/admin/cobrancas/${cobranca.id}/estornos`, {
+    tipo: 'ordinario',
+    motivo: 'pediu antes de desistir',
+  });
+  assert.equal(pedido.status, 201);
+  await entrar(conta);
+  const r = await conta.nav('POST', '/titular/arrependimento');
+  assert.equal(r.status, 201, r.texto);
+  assert.equal(
+    (await linha('SELECT arrependimento_id FROM estornos WHERE id = $1', [pedido.json.id])).arrependimento_id,
+    r.json.pedido.id,
+  );
+  const cancelar = await admin('POST', `/admin/estornos/${pedido.json.id}/cancelar`, { motivo: 'não vou devolver' });
+  assert.equal(cancelar.status, 409);
+  assert.equal((await linha('SELECT status FROM estornos WHERE id = $1', [pedido.json.id])).status, 'solicitado');
+});
+
 test('desistência quando tudo já foi estornado: nada a voltar, fecha na hora', async () => {
   const conta = await criarConta();
   const { assinatura, chargeId, cobranca } = await pagar(conta);

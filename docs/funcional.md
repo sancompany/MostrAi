@@ -2143,7 +2143,10 @@ saiu (410). Cobrança sem chargeId vira aviso na fila e mantém a desistência
 aberta. O que a Asaas já
 devolveu não entra de novo no valor. *Violada:* o índice único barra um
 segundo pedido em aberto por conta; desistência já atendida não se pede de
-novo (409); a devolução de uma desistência não se cancela pelo painel.
+novo para o mesmo contrato (409) — uma compra nova depois dela é outro
+contrato, com 7 dias próprios contados do pagamento dela; a devolução de uma
+desistência (inclusive um pedido do Admin que ela adotou) não se cancela pelo
+painel.
 *Quem vê:* o titular, no perfil; o administrador, na pendência da visão geral
 (clica e abre a fila `#financeiro/devolucoes` — sem página fixa desde a
 rodada Financeiro de 22/09/2026).

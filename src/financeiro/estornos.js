@@ -184,21 +184,31 @@ async function solicitar({ cobrancaId, tipo, categoria = null, valor, motivo, op
 // desistiu), com quem e por quê. Não mexe em dinheiro nem na cobrança. A
 // devolução de uma DESISTÊNCIA (art. 49) não se cancela por aqui: é direito
 // já exercido, e o pedido fica visível até o PSP confirmar.
+// Pertence a uma desistência o pedido criado por ela E o pedido que já
+// estava aberto quando o cliente desistiu (ganhou `arrependimento_id`).
+const daDesistencia = (pedido) => pedido.tipo === 'desistencia' || pedido.arrependimento_id != null;
+
 async function cancelar({ estornoId, motivo, operador }) {
   const motivoLimpo = validarMotivo(motivo);
-  const { rows } = await pool.query('SELECT * FROM estornos WHERE id = $1', [Number(estornoId) || 0]);
-  const pedido = rows[0];
-  if (!pedido) throw new ErroEstorno(404, 'estorno não encontrado');
-  if (pedido.tipo === 'desistencia') {
-    throw new ErroEstorno(409, 'a devolução de uma desistência não se cancela pelo painel');
-  }
+  const id = Number(estornoId) || 0;
+  const { rows } = await pool.query('SELECT * FROM estornos WHERE id = $1', [id]);
+  if (!rows[0]) throw new ErroEstorno(404, 'estorno não encontrado');
+  const recusa = (pedido) =>
+    daDesistencia(pedido)
+      ? new ErroEstorno(409, 'a devolução de uma desistência não se cancela pelo painel')
+      : new ErroEstorno(409, 'só um estorno ainda solicitado pode ser cancelado');
+  if (daDesistencia(rows[0])) throw recusa(rows[0]);
+  // As condições vão no próprio UPDATE: uma desistência que adota este
+  // pedido no meio do caminho (revisão Codex do PR #130) faz o
+  // cancelamento não pegar nada, em vez de deixá-la sem pedido aberto.
   const { rows: feitos } = await pool.query(
     `UPDATE estornos SET status = 'cancelado', cancelado_por = $2, cancelado_motivo = $3, cancelado_em = now()
-      WHERE id = $1 AND status = 'solicitado' RETURNING *`,
-    [pedido.id, operador || null, motivoLimpo],
+      WHERE id = $1 AND status = 'solicitado' AND tipo <> 'desistencia' AND arrependimento_id IS NULL RETURNING *`,
+    [id, operador || null, motivoLimpo],
   );
-  if (!feitos[0]) throw new ErroEstorno(409, 'só um estorno ainda solicitado pode ser cancelado');
-  return feitos[0];
+  if (feitos[0]) return feitos[0];
+  const { rows: agora } = await pool.query('SELECT * FROM estornos WHERE id = $1', [id]);
+  throw recusa(agora[0]);
 }
 
 // Efeito do estorno TOTAL confirmado (decisão do dono, 09/10/2026): o ciclo

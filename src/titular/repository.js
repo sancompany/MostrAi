@@ -238,12 +238,16 @@ async function definirComunicacoes(anuncianteId, aceita) {
 // a confirmação do pagamento no PSP (`pago_em`, migration 120; os Termos
 // dizem "contados da confirmação do pagamento"), não a hora em que a
 // Mostraí gravou.
-async function primeiraCobranca(anuncianteId) {
+// `desde` (revisão Codex do PR #130): depois de uma desistência atendida, o
+// contrato que conta é o NOVO — a primeira cobrança paga depois do pedido
+// dela. A contratação antiga já foi desfeita e não abre nem fecha prazo.
+async function primeiraCobranca(anuncianteId, desde = null) {
   const { rows } = await pool.query(
     `
     SELECT id, plano_id, valor, pago_em AS confirmado_em FROM cobrancas_confirmadas
-     WHERE anunciante_id = $1 ORDER BY pago_em, id LIMIT 1`,
-    [anuncianteId],
+     WHERE anunciante_id = $1 AND ($2::timestamptz IS NULL OR pago_em > $2)
+     ORDER BY pago_em, id LIMIT 1`,
+    [anuncianteId, desde],
   );
   return rows[0] || null;
 }
@@ -255,8 +259,9 @@ async function arrependimentoAberto(anuncianteId) {
   return rows[0] || null;
 }
 
-// Desistência já atendida (devolução confirmada pelo PSP): o direito foi
-// exercido — um segundo pedido devolveria o mesmo dinheiro de novo.
+// A última desistência já atendida (devolução confirmada pelo PSP): o direito
+// sobre AQUELE contrato foi exercido. Uma compra nova depois dela é outro
+// contrato, com prazo próprio (`primeiraCobranca(id, atendido.pedido_em)`).
 async function arrependimentoAtendido(anuncianteId) {
   const { rows } = await pool.query(
     "SELECT * FROM arrependimentos WHERE anunciante_id = $1 AND status = 'estornado' ORDER BY id DESC LIMIT 1",
