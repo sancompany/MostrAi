@@ -28,6 +28,7 @@ async function exportarConta(anuncianteId) {
     criativos,
     assinaturas,
     cobrancas,
+    estornos,
     comissoesGanhas,
     comissoesGeradas,
     exibicoes,
@@ -53,8 +54,15 @@ async function exportarConta(anuncianteId) {
               editado_pelo_operador, status, duracao_segundos, created_at
          FROM criativos WHERE anunciante_id = $1 ORDER BY id`),
     q('SELECT * FROM assinaturas WHERE anunciante_id = $1 ORDER BY created_at'),
-    q(`SELECT id, plano_id, valor, criado_em, nota_fiscal_status, nota_fiscal_url
+    q(`SELECT id, plano_id, plano_anterior_id, valor, criado_em, nota_fiscal_status, nota_fiscal_url,
+              charge_id, pago_em, pago_em_fonte, status_financeiro, valor_estornado
          FROM cobrancas_confirmadas WHERE anunciante_id = $1 ORDER BY criado_em`),
+    // Estornos da conta (migration 120), com a trilha de cada um — menos quem
+    // operou: o usuário e o e-mail do Admin são dado de quem trabalha, não do
+    // titular.
+    q(`SELECT id, cobranca_id, tipo, categoria, valor, motivo, status, solicitado_em, valor_confirmado,
+              psp_charge_id, confirmado_em, cancelado_em, cancelado_motivo, arrependimento_id
+         FROM estornos WHERE anunciante_id = $1 ORDER BY id`),
     // Duas pontas da mesma tabela: o que esta conta GANHOU indicando alguém,
     // e o que a compra dela GEROU de comissão pra quem a indicou. As duas são
     // dado pessoal dela, por motivos diferentes.
@@ -129,6 +137,7 @@ async function exportarConta(anuncianteId) {
     criativos,
     assinaturas,
     cobrancas_confirmadas: cobrancas,
+    estornos,
     comissoes_ganhas_como_vendedor: comissoesGanhas,
     comissoes_geradas_pelas_minhas_compras: comissoesGeradas,
     exibicoes_por_hora: exibicoes,

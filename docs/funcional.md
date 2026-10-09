@@ -2035,7 +2035,9 @@ desistência fica aberta até lá). Aviso de estorno ou chargeback de uma
 cobrança que **ainda não** está registrada (o aviso do pagamento atrás na
 fila) não vira pendência: o webhook tenta de novo até ela entrar (RUNBOOK
 §6.3). A receita do Admin (Visão geral,
-Financeiro, métricas) é **líquida** do que a Asaas confirmou ter devolvido.
+Financeiro, métricas) é **líquida** do que a Asaas confirmou ter devolvido —
+e a devolução sai do mês em que a Asaas a confirmou, não do mês do pagamento
+(estorno de outubro de um pagamento de setembro desconta de outubro).
 *Violada:* um segundo pedido aberto na mesma cobrança (índice único, 409);
 valor acima do que ainda pode voltar (400); ordinário fora da janela (409);
 aviso repetido ou fora de ordem do PSP (o acumulado só anda pra frente, nada

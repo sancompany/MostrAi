@@ -675,6 +675,59 @@ test('estorno feito direto na Asaas, sem pedido: registrado como externo + pend�
   );
 });
 
+test('receita do mês: o estorno sai do mês em que a Asaas confirmou; e a exportação do titular traz a trilha (revisão Codex do PR #130)', async () => {
+  const conta = await criarConta();
+  const { assinatura, chargeId, cobranca } = await pagar(conta);
+  // Pagamento registrado há 4 meses, estorno confirmado há 3 — meses antigos
+  // de propósito: os outros arquivos de teste lançam cobrança no mês corrente.
+  const mesAtras = (n) => {
+    const d = new Date();
+    d.setUTCDate(15);
+    d.setUTCMonth(d.getUTCMonth() - n);
+    return d;
+  };
+  const doPagamento = mesAtras(4).toISOString().slice(0, 7);
+  const doEstorno = mesAtras(3).toISOString().slice(0, 7);
+  await pool.query('UPDATE cobrancas_confirmadas SET criado_em = $2 WHERE id = $1', [cobranca.id, mesAtras(4)]);
+  const series = async () => ({
+    metrica: (await admin('GET', '/admin/metrica')).json.margem,
+    resumo: (await admin('GET', '/admin/resumo')).json.financeiro.faturamentoPorMes,
+  });
+  const noMes = (lista, mes) =>
+    Math.round(Number(lista.find((r) => r.mes === mes)?.receita ?? lista.find((r) => r.mes === mes)?.total ?? 0) * 100);
+  const antes = await series();
+  await estornoDoPsp(assinatura, conta, chargeId, {
+    statusFinanceiro: 'estornado',
+    valor: 134.99,
+    ocorridoEm: mesAtras(3).toISOString(),
+  });
+  const depois = await series();
+  for (const qual of ['metrica', 'resumo']) {
+    assert.equal(
+      noMes(depois[qual], doPagamento),
+      noMes(antes[qual], doPagamento),
+      `${qual}: o mês do pagamento não muda`,
+    );
+    assert.equal(
+      noMes(antes[qual], doEstorno) - noMes(depois[qual], doEstorno),
+      13499,
+      `${qual}: a devolução sai do mês em que a Asaas confirmou`,
+    );
+  }
+
+  const dados = await require('../src/titular/repository').exportarConta(conta.id);
+  const cob = dados.cobrancas_confirmadas.find((c) => c.id === cobranca.id);
+  assert.equal(cob.status_financeiro, 'estornado');
+  assert.equal(Number(cob.valor_estornado), 134.99);
+  assert.equal(cob.charge_id, chargeId);
+  assert.equal(dados.estornos.length, 1);
+  assert.equal(dados.estornos[0].status, 'confirmado');
+  assert.equal(Number(dados.estornos[0].valor_confirmado), 134.99);
+  for (const campo of ['solicitado_por', 'solicitado_por_access', 'cancelado_por']) {
+    assert.ok(!(campo in dados.estornos[0]), `${campo} é dado de quem opera o Admin, não do titular`);
+  }
+});
+
 test('estorno que chega ANTES da cobrança não se perde: falha pra inbox tentar de novo e aplica quando ela entra (revisão Codex do PR #130)', async () => {
   const conta = await criarConta();
   const assinatura = await assinaturasRepo.criar({ anuncianteId: conta.id, planoId: PLANO });
