@@ -250,7 +250,7 @@ async function conciliarAssinaturas({ apenasContas = null } = {}) {
         continue;
       }
 
-      await aplicarCicloPago(assinatura, chave, null, { valorCobrado: ultima.valorCobrado });
+      await aplicarCicloPago(assinatura, chave, null, { valorCobrado: ultima.valorCobrado, chargeId: ultima.chargeId });
       relato.aplicadas += 1;
     } catch (err) {
       relato.falhas.push({ assinaturaId: assinatura.id, erro: err.message });

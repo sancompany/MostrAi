@@ -286,6 +286,38 @@ async function registrarReembolsoDaConta(db, { anuncianteId, motivo, ate = null 
   return feitos;
 }
 
+// ESTORNO TOTAL de UMA cobrança confirmado pelo PSP (ADR-046): o lote do
+// ciclo que ela pagou some, com a mesma regra do reembolso integral — o que
+// já tinha sido entregue vira saldo técnico interno. Mesma chave
+// (`reembolso:<lote>`) que `registrarReembolsoDaConta`: a desistência que já
+// reverteu a conta inteira não reverte de novo quando a devolução confirma.
+// Cobrança sem ciclo ligado (acerto de troca) não tem lote aqui.
+async function registrarReembolsoDaCobranca(db, { cobrancaId, motivo }) {
+  const { rows: lotes } = await db.query(
+    `SELECT o.* FROM obrigacoes_veiculacao o
+       JOIN ciclos_contratados cic ON cic.id = o.ciclo_contratado_id
+      WHERE cic.cobranca_confirmada_id = $1 AND o.tipo IN ('ciclo', 'troca') AND o.segundos > 0`,
+    [cobrancaId],
+  );
+  const feitos = [];
+  for (const lote of lotes) {
+    const linha = await lancar(db, {
+      anuncianteId: lote.anunciante_id,
+      tipo: 'reembolso',
+      chave: `reembolso:${lote.id}`,
+      segundos: -Number(lote.segundos),
+      planoId: lote.plano_id,
+      cicloContratadoId: lote.ciclo_contratado_id,
+      referenciaId: lote.id,
+      inicio: lote.inicio,
+      fim: lote.fim,
+      motivo,
+    });
+    if (linha) feitos.push(linha);
+  }
+  return feitos;
+}
+
 // Rede de segurança da conciliação diária: o pedido de arrependimento é
 // gravado antes do lançamento do reembolso, e um erro entre os dois deixaria
 // a obrigação viva sem ninguém pra repetir (o pedido aberto barra um segundo
@@ -838,6 +870,7 @@ module.exports = {
   registrarBeneficio,
   encerrarBeneficio,
   registrarReembolsoDaConta,
+  registrarReembolsoDaCobranca,
   conferirReembolsos,
   motivoDeIndisponibilidadeDoCliente,
   avaliarDisponibilidade,

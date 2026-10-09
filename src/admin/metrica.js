@@ -21,7 +21,7 @@ const SQL_MARGEM = `
       FROM generate_series(0, $1::int - 1) n
   ),
   receita AS (
-    SELECT date_trunc('month', criado_em) AS mes, COALESCE(SUM(valor), 0) AS total
+    SELECT date_trunc('month', criado_em) AS mes, COALESCE(SUM(valor - valor_estornado), 0) AS total
       FROM cobrancas_confirmadas GROUP BY 1
   ),
   custo_atual AS (

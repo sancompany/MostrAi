@@ -350,7 +350,9 @@ router.get('/admin/resumo', async (_req, res) => {
     // sem comunicação não é falha (src/lib/status-tela.js, Rede Front V3).
     dispositivosRepo.telasComAtencao(),
     pool.query(
-      `SELECT to_char(date_trunc('month', criado_em), 'YYYY-MM') AS mes, SUM(valor)::numeric AS total
+      // Receita LÍQUIDA de estornos confirmados pelo PSP (migration 120): o
+      // dinheiro que voltou não é receita. Cancelamento não mexe aqui.
+      `SELECT to_char(date_trunc('month', criado_em), 'YYYY-MM') AS mes, SUM(valor - valor_estornado)::numeric AS total
        FROM cobrancas_confirmadas
        WHERE criado_em > now() - interval '6 months'
        GROUP BY mes ORDER BY mes`,

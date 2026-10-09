@@ -23,6 +23,15 @@
     sem_plano: ['badge-neutro', 'Sem plano'],
   };
 
+  // Estado do dinheiro de cada pagamento (migration 120): o cliente vê o que
+  // a Asaas confirmou ter devolvido. Pedir estorno não existe daqui.
+  function rotuloPagamento(c) {
+    if (c.situacao === 'estornado') return 'Pagamento do plano · estornado';
+    if (c.situacao === 'estornado_parcialmente') return `Pagamento do plano · ${fmtBRL(c.valorEstornado)} estornados`;
+    if (c.situacao === 'contestado') return 'Pagamento do plano · contestado no cartão';
+    return 'Pagamento do plano';
+  }
+
   function htmlPagamentos(p) {
     const [classe, rotulo] =
       p.plano.situacao === 'cortesia' && p.plano.porCreditos
@@ -31,7 +40,9 @@
     const validade = p.plano.validoAte && p.plano.situacao !== 'sem_plano' ? ` · até ${data(p.plano.validoAte)}` : '';
     const lista = p.cobrancas.length
       ? `<ul class="fin-lista">${p.cobrancas
-          .map((c) => `<li><time>${data(c.data)}</time><span>Pagamento do plano</span><b>${fmtBRL(c.valor)}</b></li>`)
+          .map(
+            (c) => `<li><time>${data(c.data)}</time><span>${rotuloPagamento(c)}</span><b>${fmtBRL(c.valor)}</b></li>`,
+          )
           .join('')}</ul>`
       : '<p class="texto-vazio">Nenhum pagamento registrado ainda.</p>';
     return `

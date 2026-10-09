@@ -15,6 +15,18 @@ const notificacoesRepo = require('../creditos/notificacoes');
 const sse = require('../lib/sse');
 const planoAdministrativo = require('./plano-administrativo');
 const cicloContratado = require('./ciclo-contratado');
+const estornos = require('./estornos');
+
+// Quando o PSP confirmou o pagamento (migration 120): o `ocorridoEm` do
+// evento (API.md do Checkout, 4.3.3 — o `dateCreated` do evento da Asaas;
+// na descoberta por conciliação, o momento da descoberta). Sem ele (v1,
+// conciliação, botão do admin), `null` — a cobrança grava o instante do
+// registro e marca a fonte. Carimbo no futuro não vale.
+function pagoEmDoPayload(payload) {
+  const t = Date.parse(payload?.ocorridoEm);
+  if (!Number.isFinite(t) || t > Date.now() + 2 * 60_000) return null;
+  return new Date(t).toISOString();
+}
 
 // Protege as rotas que o San Checkout chama de volta e as que a Vitrina
 // chama nele (mesma chave nos dois sentidos — INTEGRACAO.md seção 6/6.1).
@@ -606,10 +618,22 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
         planoAnteriorId: assinaturaAntiga.plano_id,
       });
       if (payload.acertoCobrado > 0) {
+        // O chargeId do ACERTO vem no evento (contrato v2): é por ele que um
+        // `troca_revertida` depois acha esta cobrança (migration 120).
+        const pagoEm = pagoEmDoPayload(payload);
         await cliente.query(
-          `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, plano_anterior_id, valor, nota_fiscal_status)
-           VALUES ($1,$2,$3,$4,'pendente')`,
-          [anunciante.id, planoNovo.id, assinaturaAntiga.plano_id, payload.acertoCobrado],
+          `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, plano_anterior_id, valor, nota_fiscal_status,
+                                              charge_id, pago_em, pago_em_fonte)
+           VALUES ($1,$2,$3,$4,'pendente',$5,COALESCE($6::timestamptz, now()),$7)`,
+          [
+            anunciante.id,
+            planoNovo.id,
+            assinaturaAntiga.plano_id,
+            payload.acertoCobrado,
+            payload.chargeId || null,
+            pagoEm,
+            pagoEm ? 'psp' : 'registro',
+          ],
         );
       }
       await cliente.query('COMMIT');
@@ -696,6 +720,9 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
       await anunciantesRepo.atualizar(anunciante.id, { suspenso: true });
       eventos.registrar('pagamento:chargeback_suspende', { plano_id: assinatura.plano_id }, anunciante);
     }
+    // Estado do DINHEIRO da cobrança (migration 120): em disputa — não é
+    // estorno, não confirma pedido nenhum, não cancela nada.
+    await estornos.marcarContestada(payload.chargeId);
     return registrarPendencia(payload, 'chargeback — conta suspensa automaticamente, revisar antes de reativar');
   }
 
@@ -711,6 +738,11 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
       await anunciantesRepo.atualizar(anunciante.id, { suspenso: true });
       eventos.registrar('pagamento:chargeback_suspende', { plano_id: assinatura.plano_id }, anunciante);
     }
+    // O dinheiro do ACERTO (migration 120): contestado, ou devolvido — a
+    // cobrança do acerto registra; voltar de plano continua sendo decisão de
+    // pessoa (a pendência abaixo).
+    if (payload.statusFinanceiro === 'chargeback') await estornos.marcarContestada(payload.chargeId);
+    else if (payload.chargeId) await estornos.registrarEstornoDoPsp(payload);
     return registrarPendencia(
       payload,
       `acerto da troca de plano revertido (${payload.statusFinanceiro}, R$ ${payload.valorEstornado ?? '?'}) — ` +
@@ -719,12 +751,25 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
   }
 
   if (payload.evento === 'cobranca_estornada') {
-    // Total ou parcial: a diferença está no payload (v2). Parcial não
-    // derruba cobertura sozinho; total é pendência para revisar a cobertura.
-    const detalhe = payload.estornoParcial
-      ? `estorno PARCIAL de R$ ${payload.valorEstornado} sobre R$ ${payload.valor}`
-      : `estorno total (${payload.statusFinanceiro || 'estornado'})`;
-    return registrarPendencia(payload, `${detalhe} — conferir a cobertura desta assinatura`);
+    // A ÚNICA porta que confirma um estorno (migration 120, ADR-046): casa
+    // pelo chargeId, atualiza o dinheiro da cobrança, confirma o pedido do
+    // Admin (ou registra a devolução feita direto na Asaas) e, se TOTAL,
+    // desfaz o ciclo (horas e cobertura). Nunca cancela a assinatura nem
+    // suspende a conta. Sem chargeId (v1) ou de cobrança que não é daqui,
+    // continua sendo pendência pra pessoa olhar.
+    const r = await estornos.registrarEstornoDoPsp(payload);
+    if (r.semCobranca) {
+      const detalhe = payload.estornoParcial
+        ? `estorno PARCIAL de R$ ${payload.valorEstornado} sobre R$ ${payload.valor}`
+        : `estorno total (${payload.statusFinanceiro || 'estornado'})`;
+      return registrarPendencia(payload, `${detalhe} — nenhuma cobrança daqui com este chargeId; conferir à mão`);
+    }
+    for (const aviso of r.avisos) await registrarPendencia(payload, aviso);
+    if (r.confirmado) {
+      sse.emitirParaConta(r.anuncianteId, 'payment.updated', {});
+      sse.emitirParaAdmin('payment.updated', { anuncianteId: r.anuncianteId });
+    }
+    return;
   }
 
   if (!EVENTOS_QUE_CREDITAM.has(payload.evento)) {
@@ -759,7 +804,11 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
   }
   let cobranca;
   try {
-    cobranca = await aplicarCicloPago(assinatura, chave, payload, { valorCobrado: ultima?.valorCobrado });
+    cobranca = await aplicarCicloPago(assinatura, chave, payload, {
+      valorCobrado: ultima?.valorCobrado,
+      chargeId: ultima?.chargeId,
+      pagoEm: pagoEmDoPayload(payload),
+    });
   } catch (err) {
     if (reservou) await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chaveDaCobranca]);
     throw err;
@@ -779,7 +828,15 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
 // que entra na cobrança, no snapshot do ciclo e na receita — recalcular pelo
 // catálogo do dia divergia do dinheiro real quando uma promoção com prazo
 // vencia entre um ciclo e outro (a Asaas cobra o valor congelado na adesão).
-async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrado = null } = {}) {
+// `chargeId`/`pagoEm` (migration 120): quem é esta cobrança no PSP e quando
+// ele confirmou — é por eles que o estorno do Admin é confirmado e que os 7
+// dias do estorno ordinário contam. Sem `pagoEm`, vale o instante do registro.
+async function aplicarCicloPago(
+  assinatura,
+  chave,
+  payload = null,
+  { valorCobrado = null, chargeId = null, pagoEm = null } = {},
+) {
   const contexto = payload || {
     tipo: 'assinatura',
     planoId: assinatura.id,
@@ -895,9 +952,9 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
     // (migration 089). Na mesma transação da cobrança.
     if (assinaturaTravada?.status === 'pendente_pagamento') await assinaturasRepo.marcarAtiva(assinatura.id, cliente);
     ({ rows: cobrancaRows } = await cliente.query(
-      `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status)
-       VALUES ($1,$2,$3,'pendente') RETURNING id, criado_em`,
-      [anunciante.id, plano.id, valorCiclo],
+      `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status, charge_id, pago_em, pago_em_fonte)
+       VALUES ($1,$2,$3,'pendente',$4,COALESCE($5::timestamptz, now()),$6) RETURNING id, criado_em`,
+      [anunciante.id, plano.id, valorCiclo, chargeId || null, pagoEm, pagoEm ? 'psp' : 'registro'],
     ));
     // Snapshot do ciclo (migration 087): o valor que ACABOU de ser cobrado e
     // as exibições previstas do plano — é daqui que sai o "Custo por
