@@ -196,6 +196,17 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
   versão revisada (`docs/PENDENCIAS.md`, T13). O sistema não emite PDF nem
   colhe assinatura digital ICP — o aceite é eletrônico simples, com
   evidência (IP, navegador, data, hash do documento).
+- **Estorno total ajusta cobertura por inferência, não por registro**
+  (10/10/2026, RN-73, decisão do dono no PR #130). O sistema não guarda a
+  janela de cobertura nem a contribuição à fila guardada
+  (`plano_pago_guardado_dias`, um total sem origem) de cada ciclo pago; o
+  estorno total deduz dos ciclos e da assinatura ativa. Quando não dá pra
+  saber com segurança — p.ex. ciclo de uma renovação atrasada de assinatura
+  substituída que entrou na fila atrás de um benefício — não ajusta e abre
+  pendência "a cobertura NÃO foi ajustada sozinha — revisar" pro Admin
+  tirar os dias à mão; nunca adivinha. limite: gravar a janela e a
+  contribuição à fila por ciclo no caminho de pagamento resolve
+  (`docs/PENDENCIAS.md`, PG5).
 - ~~`og:image` com caminho relativo~~ — **limite fechado em 14/09/2026**: o
   domínio existe (`mostrai.sancocore.com.br`), e `og:image`, `og:url` e
   `canonical` passaram a ser absolutos nas 26 páginas.

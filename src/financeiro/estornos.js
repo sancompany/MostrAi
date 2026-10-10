@@ -282,6 +282,10 @@ async function aplicarEstornoTotal(db, cobranca, motivo, { coberturaJaDesfeita =
   // dias que ELE pôs, pela mesma conta da fila a partir do dia em que entrou
   // (revisão Codex do PR #130). O benefício não muda: é pago com créditos,
   // não com o dinheiro devolvido.
+  // limite: a fila é um total sem origem — ciclo que entrou nela sem ser da
+  // assinatura ativa (renovação atrasada de uma substituída) cai no aviso
+  // abaixo e o Admin tira os dias à mão; gravar a contribuição de cada
+  // ciclo resolve (CONSTRAINTS.md, docs/PENDENCIAS.md PG5).
   if (conta.plano_cortesia && conta.plano_pago_guardado_id === cobranca.plano_id && mesmaCobertura) {
     await tirarDaFila(db, conta.id, diasNaFila(ciclo));
     return avisos;

@@ -6149,3 +6149,13 @@ Ficou de fora, sem mexer:
       isso a migration tem de rodar antes de ~08/11/2026. Depois disso, uma
       cobrança antiga sem match fica com `pago_em` = hora do registro (marcada
       `registro`).
+- PG5 [ ] Janela de cobertura e contribuição à fila guardada **por ciclo**
+      (decisão do dono, 10/10/2026, PR #130 — `CONSTRAINTS.md`, "Estorno
+      total ajusta cobertura por inferência"). Hoje o estorno total e a
+      desistência deduzem a cobertura dos ciclos e da assinatura ativa; o
+      que não dá pra saber com segurança vira pendência pro Admin (nunca
+      adivinha). Caso conhecido: renovação atrasada de assinatura substituída
+      que entrou na fila atrás de um benefício e depois é estornada — a fila
+      mantém os dias dela até o Admin tirar. Gravar, no caminho de pagamento,
+      a cobertura de antes/depois e os dias postos na fila por cada ciclo
+      fecha este item, o PG3 e os `limite:` de `estornos.js`.
