@@ -117,11 +117,13 @@ function prazoDaJanela(relogio, janela, horasDeRodizio) {
   return null;
 }
 
-// Os pontos em que a conta pode tocar AGORA — a mesma conta do gerador:
-// fatia de `pontosDoAnunciante` (escolha ou sorteio estável) e a trava de
-// ramo (a conta do mesmo ramo do ponto, ou de um ramo concorrente direto
-// dele, não entra, salvo a dona que escolheu o próprio ponto —
+// Os pontos em que uma peça da conta pode tocar AGORA — a mesma conta do
+// gerador: fatia de `pontosDoAnunciante` (escolha ou sorteio estável) e a
+// trava de ramo (o negócio do mesmo ramo do ponto, ou de um ramo concorrente
+// direto dele, não entra, salvo a dona que escolheu o próprio ponto —
 // gerador.js#anunciantesElegiveis, categorias/concorrencia.js).
+// `categoriaId`: a categoria do NEGÓCIO da peça (migration 121) — peças de
+// negócios diferentes da mesma conta têm coberturas diferentes.
 // limite: a cota de autoanúncio (`excluirContaId` do gerador) não entra —
 // zerada em todas as telas desde a migration 049.
 // Plano Básico do ponto (migration 103): o próprio ponto de cada Básico
@@ -129,7 +131,13 @@ function prazoDaJanela(relogio, janela, horasDeRodizio) {
 // e sem ocupar vaga da escolha comercial.
 // `redeInteira` (saldo de hospedagem, migration 113): as horas gratuitas
 // valem em qualquer ponto no ar — só a trava de ramo filtra.
-async function coberturaDaConta(conta, plano, db = pool, basicos = [], { redeInteira = false } = {}) {
+async function coberturaDaConta(
+  conta,
+  plano,
+  db = pool,
+  basicos = [],
+  { redeInteira = false, categoriaId = null } = {},
+) {
   const [{ rows: escolhas }, { rows: noAr }, bloqueados, concorrentes] = await Promise.all([
     db.query('SELECT ponto_id FROM anunciantes_pontos WHERE anunciante_id = $1 ORDER BY escolhido_em', [conta.id]),
     db.query(
@@ -149,7 +157,7 @@ async function coberturaDaConta(conta, plano, db = pool, basicos = [], { redeInt
         ORDER BY p.id, d.id`,
     ),
     pontosRepo.idsBloqueadosParaEscolha(),
-    concorrencia.concorrentesDe(conta.categoria_id, db),
+    concorrencia.concorrentesDe(categoriaId, db),
   ]);
   const escolhidos = escolhas.map((r) => r.ponto_id);
   const idsNoAr = [...new Set(noAr.map((p) => p.id))];
@@ -162,7 +170,7 @@ async function coberturaDaConta(conta, plano, db = pool, basicos = [], { redeInt
     (p) =>
       proprios.has(p.id) ||
       (naFatia.has(p.id) &&
-        (!concorrencia.bloqueia(p.categoria_id, conta.categoria_id, concorrentes) ||
+        (!concorrencia.bloqueia(p.categoria_id, categoriaId, concorrentes) ||
           (p.casa_id === conta.id && escolhidos.includes(p.id)))),
   );
 }
@@ -208,11 +216,20 @@ async function entradaNoArDasPecas({
   const aprovadas = criativos.filter((c) => c.status === 'aprovado');
   if (!aprovadas.length) return resultado;
   const emRodizio = aprovadas.filter((c) => c.em_rodizio);
-  const cobertura =
-    contaVeicula && (plano || basicos.length || saldoHospedagem > 0) && emRodizio.length
-      ? await coberturaDaConta(conta, plano, db, basicos, { redeInteira: !plano && !basicos.length })
-      : [];
-  const relogio = criarRelogioDaCobertura(cobertura);
+  const cobre = contaVeicula && (plano || basicos.length || saldoHospedagem > 0) && emRodizio.length;
+  // Uma cobertura por categoria de negócio (migration 121): a peça da
+  // "Academia Pizza" não conta a pizzaria; a da "Academia Burger" conta.
+  const porCategoria = new Map();
+  const coberturaDaPeca = async (c) => {
+    const categoriaId = c.negocio_categoria_id ?? null;
+    if (!porCategoria.has(categoriaId)) {
+      const cobertura = cobre
+        ? await coberturaDaConta(conta, plano, db, basicos, { redeInteira: !plano && !basicos.length, categoriaId })
+        : [];
+      porCategoria.set(categoriaId, { cobertura, relogio: criarRelogioDaCobertura(cobertura) });
+    }
+    return porCategoria.get(categoriaId);
+  };
 
   for (const c of aprovadas) {
     const aprovadoEm = c.aprovado_em ? new Date(c.aprovado_em) : new Date(c.created_at);
@@ -246,6 +263,7 @@ async function entradaNoArDasPecas({
       resultado.set(c.id, { ...base, estado: ESTADOS.NO_AR });
       continue;
     }
+    const { cobertura, relogio } = await coberturaDaPeca(c);
     if (!cobertura.length) {
       resultado.set(c.id, { ...base, estado: ESTADOS.APROVADO, motivo: 'sem_ponto_no_ar_na_cobertura' });
       continue;

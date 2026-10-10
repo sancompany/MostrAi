@@ -38,6 +38,7 @@ const cicloContratado = require('./ciclo-contratado');
 const estornos = require('./estornos');
 const { multiplicar } = require('../lib/dinheiro');
 const sse = require('../lib/sse');
+const { operadorDaRequisicao } = require('../lib/operador');
 const dataBR = (iso) => `${String(iso).slice(8, 10)}/${String(iso).slice(5, 7)}/${String(iso).slice(0, 4)}`;
 
 const uploadNota = multer({ dest: os.tmpdir() });
@@ -1031,14 +1032,6 @@ router.get('/admin/cobrancas', async (_req, res) => {
     }),
   );
 });
-
-// Quem está pedindo: o usuário do login do admin e, quando a requisição veio
-// pelo Cloudflare Access (a origem só aceita tráfego dele), o e-mail que o
-// Access autenticou — o login do admin é compartilhado; o Access, não.
-function operadorDaRequisicao(req) {
-  const access = String(req.get('cf-access-authenticated-user-email') || '').slice(0, 200) || null;
-  return { operador: req.session.adminUsuario || 'admin', operadorAccess: access };
-}
 
 // ESTORNAR (só Admin — está sob /admin, atrás do login e do Access). Cria o
 // PEDIDO; o dinheiro volta quando o operador executar na Asaas e só conta

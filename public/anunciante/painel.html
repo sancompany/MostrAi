@@ -140,6 +140,12 @@
               <div><p class="section-eyebrow">Biblioteca de anúncios</p><h2 id="tituloCriativos">Meus criativos</h2><span class="panel-subtitle" id="criativosSubtitulo">Vídeo ou imagem vertical · até 95 MB · sem áudio</span></div>
               <div class="criativos-actions"><span class="badge badge-neutro" id="contadorCriativos"></span><label class="btn primary upload-label" id="rotuloEnviarCriativo">Enviar criativo<input type="file" id="arquivoCriativo" accept="video/*,image/*" hidden></label></div>
             </div>
+            <!-- Quem este anúncio divulga? (migration 121): o negócio
+                 principal já vem marcado; outro negócio ou marca da mesma
+                 conta só aparece se a pessoa pedir. -->
+            <form class="negocio-envio" id="negocioEnvio" hidden novalidate>
+              <fieldset><legend>Quem este anúncio divulga?</legend><div id="negocioEscolha"></div></fieldset>
+            </form>
             <input type="file" id="arquivoSubstituto" accept="video/*,image/*" hidden>
             <p class="form-msg" id="uploadMsg" role="status"></p>
             <button type="button" class="btn ghost mini" id="uploadAcao" hidden></button>

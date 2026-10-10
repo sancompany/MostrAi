@@ -207,6 +207,27 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
   tirar os dias à mão; nunca adivinha. limite: gravar a janela e a
   contribuição à fila por ciclo no caminho de pagamento resolve
   (`docs/PENDENCIAS.md`, PG5).
+- **Negócio ou marca por criativo: limites da primeira versão** (10/10/2026,
+  RN-74, migration 121).
+  - A escolha de pontos e o sorteio automático continuam sem olhar categoria
+    (já era assim por conta): a conta pode ficar com um ponto onde parte das
+    peças é barrada, e esse ponto segue contando na RN-49. limite: oferecer
+    na escolha "nestes pontos a peça X não aparece" quando houver demanda.
+  - Numa tela onde só parte das peças da conta passa, a duração média que
+    converte os segundos do plano em inserções é a das peças que passam —
+    os segundos contratados não mudam.
+  - A revenda de vaga pra empresa sem relação é contida pela declaração do
+    cliente e pela aprovação da Mostraí, não por documento: não se pede CNPJ
+    do negócio adicional. limite: exigir documento por negócio se aparecer
+    abuso.
+  - Negócio não se apaga nem se arquiva pela tela (o banco recusa apagar
+    negócio com criativo); o que ficou sem peça (envio que falhou) some da
+    lista e é reaproveitado pelo nome. limite: arquivar pela ficha do Admin.
+  - O upload feito pelo próprio Admin valida o negócio mesmo sem categoria
+    (é o Admin decidindo, e conta sem categoria nunca foi barrada); a fila de
+    aprovação exige categoria antes de aprovar.
+  - Criativo do anunciante não tem nome próprio: a fila mostra prévia, tipo,
+    duração, data, conta, negócio e categoria.
 - ~~`og:image` com caminho relativo~~ — **limite fechado em 14/09/2026**: o
   domínio existe (`mostrai.sancocore.com.br`), e `og:image`, `og:url` e
   `canonical` passaram a ser absolutos nas 26 páginas.

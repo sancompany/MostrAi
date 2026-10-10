@@ -1,7 +1,8 @@
 const pool = require('../db/pool');
 
 // Concorrentes diretos entre categorias (migration 105). A proteção do dono
-// da tela é CATEGORIA DO PONTO × CATEGORIA DO ANUNCIANTE:
+// da tela é CATEGORIA DO PONTO × CATEGORIA DO NEGÓCIO que a peça divulga
+// (validada pela Mostraí; migration 121 — antes era a da conta inteira):
 //
 //   1. mesma categoria                          → bloqueia
 //   2. par registrado em categorias_concorrentes → bloqueia

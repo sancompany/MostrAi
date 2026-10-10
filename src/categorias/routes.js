@@ -178,6 +178,14 @@ router.post('/admin/categorias/:id/mesclar', async (req, res) => {
       origemId,
       destinoId,
     ]);
+    // Os negócios anunciados (migration 121) também: é deles a categoria que
+    // a trava de ramo compara — um negócio parado na absorvida perderia os
+    // concorrentes que `moverNaFusao` leva pro destino. É o mesmo negócio
+    // com outro nome: a validação continua valendo.
+    const negociosMovidos = await cliente.query('UPDATE negocios SET categoria_id = $2 WHERE categoria_id = $1', [
+      origemId,
+      destinoId,
+    ]);
     // Quem já tinha sido absorvido pela origem passa a apontar pro destino —
     // o mapeamento nunca fica em cadeia.
     await cliente.query('UPDATE categorias SET canonica_id = $2 WHERE canonica_id = $1', [origemId, destinoId]);
@@ -192,7 +200,12 @@ router.post('/admin/categorias/:id/mesclar', async (req, res) => {
       aliases,
     ]);
     await cliente.query('COMMIT');
-    res.json({ destino: atualizada[0], contas_movidas: contas.rowCount, pontos_movidos: pontos.rowCount });
+    res.json({
+      destino: atualizada[0],
+      contas_movidas: contas.rowCount,
+      pontos_movidos: pontos.rowCount,
+      negocios_movidos: negociosMovidos.rowCount,
+    });
   } catch (err) {
     await cliente.query('ROLLBACK').catch(() => {});
     throw err;

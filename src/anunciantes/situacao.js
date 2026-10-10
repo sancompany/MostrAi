@@ -406,6 +406,8 @@ async function situacaoDaConta(contaId, agora = new Date()) {
     aprovadosForaDoAr: criativos.filter((c) => c.status === 'aprovado' && !c.em_rodizio).length,
     retirados: criativos.filter((c) => c.status === 'retirado').length,
     recusados: criativos.filter((c) => c.status === 'reprovado').length,
+    // "Correção necessária" (migration 121): esperando o cliente.
+    emCorrecao: criativos.filter((c) => c.status === 'correcao').length,
     substituicoesPendentes: substituicoes,
     contaVeicula,
   };

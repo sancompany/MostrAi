@@ -632,6 +632,8 @@ window.ROTULOS = {
     pausado: 'Pausado',
     fora_do_ar: 'Fora do ar',
     recusado: 'Recusado',
+    // A Mostraí pediu pra corrigir o negócio ou a categoria (migration 121).
+    correcao_necessaria: 'Correção necessária',
   },
   criativoSituacaoClasse: {
     em_analise: 'badge-pendente',
@@ -643,6 +645,7 @@ window.ROTULOS = {
     pausado: 'badge-pendente',
     fora_do_ar: 'badge-neutro',
     recusado: 'badge-err',
+    correcao_necessaria: 'badge-pendente',
   },
   // Créditos e benefícios. As chaves de tier são as do banco (planos.tier);
   // o nome que o cliente vê é outro desde a grade nova.

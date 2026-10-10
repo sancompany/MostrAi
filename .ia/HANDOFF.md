@@ -1,6 +1,33 @@
 # Current Handoff
 
 ## Updated
+2026-10-10 — **Negócio ou marca por criativo** (migration 121; RN-74;
+branch `claude/busy-noether-hheir2`). Decisões do dono: negócio validado
+fica TRAVADO para o cliente (só o Admin muda); "Correção necessária" conta
+como responsabilidade do cliente na obrigação.
+- `negocios` (um principal por conta + adicionais com declaração de mesmo
+  responsável/grupo) e `criativos.negocio_id` com FK composta
+  (anunciante_id, negocio_id) — o banco recusa negócio de outra conta.
+  Gatilhos: principal criado na hora (`negocio_principal()`), principal não
+  validado acompanha o cadastro da conta, aprovação valida o negócio
+  (`negocios_validacoes` = auditoria), playlist desatualizada.
+- A trava de ramo (`travaDeRamoSql`, gerador) passou a ser POR PEÇA, com
+  `n.categoria_id` do negócio validado. Ordem: o limite do plano escolhe as
+  peças da conta na rede inteira, depois a trava tira as barradas da tela
+  (nunca põe outra no lugar). Saldo de hospedagem filtra pelo mesmo Set.
+  `entrada-no-ar` calcula cobertura por categoria de negócio.
+- Domínio: `src/anunciantes/negocios.js`. Rotas novas: `GET/PATCH
+  /anunciantes/me/negocios`, `POST /anunciantes/me/criativos/:id/reenviar`,
+  `GET /admin/anunciantes/:id/negocios`, `PATCH /admin/negocios/:id`;
+  `PATCH /admin/criativos/:id` aceita `correcao` e `categoria_id` +
+  `motivo_categoria`. Operador: `src/lib/operador.js` (antes local no
+  financeiro).
+- Testes: `tests/negocios.test.js` (30 itens do pedido), e2e 47. Limites da
+  primeira versão: `CONSTRAINTS.md`.
+- Não confundir: `anunciantes.categoria_id` continua existindo pro lado
+  ponto (categoria inicial do ponto, hospedagem); a do anúncio é a do
+  negócio.
+
 2026-10-10 — **E2E 02 de volta ao verde** (só roteiros). Depende do 01
 (contas ana/joao e cookies) e agora para na hora, dizendo isso, se rodado
 sozinho. `reset-db.sh` limpa `webhooks_recebidos`: os ids fixos do 02

@@ -59,7 +59,11 @@ function contarEntrada(itens) {
 // docs/player-mvp-contract.md §5). Não reinicia o Player nem mexe na hora
 // congelada — é o mesmo sinal que qualquer aprovação já dispara.
 async function pedirAtualizacaoDasTelas(criativoId) {
-  const { rows } = await pool.query('SELECT anunciante_id, status FROM criativos WHERE id = $1', [criativoId]);
+  const { rows } = await pool.query(
+    `SELECT c.anunciante_id, c.status, n.categoria_id
+       FROM criativos c JOIN negocios n ON n.id = c.negocio_id WHERE c.id = $1`,
+    [criativoId],
+  );
   if (!rows[0]) return null;
   const conta = await repo.buscarPorId(rows[0].anunciante_id);
   const planoId = conta ? repo.planoVigenteId(conta) : null;
@@ -67,7 +71,10 @@ async function pedirAtualizacaoDasTelas(criativoId) {
   // Plano Básico do ponto (migration 103): o próprio ponto também é cobertura.
   const basicos = conta ? await require('../pontos/basico').ativosDaConta(conta.id) : [];
   if ((!plano && !basicos.length) || rows[0].status !== 'aprovado') return { telas: 0 };
-  const pontos = (await coberturaDaConta(conta, plano, undefined, basicos)).map((p) => p.id);
+  // A cobertura DESTA peça: a trava de ramo é pela categoria do negócio dela.
+  const pontos = (await coberturaDaConta(conta, plano, undefined, basicos, { categoriaId: rows[0].categoria_id })).map(
+    (p) => p.id,
+  );
   if (!pontos.length) return { telas: 0 };
   const { rowCount } = await pool.query(
     `UPDATE dispositivos SET playlist_desatualizada_em = clock_timestamp()

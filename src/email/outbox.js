@@ -150,6 +150,10 @@ const MODELOS = {
     classe: 'operacional',
     enviar: (l) => email.enviarCriativoReprovado(conta(l), l.dados.criativo),
   },
+  criativo_correcao: {
+    classe: 'operacional',
+    enviar: (l) => email.enviarCriativoCorrecao(conta(l), l.dados.criativo),
+  },
   ponto_aprovado: { classe: 'operacional', enviar: (l) => email.enviarPontoAprovado(conta(l)) },
   ponto_recusado: { classe: 'operacional', enviar: (l) => email.enviarPontoRecusado(conta(l)) },
 
