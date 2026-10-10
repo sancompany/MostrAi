@@ -1827,7 +1827,7 @@ async function renderCriativos(el) {
           <div class="acoes item-acoes">
             <button class="btn ghost mini" data-acao="aprovado" data-id="${c.id}">Aprovar</button>
             ${deCliente ? `<button class="btn ghost mini" data-acao="aprovar-categoria" data-id="${c.id}">Alterar categoria e aprovar</button>` : ''}
-            ${deCliente ? `<button class="btn ghost mini" data-acao="correcao" data-id="${c.id}">Solicitar correção</button>` : ''}
+            ${deCliente && !c.substitui_criativo_id ? `<button class="btn ghost mini" data-acao="correcao" data-id="${c.id}">Solicitar correção</button>` : ''}
             <button class="btn ghost mini" data-ajustar="${c.id}">Ajustar mídia</button>
             <button class="btn perigo-sutil mini" data-acao="reprovado" data-id="${c.id}">Reprovar</button>
           </div>
@@ -1856,9 +1856,10 @@ async function renderCriativos(el) {
       const c = criativos.find((x) => x.id === Number(btn.dataset.id));
       if (btn.dataset.acao === 'reprovado') return recusarCriativo(c, aposDecidir);
       if (btn.dataset.acao === 'correcao') return pedirCorrecaoCriativo(c, aposDecidir);
-      // Negócio sem categoria (o cliente marcou "não encontrei a minha") não
-      // se aprova assim: a Mostraí escolhe a categoria antes (migration 121).
-      const semCategoria = !nomeMidiaPor[c.id] && !c.negocio_validado_em && !c.negocio_categoria_id;
+      // Negócio sem categoria (o cliente marcou "não encontrei a minha", ou
+      // o upload do operador validou sem ela) não se aprova assim: a Mostraí
+      // escolhe a categoria antes (migration 121).
+      const semCategoria = !nomeMidiaPor[c.id] && !c.negocio_categoria_id;
       if (btn.dataset.acao === 'aprovar-categoria' || semCategoria) {
         return aprovarComCategoria(c, aposDecidir, { semCategoria });
       }
@@ -6720,9 +6721,12 @@ function desenharContaCriativos(el, ctx) {
             acoes.push(
               `<button type="button" class="btn ghost mini" data-cr-categoria="${c.id}">Alterar categoria e aprovar</button>`,
             );
-            acoes.push(
-              `<button type="button" class="btn ghost mini" data-cr-correcao="${c.id}">Solicitar correção</button>`,
-            );
+            // A substituta divulga o negócio da peça que troca: sem correção.
+            if (!c.substitui_criativo_id) {
+              acoes.push(
+                `<button type="button" class="btn ghost mini" data-cr-correcao="${c.id}">Solicitar correção</button>`,
+              );
+            }
           }
           acoes.push(`<button type="button" class="btn ghost mini" data-cr-arquivo="${c.id}">Trocar arquivo</button>`);
           acoes.push(`<button type="button" class="btn perigo-sutil mini" data-cr-recusar="${c.id}">Recusar</button>`);
@@ -6843,7 +6847,7 @@ function desenharContaCriativos(el, ctx) {
     b.addEventListener('click', async () => {
       const c = achar(b.dataset.crAprovar);
       // Negócio sem categoria: a Mostraí escolhe antes de aprovar.
-      if (!ctx.conta.conta_propria && !c.negocio_validado_em && !c.negocio_categoria_id) {
+      if (!ctx.conta.conta_propria && !c.negocio_categoria_id) {
         return aprovarComCategoria(c, aposDecidir, { semCategoria: true });
       }
       if (c.substitui_criativo_id) {
@@ -7054,7 +7058,7 @@ function aprovarComCategoria(c, aoTerminar, { semCategoria = false } = {}) {
   const { dlg, fechar } = abrirModal({
     titulo: semCategoria ? 'Escolha a categoria e aprove' : 'Alterar categoria e aprovar',
     corpo: `<p class="u-mt-0">Negócio ou marca: <strong>${esc(c.negocio_nome || '')}</strong><br>Categoria declarada: <strong>${esc(declarada)}</strong></p>
-      ${semCategoria ? '<p class="item-nota">O cliente não achou a categoria dele no catálogo. Sem categoria, este negócio não seria protegido nem barrado como concorrente.</p>' : ''}
+      ${semCategoria ? '<p class="item-nota">Este negócio ainda não tem categoria do catálogo. Sem ela, não seria protegido nem barrado como concorrente.</p>' : ''}
       <label for="aprovarCategoriaBusca">Categoria certa</label>
       ${categoriaBuscaHtml('aprovarCategoria', null)}
       <label for="aprovarCategoriaMotivo">Motivo <span class="u-dim">(fica no histórico do negócio)</span></label>

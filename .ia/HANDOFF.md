@@ -27,6 +27,12 @@ como responsabilidade do cliente na obrigação.
 - Não confundir: `anunciantes.categoria_id` continua existindo pro lado
   ponto (categoria inicial do ponto, hospedagem); a do anúncio é a do
   negócio.
+- Revisão do Codex no PR #133: peça nova da fila exige categoria mesmo com
+  o negócio já validado sem ela (o upload do operador valida sem exigir);
+  peça `retirado` que volta ao ar não é aprovação nova e não exige.
+  Substituta não vai pra correção (divulga o negócio da peça que troca —
+  se não serve, recusa). A checagem "só peça em análise vai pra correção"
+  roda na linha travada.
 
 2026-10-10 — **E2E 02 de volta ao verde** (só roteiros). Depende do 01
 (contas ana/joao e cookies) e agora para na hora, dizendo isso, se rodado

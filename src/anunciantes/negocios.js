@@ -59,9 +59,15 @@ async function listarDaConta(contaId, db = pool) {
   return rows;
 }
 
+// Id vindo da requisição: inteiro positivo que cabe no `int` do banco, ou null.
+function lerId(bruto) {
+  const id = Number(bruto);
+  return Number.isInteger(id) && id > 0 && id <= 2147483647 ? id : null;
+}
+
 async function buscarDaConta(contaId, negocioId, db = pool, { travar = false } = {}) {
-  const id = Number(negocioId);
-  if (!Number.isInteger(id) || id <= 0 || id > 2147483647) return null;
+  const id = lerId(negocioId);
+  if (!id) return null;
   const { rows } = await db.query(
     `SELECT ${CAMPOS} FROM negocios n LEFT JOIN categorias k ON k.id = n.categoria_id
       WHERE n.id = $1 AND n.anunciante_id = $2${travar ? ' FOR UPDATE OF n' : ''}`,
@@ -222,9 +228,11 @@ function lerMotivo(bruto) {
 // dele sai validado. `categoriaId` é a categoria FINAL que o Admin escolheu
 // ("Alterar categoria e aprovar") — diferente da que estava, exige motivo e
 // fica na auditoria com a de antes. Sem categoria nenhuma (o cliente marcou
-// "não encontrei a minha"), não aprova: negócio validado sem categoria nunca
-// seria barrado como concorrente. `exigirCategoria: false` só pra quem o
-// Admin aprova sem fila (o upload do operador, a conta própria).
+// "não encontrei a minha"), não aprova — nem quando o negócio já foi
+// validado sem ela (upload do operador): peça sem categoria nunca seria
+// barrada como concorrente (revisão do PR #133). `exigirCategoria: false` só
+// pra quem o Admin aprova sem fila (o upload do operador, a conta própria) e
+// pra peça retirada que volta ao ar (não é aprovação nova).
 async function validarNaAprovacao(
   db,
   criativo,
@@ -241,10 +249,10 @@ async function validarNaAprovacao(
   }
   const corrigida = final !== atual.categoria_id;
   if (corrigida && !lerMotivo(motivo)) throw new ErroNegocio('diga o motivo de alterar a categoria');
-  if (atual.validado_em && !corrigida) return atual;
   if (!final && exigirCategoria) {
     throw new ErroNegocio('escolha a categoria deste negócio antes de aprovar');
   }
+  if (atual.validado_em && !corrigida) return atual;
   await db.query(
     `UPDATE negocios
         SET categoria_id = $2,
@@ -273,9 +281,11 @@ async function validarNaAprovacao(
 // cliente pediu, ou a Mostraí percebeu). Sempre com motivo; o negócio fica
 // validado — foi a Mostraí que decidiu.
 async function editarPeloAdmin(db, negocioId, { nome, categoriaId, motivo, operador, operadorAccess }) {
+  const id = lerId(negocioId);
+  if (!id) throw new ErroNegocio('negócio não encontrado', 404);
   const { rows } = await db.query(
     `SELECT ${CAMPOS} FROM negocios n LEFT JOIN categorias k ON k.id = n.categoria_id WHERE n.id = $1 FOR UPDATE OF n`,
-    [Number(negocioId)],
+    [id],
   );
   const atual = rows[0];
   if (!atual) throw new ErroNegocio('negócio não encontrado', 404);

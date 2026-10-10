@@ -160,6 +160,11 @@ test('a substituição aprovada marca o original como retirado pela substituiç�
   const app = await subirApp();
   const c = await conta();
   contas.push(c.id);
+  // Com categoria: peça da fila sem ela não se aprova (migration 121).
+  await pool.query(
+    `UPDATE anunciantes SET categoria_id = (SELECT id FROM categorias WHERE nome = 'Academia') WHERE id = $1`,
+    [c.id],
+  );
   try {
     const original = await peca(c.id, 'aprovado');
     const nova = await criativosRepo.criar({

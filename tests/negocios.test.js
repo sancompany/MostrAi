@@ -507,6 +507,60 @@ test('negócio sem categoria (o cliente não achou a dele) só é aprovado com a
   assert.ok(negocio.validado_em);
 });
 
+// Revisão do PR #133 (Codex): o upload do operador valida o negócio mesmo
+// sem categoria; a peça seguinte do cliente, pela fila, não pode pegar
+// carona nessa validação e entrar no ar sem categoria nenhuma.
+test('negócio validado sem categoria: peça nova do cliente ainda exige a categoria; recolocar no ar não', async () => {
+  const conta = await novaConta();
+  const form = new FormData();
+  form.append('arquivo', new Blob([Buffer.from('video')], { type: 'video/mp4' }), 'peca.mp4');
+  const r = await fetch(`${base}/admin/anunciantes/${conta.id}/criativos`, {
+    method: 'POST',
+    headers: { 'x-admin': 'operador-teste' },
+    body: form,
+  });
+  const doOperador = await r.json();
+  assert.strictEqual(r.status, 201);
+  const principal = await linha('negocios', doOperador.negocio_id);
+  assert.ok(principal.validado_em, 'o upload do operador valida o negócio');
+  assert.strictEqual(principal.categoria_id, null);
+  // Peça do operador retirada e recolocada: não é aprovação nova.
+  await chamar('PATCH', `/admin/criativos/${doOperador.id}`, { admin: 'op', corpo: { status: 'retirado' } });
+  const recolocada = await aprovar(doOperador.id);
+  assert.strictEqual(recolocada.status, 200);
+  // Peça nova do cliente, mesmo negócio: só com a categoria.
+  const env = await enviar(conta);
+  assert.strictEqual(env.json.negocio_id, doOperador.negocio_id);
+  const semCategoria = await aprovar(env.json.id);
+  assert.strictEqual(semCategoria.status, 400);
+  assert.match(semCategoria.json.erro, /categoria/);
+  assert.strictEqual((await linha('criativos', env.json.id)).status, 'pendente');
+  const ok = await aprovar(env.json.id, {
+    categoria_id: await idDaCategoria('Academia'),
+    motivo_categoria: 'classificada pela Mostraí',
+  });
+  assert.strictEqual(ok.status, 200);
+  assert.strictEqual((await linha('negocios', doOperador.negocio_id)).categoria_id, await idDaCategoria('Academia'));
+});
+
+// Revisão do PR #133 (Codex): a substituta herda o negócio da peça que ela
+// troca — não há negócio nem categoria pro cliente corrigir. Em "correção",
+// ela sumiria de toda checagem de "substituta em análise" e a conta poderia
+// mandar outra; se não serve, o Admin recusa.
+test('substituta não vai para correção', async () => {
+  const conta = await novaConta({ categoria: await idDaCategoria('Academia') });
+  const original = await enviar(conta);
+  await aprovar(original.json.id);
+  const substituta = await enviar(conta, { substitui: original.json.id });
+  assert.strictEqual(substituta.status, 201);
+  const r = await chamar('PATCH', `/admin/criativos/${substituta.json.id}`, {
+    admin: 'op',
+    corpo: { status: 'correcao', motivo_reprovacao: 'categoria errada' },
+  });
+  assert.strictEqual(r.status, 409);
+  assert.strictEqual((await linha('criativos', substituta.json.id)).status, 'pendente');
+});
+
 // ---------------------------------------------------------------------------
 // Proteção contra concorrentes por negócio
 // ---------------------------------------------------------------------------
@@ -606,6 +660,11 @@ test('o Admin altera um negócio validado com motivo (auditado) e a trava segue 
     corpo: { categoria_id: pizzaria },
   });
   assert.strictEqual(semMotivo.status, 400);
+  const idInvalido = await chamar('PATCH', '/admin/negocios/abc', {
+    admin: 'op',
+    corpo: { categoria_id: pizzaria, motivo: 'x' },
+  });
+  assert.strictEqual(idInvalido.status, 404);
   const r = await chamar('PATCH', `/admin/negocios/${env.json.negocio_id}`, {
     admin: 'op',
     corpo: { categoria_id: pizzaria, motivo: 'a academia virou pizzaria' },

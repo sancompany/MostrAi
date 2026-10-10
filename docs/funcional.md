@@ -874,7 +874,8 @@ com a conta — o banco recusa negócio de outra conta).
   a Mostraí aprovar um criativo daquele negócio (`validado_em`). A trava de
   ramo (RN-57) só compara categoria validada — peça não aprovada nunca
   veicula, e negócio sem validação nunca decide nada. Negócio sem categoria
-  ("não encontrei a minha") não é aprovado sem o Admin escolher uma.
+  ("não encontrei a minha", ou validado sem ela pelo upload do operador) não
+  tem peça nova aprovada sem o Admin escolher uma.
 - **Admin.** A fila de aprovação mostra conta, negócio e categoria declarada
   em destaque, com Aprovar · Alterar categoria e aprovar · Solicitar correção
   · Reprovar. "Alterar categoria e aprovar" grava em `negocios_validacoes` a
@@ -887,7 +888,9 @@ com a conta — o banco recusa negócio de outra conta).
   categoria do negócio ainda não validado — e reenvia a mesma peça, que volta
   pra análise. Ocupa a vaga do plano como a peça em análise. Na obrigação é
   responsabilidade do CLIENTE, como a recusada (decisão do dono): se for a
-  única peça, abre a janela de indisponibilidade do cliente.
+  única peça, abre a janela de indisponibilidade do cliente. Substituta não
+  vai pra correção: ela divulga o negócio da peça que troca — se não serve,
+  o Admin recusa.
 - **Depois de validado, só o Admin muda** nome e categoria (decisão do dono,
   10/10/2026) — o cliente que precisar mudar anuncia como outro negócio. A
   categoria da conta no perfil não muda a do negócio validado.

@@ -40,15 +40,11 @@ router.patch('/admin/criativos/:id', async (req, res) => {
     if ((await midiasRepo.situacaoPorCriativo(req.params.id)) === 'excluida') {
       return res.status(409).json({ erro: 'esse arquivo é de uma mídia excluída — não muda mais' });
     }
-    // "Solicitar correção" (migration 121): só da peça em análise, e sempre
-    // com o que corrigir — é a mensagem que o cliente recebe.
-    if (req.body.status === 'correcao') {
-      if (antes.status !== 'pendente') {
-        return res.status(409).json({ erro: 'só uma peça em análise pode voltar para correção' });
-      }
-      if (!String(req.body.motivo_reprovacao ?? '').trim()) {
-        return res.status(400).json({ erro: 'diga ao cliente o que corrigir' });
-      }
+    // "Solicitar correção" (migration 121): sempre com o que corrigir — é a
+    // mensagem que o cliente recebe. Só da peça em análise: conferido na
+    // linha travada, abaixo.
+    if (req.body.status === 'correcao' && !String(req.body.motivo_reprovacao ?? '').trim()) {
+      return res.status(400).json({ erro: 'diga ao cliente o que corrigir' });
     }
     const dono = await anunciantesRepo.buscarPorId(antes.anunciante_id);
     let criativo;
@@ -62,12 +58,25 @@ router.patch('/admin/criativos/:id', async (req, res) => {
       // A linha travada é a que vale: o cliente pode ter reenviado a peça
       // (com outro negócio) entre a leitura acima e este ponto.
       const travado = (await cliente.query('SELECT * FROM criativos WHERE id = $1 FOR UPDATE', [antes.id])).rows[0];
+      if (req.body.status === 'correcao' && travado?.status !== 'pendente') {
+        throw new negocios.ErroNegocio('só uma peça em análise pode voltar para correção', 409);
+      }
+      // A substituta divulga o negócio da peça que ela troca: não há o que o
+      // cliente corrigir, e em "correção" ela escaparia de toda checagem de
+      // "substituta em análise" (revisão do PR #133). Se não serve, recuse.
+      if (req.body.status === 'correcao' && travado.substitui_criativo_id) {
+        throw new negocios.ErroNegocio(
+          'esta peça substitui outra e divulga o mesmo negócio dela — se não serve, recuse',
+          409,
+        );
+      }
       if (req.body.status === 'aprovado' && travado && travado.status !== 'aprovado') {
         await negocios.validarNaAprovacao(cliente, travado, {
           categoriaId: req.body.categoria_id,
           motivo: req.body.motivo_categoria,
           ...operadorDaRequisicao(req),
-          exigirCategoria: !dono?.conta_propria,
+          // Peça retirada que volta ao ar já passou pela aprovação.
+          exigirCategoria: !dono?.conta_propria && travado.status !== 'retirado',
         });
       }
       // Substituição (reconstrução de Contas, 23/09/2026, Parte 22): aprovar B
