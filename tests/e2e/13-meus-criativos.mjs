@@ -116,8 +116,8 @@ check('Em análise: a substituta diz que a atual segue no ar', (await card(subst
 check('Aprovado fora do rodízio explica o limite do plano', /Aprovado[\s\S]*roda 1 peça/.test(await card(reserva)));
 check('Recusado mostra o motivo', (await card(recusada)).includes('texto ilegível'));
 check('Fora do ar aparece como tal', (await p.textContent('#listaCriativos')).includes('Fora do ar'));
-check('onde roda: rede e tela do comércio', /pontos do seu plano e na tela do seu comércio/.test(await p.textContent('#criativosSubtitulo')));
-check('duração do plano no subtítulo', (await p.textContent('#criativosSubtitulo')).includes('15 segundos'));
+check('onde roda: rede e tela do comércio', /pontos do seu plano e na tela do seu comércio/.test(await p.textContent('#criativosOndeRoda')));
+check('duração do plano nas regras do arquivo', (await p.textContent('#criativosSubtitulo')).includes('até 15 s'));
 // Mesma conta de criativosRepo.contarNaoReprovados: retirado (fora do ar)
 // não ocupa vaga desde o #88 (finalização, 28/09/2026).
 check('contador de cadastro', (await p.textContent('#contadorCriativos')).trim() === `${PG(`SELECT count(*) FROM criativos WHERE anunciante_id=${conta.id} AND status NOT IN ('reprovado', 'retirado') AND NOT (status='pendente' AND substitui_criativo_id IS NOT NULL)`)} de 1 criativo utilizado`);

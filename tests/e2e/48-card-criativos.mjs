@@ -131,28 +131,74 @@ await p.focus('#botaoEnviarCriativo');
 await p.keyboard.press('Enter');
 await p.waitForSelector('#envioCriativo:not([hidden])');
 check('[3] modo de criação abre dentro do card: "Novo criativo"', (await texto(p, '#tituloEnvio')) === 'Novo criativo');
-check('[3] com "← Cancelar envio"', /Cancelar envio/.test(await texto(p, '#cancelarEnvio')) && (await visivel(p, '#cancelarEnvio')));
-check('[3] passo 1: Arquivo', (await texto(p, '#rotuloEtapaArquivo')) === '1. Arquivo' && (await texto(p, '#escolherArquivo')) === 'Selecionar vídeo ou imagem');
-check('[3] passo 2: Quem este anúncio divulga?', (await texto(p, '#negocioEnvio legend')) === '2. Quem este anúncio divulga?');
+check('[3] subtítulo do bloco', (await texto(p, '#envioSub')) === 'Configure a peça antes de enviá-la para análise.');
+check(
+  '[3] "Cancelar" discreto no topo (nome acessível "Cancelar envio")',
+  (await texto(p, '#cancelarEnvio')) === 'Cancelar' && (await p.getAttribute('#cancelarEnvio', 'aria-label')) === 'Cancelar envio',
+);
+check('[3] seção ARQUIVO, sem numeração', (await texto(p, '#rotuloEtapaArquivo')) === 'Arquivo');
+check(
+  '[3] área de soltar: arrastar ou "Selecionar arquivo", com as regras curtas',
+  /Arraste seu vídeo ou imagem aqui/.test(await texto(p, '#dropzone')) &&
+    (await texto(p, '#escolherArquivo')) === 'Selecionar arquivo' &&
+    (await texto(p, '#criativosSubtitulo')) === 'Vertical · até 15 s · até 95 MB · sem áudio',
+  await texto(p, '#criativosSubtitulo'),
+);
+check('[3] seção NEGÓCIO ANUNCIADO, com a frase de apoio', (await texto(p, '#negocioEnvio legend')) === 'Negócio anunciado' && /Escolha quem aparece nesta peça/.test(await texto(p, '#negocioEnvio')));
 check('[3] botão "Enviar para análise"', await visivel(p, '#enviarParaAnalise'));
+check(
+  '[9-estado] recém-aberto: botão inativo (aria-disabled) e o rodapé diz o que falta',
+  (await p.getAttribute('#enviarParaAnalise', 'aria-disabled')) === 'true' &&
+    (await texto(p, '#envioDica')) === 'Selecione o arquivo da peça para enviar.' &&
+    (await visivel(p, '#envioDica')),
+);
+await p.locator('#modCriativos').screenshot({ path: `${SAIDA}1b-composer-aberto.png` });
 check('[26] foco foi pro primeiro controle (o arquivo)', await p.evaluate(() => document.activeElement?.id === 'escolherArquivo'));
 check('[3] a biblioteca e o botão do topo saem de cena', !(await visivel(p, '#listaCriativos')) && !(await visivel(p, '#botaoEnviarCriativo')));
 check('[4] o principal vem marcado', (await p.locator('#negocioEscolha .negocio-opcao').count()) === 1 && (await p.isChecked('#negocioEscolha .negocio-opcao input')));
 check('[4] radio de verdade, com nome', (await p.getAttribute('#negocioEscolha .negocio-opcao input', 'type')) === 'radio');
+check('[6] "outro negócio ou marca" é uma opção do mesmo grupo, desmarcada', (await p.getAttribute('[data-negocio-outro]', 'type')) === 'radio' && !(await p.isChecked('[data-negocio-outro]')));
 check('[6] o negócio novo só abre a pedido', !(await visivel(p, '[data-negocio-novo]')));
+// Teclado: do arquivo, Tab vai pro negócio marcado; as setas andam no grupo
+// de rádios — e "outro negócio" abre os campos só enquanto está marcado.
+await p.focus('#escolherArquivo');
+await p.keyboard.press('Tab');
+check('[26] Tab do arquivo vai pro negócio marcado', await p.evaluate(() => document.activeElement?.type === 'radio' && document.activeElement.checked));
+await p.keyboard.press('ArrowDown');
+check('[26] seta no grupo marca "outro negócio" e abre os campos', (await p.isChecked('[data-negocio-outro]')) && (await visivel(p, '[data-negocio-novo]')));
+await p.keyboard.press('ArrowUp');
+check('[26] seta de volta: principal marcado, campos fechados', (await p.isChecked('#negocioEscolha .negocio-opcao input')) && !(await visivel(p, '[data-negocio-novo]')));
 
 console.log('== 3. "+ Anunciar outro negócio ou marca" e cancelar: nada é criado ==');
 const negociosAntes = contarNegocios(ess.id);
 await p.click('[data-negocio-outro]');
 check('[6] formulário da marca nova aparece sob demanda', await visivel(p, '[data-negocio-novo]'));
-check('[6] com nome, categoria e "mesmo grupo"', (await visivel(p, '[data-negocio-nome]')) && (await p.locator('[data-negocio-grupo]').count()) === 1);
+check(
+  '[6] a escolha ativa fica clara: "outro" marcado, o principal desmarcado',
+  (await p.isChecked('[data-negocio-outro]')) && !(await p.isChecked('#negocioEscolha .negocio-opcao input')),
+);
+check('[6] sub-bloco "Novo negócio ou marca" com nome, categoria e "mesmo grupo"', (await texto(p, '.negocio-novo-titulo')) === 'Novo negócio ou marca' && (await visivel(p, '[data-negocio-nome]')) && (await p.locator('[data-negocio-grupo]').count()) === 1);
 await p.fill('[data-negocio-nome]', 'Marca Cancelada');
 await p.setInputFiles('#arquivoCriativo', VIDEO);
 check(
-  'o arquivo escolhido aparece (nome e tamanho), sem subir nada',
-  /Arquivo escolhido: 48-peca\.mp4 \((\d+ KB|\d+,\d MB)\)/.test(await texto(p, '#arquivoEscolhido')) && contarCriativos(ess.id) === 0,
-  await texto(p, '#arquivoEscolhido'),
+  '[5-estado] o arquivo escolhido aparece NA área de soltar (prévia, nome, tamanho, estado), sem subir nada',
+  (await visivel(p, '#dropzone #arquivoCard')) &&
+    !(await visivel(p, '#dropzoneVazia')) &&
+    (await texto(p, '#arquivoEscolhido')) === '48-peca.mp4' &&
+    /^(\d+ KB|\d+,\d MB)$/.test(await texto(p, '#arquivoTamanho')) &&
+    (await texto(p, '#arquivoEstado')) === 'Selecionado' &&
+    // Prévia: o quadro do vídeo, ou o bloco escuro com ▶ quando o navegador
+    // não decodifica o formato (o Chromium do Playwright não tem H.264).
+    (await visivel(p, '#arquivoPrevia')) &&
+    contarCriativos(ess.id) === 0,
+  `${await texto(p, '#arquivoCard')}`,
 );
+check(
+  '[9-estado] com o negócio novo incompleto, o botão segue inativo e diz o que falta',
+  (await p.getAttribute('#enviarParaAnalise', 'aria-disabled')) === 'true' && /categoria/.test(await texto(p, '#envioDica')),
+  await texto(p, '#envioDica'),
+);
+await p.locator('#modCriativos').screenshot({ path: `${SAIDA}1c-outro-negocio-com-arquivo.png` });
 await p.click('#cancelarEnvio');
 check('[7] cancelar fecha o modo', !(await visivel(p, '#envioCriativo')));
 check('[7] volta pra biblioteca, com o botão do topo', (await visivel(p, '#listaCriativos')) && (await visivel(p, '#botaoEnviarCriativo')));
@@ -161,14 +207,27 @@ check('[7] nenhum negócio criado', contarNegocios(ess.id) === negociosAntes, `$
 check('[7] nenhum criativo criado', contarCriativos(ess.id) === 0);
 check('[7] sem mensagem pendurada', (await texto(p, '#uploadMsg')) === '');
 await p.click('#botaoEnviarCriativo');
-check('[7] reabrir começa do zero: marca nova fechada, principal marcado, sem arquivo', !(await visivel(p, '[data-negocio-novo]')) && (await p.isChecked('#negocioEscolha .negocio-opcao input')) && !(await visivel(p, '#arquivoEscolhido')));
-await p.click('#enviarParaAnalise');
-check('sem arquivo: diz o que falta, sem enviar', /Selecione o vídeo ou a imagem/.test(await texto(p, '#uploadMsg')) && contarCriativos(ess.id) === 0);
+check(
+  '[7] reabrir começa do zero: marca nova fechada, principal marcado, sem arquivo',
+  !(await visivel(p, '[data-negocio-novo]')) && (await p.isChecked('#negocioEscolha .negocio-opcao input')) && !(await visivel(p, '#arquivoCard')) && (await visivel(p, '#dropzoneVazia')),
+);
+// Botão inativo é aria-disabled (segue focável): o clique não envia, destaca o que falta e leva o foco ao arquivo.
+await p.click('#enviarParaAnalise', { force: true });
+check(
+  'sem arquivo: o clique não envia, destaca o que falta e leva o foco ao arquivo',
+  (await p.getAttribute('#envioDica', 'class')).includes('alerta') &&
+    (await p.evaluate(() => document.activeElement?.id === 'escolherArquivo')) &&
+    contarCriativos(ess.id) === 0,
+);
 
 console.log('== 4. envio real: arquivo, análise, volta pra biblioteca ==');
 check('[27] mensagem do envio é role=status', (await p.getAttribute('#uploadMsg', 'role')) === 'status');
 await p.setInputFiles('#arquivoCriativo', VIDEO);
-check('o arquivo escolhido some do aviso de erro', (await texto(p, '#uploadMsg')) === '');
+check(
+  '[8-estado] pronto pra enviar: botão ativo, sem aviso no rodapé',
+  (await p.getAttribute('#enviarParaAnalise', 'aria-disabled')) === 'false' && !(await visivel(p, '#envioDica')) && (await texto(p, '#uploadMsg')) === '',
+);
+await p.locator('#modCriativos').screenshot({ path: `${SAIDA}1d-pronto.png` });
 await p.click('#enviarParaAnalise');
 await esperar(async () => /Criativo enviado!/.test(await texto(p, '#uploadMsg')), 60000);
 check('[8] upload, processamento e envio funcionam', /Criativo enviado!/.test(await texto(p, '#uploadMsg')), await texto(p, '#uploadMsg'));
@@ -198,7 +257,7 @@ await esperar(async () => /Programado|Aprovado|Aguardando/.test(await texto(p, `
 console.log('== 6. substituir: escolher a peça, negócio travado ==');
 await p.click('#botaoSubstituirCriativo');
 await p.waitForSelector('#etapaAlvo:not([hidden]) .alvo-opcao');
-check('[14] "Qual criativo você quer substituir?"', (await texto(p, '#etapaAlvo legend')) === 'Qual criativo você quer substituir?');
+check('[14] "Qual criativo você quer substituir?"', (await texto(p, '#etapaAlvo legend')) === 'Peça a substituir' && /Qual criativo você quer substituir\?/.test(await texto(p, '#etapaAlvo')));
 check('[14] lista a peça elegível com negócio, categoria e situação', /Loja essencial[\s\S]*Academia[\s\S]*(Programado|Aprovado|Aguardando)/.test(await texto(p, '#alvosSubstituicao')), await texto(p, '#alvosSubstituicao'));
 check('[14] uma só: já vem marcada, e o foco está nela', (await p.isChecked('#alvosSubstituicao input')) && (await p.evaluate(() => document.activeElement?.name === 'alvo_substituicao')));
 check('[14] arquivo só depois de escolher', !(await visivel(p, '#etapaArquivo')));
@@ -252,8 +311,14 @@ await p.fill('[data-negocio-nome]', 'Marca Dois');
 await p.fill('#envio_categoria_id_busca', 'Pizzaria');
 await p.click('#envio_categoria_id_busca_lista li:has-text("Pizzaria")');
 await p.setInputFiles('#arquivoCriativo', VIDEO);
-await p.click('#enviarParaAnalise');
-check('sem a declaração do grupo: diz o que falta, nada sobe', /mesmo responsável ou grupo/.test(await texto(p, '#uploadMsg')) && contarCriativos(prime.id) === 0);
+await p.click('#enviarParaAnalise', { force: true });
+check(
+  'sem a declaração do grupo: diz o que falta, leva o foco à caixa, nada sobe',
+  /mesmo responsável ou grupo/.test(await texto(p, '#envioDica')) &&
+    (await p.evaluate(() => document.activeElement?.matches('[data-negocio-grupo]'))) &&
+    contarCriativos(prime.id) === 0,
+  await texto(p, '#envioDica'),
+);
 check('e o modo segue aberto com o que foi preenchido', (await visivel(p, '#envioCriativo')) && (await p.inputValue('[data-negocio-nome]')) === 'Marca Dois');
 await p.check('[data-negocio-grupo]');
 await p.click('#enviarParaAnalise');
@@ -265,28 +330,94 @@ check('[11] plural: "1 de 3 criativos utilizados"', (await texto(p, '#contadorCr
 await p.click('#botaoEnviarCriativo');
 check('[5] os dois negócios aparecem na escolha', (await p.locator('#negocioEscolha .negocio-opcao').count()) === 2 && /Loja prime[\s\S]*Marca Dois/.test(await texto(p, '#negocioEscolha')));
 check('[4] e o principal volta marcado por padrão', await p.isChecked('#negocioEscolha .negocio-opcao:first-child input'));
+await p.click('#negocioEscolha .negocio-opcao:has-text("Marca Dois")');
+check(
+  '[3-estado] negócio adicional existente selecionado: marcado sozinho, sem abrir o negócio novo',
+  (await p.isChecked('#negocioEscolha .negocio-opcao:has-text("Marca Dois") input')) &&
+    !(await p.isChecked('#negocioEscolha .negocio-opcao:first-child input')) &&
+    !(await visivel(p, '[data-negocio-novo]')),
+);
 await p.locator('#modCriativos').screenshot({ path: `${SAIDA}6-dois-negocios.png` });
 
-console.log('== 9. tablet e celular: o modo aberto cabe ==');
-await p.setViewportSize({ width: 820, height: 1100 });
-await p.waitForTimeout(300);
-check('[25] tablet: sem rolagem horizontal', (await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1);
-await p.locator('#modCriativos').screenshot({ path: `${SAIDA}7-tablet-envio.png` });
-await p.setViewportSize({ width: 390, height: 844 });
-await p.waitForTimeout(300);
-check('[25] celular: sem rolagem horizontal', (await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1);
+console.log('== 9. estados do arquivo: enviando e recusado (resposta simulada — nada chega ao servidor) ==');
+await p.setInputFiles('#arquivoCriativo', VIDEO);
+let soltarResposta;
+const resposta = new Promise((r) => {
+  soltarResposta = r;
+});
+await p.route('**/anunciantes/*/criativos', async (route) => {
+  if (route.request().method() !== 'POST') return route.fallback();
+  await resposta;
+  await route.fulfill({
+    status: 400,
+    contentType: 'application/json',
+    body: JSON.stringify({ erro: 'esse vídeo tem 35s e o seu plano aceita peça de até 30s — corte a peça ou mude de plano' }),
+  });
+});
+await p.click('#enviarParaAnalise');
+await esperar(async () => /Enviando|Processando/.test(await texto(p, '#arquivoEstado')));
+check(
+  '[6-estado] enviando: o arquivo mostra o andamento, o bloco trava e o "Cancelar" sai',
+  /Enviando|Processando/.test(await texto(p, '#arquivoEstado')) &&
+    (await p.isDisabled('#trocarArquivo')) &&
+    (await p.getAttribute('#envioCriativo', 'aria-busy')) === 'true' &&
+    !(await visivel(p, '#cancelarEnvio')) &&
+    (await texto(p, '#enviarParaAnalise')) === 'Enviando...',
+  await texto(p, '#arquivoEstado'),
+);
+await p.locator('#modCriativos').screenshot({ path: `${SAIDA}7-enviando.png` });
+soltarResposta();
+await esperar(async () => (await texto(p, '#arquivoEstado')) === 'Recusado');
+check(
+  '[7-estado] recusado: "Recusado" no arquivo, o motivo no rodapé ao lado do botão, o bloco segue aberto',
+  (await texto(p, '#arquivoEstado')) === 'Recusado' &&
+    !!(await p.$('#envioRodape #uploadMsg')) &&
+    /até 30s/.test(await texto(p, '#uploadMsg')) &&
+    (await visivel(p, '#envioCriativo')),
+  await texto(p, '#uploadMsg'),
+);
+check('[7-estado] nada criado', contarCriativos(prime.id) === 1);
+await p.locator('#modCriativos').screenshot({ path: `${SAIDA}8-recusado.png` });
+await p.unroute('**/anunciantes/*/criativos');
+
+console.log('== 10. tablet e celular: o bloco aberto cabe ==');
+// O estado mais cheio: outro negócio aberto e arquivo escolhido.
+await p.click('#cancelarEnvio');
+check('cancelar devolve a mensagem pro lugar dela (abaixo do bloco), vazia', !(await p.$('#envioRodape #uploadMsg')) && (await texto(p, '#uploadMsg')) === '');
+await p.click('#botaoEnviarCriativo');
+await p.click('[data-negocio-outro]');
+await p.fill('[data-negocio-nome]', 'Marca Três');
+await p.setInputFiles('#arquivoCriativo', VIDEO);
+for (const [largura, altura, nome] of [
+  [1280, 900, '9-desktop-cheio'],
+  [820, 1100, '9-tablet-cheio'],
+  [390, 844, '9-celular-cheio'],
+]) {
+  await p.setViewportSize({ width: largura, height: altura });
+  await p.waitForTimeout(300);
+  check(`[25] ${largura}px: sem rolagem horizontal`, (await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1);
+  await p.locator('#modCriativos').screenshot({ path: `${SAIDA}${nome}.png` });
+}
 const larguras = await p.evaluate(() => {
   const caixa = document.getElementById('envioCampos').getBoundingClientRect().width;
-  return ['escolherArquivo', 'enviarParaAnalise'].map((id) => Math.round(document.getElementById(id).getBoundingClientRect().width - caixa));
+  return ['dropzone', 'trocarArquivo', 'enviarParaAnalise'].map((id) =>
+    Math.round(document.getElementById(id).getBoundingClientRect().width - caixa),
+  );
 });
-check('[25] celular: botões do envio na largura toda', larguras.every((d) => Math.abs(d) <= 1), larguras);
-await p.locator('#modCriativos').screenshot({ path: `${SAIDA}8-celular-envio.png` });
+check('[25] celular: área de soltar e botão de envio na largura toda', Math.abs(larguras[0]) <= 1 && Math.abs(larguras[2]) <= 1, larguras);
+const cards = await p.evaluate(() => {
+  const caixa = document.getElementById('negocioEscolha').getBoundingClientRect().width;
+  return [...document.querySelectorAll('#negocioEscolha .negocio-opcao, #negocioEscolha .negocio-outro-opcao')].map((el) =>
+    Math.round(el.getBoundingClientRect().width - caixa),
+  );
+});
+check('[25] celular: cards de negócio na largura toda', cards.every((d) => Math.abs(d) <= 1), cards);
 await p.click('#cancelarEnvio');
 check('[25] celular: o card fechado também cabe', (await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1);
 await p.locator('#modCriativos').screenshot({ path: `${SAIDA}9-celular-biblioteca.png` });
 await p.setViewportSize({ width: 1280, height: 900 });
 
-console.log('== 10. correção e reenvio continuam iguais ==');
+console.log('== 11. correção e reenvio continuam iguais ==');
 const pecaMarca = PG(`SELECT id FROM criativos WHERE anunciante_id = ${prime.id}`);
 const corr = await admin.request.patch(`${B}/admin/criativos/${pecaMarca}`, {
   data: { status: 'correcao', motivo_reprovacao: 'a categoria informada não corresponde à peça' },
@@ -298,6 +429,7 @@ check('[18] o card mostra "Correção necessária" com o motivo', /Correção ne
 await cardMarca.locator('[data-acao="reenviar"]').click();
 const dlg = p.locator('dialog.dlg-confirmar');
 await dlg.waitFor();
+await dlg.screenshot({ path: `${SAIDA}10-modal-reenvio.png` });
 check('[19] o reenvio pergunta quem a peça divulga, com o negócio atual marcado', (await dlg.innerText()).includes('Quem este anúncio divulga?'));
 await dlg.locator('[data-confirmar]').click();
 await esperar(async () => PG(`SELECT status FROM criativos WHERE id = ${pecaMarca}`) === 'pendente');
@@ -305,7 +437,7 @@ check('[19] reenviada: volta pra análise', PG(`SELECT status FROM criativos WHE
 await esperar(async () => (await cardMarca.innerText()).includes('Em análise'));
 check('[19] o card volta a "Em análise"', (await cardMarca.innerText()).includes('Em análise'));
 
-console.log('== 11. Prime 3/3: substituir esbarra no teto de cadastro, e o card avisa antes ==');
+console.log('== 12. Prime 3/3: substituir esbarra no teto de cadastro, e o card avisa antes ==');
 pecaAprovada(prime.id);
 const terceira = pecaAprovada(prime.id);
 await resync(p);
@@ -334,7 +466,7 @@ const rTeto = await p.evaluate(
 );
 check('[23] o servidor diz o mesmo (regra inalterada)', /^400 .*3 criativos cadastrados/.test(rTeto), rTeto);
 
-console.log('== 12. excluir uma peça libera: volta o "Enviar criativo" ==');
+console.log('== 13. excluir uma peça libera: volta o "Enviar criativo" ==');
 await p.click(`.criativo-card[data-id="${terceira}"] [data-acao="excluir"]`);
 await p.waitForSelector('dialog.dlg-confirmar[open]');
 await p.click('dialog.dlg-confirmar [data-confirmar]');

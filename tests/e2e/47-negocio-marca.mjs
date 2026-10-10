@@ -94,7 +94,7 @@ await p.waitForSelector('#botaoEnviarCriativo:not([hidden])', { timeout: 15000 }
 check('fechado, o card não mostra a escolha do negócio', !(await p.isVisible('#negocioEnvio')));
 await p.click('#botaoEnviarCriativo');
 await p.waitForSelector('#negocioEnvio:not([hidden]) .negocio-opcao', { timeout: 15000 });
-check('"Quem este anúncio divulga?" aparece no envio', (await p.textContent('#negocioEnvio legend')).includes('Quem este anúncio divulga?'));
+check('"Negócio anunciado" aparece no envio', (await p.textContent('#negocioEnvio legend')).includes('Negócio anunciado'));
 check('uma opção só — o negócio principal', (await p.locator('.negocio-opcao').count()) === 1);
 check('o principal já vem marcado', await p.isChecked('.negocio-opcao input'));
 check('com o nome e a categoria da conta', /Academia da Boêmia[\s\S]*Restaurante/.test(await p.textContent('.negocio-opcao')));
@@ -119,14 +119,14 @@ await p.click('[data-negocio-outro]');
 check('abre o formulário pequeno', await p.isVisible('[data-negocio-novo]'));
 await p.fill('[data-negocio-nome]', 'Academia Pizza');
 await p.setInputFiles('#arquivoCriativo', VIDEO);
-// Sem categoria e sem a declaração, nada sobe: a tela diz o que falta.
-await p.click('#enviarParaAnalise');
-await esperar(async () => /categoria|responsável/.test(await p.textContent('#uploadMsg')));
-check('sem categoria: diz o que falta', /categoria/i.test(await p.textContent('#uploadMsg')), await p.textContent('#uploadMsg'));
+// Sem categoria e sem a declaração, nada sobe: o botão fica inativo
+// (aria-disabled, segue focável) e o rodapé diz o que falta.
+await p.click('#enviarParaAnalise', { force: true });
+check('sem categoria: diz o que falta', /categoria/i.test(await p.textContent('#envioDica')), await p.textContent('#envioDica'));
 await p.fill('#envio_categoria_id_busca', 'Pizzaria');
 await p.click('#envio_categoria_id_busca_lista li:has-text("Pizzaria")');
-await p.click('#enviarParaAnalise');
-check('sem a declaração: diz o que falta', /mesmo responsável ou grupo/.test(await p.textContent('#uploadMsg')));
+await p.click('#enviarParaAnalise', { force: true });
+check('sem a declaração: diz o que falta', /mesmo responsável ou grupo/.test(await p.textContent('#envioDica')));
 check('e nada subiu', PG(`SELECT count(*) FROM criativos WHERE anunciante_id = ${contaId}`) === '1');
 await p.check('[data-negocio-grupo]');
 await p.click('#enviarParaAnalise');
