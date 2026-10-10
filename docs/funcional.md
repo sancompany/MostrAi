@@ -813,6 +813,12 @@ algum até a migration 067, que adicionou cobertura em
 `tests/categorias-concorrencia.test.js`. *Quem vê:* o anunciante nunca
 vê a mecânica — só o efeito (o próprio anúncio aparecendo ou não numa
 tela); o admin vê e edita a categoria de cada ponto/anunciante.
+> **Por negócio ou marca, peça por peça (10/10/2026, migration 121, RN-74).**
+> O lado do anunciante desta comparação deixou de ser a categoria da CONTA:
+> é a categoria VALIDADA do negócio que cada peça divulga. Conta de um
+> negócio só não muda nada (o negócio principal nasce com a categoria da
+> conta); conta com mais de um negócio tem peças com elegibilidade diferente
+> na mesma tela.
 > **Concorrentes diretos (28/09/2026, migration 105, ADR-026).** A regra
 > passou a ter duas partes, sempre CATEGORIA DO PONTO × CATEGORIA DO
 > ANUNCIANTE: (1) mesma `categoria_id` bloqueia, como acima; (2) par
@@ -843,6 +849,57 @@ tela); o admin vê e edita a categoria de cada ponto/anunciante.
 > nascido de candidatura (o caminho mais comum de todos) nascia sem
 > categoria nenhuma, e a RN acima ficava inoperante nele até o admin
 > preencher à mão. Corrigido nos dois lugares.
+
+**RN-74 — Negócio ou marca por criativo: a conta paga, o negócio aparece.**
+*(Estação de 10/10/2026, migration 121, pedido do dono.)* Uma conta pode
+anunciar mais de um negócio ou marca do mesmo responsável ou grupo
+("Academia da Boêmia", "Academia Pizza", "Academia Burger") sem outro login,
+outra conta ou outro cadastro financeiro. **O que é da conta não muda:**
+assinatura, plano, horas, saldo, obrigação, pontos e o limite de criativos
+ativos — Prime com 3 peças continua sendo uma contratação só, e 3 marcas não
+viram 3 Prime nem 3× as horas (a peça mostra QUEM aparece, não quanto a
+conta comprou). **O que é do negócio:** nome e categoria (`negocios`), e cada
+criativo aponta pra um (`criativos.negocio_id`, chave estrangeira composta
+com a conta — o banco recusa negócio de outra conta).
+- **Negócio principal.** Toda conta tem um, com o nome e a categoria do
+  cadastro; é o que a tela de envio deixa marcado e o que vale quando o envio
+  não diz nada. A migration criou o de cada conta existente (pelo
+  significado, nunca por id) e ligou a ele os criativos que já existiam.
+- **Envio.** "Quem este anúncio divulga?" mostra o principal marcado e os
+  negócios que a conta já usou; "+ Anunciar outro negócio ou marca" abre
+  nome, categoria e a declaração "Este negócio ou marca pertence ao mesmo
+  responsável ou grupo desta conta" — sem ela, não nasce. Quem tem um
+  negócio só não vê nada a mais além da linha marcada.
+- **Categoria validada.** A categoria declarada é só a palavra do cliente até
+  a Mostraí aprovar um criativo daquele negócio (`validado_em`). A trava de
+  ramo (RN-57) só compara categoria validada — peça não aprovada nunca
+  veicula, e negócio sem validação nunca decide nada. Negócio sem categoria
+  ("não encontrei a minha", ou validado sem ela pelo upload do operador) não
+  tem peça nova aprovada sem o Admin escolher uma.
+- **Admin.** A fila de aprovação mostra conta, negócio e categoria declarada
+  em destaque, com Aprovar · Alterar categoria e aprovar · Solicitar correção
+  · Reprovar. "Alterar categoria e aprovar" grava em `negocios_validacoes` a
+  categoria declarada, a final, o operador (login + e-mail do Cloudflare
+  Access), quando e o motivo. Reclassificar a conta na ficha leva junto o
+  principal já validado; mesclar categorias leva os negócios.
+- **Correção necessária** (`criativos.status = 'correcao'`). Não é recusa:
+  negócio ou categoria não batem com a peça. O cliente recebe a mensagem
+  (aviso + e-mail), corrige — escolhe outro negócio, cria um, ou corrige a
+  categoria do negócio ainda não validado — e reenvia a mesma peça, que volta
+  pra análise. Ocupa a vaga do plano como a peça em análise. Na obrigação é
+  responsabilidade do CLIENTE, como a recusada (decisão do dono): se for a
+  única peça, abre a janela de indisponibilidade do cliente. Substituta não
+  vai pra correção: ela divulga o negócio da peça que troca — se não serve,
+  o Admin recusa.
+- **Depois de validado, só o Admin muda** nome e categoria (decisão do dono,
+  10/10/2026) — o cliente que precisar mudar anuncia como outro negócio. A
+  categoria da conta no perfil não muda a do negócio validado.
+- **Sem exclusão de negócio nesta versão:** negócio sem criativo some sozinho
+  da lista do envio, e o banco recusa apagar negócio com criativo.
+- **Fora do escopo:** revenda de vaga para empresas sem relação (a
+  declaração e a aprovação seguram; a Mostraí reprova uso indevido),
+  agências, organizações enterprise, período de veiculação por criativo.
+*Testes:* `tests/negocios.test.js` (os 30 itens do pedido), e2e 47.
 
 **RN-45 — Produção de peça é serviço à parte, não benefício de plano.**
 *(Decisão do dono, 17/09/2026: "nunca disse que era benefício, e sim fica

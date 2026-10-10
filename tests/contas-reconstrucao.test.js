@@ -360,7 +360,11 @@ test('substituição: A segue no ar com B em análise; aprovar B retira A; recus
     a.use(admin);
     a.use(anunciantes.router);
   });
-  const conta = await criarConta({ plano_id: 'essencial-1m', data_expiracao: daqui(30) });
+  // Com categoria: peça da fila sem ela não se aprova (migration 121).
+  const {
+    rows: [academia],
+  } = await pool.query(`SELECT id FROM categorias WHERE nome = 'Academia'`);
+  const conta = await criarConta({ plano_id: 'essencial-1m', data_expiracao: daqui(30), categoria_id: academia.id });
   try {
     const a = await criativo(conta.id);
     const b = await criativo(conta.id, { status: 'pendente', substitui_criativo_id: a.id });

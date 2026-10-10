@@ -517,6 +517,28 @@ async function enviarCriativoReprovado(anunciante, criativo) {
   });
 }
 
+// "Correção necessária" (migration 121): a peça não foi recusada — o
+// negócio ou a categoria informados não batem com o que ela divulga. O
+// cliente corrige no painel e reenvia a MESMA peça, sem subir arquivo novo.
+async function enviarCriativoCorrecao(anunciante, criativo) {
+  await enviar({
+    to: anunciante.contato_email,
+    subject: 'Seu anúncio precisa de uma correção — Mostraí',
+    conteudo: mensagem({
+      previa: 'Revise o negócio ou a categoria e envie de novo para análise.',
+      titulo: 'Seu anúncio precisa de uma correção',
+      saudacao: `Olá, ${anunciante.nome_empresa}!`,
+      paragrafos: [
+        'A peça que você enviou precisa de uma correção antes de entrar no ar.',
+        ...(criativo?.motivo ? [`O que corrigir: ${criativo.motivo}`] : []),
+        'No seu painel, em Meus criativos, abra a peça, revise quem o anúncio divulga e a categoria, e envie de novo para análise.',
+      ],
+      botao: { texto: 'Abrir o painel', url: painel() },
+      depois: ['Se tiver dúvida, é só responder este e-mail.'],
+    }),
+  });
+}
+
 // Sai na aprovação, que NÃO é exibição: aprovado só libera a peça para a
 // programação. "No ar" é estado que só o proof-of-play confirma (painel), por
 // isso este e-mail não promete que a peça já está rodando nem dá horário.
@@ -714,6 +736,7 @@ module.exports = {
   enviarCandidaturaNova,
   enviarCriativoAprovado,
   enviarCriativoReprovado,
+  enviarCriativoCorrecao,
   enviarConfirmacaoPagamento,
   enviarLinkRedefinicaoSenha,
   enviarCodigoConfirmacaoEmail,

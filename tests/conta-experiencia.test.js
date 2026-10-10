@@ -6,7 +6,7 @@ const express = require('express');
 const session = require('express-session');
 const pool = require('../src/db/pool');
 const repo = require('../src/creditos/repository');
-const { etapasDosPrimeirosPassos } = require('../src/anunciantes/primeiros-passos');
+const { etapasDosPrimeirosPassos, etapasDoDonoDePonto } = require('../src/anunciantes/primeiros-passos');
 
 // Estação da conta (26/09/2026): o painel se adapta ao estado REAL da conta.
 //   A — conta nova (sem plano, ponto, crédito ou histórico): créditos e
@@ -319,4 +319,32 @@ test('onboarding: exibição confirmada fecha o fluxo; pontos opcionais nunca se
   assert.equal(recusado.proxima, 'criativo');
   assert.equal(recusado.etapas[1].feito, false);
   assert.equal(recusado.etapas[1].detalhe, 'Seu criativo foi recusado: envie uma nova peça');
+  // Só peça em correção (migration 121, revisão do PR #133): o passo é
+  // revisar e reenviar a mesma peça — não "envie seu criativo" do zero.
+  const correcao = etapasDosPrimeirosPassos({
+    ...base,
+    criativosEnviados: 0,
+    criativosAprovados: 0,
+    criativosRecusados: 1,
+    criativosEmCorrecao: 1,
+    exibicoes: 0,
+  });
+  assert.equal(correcao.proxima, 'criativo');
+  assert.equal(correcao.etapas[1].feito, false);
+  assert.equal(correcao.etapas[1].correcao, true);
+  assert.equal(correcao.etapas[1].detalhe, 'A Mostraí pediu uma correção: revise e reenvie a peça');
+  assert.equal(recusado.etapas[1].correcao, false);
+  const donoEmCorrecao = etapasDoDonoDePonto({
+    telaInstalada: true,
+    primeiroSinal: true,
+    basicoAtivo: true,
+    horasBasico: 10,
+    criativosEnviados: 0,
+    criativosAprovados: 0,
+    criativosEmCorrecao: 1,
+    exibicoes: 0,
+  });
+  const passoDoDono = donoEmCorrecao.etapas.find((e) => e.id === 'criativo');
+  assert.equal(passoDoDono.correcao, true);
+  assert.equal(passoDoDono.detalhe, 'A Mostraí pediu uma correção: revise e reenvie a peça');
 });

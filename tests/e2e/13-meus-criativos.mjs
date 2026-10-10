@@ -84,8 +84,10 @@ await p.close();
 
 console.log('== conta com plano comercial e ponto no ar ==');
 const conta = await novaConta('criativos');
+// Com categoria: a substituta, vinda da fila, só se aprova com ela (migration 121).
 PG(
-  `UPDATE anunciantes SET plano_id = 'essencial-1m', data_inicio_cobertura = now(), data_expiracao = now() + interval '20 days' WHERE id = ${conta.id}`,
+  `UPDATE anunciantes SET plano_id = 'essencial-1m', data_inicio_cobertura = now(), data_expiracao = now() + interval '20 days',
+          categoria_id = (SELECT id FROM categorias WHERE nome = 'Academia') WHERE id = ${conta.id}`,
 );
 PG(
   `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id, status)

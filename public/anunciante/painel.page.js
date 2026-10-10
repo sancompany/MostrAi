@@ -211,6 +211,11 @@ function acaoDaEtapa(etapa) {
   if (etapa.id === 'criativo' && etapa.disponivel === false) {
     return '<span class="form-hint u-m-0">Disponível quando o Plano Básico do seu ponto ativar.</span>';
   }
+  // Correção pedida (migration 121): é revisar e reenviar a mesma peça, não
+  // mandar outra — o card dela tem o botão.
+  if (etapa.id === 'criativo' && etapa.correcao) {
+    return '<a class="btn primary mini" href="#modCriativos">Revisar e reenviar</a>';
+  }
   return ACAO_DA_ETAPA[etapa.id] || '';
 }
 

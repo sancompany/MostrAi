@@ -213,6 +213,9 @@ function ligarCategoriaBusca(idPrefixo, categorias, aoEscolher, { excluirId = nu
     lista.hidden = true;
     if (aoEscolher) aoEscolher(categoria);
   });
+  // A lista chega depois do modal aberto: quem já digitou antes dela chegar
+  // vê o resultado sem precisar digitar de novo.
+  if (document.activeElement === input) abrir(input.value);
 }
 
 let toastTimer;
@@ -1807,14 +1810,24 @@ async function renderCriativos(el) {
             .map((c) => {
               const ehVideo = !ehImagemArquivo(c.arquivo_original_url);
               const nomeConta = nomePor[c.anunciante_id] || 'Conta sem nome';
+              // Mídia própria não anuncia negócio de ninguém: sem bloco de
+              // negócio nem decisão de categoria.
+              const deCliente = !nomeMidiaPor[c.id];
               return `<article class="criativo-item">
         <div class="criativo-item-midia">${montarPreviewAsset({ original: c.arquivo_original_url, normalizado: c.arquivo_normalizado_url, thumb: c.thumbnail_url })}</div>
         <div class="criativo-item-corpo">
-          <div class="item-topo"><h4>${esc(nomeMidiaPor[c.id] || nomeConta)}</h4><span class="badge badge-pendente">Em análise</span></div>
+          <div class="item-topo">${
+            deCliente
+              ? `<div><span class="item-sobretitulo">Negócio ou marca</span><h4>${esc(c.negocio_nome || nomeConta)}</h4></div>`
+              : `<h4>${esc(nomeMidiaPor[c.id])}</h4>`
+          }<span class="badge badge-pendente">Em análise</span></div>
+          ${deCliente ? htmlNegocioDoCriativo(c, nomeConta) : ''}
           <p class="item-meta">${nomeMidiaPor[c.id] ? `${esc(nomeConta)} · ` : ''}${ehVideo ? 'Vídeo' : 'Imagem'}${c.duracao_segundos ? ` · ${c.duracao_segundos}s` : ''} · enviado ${data(c.created_at)}</p>
           ${c.substitui_criativo_id ? '<p class="item-nota">Substitui a peça que está no ar — ela sai quando esta for aprovada.</p>' : ''}
           <div class="acoes item-acoes">
             <button class="btn ghost mini" data-acao="aprovado" data-id="${c.id}">Aprovar</button>
+            ${deCliente ? `<button class="btn ghost mini" data-acao="aprovar-categoria" data-id="${c.id}">Alterar categoria e aprovar</button>` : ''}
+            ${deCliente && !c.substitui_criativo_id ? `<button class="btn ghost mini" data-acao="correcao" data-id="${c.id}">Solicitar correção</button>` : ''}
             <button class="btn ghost mini" data-ajustar="${c.id}">Ajustar mídia</button>
             <button class="btn perigo-sutil mini" data-acao="reprovado" data-id="${c.id}">Reprovar</button>
           </div>
@@ -1840,11 +1853,15 @@ async function renderCriativos(el) {
       // junto do status, aparece no card dele e vai no e-mail. Pedido num
       // modal — o mesmo da ficha da conta — em vez de prompt() nativo
       // (reconstrução de Contas, 23/09/2026, Parte 17).
-      if (btn.dataset.acao === 'reprovado') {
-        return recusarCriativo(
-          criativos.find((x) => x.id === Number(btn.dataset.id)),
-          aposDecidir,
-        );
+      const c = criativos.find((x) => x.id === Number(btn.dataset.id));
+      if (btn.dataset.acao === 'reprovado') return recusarCriativo(c, aposDecidir);
+      if (btn.dataset.acao === 'correcao') return pedirCorrecaoCriativo(c, aposDecidir);
+      // Negócio sem categoria (o cliente marcou "não encontrei a minha", ou
+      // o upload do operador validou sem ela) não se aprova assim: a Mostraí
+      // escolhe a categoria antes (migration 121).
+      const semCategoria = !nomeMidiaPor[c.id] && !c.negocio_categoria_id;
+      if (btn.dataset.acao === 'aprovar-categoria' || semCategoria) {
+        return aprovarComCategoria(c, aposDecidir, { semCategoria });
       }
       if (await salvar(`/admin/criativos/${btn.dataset.id}`, { status: btn.dataset.acao })) aposDecidir();
     }),
@@ -6646,10 +6663,11 @@ function desenharContaSolicitacoes(el, solicitacoes) {
 // Mesmo motor da fila global de Aprovação: aprovar/recusar é o mesmo PATCH
 // /admin/criativos/:id, trocar arquivo é o mesmo /substituir. O que é só
 // daqui: ver os estados todos juntos e substituir SEM tirar o atual do ar.
-const CRIATIVO_ORDEM = { pendente: 0, aprovado: 1, retirado: 2, reprovado: 3 };
+const CRIATIVO_ORDEM = { pendente: 0, correcao: 1, aprovado: 2, retirado: 3, reprovado: 4 };
 
 function estadoCriativo(c, info) {
   if (c.status === 'pendente') return { nome: 'Em análise', classe: 'badge-pendente' };
+  if (c.status === 'correcao') return { nome: 'Correção necessária', classe: 'badge-pendente' };
   if (c.status === 'reprovado') return { nome: 'Recusado', classe: 'badge-err' };
   if (c.status === 'retirado') return { nome: 'Fora do ar', classe: 'badge-neutro' };
   // Peça aprovada: o estado da entrada no ar vem do servidor
@@ -6699,6 +6717,17 @@ function desenharContaCriativos(el, ctx) {
       if (!bloqueada) {
         if (c.status === 'pendente') {
           acoes.push(`<button type="button" class="btn ghost mini" data-cr-aprovar="${c.id}">Aprovar</button>`);
+          if (!ctx.conta.conta_propria) {
+            acoes.push(
+              `<button type="button" class="btn ghost mini" data-cr-categoria="${c.id}">Alterar categoria e aprovar</button>`,
+            );
+            // A substituta divulga o negócio da peça que troca: sem correção.
+            if (!c.substitui_criativo_id) {
+              acoes.push(
+                `<button type="button" class="btn ghost mini" data-cr-correcao="${c.id}">Solicitar correção</button>`,
+              );
+            }
+          }
           acoes.push(`<button type="button" class="btn ghost mini" data-cr-arquivo="${c.id}">Trocar arquivo</button>`);
           acoes.push(`<button type="button" class="btn perigo-sutil mini" data-cr-recusar="${c.id}">Recusar</button>`);
         } else if (c.status === 'aprovado') {
@@ -6725,12 +6754,18 @@ function desenharContaCriativos(el, ctx) {
         c.status === 'retirado' && c.retirado_por === 'substituicao' ? 'Saiu do ar na substituição.' : '',
         estado.dica || '',
         c.status === 'reprovado' && c.motivo_reprovacao ? `Motivo: ${c.motivo_reprovacao}` : '',
+        c.status === 'correcao' && c.motivo_reprovacao ? `O que corrigir: ${c.motivo_reprovacao}` : '',
       ].filter(Boolean);
+      // Quem a peça divulga (migration 121) — nome e categoria do negócio.
+      const divulga = c.negocio_nome
+        ? `Divulga: ${c.negocio_nome} · ${c.negocio_categoria_nome || c.negocio_categoria_livre || 'sem categoria'}`
+        : '';
       return `<article class="criativo-item">
         <div class="criativo-item-midia">${montarPreviewAsset({ original: c.arquivo_original_url, normalizado: c.arquivo_normalizado_url, thumb: c.thumbnail_url })}</div>
         <div class="criativo-item-corpo">
           <div class="item-topo"><h4>${ehVideo ? 'Vídeo' : 'Imagem'}${c.duracao_segundos ? ` · ${c.duracao_segundos}s` : ''}</h4><span class="badge ${estado.classe}">${estado.nome}</span></div>
           <p class="item-meta">Enviado ${data(c.created_at)}${c.editado_pelo_operador ? ' pelo Mostraí' : ''}</p>
+          ${divulga && !ctx.conta.conta_propria ? `<p class="item-meta criativo-divulga">${esc(divulga)}</p>` : ''}
           ${notas.map((n) => `<p class="item-nota">${esc(n)}</p>`).join('')}
           <div class="acoes item-acoes">${acoes.join('')}</div>
         </div>
@@ -6766,6 +6801,9 @@ function desenharContaCriativos(el, ctx) {
       : '',
     r.retirados ? `<span>${plural(r.retirados, 'retirado do ar', 'retirados do ar')}</span>` : '',
     r.recusados ? `<span>${plural(r.recusados, 'recusado', 'recusados')}</span>` : '',
+    r.emCorrecao
+      ? `<span>${plural(r.emCorrecao, 'esperando correção do cliente', 'esperando correção do cliente')}</span>`
+      : '',
   ].filter(Boolean);
   el.innerHTML = `
     <div class="secao-topo">
@@ -6778,7 +6816,8 @@ function desenharContaCriativos(el, ctx) {
         ? `<div class="criativos-grade">${cards}</div>`
         : '<p class="texto-vazio">Nenhum criativo nesta conta ainda.</p>'
     }
-    ${bloqueada ? '<p class="campo-ajuda u-mt-12">Conta suspensa ou excluída — criativos só leitura.</p>' : !podeAdicionar && criativos.length ? `<p class="campo-ajuda u-mt-12">Limite de ${info.limite_cadastro} criativos cadastrados atingido — substitua ou retire um pra trocar.</p>` : ''}`;
+    ${bloqueada ? '<p class="campo-ajuda u-mt-12">Conta suspensa ou excluída — criativos só leitura.</p>' : !podeAdicionar && criativos.length ? `<p class="campo-ajuda u-mt-12">Limite de ${info.limite_cadastro} criativos cadastrados atingido — substitua ou retire um pra trocar.</p>` : ''}
+    ${ctx.conta.conta_propria ? '' : '<div class="negocios-conta" data-negocios-conta></div>'}`;
 
   const achar = (id) => criativos.find((c) => c.id === Number(id));
   const { recarregar } = ctx;
@@ -6792,9 +6831,25 @@ function desenharContaCriativos(el, ctx) {
       verCriativo(achar(b.dataset.crVer), estadoCriativo(achar(b.dataset.crVer), info)),
     ),
   );
+  const aposDecidir = async () => {
+    await pintarFila();
+    recarregar();
+  };
+  el.querySelectorAll('[data-cr-categoria]').forEach((b) =>
+    b.addEventListener('click', () => aprovarComCategoria(achar(b.dataset.crCategoria), aposDecidir)),
+  );
+  el.querySelectorAll('[data-cr-correcao]').forEach((b) =>
+    b.addEventListener('click', () => pedirCorrecaoCriativo(achar(b.dataset.crCorrecao), aposDecidir)),
+  );
+  const negociosEl = el.querySelector('[data-negocios-conta]');
+  if (negociosEl) desenharNegociosDaConta(negociosEl, ctx.conta.id, recarregar);
   el.querySelectorAll('[data-cr-aprovar]').forEach((b) =>
     b.addEventListener('click', async () => {
       const c = achar(b.dataset.crAprovar);
+      // Negócio sem categoria: a Mostraí escolhe antes de aprovar.
+      if (!ctx.conta.conta_propria && !c.negocio_categoria_id) {
+        return aprovarComCategoria(c, aposDecidir, { semCategoria: true });
+      }
       if (c.substitui_criativo_id) {
         const ok = await confirmarModal({
           titulo: 'Aprovar substituto?',
@@ -6841,15 +6896,26 @@ function desenharContaCriativos(el, ctx) {
       if (ok && (await salvar(`/admin/criativos/${c.id}`, { status: 'aprovado' }))) recarregar();
     }),
   );
-  el.querySelector('[data-cr-adicionar]')?.addEventListener('click', () =>
+  el.querySelector('[data-cr-adicionar]')?.addEventListener('click', async () => {
+    // Os negócios da conta (migration 121): sem a lista, não abre — a peça
+    // não pode cair calada no principal.
+    let negocios = [];
+    if (!ctx.conta.conta_propria) {
+      try {
+        negocios = (await pegar(`/admin/anunciantes/${ctx.conta.id}/negocios`)).negocios;
+      } catch {
+        return toast('Não foi possível carregar os negócios desta conta. Tente de novo.', 'err');
+      }
+    }
     enviarCriativo({
       titulo: 'Adicionar criativo',
       explicacao:
         'O arquivo é normalizado e entra aprovado (subido pelo Mostraí). Vídeo de 3 a 60 segundos, ou imagem.',
       url: `/admin/anunciantes/${ctx.conta.id}/criativos`,
       aoTerminar: recarregar,
-    }),
-  );
+      negocios,
+    });
+  });
   el.querySelectorAll('[data-cr-substituir]').forEach((b) =>
     b.addEventListener('click', () =>
       enviarCriativo({
@@ -6879,6 +6945,86 @@ function desenharContaCriativos(el, ctx) {
   );
 }
 
+// Negócios ou marcas da conta (migration 121): o que cada um é, se a
+// Mostraí já conferiu, e o histórico de validação e ajustes. Só o Admin muda
+// negócio já conferido — com motivo, na auditoria.
+const ACAO_NEGOCIO = {
+  validado: 'Validado na aprovação',
+  categoria_corrigida: 'Categoria alterada na aprovação',
+  editado_pelo_admin: 'Alterado pelo Admin',
+};
+async function desenharNegociosDaConta(el, contaId, recarregar) {
+  let lista;
+  try {
+    lista = (await pegar(`/admin/anunciantes/${contaId}/negocios`)).negocios;
+  } catch {
+    el.innerHTML = '<p class="form-msg err">Não foi possível carregar os negócios desta conta.</p>';
+    return;
+  }
+  const historico = (h) =>
+    h
+      .map((x) => {
+        const mudouNome = x.nome_antes !== x.nome_depois ? ` · nome: ${x.nome_antes} → ${x.nome_depois}` : '';
+        const antes = x.categoria_antes_nome || x.categoria_livre_antes || 'sem categoria';
+        const depois = x.categoria_depois_nome || 'sem categoria';
+        const categoria = antes !== depois ? ` · categoria: ${antes} → ${depois}` : ` · categoria: ${depois}`;
+        return `<li>${esc(data(x.criado_em))} — ${esc(ACAO_NEGOCIO[x.acao] || x.acao)}${esc(mudouNome)}${esc(categoria)} · por ${esc(x.operador)}${x.operador_access ? ` (${esc(x.operador_access)})` : ''}${x.motivo ? ` · motivo: ${esc(x.motivo)}` : ''}</li>`;
+      })
+      .join('');
+  el.innerHTML = `<h4 class="u-mt-12">Negócios ou marcas anunciados</h4>
+    <ul class="negocios-lista">${lista
+      .map(
+        (n) => `<li class="negocio-linha">
+      <div><strong>${esc(n.nome)}</strong> ${n.principal ? '<span class="badge badge-neutro">principal</span>' : ''}
+        ${n.validado ? '<span class="badge badge-ok">conferido</span>' : '<span class="badge badge-pendente">a conferir</span>'}
+        <span class="item-meta">${esc(n.categoria?.nome || n.categoriaLivre || 'sem categoria')} · ${plural(n.criativos, 'criativo', 'criativos')}${n.mesmoGrupoDeclaradoEm ? ` · cliente declarou mesmo responsável/grupo em ${esc(data(n.mesmoGrupoDeclaradoEm))}` : ''}</span></div>
+      <button type="button" class="btn ghost mini" data-negocio-editar="${n.id}">Editar</button>
+      ${n.historico.length ? `<details class="negocio-historico"><summary>Histórico</summary><ul>${historico(n.historico)}</ul></details>` : ''}
+    </li>`,
+      )
+      .join('')}</ul>`;
+  el.querySelectorAll('[data-negocio-editar]').forEach((b) =>
+    b.addEventListener('click', () =>
+      editarNegocio(
+        lista.find((n) => n.id === Number(b.dataset.negocioEditar)),
+        recarregar,
+      ),
+    ),
+  );
+}
+
+function editarNegocio(n, aoTerminar) {
+  const { dlg, fechar } = abrirModal({
+    titulo: 'Editar negócio ou marca',
+    corpo: `<label for="negocioNome">Nome do negócio ou marca</label>
+      <input type="text" id="negocioNome" maxlength="80" value="${esc(n.nome)}">
+      <label for="negocioCategoriaBusca">Categoria</label>
+      ${categoriaBuscaHtml('negocioCategoria', n.categoria)}
+      <label for="negocioMotivo">Motivo <span class="u-dim">(fica no histórico do negócio)</span></label>
+      <textarea id="negocioMotivo" rows="2"></textarea>
+      <p class="campo-ajuda">Vale para todas as peças deste negócio, inclusive as que estão no ar — a proteção contra concorrentes passa a usar a categoria nova.</p>
+      <p class="form-msg" data-msg role="status"></p>`,
+    rodape: `<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="button" class="btn primary" data-confirmar>Salvar</button>`,
+  });
+  pegar('/admin/categorias')
+    .then((categorias) => ligarCategoriaBusca('negocioCategoria', categorias))
+    .catch(() => erroNoModal(dlg, 'Não foi possível carregar as categorias. Feche e tente de novo.'));
+  dlg.querySelector('[data-confirmar]').addEventListener('click', async () => {
+    const nome = dlg.querySelector('#negocioNome').value.trim();
+    const categoriaId = dlg.querySelector('#negocioCategoriaId').value;
+    const motivo = dlg.querySelector('#negocioMotivo').value.trim();
+    if (!motivo) return erroNoModal(dlg, 'Escreva o motivo — ele fica no histórico do negócio.');
+    const corpo = { motivo };
+    if (nome !== n.nome) corpo.nome = nome;
+    if (categoriaId && Number(categoriaId) !== n.categoria?.id) corpo.categoria_id = Number(categoriaId);
+    const r = await api(`/admin/negocios/${n.id}`, { method: 'PATCH', body: JSON.stringify(corpo) });
+    if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível salvar.');
+    toast('Negócio atualizado.');
+    fechar();
+    aoTerminar();
+  });
+}
+
 function verCriativo(c, estado) {
   const url = c.arquivo_normalizado_url || c.arquivo_original_url;
   abrirModal({
@@ -6894,6 +7040,88 @@ function verCriativo(c, estado) {
       </dl>
     </div>`,
     rodape: `${url && /^https?:/.test(url) ? `<a class="btn ghost mini" href="${esc(url)}" download target="_blank" rel="noopener">Baixar arquivo</a>` : ''}<span class="u-mr-auto"></span><button type="button" class="btn ghost" data-fechar>Fechar</button>`,
+  });
+}
+
+// Quem a peça divulga (migration 121), em destaque na fila: a conta que
+// paga, o negócio ou marca anunciado e a categoria que o cliente declarou —
+// a Mostraí confere as três contra a peça antes de aprovar.
+function htmlNegocioDoCriativo(c, nomeConta) {
+  const categoria = c.negocio_categoria_nome
+    ? esc(c.negocio_categoria_nome)
+    : c.negocio_categoria_livre
+      ? `${esc(c.negocio_categoria_livre)} <span class="u-dim">(não achou no catálogo — escolha a categoria)</span>`
+      : '<span class="u-dim">sem categoria</span>';
+  const situacao = c.negocio_validado_em
+    ? '<span class="badge badge-ok">já conferida</span>'
+    : '<span class="badge badge-pendente">a conferir</span>';
+  return `<dl class="criativo-negocio">
+    <div><dt>Conta</dt><dd>${esc(nomeConta)}</dd></div>
+    <div><dt>Categoria declarada</dt><dd><strong>${categoria}</strong> ${situacao}</dd></div>
+  </dl>`;
+}
+
+// "Alterar categoria e aprovar": a peça está certa, a categoria não. A
+// categoria final vale pro NEGÓCIO (todas as peças dele) e fica no histórico
+// com a declarada, quem mudou, quando e por quê.
+function aprovarComCategoria(c, aoTerminar, { semCategoria = false } = {}) {
+  const declarada = c.negocio_categoria_nome || c.negocio_categoria_livre || 'sem categoria';
+  const { dlg, fechar } = abrirModal({
+    titulo: semCategoria ? 'Escolha a categoria e aprove' : 'Alterar categoria e aprovar',
+    corpo: `<p class="u-mt-0">Negócio ou marca: <strong>${esc(c.negocio_nome || '')}</strong><br>Categoria declarada: <strong>${esc(declarada)}</strong></p>
+      ${semCategoria ? '<p class="item-nota">Este negócio ainda não tem categoria do catálogo. Sem ela, não seria protegido nem barrado como concorrente.</p>' : ''}
+      <label for="aprovarCategoriaBusca">Categoria certa</label>
+      ${categoriaBuscaHtml('aprovarCategoria', null)}
+      <label for="aprovarCategoriaMotivo">Motivo <span class="u-dim">(fica no histórico do negócio)</span></label>
+      <textarea id="aprovarCategoriaMotivo" rows="2" placeholder="ex.: a peça divulga uma pizzaria"></textarea>
+      <p class="form-msg" data-msg role="status"></p>`,
+    rodape: `<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="button" class="btn primary" data-confirmar>Alterar e aprovar</button>`,
+  });
+  pegar('/admin/categorias')
+    .then((categorias) => ligarCategoriaBusca('aprovarCategoria', categorias))
+    .catch(() => erroNoModal(dlg, 'Não foi possível carregar as categorias. Feche e tente de novo.'));
+  dlg.querySelector('#aprovarCategoriaBusca').focus();
+  dlg.querySelector('[data-confirmar]').addEventListener('click', async () => {
+    const categoriaId = dlg.querySelector('#aprovarCategoriaId').value;
+    const motivo = dlg.querySelector('#aprovarCategoriaMotivo').value.trim();
+    if (!categoriaId) return erroNoModal(dlg, 'Escolha a categoria na lista.');
+    if (!motivo) return erroNoModal(dlg, 'Escreva o motivo — ele fica no histórico do negócio.');
+    const r = await api(`/admin/criativos/${c.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'aprovado', categoria_id: Number(categoriaId), motivo_categoria: motivo }),
+    });
+    if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível aprovar.');
+    toast('Categoria alterada e criativo aprovado.');
+    fechar();
+    aoTerminar();
+  });
+}
+
+// "Solicitar correção" (migration 121): o negócio ou a categoria não batem
+// com a peça — não é recusa. O cliente recebe a mensagem, corrige no painel
+// e reenvia a mesma peça pra análise.
+const TEXTO_CORRECAO_CATEGORIA =
+  'A categoria informada não corresponde ao negócio anunciado. Revise o negócio ou a categoria e envie novamente para análise.';
+function pedirCorrecaoCriativo(c, aoTerminar) {
+  const { dlg, fechar } = abrirModal({
+    titulo: 'Solicitar correção',
+    corpo: `<label for="motivoCorrecao">O que o cliente precisa corrigir <span class="u-dim">(ele lê isto no painel e no e-mail)</span></label>
+      <textarea id="motivoCorrecao" rows="3">${esc(TEXTO_CORRECAO_CATEGORIA)}</textarea>
+      <p class="form-msg" data-msg role="status"></p>`,
+    rodape: `<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="button" class="btn primary" data-confirmar>Enviar ao cliente</button>`,
+  });
+  dlg.querySelector('#motivoCorrecao').focus();
+  dlg.querySelector('[data-confirmar]').addEventListener('click', async () => {
+    const motivo = dlg.querySelector('#motivoCorrecao').value.trim();
+    if (!motivo) return erroNoModal(dlg, 'Escreva o que o cliente precisa corrigir.');
+    const r = await api(`/admin/criativos/${c.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'correcao', motivo_reprovacao: motivo }),
+    });
+    if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível pedir a correção.');
+    toast('Correção pedida ao cliente.');
+    fechar();
+    aoTerminar();
   });
 }
 
@@ -6923,10 +7151,24 @@ function recusarCriativo(c, aoTerminar) {
 }
 
 // Upload com retorno dentro do modal (normalizar leva alguns segundos).
-function enviarCriativo({ titulo, explicacao, url, aoTerminar }) {
+// `negocios` (migration 121): com mais de um na conta, o operador diz quem a
+// peça divulga — senão ela cairia no principal, com a categoria dele na
+// trava de concorrentes.
+function enviarCriativo({ titulo, explicacao, url, aoTerminar, negocios = [] }) {
+  const escolha =
+    negocios.length > 1
+      ? `<label for="negocioUpload">Quem esta peça divulga?</label>
+      <select id="negocioUpload">${negocios
+        .map(
+          (n) =>
+            `<option value="${n.id}"${n.principal ? ' selected' : ''}>${esc(n.nome)} · ${esc(n.categoria?.nome || n.categoriaLivre || 'sem categoria')}</option>`,
+        )
+        .join('')}</select>`
+      : '';
   const { dlg, fechar } = abrirModal({
     titulo,
     corpo: `<p class="u-mt-0">${esc(explicacao)}</p>
+      ${escolha}
       <label class="btn ghost" for="arquivoCriativo">Escolher arquivo<input type="file" id="arquivoCriativo" accept="video/*,image/*" hidden></label>
       <p class="form-msg" data-msg role="status"></p>`,
     rodape: '<button type="button" class="btn ghost" data-fechar>Fechar</button>',
@@ -6940,6 +7182,8 @@ function enviarCriativo({ titulo, explicacao, url, aoTerminar }) {
     msg.className = 'form-msg';
     input.disabled = true;
     const dados = new FormData();
+    const negocio = dlg.querySelector('#negocioUpload')?.value;
+    if (negocio) dados.append('negocio_id', negocio);
     dados.append('arquivo', arquivo);
     const r = await fetch(`${API_BASE_URL}${url}`, { method: 'POST', body: dados, credentials: 'include' });
     input.disabled = false;

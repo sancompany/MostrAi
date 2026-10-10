@@ -1666,6 +1666,78 @@ a.celula-sub:hover {
   color: var(--text-dim);
   line-height: 1.45;
 }
+/* Quem a peça divulga (migration 121): conta, negócio e categoria em
+   destaque na fila de aprovação — a Mostraí confere os três contra a peça. */
+.criativo-negocio {
+  display: grid;
+  gap: 2px;
+  margin: 2px 0;
+  padding: var(--e-2) var(--e-3);
+  border-left: 3px solid var(--brand);
+  border-radius: 0 6px 6px 0;
+  background: var(--brand-tint);
+  font-size: 0.82rem;
+}
+.criativo-negocio dt {
+  font-size: 0.74rem;
+  color: var(--text-dim);
+}
+.criativo-negocio div + div {
+  margin-top: var(--e-1);
+}
+.criativo-negocio .badge {
+  margin-left: var(--e-1);
+  vertical-align: 1px;
+}
+.item-sobretitulo {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.criativo-negocio dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.criativo-divulga {
+  color: var(--text);
+}
+.negocios-lista {
+  display: grid;
+  gap: var(--e-2);
+  margin: var(--e-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.negocio-linha {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e-2);
+  padding: var(--e-2) var(--e-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-controle);
+}
+.negocio-linha > div {
+  min-width: 0;
+  flex: 1 1 260px;
+}
+.negocio-linha .item-meta {
+  display: block;
+}
+.negocio-historico {
+  flex-basis: 100%;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+.negocio-historico ul {
+  margin: var(--e-1) 0 0;
+  padding-left: 1.2em;
+}
 .item-nota {
   margin: 2px 0 0;
   padding: 6px 8px;

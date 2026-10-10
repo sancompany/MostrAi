@@ -48,10 +48,11 @@ async function exportarConta(anuncianteId) {
     hospedagens,
     interessesHospedagem,
     saldoHospedagem,
+    negociosDaConta,
   ] = await Promise.all([
     q('SELECT * FROM pontos WHERE anunciante_id = $1 ORDER BY id'),
     q(`SELECT id, arquivo_original_url, arquivo_normalizado_url, thumbnail_url,
-              editado_pelo_operador, status, duracao_segundos, created_at
+              editado_pelo_operador, status, duracao_segundos, created_at, negocio_id
          FROM criativos WHERE anunciante_id = $1 ORDER BY id`),
     q('SELECT * FROM assinaturas WHERE anunciante_id = $1 ORDER BY created_at'),
     q(`SELECT id, plano_id, plano_anterior_id, valor, criado_em, nota_fiscal_status, nota_fiscal_url,
@@ -124,6 +125,12 @@ async function exportarConta(anuncianteId) {
          FROM hospedagem_interesses WHERE conta_id = $1 ORDER BY id`),
     q(`SELECT tipo, segundos, hospedagem_id, criado_em
          FROM saldo_hospedagem_lancamentos WHERE conta_id = $1 ORDER BY criado_em`),
+    // Negócios ou marcas que a conta anuncia (migration 121) — sem quem
+    // validou: o operador é dado de quem trabalha, não do titular.
+    q(`SELECT n.id, n.nome, k.nome AS categoria, n.categoria_livre, n.principal, n.mesmo_grupo_declarado_em,
+              n.validado_em, n.criado_em
+         FROM negocios n LEFT JOIN categorias k ON k.id = n.categoria_id
+        WHERE n.anunciante_id = $1 ORDER BY n.id`),
   ]);
 
   return {
@@ -156,6 +163,7 @@ async function exportarConta(anuncianteId) {
     hospedagens_como_anfitria: hospedagens,
     interesses_em_hospedar: interessesHospedagem,
     saldo_de_hospedagem: saldoHospedagem,
+    negocios_anunciados: negociosDaConta,
   };
 }
 
@@ -215,6 +223,10 @@ async function anonimizarExcluidas(agora = new Date()) {
     // também são dado pessoal sem obrigação por trás (migration 097).
     const ids = rows.map((r) => r.id);
     if (ids.length) {
+      // O texto livre da categoria do negócio (migration 121) é escrita do
+      // cliente, como o `categoria_livre` da conta — sai junto. O nome do
+      // negócio fica, como o `nome_empresa`.
+      await cliente.query('UPDATE negocios SET categoria_livre = NULL WHERE anunciante_id = ANY($1)', [ids]);
       await cliente.query('DELETE FROM alteracoes_email WHERE anunciante_id = ANY($1)', [ids]);
       await cliente.query('DELETE FROM codigos_email WHERE anunciante_id = ANY($1)', [ids]);
       await cliente.query('DELETE FROM email_outbox WHERE anunciante_id = ANY($1)', [ids]);

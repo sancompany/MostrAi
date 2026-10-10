@@ -269,8 +269,15 @@ test('coberturaDaConta (entrada no ar) segue a mesma regra do gerador', async ()
   try {
     const { rows } = await pool.query('SELECT status FROM pontos WHERE id = $1', [tela.ponto.id]);
     assert.strictEqual(rows[0].status, 'em_operacao');
-    assert.ok(!(await coberturaDaConta(padaria, plano)).some((p) => p.id === tela.ponto.id));
-    assert.ok((await coberturaDaConta(academia, plano)).some((p) => p.id === tela.ponto.id));
+    // A trava é pela categoria do NEGÓCIO da peça (migration 121); estas
+    // contas de uma marca só têm o negócio principal no mesmo ramo da conta.
+    const daPeca = (conta) => ({ categoriaId: conta.categoria_id });
+    assert.ok(
+      !(await coberturaDaConta(padaria, plano, undefined, [], daPeca(padaria))).some((p) => p.id === tela.ponto.id),
+    );
+    assert.ok(
+      (await coberturaDaConta(academia, plano, undefined, [], daPeca(academia))).some((p) => p.id === tela.ponto.id),
+    );
   } finally {
     await limpar(tela, [padaria, academia]);
   }

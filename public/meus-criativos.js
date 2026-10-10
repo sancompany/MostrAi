@@ -5,9 +5,13 @@
 //
 // Situações (GET /anunciantes/me/criativos): Em análise · Aprovado (pronto,
 // sem horário agora) · Programado · Aguardando primeira exibição · No ar
-// (comprovante confirmado) · Entrada atrasada · Fora do ar · Recusado. Substituir uma peça
-// aprovada manda a nova pra análise e a atual SEGUE no ar até ela ser
-// aprovada.
+// (comprovante confirmado) · Entrada atrasada · Fora do ar · Recusado ·
+// Correção necessária. Substituir uma peça aprovada manda a nova pra análise
+// e a atual SEGUE no ar até ela ser aprovada.
+//
+// "Quem este anúncio divulga?" (migration 121): o negócio principal da conta
+// vem marcado; outro negócio ou marca do mesmo responsável/grupo só aparece
+// se a pessoa pedir. Plano, horas e limite de peças continuam da conta.
 //
 // Uso: montarMeusCriativos({ obterConta }). Requer /config.js, /layout.js e
 // /eventos.js. Idempotente: cada carga reescreve a lista; ouvintes por
@@ -18,6 +22,12 @@
   let montado = false;
   let carregando = null;
   let enviando = false;
+  // Negócios ou marcas da conta (GET /anunciantes/me/negocios) e o marcado
+  // no envio. `desenhadoCom` evita redesenhar a escolha (e apagar o que a
+  // pessoa está digitando) a cada atualização da lista.
+  let negocios = [];
+  let negocioMarcado = null;
+  let desenhadoCom = null;
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => window.esc(s);
@@ -62,6 +72,8 @@
         return 'Fora do ar. Continua na sua conta.';
       case 'recusado':
         return `${c.motivoRecusa || 'Fale com a gente pra entender o que ajustar.'} Exclua esta peça e envie a versão corrigida.`;
+      case 'correcao_necessaria':
+        return `${c.motivoCorrecao || 'A Mostraí pediu uma correção.'} Revise e envie de novo para análise.`;
       default:
         return '';
     }
@@ -88,7 +100,16 @@
       c.situacao === 'pausado'
         ? '<button type="button" class="btn primary mini" data-acao="retomar">Retomar</button>'
         : '',
+      c.situacao === 'correcao_necessaria'
+        ? '<button type="button" class="btn primary mini" data-acao="reenviar">Revisar e reenviar</button>'
+        : '',
     ].filter(Boolean);
+    // Quem a peça divulga: só aparece pra quem anuncia mais de um negócio —
+    // quem tem um só não vê nada a mais.
+    const divulga =
+      c.negocio && (negocios.length > 1 || !c.negocio.principal)
+        ? `<p class="criativo-divulga">Divulga: <strong>${esc(c.negocio.nome)}</strong> · ${esc(rotuloCategoria(c.negocio))}</p>`
+        : '';
     const rotulo = window.ROTULOS.criativoSituacao[c.situacao] || c.situacao;
     return `<div class="criativo-card situacao-${c.situacao}" data-id="${c.id}">
       <div class="criativo-media">
@@ -103,9 +124,167 @@
         <span class="badge ${window.ROTULOS.criativoSituacaoClasse[c.situacao] || 'badge-pendente'}">${esc(rotulo)}</span>
       </div>
       <div class="criativo-meta"><strong>${tipo}</strong><span>${duracao}${c.feitoPelaMostrai ? ' · feito pela Mostraí' : ''}</span></div>
+      ${divulga}
       <p class="criativo-explica">${esc(explicacao(c))}</p>
       ${acoes.length ? `<div class="criativo-acoes">${acoes.join('')}</div>` : ''}
     </div>`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Quem este anúncio divulga? (migration 121)
+  // ---------------------------------------------------------------------------
+  const rotuloCategoria = (n) => n.categoria?.nome || n.categoriaLivre || 'categoria a confirmar';
+
+  async function carregarNegocios() {
+    try {
+      const r = await fetch(`${API_BASE_URL}/anunciantes/me/negocios`, { credentials: 'include' });
+      if (!r.ok) throw new Error();
+      negocios = (await r.json()).negocios || [];
+    } catch {
+      // Sem a lista, o envio vai sem negócio e o servidor usa o principal —
+      // o mesmo que a tela marcaria.
+      negocios = [];
+    }
+  }
+
+  // A escolha: os negócios da conta (o principal primeiro) e, sob pedido, um
+  // negócio novo com nome, categoria e a declaração de que é do mesmo
+  // responsável ou grupo. `prefixo` separa o envio do modal de correção.
+  function htmlEscolhaNegocio(prefixo, selecionado) {
+    const marcado = selecionado ?? negocios[0]?.id;
+    const opcoes = negocios
+      .map(
+        (
+          n,
+        ) => `<label class="negocio-opcao"><input type="radio" name="${prefixo}_negocio" value="${n.id}"${n.id === marcado ? ' checked' : ''}>
+          <span><strong>${esc(n.nome)}</strong><small>${esc(rotuloCategoria(n))}</small></span></label>`,
+      )
+      .join('');
+    return `<div class="negocio-opcoes">${opcoes}</div>
+      <button type="button" class="btn ghost mini negocio-outro" data-negocio-outro aria-expanded="false">+ Anunciar outro negócio ou marca</button>
+      <div class="negocio-novo" data-negocio-novo hidden>
+        <div class="campo"><label for="${prefixo}_nome">Nome do negócio ou marca</label><input id="${prefixo}_nome" maxlength="80" autocomplete="off" data-negocio-nome></div>
+        <div class="campo"><label for="${prefixo}_categoria_id">Categoria</label><select id="${prefixo}_categoria_id" name="categoria_id" data-categorias></select></div>
+        <div class="campo" data-categoria-livre hidden><label for="${prefixo}_categoria_livre">Qual?</label><input id="${prefixo}_categoria_livre" name="categoria_livre"></div>
+        <label class="negocio-declaracao"><input type="checkbox" data-negocio-grupo> Este negócio ou marca pertence ao mesmo responsável ou grupo desta conta.</label>
+      </div>`;
+  }
+
+  // Abre/fecha o negócio novo; marcar um da lista fecha. O seletor de
+  // categoria é o do cadastro (formulario.js).
+  function ligarEscolha(raiz) {
+    const novo = raiz.querySelector('[data-negocio-novo]');
+    const botao = raiz.querySelector('[data-negocio-outro]');
+    botao.addEventListener('click', () => {
+      novo.hidden = false;
+      botao.hidden = true;
+      botao.setAttribute('aria-expanded', 'true');
+      for (const r of raiz.querySelectorAll('input[type=radio]')) r.checked = false;
+      raiz.querySelector('[data-negocio-nome]').focus();
+    });
+    raiz.addEventListener('change', (ev) => {
+      if (ev.target.type !== 'radio') return;
+      novo.hidden = true;
+      botao.hidden = false;
+      botao.setAttribute('aria-expanded', 'false');
+    });
+    window.ligarCategorias?.(raiz);
+  }
+
+  // O que vai no envio: `{ campos }` (o negócio marcado ou o novo) ou
+  // `{ erro }` — o negócio novo só sai inteiro.
+  function lerEscolhaNegocio(raiz) {
+    const novo = raiz?.querySelector('[data-negocio-novo]');
+    if (novo && !novo.hidden) {
+      const nome = novo.querySelector('[data-negocio-nome]').value.trim();
+      const categoriaId = novo.querySelector('select[name="categoria_id"]').value;
+      const caixaLivre = novo.querySelector('[data-categoria-livre]');
+      const livre =
+        caixaLivre && !caixaLivre.hidden ? novo.querySelector('input[name="categoria_livre"]').value.trim() : '';
+      if (nome.length < 2) return { erro: 'Escreva o nome do negócio ou marca.' };
+      if (!categoriaId && livre.length < 2) return { erro: 'Escolha a categoria do negócio ou marca.' };
+      if (!novo.querySelector('[data-negocio-grupo]').checked) {
+        return { erro: 'Confirme que o negócio ou marca pertence ao mesmo responsável ou grupo desta conta.' };
+      }
+      return {
+        campos: {
+          negocio_nome: nome,
+          ...(categoriaId ? { negocio_categoria_id: categoriaId } : { negocio_categoria_livre: livre }),
+          negocio_mesmo_grupo: '1',
+        },
+      };
+    }
+    const marcado = raiz?.querySelector('input[type=radio]:checked');
+    return { campos: marcado ? { negocio_id: marcado.value } : {} };
+  }
+
+  function desenharEscolhaDoEnvio() {
+    const form = $('negocioEnvio');
+    if (!form) return;
+    form.hidden = false;
+    const assinatura = JSON.stringify(negocios.map((n) => [n.id, n.nome, rotuloCategoria(n)]));
+    const aberto = form.querySelector('[data-negocio-novo]:not([hidden])');
+    if (assinatura === desenhadoCom || aberto) return;
+    const atual = form.querySelector('input[type=radio]:checked');
+    if (atual) negocioMarcado = Number(atual.value);
+    if (!negocios.some((n) => n.id === negocioMarcado)) negocioMarcado = negocios[0]?.id ?? null;
+    $('negocioEscolha').innerHTML = htmlEscolhaNegocio('envio', negocioMarcado);
+    ligarEscolha($('negocioEscolha'));
+    desenhadoCom = assinatura;
+  }
+
+  // "Revisar e reenviar": a mesma peça volta pra análise com o negócio
+  // confirmado (o mesmo, outro da conta ou um novo). Negócio que a Mostraí
+  // ainda não conferiu pode ter a categoria corrigida aqui mesmo.
+  async function reenviar(id) {
+    const c = dados?.criativos.find((x) => x.id === id);
+    if (!c) return;
+    const atual = c.negocio;
+    const corrigirCategoria =
+      atual && !atual.validado
+        ? `<div class="campo" data-corrigir-categoria><label for="corrigir${id}_cat_categoria_id">Categoria certa de ${esc(atual.nome)} (se a atual estiver errada)</label><select id="corrigir${id}_cat_categoria_id" name="categoria_id" data-categorias></select></div>`
+        : '';
+    const sim = await window.confirmarMostrai({
+      titulo: 'Revisar e reenviar',
+      texto: c.motivoCorrecao
+        ? `A Mostraí pediu: ${c.motivoCorrecao}`
+        : 'Revise quem o anúncio divulga e envie de novo.',
+      conteudo: `<form class="negocio-envio" data-negocio-raiz novalidate><fieldset><legend>Quem este anúncio divulga?</legend>${htmlEscolhaNegocio(`corrigir${id}`, atual?.id)}</fieldset></form>
+        ${corrigirCategoria ? `<form class="negocio-envio" novalidate>${corrigirCategoria}</form>` : ''}`,
+      botao: 'Enviar para análise de novo',
+      aoAbrir: (dlg) => {
+        ligarEscolha(dlg.querySelector('[data-negocio-raiz]'));
+        const extra = dlg.querySelector('[data-corrigir-categoria]');
+        if (extra) window.ligarCategorias?.(extra.closest('form'));
+      },
+      aoConfirmar: async (dlg) => {
+        const escolha = lerEscolhaNegocio(dlg.querySelector('[data-negocio-raiz]'));
+        if (escolha.erro) return { erro: escolha.erro };
+        const novaCategoria = dlg.querySelector('[data-corrigir-categoria] select')?.value;
+        const mesmoNegocio = Number(escolha.campos.negocio_id) === atual?.id;
+        if (novaCategoria && mesmoNegocio && Number(novaCategoria) !== atual.categoria?.id) {
+          const r = await fetch(`${API_BASE_URL}/anunciantes/me/negocios/${atual.id}`, {
+            method: 'PATCH',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ categoria_id: Number(novaCategoria) }),
+          });
+          if (!r.ok)
+            return { erro: (await r.json().catch(() => ({}))).erro || 'Não foi possível corrigir a categoria.' };
+        }
+        const r = await fetch(`${API_BASE_URL}/anunciantes/me/criativos/${id}/reenviar`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(escolha.campos),
+        });
+        if (!r.ok) return { erro: (await r.json().catch(() => ({}))).erro || 'Não foi possível reenviar agora.' };
+      },
+    });
+    if (!sim) return;
+    mensagem('Peça reenviada. Ela volta para a análise da Mostraí.', 'ok');
+    desenhadoCom = null;
+    carregar();
   }
 
   // Onde a peça aprovada roda — depende do que a conta tem: plano (pontos
@@ -143,10 +322,13 @@
     if (!window.publicarResumo) return;
     const noAr = dados.criativos.filter((c) => c.situacao === 'no_ar').length;
     const alertas = dados.criativos
-      .filter((c) => c.situacao === 'recusado')
-      .map(() => ({
+      .filter((c) => c.situacao === 'recusado' || c.situacao === 'correcao_necessaria')
+      .map((c) => ({
         nivel: 'atencao',
-        texto: 'Uma peça foi recusada — veja o motivo e envie a versão corrigida.',
+        texto:
+          c.situacao === 'recusado'
+            ? 'Uma peça foi recusada — veja o motivo e envie a versão corrigida.'
+            : 'Uma peça precisa de correção — veja o que ajustar e reenvie.',
         alvo: 'modCriativos',
       }));
     if (!dados.criativos.length) {
@@ -191,7 +373,10 @@
     if (!secao) return true;
     let ok = true;
     try {
-      const r = await fetch(`${API_BASE_URL}/anunciantes/me/criativos`, { credentials: 'include' });
+      const [r] = await Promise.all([
+        fetch(`${API_BASE_URL}/anunciantes/me/criativos`, { credentials: 'include' }),
+        carregarNegocios(),
+      ]);
       if (!r.ok) throw new Error();
       dados = await r.json();
       // Sem plano (pago ou benefício) não há o que enviar: o
@@ -204,6 +389,7 @@
         $('rotuloEnviarCriativo').hidden = true;
         $('contadorCriativos').hidden = true;
         $('ajudaArte').hidden = true;
+        if ($('negocioEnvio')) $('negocioEnvio').hidden = true;
         $('criativosSubtitulo').textContent = 'Vídeo ou imagem vertical · até 95 MB · sem áudio';
         lista.innerHTML = `<p class="empty-state" data-criativos-aguardando>${
           dados.aguardandoBeneficio === 'instalacao'
@@ -222,6 +408,7 @@
       $('contadorCriativos').hidden = false;
       publicar();
       desenharCabecalho();
+      desenharEscolhaDoEnvio();
       lista.innerHTML = dados.criativos.length
         ? `<div class="criativos-lista">${dados.criativos.map(htmlCriativo).join('')}</div>`
         : '<p class="empty-state">Nenhum criativo enviado ainda.</p>';
@@ -311,6 +498,9 @@
         xhr.addEventListener(evento, () => resolve({ status: 0, corpo: null }));
       }
       const form = new FormData();
+      // O negócio antes do arquivo: chega junto, e o servidor o usa só se a
+      // peça não é substituta (a substituta divulga o mesmo da que troca).
+      for (const [campo, valor] of Object.entries(t.negocio || {})) form.append(campo, valor);
       form.append('arquivo', t.arquivo);
       if (t.substitui) form.append('substitui', String(t.substitui));
       xhr.send(form);
@@ -436,6 +626,12 @@
     else $('arquivoCriativo').disabled = false;
     const desfecho = desfechoDoEnvio(resposta);
     if (desfecho === 'sessao') return window.sessaoExpirada();
+    // Negócio novo nasceu com a peça: a escolha passa a mostrá-lo, marcado.
+    if (desfecho === 'enviado' && t.negocio?.negocio_nome) {
+      negocioMarcado = resposta.corpo?.negocio_id ?? negocioMarcado;
+      desenhadoCom = null;
+      $('negocioEscolha').innerHTML = '';
+    }
     if (desfecho === 'enviado') return concluir(t);
     if (desfecho === 'erro') {
       mensagem(window.frase(resposta.corpo.erro), 'err');
@@ -449,9 +645,15 @@
   function enviar(arquivo, substitui) {
     const conta = obterConta();
     if (!arquivo || !conta || enviando) return;
+    let negocio = {};
+    if (!substitui) {
+      const escolha = lerEscolhaNegocio($('negocioEscolha'));
+      if (escolha.erro) return mensagem(escolha.erro, 'err');
+      negocio = escolha.campos;
+    }
     // Uma chave por arquivo escolhido: escolher de novo (mesmo o mesmo
     // arquivo) é um envio novo, de propósito.
-    enviarTentativa({ arquivo, substitui, contaId: conta.id, chave: novaChave() });
+    enviarTentativa({ arquivo, substitui, contaId: conta.id, chave: novaChave(), negocio });
   }
 
   // Confirmação em modal Mostraí (confirmar.js): o DELETE roda dentro do
@@ -546,6 +748,7 @@
       if (acao === 'excluir') return excluir(Number(card.dataset.id));
       if (acao === 'pausar') return pausar(Number(card.dataset.id));
       if (acao === 'retomar') return retomar(Number(card.dataset.id));
+      if (acao === 'reenviar') return reenviar(Number(card.dataset.id));
       if (acao === 'substituir') {
         const input = $('arquivoSubstituto');
         input.dataset.substitui = card.dataset.id;
@@ -555,6 +758,16 @@
       if (ev.target.closest('video')) {
         card.querySelector('video').pause();
         card.classList.remove('tocando');
+      }
+    });
+    // Negócio novo incompleto: diz o que falta antes de abrir o seletor de
+    // arquivo, em vez de recusar o arquivo depois de escolhido.
+    $('rotuloEnviarCriativo')?.addEventListener('click', (ev) => {
+      if ($('arquivoCriativo').disabled) return;
+      const escolha = lerEscolhaNegocio($('negocioEscolha'));
+      if (escolha.erro) {
+        ev.preventDefault();
+        mensagem(escolha.erro, 'err');
       }
     });
     // Um controle só: escolher o arquivo já envia.

@@ -137,11 +137,16 @@ const casaDaTela = (dispositivo) => dispositivo.casa_conta_id ?? null;
 // placeholders da consulta de quem usa: a categoria em vigor no ponto, a
 // conta da casa e o ponto. Um lugar só: a rotação paga e o saldo de
 // hospedagem barram exatamente o mesmo ramo.
-const travaDeRamoSql = (categoria, casa, ponto) => `(${categoria}::int IS NULL OR a.categoria_id IS NULL
-           OR (a.categoria_id <> ${categoria} AND NOT EXISTS (
+//
+// POR CRIATIVO (migration 121): o ramo comparado é o do NEGÓCIO que a peça
+// divulga (`n`, a linha de `negocios` do criativo), já validado pela Mostraí
+// — nunca a categoria geral da conta. A "Academia Pizza" fica fora da
+// pizzaria; a "Academia Burger", da mesma conta, é avaliada por conta própria.
+const travaDeRamoSql = (categoria, casa, ponto) => `(${categoria}::int IS NULL OR n.categoria_id IS NULL
+           OR (n.categoria_id <> ${categoria} AND NOT EXISTS (
                  SELECT 1 FROM categorias_concorrentes cc
-                  WHERE cc.categoria_a = least(a.categoria_id, ${categoria}::int)
-                    AND cc.categoria_b = greatest(a.categoria_id, ${categoria}::int)))
+                  WHERE cc.categoria_a = least(n.categoria_id, ${categoria}::int)
+                    AND cc.categoria_b = greatest(n.categoria_id, ${categoria}::int)))
            OR (a.id = ${casa}::int AND EXISTS (
                  SELECT 1 FROM anunciantes_pontos proprio
                   WHERE proprio.anunciante_id = a.id AND proprio.ponto_id = ${ponto}::int)))`;
@@ -153,15 +158,22 @@ const travaDeRamoSql = (categoria, casa, ponto) => `(${categoria}::int IS NULL O
 // concorrente de si mesma — e sem plano não tem como "escolher" o ponto,
 // que é a exceção da rotação paga. O anfitrião da hospedagem ATIVA fica de
 // fora pelo chamador (`anfitria_conta_id`).
+// Map conta → Set dos criativos aprovados dela que a trava deixa passar
+// nesta tela (a trava é por negócio, migration 121): quem chama só toca peça
+// que está no Set.
 async function contasDaHospedagemNaTela(categoriaDoPonto, excluirContaId, casa, pontoId, contaIds) {
   const { rows } = await pool.query(
-    `SELECT a.id FROM anunciantes a
+    `SELECT a.id, array_agg(c.id) AS liberados
+       FROM anunciantes a
+       JOIN criativos c ON c.anunciante_id = a.id AND c.status = 'aprovado' AND c.arquivo_normalizado_url IS NOT NULL
+       JOIN negocios n ON n.id = c.negocio_id AND n.validado_em IS NOT NULL
       WHERE a.id = ANY($5::int[]) AND NOT a.suspenso AND a.excluido_em IS NULL AND NOT a.conta_propria
         AND (a.id = $3::int OR ${travaDeRamoSql('$1', '$3', '$4')})
-        AND ($2::int IS NULL OR a.id <> $2)`,
+        AND ($2::int IS NULL OR a.id <> $2)
+      GROUP BY a.id`,
     [categoriaDoPonto || null, excluirContaId || null, casa || null, pontoId || null, contaIds],
   );
-  return new Set(rows.map((r) => r.id));
+  return new Map(rows.map((r) => [r.id, new Set(r.liberados)]));
 }
 
 // Quantas telas puxam o saldo de hospedagem na mesma hora: a rede inteira
@@ -193,6 +205,7 @@ async function anunciantesElegiveis(
            array_agg(c.duracao_segundos ORDER BY c.created_at DESC) AS duracoes,
            array_agg(c.id ORDER BY c.created_at DESC) AS criativo_ids,
            array_agg(c.conteudo_sha256 ORDER BY c.created_at DESC) AS hashes,
+           array_agg(t.liberado ORDER BY c.created_at DESC) AS liberados,
            COALESCE(
              (SELECT array_agg(ap.ponto_id ORDER BY ap.escolhido_em)
                 FROM anunciantes_pontos ap WHERE ap.anunciante_id = a.id),
@@ -217,13 +230,17 @@ async function anunciantesElegiveis(
     -- exibicao era contada. criativosDoDono, logo abaixo, ja filtrava.
     JOIN criativos c ON c.anunciante_id = a.id AND c.status = 'aprovado'
       AND c.arquivo_normalizado_url IS NOT NULL
+    -- Só negócio que a Mostraí validou (migration 121): categoria que o
+    -- cliente apenas declarou nunca decide nada aqui.
+    JOIN negocios n ON n.id = c.negocio_id AND n.validado_em IS NOT NULL
+    CROSS JOIN LATERAL (SELECT ${travaDeRamoSql('$1', '$3', '$4')} AS liberado) t
     WHERE NOT a.suspenso
       AND a.excluido_em IS NULL
       AND NOT a.conta_propria
-      AND ${travaDeRamoSql('$1', '$3', '$4')}
       AND ($2::int IS NULL OR a.id <> $2)
     GROUP BY a.id, a.conta_propria, a.data_expiracao, p.frequencia_hora, p.segundos_por_hora, p.pontos_incluidos,
              p.limite_criativos
+    HAVING bool_or(t.liberado)
   `,
     [
       categoriaDoPonto || null,
@@ -235,17 +252,22 @@ async function anunciantesElegiveis(
     ],
   );
 
-  return rows.map((r) => {
+  // O limite do plano escolhe as peças da conta na REDE INTEIRA (as mais
+  // novas); a trava de ramo só tira desta tela as do negócio barrado aqui —
+  // nunca põe outra no lugar, senão a conta teria mais peças no ar do que o
+  // plano vende. Sem peça que passe, a conta não entra nesta tela.
+  return rows.flatMap((r) => {
     const limite = limiteDeCriativos(r.conta_propria, r.limite_criativos, r.urls.length);
-    return {
-      ...r,
-      criativos: r.urls.slice(0, limite).map((url, i) => ({
+    const criativos = r.urls
+      .slice(0, limite)
+      .map((url, i) => ({
         url,
         duracaoSegundos: r.duracoes[i],
         criativoId: r.criativo_ids[i],
         contentHash: r.hashes[i],
-      })),
-    };
+      }))
+      .filter((_, i) => r.liberados[i]);
+    return criativos.length ? [{ ...r, criativos }] : [];
   });
 }
 
@@ -878,9 +900,13 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
         if (dispositivo.anfitria_conta_id === contaId) continue;
         const existente = entrada.find((e) => e.id === contaId);
         // A peça: a da conta nesta tela (plano/Básico); com plano mas fora
-        // da cobertura daqui, a do plano; sem plano, a da regra do saldo.
+        // da cobertura daqui, a do plano; sem plano, a da regra do saldo — só
+        // as que a trava de ramo deixa passar aqui (as duas primeiras já
+        // vêm filtradas desta mesma tela).
         let criativos = existente ? porId[contaId]?.criativos : todos.find((a) => a.id === contaId)?.criativos;
-        if (!criativos?.length) criativos = await hospedagem.pecasDoSaldo(contaId);
+        if (!criativos?.length) {
+          criativos = (await hospedagem.pecasDoSaldo(contaId)).filter((c) => podem.get(contaId).has(c.criativoId));
+        }
         if (!criativos?.length) continue;
         const duracao = duracaoValida(existente ? existente.duracaoSegundos : duracaoMedia(criativos));
         const insercoes = Math.min(
@@ -990,7 +1016,9 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
         let criativos = todos
           .find((a) => a.id === contaId)
           ?.criativos?.filter((c) => duracaoValida(c.duracaoSegundos) <= Math.ceil(congeladaDur));
-        if (!criativos?.length) criativos = await hospedagem.pecasDoSaldo(contaId);
+        if (!criativos?.length) {
+          criativos = (await hospedagem.pecasDoSaldo(contaId)).filter((c) => podem.get(contaId).has(c.criativoId));
+        }
         if (criativos?.length) porId[contaId] = { criativos };
       }
     }

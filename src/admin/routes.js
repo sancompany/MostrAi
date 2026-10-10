@@ -17,6 +17,8 @@ const sse = require('../lib/sse');
 const filaEntrada = require('../anunciantes/fila-entrada');
 // Sem ciclo: o repositório de mídias só requer pool, capacidade e fuso-comercial.
 const midiasRepo = require('../midias/repository');
+const negocios = require('../anunciantes/negocios');
+const { operadorDaRequisicao } = require('../lib/operador');
 
 // "Sem sinal" tem régua única em src/lib/status-tela.js (TOLERANCIA_SEM_SINAL_MS,
 // 2 min com heartbeat de 15 s — docs/player-mvp-contract.md §9), que soma o
@@ -38,34 +40,80 @@ router.patch('/admin/criativos/:id', async (req, res) => {
     if ((await midiasRepo.situacaoPorCriativo(req.params.id)) === 'excluida') {
       return res.status(409).json({ erro: 'esse arquivo é de uma mídia excluída — não muda mais' });
     }
+    // "Solicitar correção" (migration 121): sempre com o que corrigir — é a
+    // mensagem que o cliente recebe. Só da peça em análise: conferido na
+    // linha travada, abaixo.
+    if (req.body.status === 'correcao' && !String(req.body.motivo_reprovacao ?? '').trim()) {
+      return res.status(400).json({ erro: 'diga ao cliente o que corrigir' });
+    }
+    const dono = await anunciantesRepo.buscarPorId(antes.anunciante_id);
     let criativo;
-    // Substituição (reconstrução de Contas, 23/09/2026, Parte 22): aprovar B
-    // tira A do ar no mesmo gesto — A vira 'retirado' (continua cadastrado,
-    // sai da playlist). SWAP ATÔMICO (consolidação, 24/09/2026): um comando
-    // só — nunca existe um instante com A e B aprovados, nem A retirado sem
-    // B aprovado.
-    // Vale pra qualquer estado anterior que não seja 'aprovado' (finalização,
-    // 28/09/2026): substituto recusado e aprovado depois também retira o
-    // original — antes caía no caminho comum e A e B ficavam os dois no ar.
-    if (req.body.status === 'aprovado' && antes.status !== 'aprovado' && antes.substitui_criativo_id) {
-      await pool.query(
-        `WITH nova AS (
-           UPDATE criativos SET status = 'aprovado' WHERE id = $1 AND status <> 'aprovado' RETURNING substitui_criativo_id
-         )
-         UPDATE criativos SET status = 'retirado', retirado_por = 'substituicao'
-          WHERE id = (SELECT substitui_criativo_id FROM nova) AND status = 'aprovado'`,
-        [antes.id],
-      );
-      criativo = await criativosRepo.buscarPorId(antes.id);
-    } else {
-      // Quem tirou do ar fica registrado (migration 109): o cliente só
-      // retoma pelo painel o que ele mesmo pausou; o que o admin retirou
-      // volta só daqui ("Colocar no ar" limpa a marca).
-      const dados = { ...req.body };
-      delete dados.retirado_por; // quem tirou do ar vem do status, nunca do corpo
-      if (dados.status === 'retirado') dados.retirado_por = 'admin';
-      if (dados.status === 'aprovado') dados.retirado_por = null;
-      criativo = await criativosRepo.atualizar(req.params.id, dados);
+    const cliente = await pool.connect();
+    try {
+      await cliente.query('BEGIN');
+      // Aprovar = validar o negócio que a peça divulga (migration 121), na
+      // MESMA transação: nunca existe peça aprovada de negócio sem validação.
+      // `categoria_id` (opcional) é o "Alterar categoria e aprovar" — com
+      // `motivo_categoria`, e a auditoria guarda a de antes e a de depois.
+      // A linha travada é a que vale: o cliente pode ter reenviado a peça
+      // (com outro negócio) entre a leitura acima e este ponto.
+      const travado = (await cliente.query('SELECT * FROM criativos WHERE id = $1 FOR UPDATE', [antes.id])).rows[0];
+      if (req.body.status === 'correcao' && travado?.status !== 'pendente') {
+        throw new negocios.ErroNegocio('só uma peça em análise pode voltar para correção', 409);
+      }
+      // A substituta divulga o negócio da peça que ela troca: não há o que o
+      // cliente corrigir, e em "correção" ela escaparia de toda checagem de
+      // "substituta em análise" (revisão do PR #133). Se não serve, recuse.
+      if (req.body.status === 'correcao' && travado.substitui_criativo_id) {
+        throw new negocios.ErroNegocio(
+          'esta peça substitui outra e divulga o mesmo negócio dela — se não serve, recuse',
+          409,
+        );
+      }
+      if (req.body.status === 'aprovado' && travado && travado.status !== 'aprovado') {
+        await negocios.validarNaAprovacao(cliente, travado, {
+          categoriaId: req.body.categoria_id,
+          motivo: req.body.motivo_categoria,
+          ...operadorDaRequisicao(req),
+          // Peça retirada que volta ao ar já passou pela aprovação.
+          exigirCategoria: !dono?.conta_propria && travado.status !== 'retirado',
+        });
+      }
+      // Substituição (reconstrução de Contas, 23/09/2026, Parte 22): aprovar B
+      // tira A do ar no mesmo gesto — A vira 'retirado' (continua cadastrado,
+      // sai da playlist). SWAP ATÔMICO (consolidação, 24/09/2026): um comando
+      // só — nunca existe um instante com A e B aprovados, nem A retirado sem
+      // B aprovado.
+      // Vale pra qualquer estado anterior que não seja 'aprovado' (finalização,
+      // 28/09/2026): substituto recusado e aprovado depois também retira o
+      // original — antes caía no caminho comum e A e B ficavam os dois no ar.
+      if (req.body.status === 'aprovado' && antes.status !== 'aprovado' && antes.substitui_criativo_id) {
+        await cliente.query(
+          `WITH nova AS (
+             UPDATE criativos SET status = 'aprovado' WHERE id = $1 AND status <> 'aprovado' RETURNING substitui_criativo_id
+           )
+           UPDATE criativos SET status = 'retirado', retirado_por = 'substituicao'
+            WHERE id = (SELECT substitui_criativo_id FROM nova) AND status = 'aprovado'`,
+          [antes.id],
+        );
+        criativo = (await cliente.query('SELECT * FROM criativos WHERE id = $1', [antes.id])).rows[0];
+      } else {
+        // Quem tirou do ar fica registrado (migration 109): o cliente só
+        // retoma pelo painel o que ele mesmo pausou; o que o admin retirou
+        // volta só daqui ("Colocar no ar" limpa a marca).
+        const dados = { ...req.body };
+        delete dados.retirado_por; // quem tirou do ar vem do status, nunca do corpo
+        if (dados.status === 'retirado') dados.retirado_por = 'admin';
+        if (dados.status === 'aprovado') dados.retirado_por = null;
+        criativo = await criativosRepo.atualizar(req.params.id, dados, cliente);
+      }
+      await cliente.query('COMMIT');
+    } catch (err) {
+      await cliente.query('ROLLBACK').catch(() => {});
+      if (err instanceof negocios.ErroNegocio) return res.status(err.status).json({ erro: err.message });
+      throw err;
+    } finally {
+      cliente.release();
     }
     if (!criativo) return res.status(404).json({ erro: 'criativo não encontrado' });
     if (antes.status !== criativo.status) sse.emitirParaAdmin('creative.updated', { id: criativo.id });
@@ -80,7 +128,6 @@ router.patch('/admin/criativos/:id', async (req, res) => {
     // 'retirado' (Colocar no ar, na ficha) também não é aprovação nova: sem
     // e-mail, sem evento de tempo-até-aprovar.
     if (criativo.status === 'aprovado' && antes?.status !== 'aprovado' && antes?.status !== 'retirado') {
-      const dono = await anunciantesRepo.buscarPorId(criativo.anunciante_id);
       // fire-and-forget: e-mail que falha não pode impedir a aprovação, que é
       // o que libera o vídeo para a programação. Conta própria (Mídia Mostraí) não recebe
       // — o `contato_email` dela é um endereço interno sem caixa de entrada
@@ -125,7 +172,6 @@ router.patch('/admin/criativos/:id', async (req, res) => {
     // — o card virava "Reprovado" e nada mais acontecia. Agora sai um aviso
     // com o motivo e o caminho de correção.
     if (criativo.status === 'reprovado' && antes?.status !== 'reprovado') {
-      const dono = await anunciantesRepo.buscarPorId(criativo.anunciante_id);
       // Mesma exclusão de conta própria do bloco de aprovado acima.
       if (dono && !dono.conta_propria) {
         await outbox.enfileirarSemFalhar({
@@ -157,6 +203,27 @@ router.patch('/admin/criativos/:id', async (req, res) => {
         },
         dono,
       );
+    }
+    // Correção pedida: o cliente recebe o que corrigir (aviso + e-mail) e
+    // reenvia a mesma peça pelo painel.
+    if (criativo.status === 'correcao' && antes.status !== 'correcao' && dono && !dono.conta_propria) {
+      await outbox.enfileirarSemFalhar({
+        tipo: 'criativo_correcao',
+        chave: `criativo_correcao:${criativo.id}:${Date.now()}`,
+        para: dono.contato_email,
+        anuncianteId: dono.id,
+        dados: { conta: { nome_empresa: dono.nome_empresa }, criativo: { motivo: criativo.motivo_reprovacao } },
+      });
+      await notificacoesRepo
+        .registrar(dono.id, {
+          tipo: 'criativo_correcao',
+          titulo: 'Seu criativo precisa de uma correção',
+          descricao: criativo.motivo_reprovacao || undefined,
+          entidadeTipo: 'criativo',
+          entidadeId: criativo.id,
+        })
+        .catch((err) => console.error('falha ao notificar correção de criativo', err.message));
+      sse.emitirParaConta(dono.id, 'creative.updated', { id: criativo.id, status: criativo.status });
     }
 
     res.json(criativo);

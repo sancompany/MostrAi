@@ -3,7 +3,19 @@ const pool = require('../db/pool');
 // 'retirado' (migration 075): aprovado que o admin tirou do ar, ou que saiu
 // porque o substituto foi aprovado. Continua cadastrado; o gerador só toca
 // 'aprovado', então fica fora da playlist sem nenhuma outra regra.
-const STATUS = ['pendente', 'aprovado', 'reprovado', 'retirado'];
+// 'correcao' (migration 121): a Mostraí devolveu a peça ao cliente pra
+// corrigir o negócio ou a categoria ("Correção necessária"). Não toca; ocupa
+// a vaga do plano como a peça em análise; volta a 'pendente' no reenvio.
+const STATUS = ['pendente', 'aprovado', 'reprovado', 'retirado', 'correcao'];
+
+// O negócio que a peça divulga (migration 121), junto de cada linha que vai
+// pra tela: nome, categoria e se a Mostraí já validou.
+const COM_NEGOCIO = `c.*, n.nome AS negocio_nome, n.principal AS negocio_principal, n.categoria_id AS negocio_categoria_id,
+       k.nome AS negocio_categoria_nome, n.categoria_livre AS negocio_categoria_livre,
+       n.validado_em AS negocio_validado_em
+  FROM criativos c
+  JOIN negocios n ON n.id = c.negocio_id
+  LEFT JOIN categorias k ON k.id = n.categoria_id`;
 
 const CAMPOS_ATUALIZAVEIS = [
   'status',
@@ -27,12 +39,14 @@ const CAMPOS_ATUALIZAVEIS = [
 // `envio_chave` (migration 098): a chave de idempotência do upload. Duas
 // requisições com a mesma chave na mesma conta esbarram no índice único —
 // quem chama trata o 23505 como "já existe".
+// `negocio_id` vazio = o principal da conta (gatilho da migration 121); de
+// outra conta, o banco recusa (chave estrangeira composta).
 async function criar(dados) {
   const { rows } = await pool.query(
     `INSERT INTO criativos
        (anunciante_id, arquivo_original_url, arquivo_normalizado_url, thumbnail_url, duracao_segundos,
-        substitui_criativo_id, envio_chave)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)
+        substitui_criativo_id, envio_chave, negocio_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
      RETURNING *`,
     [
       dados.anunciante_id,
@@ -42,13 +56,14 @@ async function criar(dados) {
       dados.duracao_segundos,
       dados.substitui_criativo_id || null,
       dados.envio_chave || null,
+      dados.negocio_id || null,
     ],
   );
   return rows[0];
 }
 
 async function buscarPorId(id) {
-  const { rows } = await pool.query('SELECT * FROM criativos WHERE id = $1', [id]);
+  const { rows } = await pool.query(`SELECT ${COM_NEGOCIO} WHERE c.id = $1`, [id]);
   return rows[0] || null;
 }
 
@@ -119,7 +134,7 @@ async function contarCadastrados(anuncianteId) {
 }
 
 async function listarPorAnunciante(anuncianteId) {
-  const { rows } = await pool.query('SELECT * FROM criativos WHERE anunciante_id = $1 ORDER BY created_at DESC', [
+  const { rows } = await pool.query(`SELECT ${COM_NEGOCIO} WHERE c.anunciante_id = $1 ORDER BY c.created_at DESC`, [
     anuncianteId,
   ]);
   return rows;
@@ -131,10 +146,10 @@ async function listarPorAnunciante(anuncianteId) {
 // padrão, aquela tabela ficava eternamente vazia com peças no ar.
 async function listarPorStatus(status) {
   if (!status || status === 'todos') {
-    const { rows } = await pool.query('SELECT * FROM criativos ORDER BY created_at ASC');
+    const { rows } = await pool.query(`SELECT ${COM_NEGOCIO} ORDER BY c.created_at ASC`);
     return rows;
   }
-  const { rows } = await pool.query('SELECT * FROM criativos WHERE status = $1 ORDER BY created_at ASC', [status]);
+  const { rows } = await pool.query(`SELECT ${COM_NEGOCIO} WHERE c.status = $1 ORDER BY c.created_at ASC`, [status]);
   return rows;
 }
 

@@ -6,6 +6,8 @@ const router = express.Router();
 const repo = require('./repository');
 const { planoEfetivoId } = repo;
 const criativosRepo = require('./criativos-repository');
+const negocios = require('./negocios');
+const { operadorDaRequisicao } = require('../lib/operador');
 const ffmpeg = require('../lib/ffmpeg');
 const pool = require('../db/pool');
 const vigencia = require('../lib/vigencia');
@@ -1067,6 +1069,8 @@ async function subirCriativo(
     substitui = null,
     envioChave = null,
     avisar = null,
+    negocio = null,
+    validacao = null,
   },
 ) {
   if (!req.file) return res.status(400).json({ erro: 'arquivo obrigatório' });
@@ -1135,6 +1139,19 @@ async function subirCriativo(
       });
     }
 
+    // O negócio que a peça divulga (migration 121) — depois das recusas
+    // baratas, pra um envio recusado não deixar negócio novo pra trás. A
+    // substituta divulga o mesmo negócio da peça que ela troca.
+    let negocioId = substitui ? substitui.negocio_id : null;
+    if (!substitui && negocio) {
+      try {
+        negocioId = await negocio();
+      } catch (err) {
+        if (err instanceof negocios.ErroNegocio) return res.status(err.status).json({ erro: err.message });
+        throw err;
+      }
+    }
+
     let criativoTemp;
     try {
       criativoTemp = await medir('db_criar_ms', () =>
@@ -1146,6 +1163,7 @@ async function subirCriativo(
           duracao_segundos: null,
           substitui_criativo_id: substitui ? substitui.id : null,
           envio_chave: envioChave,
+          negocio_id: negocioId,
         }),
       );
     } catch (err) {
@@ -1171,13 +1189,32 @@ async function subirCriativo(
       // acabou de subir. Fazer o dono aprovar o próprio upload seria um clique
       // sem decisão nenhuma por trás. Substituto é a exceção: a troca só
       // acontece na aprovação, então ele espera em análise.
-      const criativo = await medir('db_finalizar_ms', () =>
-        criativosRepo.atualizar(criativoTemp.id, {
-          ...normalizado,
-          ...(peloOperador ? { editado_pelo_operador: true } : {}),
-          ...(peloOperador && !substitui ? { status: 'aprovado' } : {}),
-        }),
-      );
+      const final = {
+        ...normalizado,
+        ...(peloOperador ? { editado_pelo_operador: true } : {}),
+        ...(peloOperador && !substitui ? { status: 'aprovado' } : {}),
+      };
+      // Aprovada aqui = negócio validado pelo operador (migration 121), com o
+      // nome dele na auditoria — na MESMA transação da aprovação: upload que
+      // falha não deixa negócio validado sem peça (revisão do PR #133). Sem
+      // exigir categoria: é o Admin decidindo, e conta sem categoria nunca
+      // foi barrada como concorrente.
+      const criativo = await medir('db_finalizar_ms', async () => {
+        if (!(peloOperador && !substitui && validacao)) return criativosRepo.atualizar(criativoTemp.id, final);
+        const cliente = await pool.connect();
+        try {
+          await cliente.query('BEGIN');
+          await negocios.validarNaAprovacao(cliente, criativoTemp, { ...validacao, exigirCategoria: false });
+          const aprovado = await criativosRepo.atualizar(criativoTemp.id, final, cliente);
+          await cliente.query(aprovado ? 'COMMIT' : 'ROLLBACK');
+          return aprovado;
+        } catch (err) {
+          await cliente.query('ROLLBACK').catch(() => {});
+          throw err;
+        } finally {
+          cliente.release();
+        }
+      });
       if (!criativo) {
         // A linha saiu no meio do processamento (a exclusão do cliente
         // recusa isso; aqui é a rede de segurança). Nunca 201 de um criativo
@@ -1330,6 +1367,9 @@ async function subirCriativoDoCliente(req, res) {
     duracaoMaxima: direitos.duracaoMaxima,
     substitui,
     envioChave,
+    // "Quem este anúncio divulga?": o negócio escolhido (desta conta), um
+    // negócio novo declarado no próprio envio, ou o principal.
+    negocio: () => negocios.negocioDoEnvio(anunciante.id, req.body),
     // Quando a linha nasce (card "processando") e quando o trabalho termina
     // (pronto, ou falhou e a linha saiu): o painel refaz a lista sem F5. O
     // admin só é avisado no fim — a fila de aprovação não mostra peça sem
@@ -1380,6 +1420,10 @@ router.post('/admin/anunciantes/:id/criativos', upload.single('arquivo'), async 
     // A conta própria não tem teto de duração: o inventário é da casa.
     duracaoMaxima: conta.conta_propria ? null : plano ? plano.duracao_maxima_segundos : null,
     peloOperador: true,
+    // O operador escolhe um negócio que a conta já tem (ou fica o principal);
+    // negócio novo só nasce do envio do próprio cliente, com a declaração dele.
+    negocio: () => negocios.negocioDoEnvio(conta.id, { negocio_id: req.body?.negocio_id }),
+    validacao: operadorDaRequisicao(req),
   });
 });
 
@@ -1554,7 +1598,12 @@ router.get('/admin/anunciantes/:id/criativos', async (req, res) => {
 //   fora_do_ar (retirado) · recusado
 // e o vínculo de substituição nos dois sentidos (a peça atual sabe que tem
 // substituta em análise; a substituta sabe quem ela troca).
-const SITUACAO_CRIATIVO = { pendente: 'em_analise', reprovado: 'recusado', retirado: 'fora_do_ar' };
+const SITUACAO_CRIATIVO = {
+  pendente: 'em_analise',
+  reprovado: 'recusado',
+  retirado: 'fora_do_ar',
+  correcao: 'correcao_necessaria',
+};
 // Peça aprovada: a situação é a da entrada no ar (entrada-no-ar.js), nunca
 // "no ar" só por estar aprovada.
 const SITUACAO_DA_ENTRADA = {
@@ -1628,6 +1677,10 @@ router.get('/anunciantes/me/criativos', exigirAnuncianteLogado, async (req, res)
       thumbnailUrl: c.thumbnail_url,
       duracaoSegundos: c.duracao_segundos,
       motivoRecusa: c.status === 'reprovado' ? c.motivo_reprovacao : null,
+      // "Correção necessária" (migration 121): o que a Mostraí pediu pra
+      // corrigir antes de reenviar.
+      motivoCorrecao: c.status === 'correcao' ? c.motivo_reprovacao : null,
+      negocio: negocioDaPeca(c),
       feitoPelaMostrai: !!c.editado_pelo_operador,
       substitui: c.substitui_criativo_id,
       substitutaEmAnalise: substitutaDe.get(c.id) || null,
@@ -1707,6 +1760,19 @@ async function pecaDaConta(req, res) {
   return criativo;
 }
 
+// O negócio que a peça divulga, como a tela mostra (linhas de
+// criativosRepo.listarPorAnunciante/listarPorStatus).
+function negocioDaPeca(c) {
+  return {
+    id: c.negocio_id,
+    nome: c.negocio_nome,
+    principal: c.negocio_principal,
+    categoria: c.negocio_categoria_id ? { id: c.negocio_categoria_id, nome: c.negocio_categoria_nome } : null,
+    categoriaLivre: c.negocio_categoria_id ? null : c.negocio_categoria_livre || null,
+    validado: !!c.negocio_validado_em,
+  };
+}
+
 async function avisarMudancaDePeca(contaId, criativoId) {
   sse.emitirParaConta(contaId, 'creative.updated', { id: criativoId });
   sse.emitirParaAdmin('creative.updated', {});
@@ -1714,6 +1780,68 @@ async function avisarMudancaDePeca(contaId, criativoId) {
   // decisão do cliente — esse tempo não vira dívida (migration 111).
   await obrigacaoDoCiclo.avaliarDisponibilidadeSemFalhar(contaId);
 }
+
+// "Quem este anúncio divulga?" (migration 121): o principal e os negócios
+// que a conta já usou numa peça. Negócio sem peça nenhuma (um envio que
+// falhou no meio) não aparece — e volta a ser usado se o nome se repetir.
+router.get('/anunciantes/me/negocios', exigirAnuncianteLogado, async (req, res) => {
+  const lista = await negocios.listarDaConta(req.session.anuncianteId);
+  res.json({ negocios: lista.filter((n) => n.principal || n.criativos > 0).map(negocios.paraResposta) });
+});
+
+// Corrigir nome/categoria de um negócio que a Mostraí ainda não conferiu.
+// Conferido, recusa (decisão do dono, 10/10/2026: só o Admin muda).
+router.patch('/anunciantes/me/negocios/:id', exigirAnuncianteLogado, async (req, res) => {
+  try {
+    const negocio = await negocios.editarPeloCliente(req.session.anuncianteId, req.params.id, req.body || {});
+    sse.emitirParaConta(req.session.anuncianteId, 'creative.updated', {});
+    sse.emitirParaAdmin('creative.updated', {});
+    res.json(negocios.paraResposta(negocio));
+  } catch (err) {
+    if (err instanceof negocios.ErroNegocio) return res.status(err.status).json({ erro: err.message });
+    throw err;
+  }
+});
+
+// Reenviar uma peça em "Correção necessária": o cliente confirma o negócio
+// (o mesmo, outro da conta ou um novo declarado aqui) e a peça volta pra
+// análise. O arquivo é o mesmo — peça errada se exclui e se envia outra.
+router.post('/anunciantes/me/criativos/:id/reenviar', exigirAnuncianteLogado, async (req, res) => {
+  const criativo = await pecaDaConta(req, res);
+  if (!criativo) return;
+  if (criativo.status !== 'correcao') {
+    return res.status(409).json({ erro: 'só uma peça com correção pedida pode ser reenviada' });
+  }
+  const corpo = req.body || {};
+  const cliente = await pool.connect();
+  try {
+    await cliente.query('BEGIN');
+    const informou = (corpo.negocio_id ?? '') !== '' || corpo.negocio_nome !== undefined;
+    const negocioId = informou
+      ? await negocios.negocioDoEnvio(criativo.anunciante_id, corpo, cliente)
+      : criativo.negocio_id;
+    const { rowCount } = await cliente.query(
+      `UPDATE criativos SET negocio_id = $2, status = 'pendente', motivo_reprovacao = NULL
+        WHERE id = $1 AND anunciante_id = $3 AND status = 'correcao'`,
+      [criativo.id, negocioId, criativo.anunciante_id],
+    );
+    if (!rowCount) {
+      await cliente.query('ROLLBACK');
+      return res.status(409).json({ erro: 'a peça mudou de situação — atualize a lista' });
+    }
+    await cliente.query('COMMIT');
+  } catch (err) {
+    await cliente.query('ROLLBACK').catch(() => {});
+    if (err instanceof negocios.ErroNegocio) return res.status(err.status).json({ erro: err.message });
+    throw err;
+  } finally {
+    cliente.release();
+  }
+  // Voltou pra análise: a espera agora é da Mostraí (fecha a janela de
+  // indisponibilidade do cliente, se a peça era a única).
+  await avisarMudancaDePeca(req.session.anuncianteId, criativo.id);
+  res.json({ ok: true });
+});
 
 router.post('/anunciantes/me/criativos/:id/pausar', exigirAnuncianteLogado, async (req, res) => {
   const criativo = await pecaDaConta(req, res);
@@ -2177,6 +2305,45 @@ const CAMPOS_ADMIN_EDITA = [
   'suspenso',
   'frequencia_hora_propria',
 ];
+// Negócios da conta pra ficha do Admin (migration 121): todos, com quantos
+// criativos cada um tem e o histórico de validação e ajustes.
+router.get('/admin/anunciantes/:id/negocios', async (req, res) => {
+  const conta = await repo.buscarPorId(req.params.id);
+  if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
+  const lista = await negocios.listarDaConta(conta.id);
+  res.json({
+    negocios: await Promise.all(
+      lista.map(async (n) => ({ ...negocios.paraResposta(n), historico: await negocios.historico(n.id) })),
+    ),
+  });
+});
+
+// O Admin corrige nome e/ou categoria de um negócio (o cliente não muda
+// negócio já validado). Sempre com motivo; fica na auditoria.
+router.patch('/admin/negocios/:id', async (req, res) => {
+  const { nome, categoria_id: categoriaId, motivo } = req.body || {};
+  const cliente = await pool.connect();
+  try {
+    await cliente.query('BEGIN');
+    const negocio = await negocios.editarPeloAdmin(cliente, req.params.id, {
+      nome,
+      categoriaId,
+      motivo,
+      ...operadorDaRequisicao(req),
+    });
+    await cliente.query('COMMIT');
+    sse.emitirParaConta(negocio.anunciante_id, 'creative.updated', {});
+    sse.emitirParaAdmin('creative.updated', {});
+    res.json(negocios.paraResposta(negocio));
+  } catch (err) {
+    await cliente.query('ROLLBACK').catch(() => {});
+    if (err instanceof negocios.ErroNegocio) return res.status(err.status).json({ erro: err.message });
+    throw err;
+  } finally {
+    cliente.release();
+  }
+});
+
 router.patch('/admin/anunciantes/:id', async (req, res) => {
   try {
     // `numero_confirmado` não é coluna: é o "está certo assim" do aviso de
@@ -2232,10 +2399,20 @@ router.patch('/admin/anunciantes/:id', async (req, res) => {
         await codigosEmail.descartar(antes.id, 'troca', cliente);
         await invalidarEnviosDoEmailAntigo(antes.id, cliente);
       }
+      // Reclassificar a conta é a Mostraí dizendo qual é o ramo do
+      // estabelecimento: o negócio principal já validado vai junto, com
+      // auditoria (migration 121). Ainda não validado, o banco já o fez
+      // acompanhar o cadastro.
+      if (req.body.categoria_id && Number(req.body.categoria_id) !== antes.categoria_id) {
+        await negocios.aplicarCategoriaDaContaNoPrincipal(cliente, antes.id, req.body.categoria_id, {
+          ...operadorDaRequisicao(req),
+        });
+      }
       await cliente.query('COMMIT');
     } catch (err) {
       await cliente.query('ROLLBACK').catch(() => {});
       if (err.code === '23505') return res.status(409).json({ erro: 'esse e-mail já é usado por outra conta' });
+      if (err instanceof negocios.ErroNegocio) return res.status(err.status).json({ erro: err.message });
       throw err;
     } finally {
       cliente.release();

@@ -254,7 +254,11 @@ test('CRI-01: criativo retirado não ocupa vaga — Essencial (1) depois da subs
 test('CRI-03: substituto recusado e depois aprovado retira o original no mesmo gesto', async () => {
   const admin = require('../src/admin/routes');
   const app = await subirApp((a) => a.use(admin));
-  const conta = await criarConta({ plano_id: 'essencial-1m', data_expiracao: daqui(30) });
+  // Com categoria: peça da fila sem ela não se aprova (migration 121).
+  const {
+    rows: [academia],
+  } = await pool.query(`SELECT id FROM categorias WHERE nome = 'Academia'`);
+  const conta = await criarConta({ plano_id: 'essencial-1m', data_expiracao: daqui(30), categoria_id: academia.id });
   try {
     const a = await criativo(conta.id);
     const b = await criativo(conta.id, { status: 'pendente', substitui_criativo_id: a.id });

@@ -13,6 +13,9 @@
 // botão liberado pra tentar de novo. Cancelar/ESC/fundo resolve false.
 // Sem `aoConfirmar` é só uma pergunta: resolve true/false e quem chamou faz
 // o pedido — pra ação sem requisição (sair da conta) não precisa de loading.
+// `conteudo` (HTML montado por quem chama, já escapado) entra depois do texto
+// — um formulário pequeno, como o "Revisar e reenviar" do criativo; `aoAbrir`
+// e `aoConfirmar` recebem o <dialog> pra ligar e ler esse formulário.
 (() => {
   const esc = (s) =>
     String(s ?? '').replace(
@@ -26,6 +29,8 @@
     botao = 'Confirmar',
     cancelar = 'Cancelar',
     perigo = false,
+    conteudo = '',
+    aoAbrir = null,
     aoConfirmar = null,
   }) {
     return new Promise((resolve) => {
@@ -38,6 +43,7 @@
         <div class="dlg-head"><h3 id="dlgConfirmarTitulo">${esc(titulo)}</h3>
           <button type="button" class="dlg-close" data-fechar aria-label="Fechar">&times;</button></div>
         <p class="dlg-confirmar-texto">${esc(texto)}</p>
+        ${conteudo}
         <p class="form-msg" data-msg role="alert"></p>
         <div class="dlg-acoes">
           <button type="button" class="btn ghost" data-fechar>${esc(cancelar)}</button>
@@ -79,7 +85,7 @@
         msg.textContent = '';
         msg.className = 'form-msg';
         try {
-          const r = await aoConfirmar();
+          const r = await aoConfirmar(dlg);
           if (r && typeof r === 'object' && r.erro) throw new Error(r.erro);
           resultado = true;
           enviando = false;
@@ -96,6 +102,7 @@
       });
       dlg.showModal();
       btnOk.focus();
+      aoAbrir?.(dlg);
     });
   };
 })();
