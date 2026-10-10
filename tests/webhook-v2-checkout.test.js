@@ -255,6 +255,50 @@ test('v2: troca_revertida vira pendência com o plano anterior; chargeback suspe
   }
 });
 
+test('v2: troca_revertida com reserva de dedupe órfã (processo morto antes do COMMIT) ainda devolve o acerto; reentrega não duplica a pendência (revisão Codex do PR #130)', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  try {
+    const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO });
+    await assinaturasRepo.marcarAtiva(assinatura.id);
+    await pool.query(
+      `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, plano_anterior_id, valor, nota_fiscal_status,
+                                          charge_id, pago_em, pago_em_fonte)
+       VALUES ($1, $2, $2, 30, 'pendente', $3, now(), 'psp')`,
+      [c.id, PLANO, `pay_acerto_${rodada}`],
+    );
+    const ev = v2(assinatura, c, rodada, {
+      evento: 'troca_revertida',
+      chargeId: `pay_acerto_${rodada}`,
+      statusFinanceiro: 'estornado',
+      valor: 30,
+      valorEstornado: 30,
+      planoAnterior: 'plano-velho',
+      acertoCobrado: 30,
+    });
+    await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1)', [ev.eventoId]);
+    const mock = semCheckout();
+    try {
+      await sc.processarWebhookAssinatura(ev);
+      await sc.processarWebhookAssinatura(ev);
+    } finally {
+      mock.restaurar();
+    }
+    const acerto = await pool.query('SELECT status_financeiro FROM cobrancas_confirmadas WHERE charge_id = $1', [
+      `pay_acerto_${rodada}`,
+    ]);
+    assert.equal(acerto.rows[0].status_financeiro, 'estornado', 'a nova tentativa devolve o acerto');
+    const { rows: pend } = await pool.query(
+      "SELECT motivo FROM eventos_assinatura_pendentes WHERE payload->>'eventoId' = $1",
+      [ev.eventoId],
+    );
+    assert.equal(pend.length, 1, 'a decisão de voltar de plano entra uma vez só');
+    assert.match(pend[0].motivo, /revertido \(estornado, R\$ 30\)/);
+  } finally {
+    await apagar(c.id, rodada);
+  }
+});
+
 // Revisão do commit 299f3e5 (25/09/2026): o v2 deduplicava SÓ pelo
 // `eventoId` e gravava `chargeId|status` DEPOIS de creditar, sem conferir
 // antes. Qualquer caminho que creditasse a mesma cobrança primeiro (a

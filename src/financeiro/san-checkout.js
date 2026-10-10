@@ -503,12 +503,17 @@ async function processarWebhookAssinatura(payload) {
     return registrarPendencia(payload, `sem chargeId pra deduplicar: ${err.message}`);
   }
 
-  // Estorno com chargeId: o efeito já é idempotente pelo próprio dado (o
-  // valor devolvido acumulado na cobrança, `registrarEstornoDoPsp`) e grava
-  // numa transação só. Sem reserva aqui: um processo morto entre a reserva e
-  // o COMMIT da devolução deixava a nova tentativa da inbox cair na dedupe —
-  // e o dinheiro devolvido nunca entrava (revisão Codex do PR #130).
-  if (payload.evento === 'cobranca_estornada' && payload.chargeId) {
+  // Estorno com chargeId (o da cobrança, ou o do acerto de uma troca
+  // revertida): o efeito já é idempotente pelo próprio dado (o valor
+  // devolvido acumulado na cobrança, `registrarEstornoDoPsp`) e grava numa
+  // transação só. Sem reserva aqui: um processo morto entre a reserva e o
+  // COMMIT da devolução deixava a nova tentativa da inbox cair na dedupe — e
+  // o dinheiro devolvido nunca entrava (revisões Codex do PR #130).
+  const estornoComChargeId =
+    payload.chargeId &&
+    (payload.evento === 'cobranca_estornada' ||
+      (payload.evento === 'troca_revertida' && payload.statusFinanceiro !== 'chargeback'));
+  if (estornoComChargeId) {
     return aplicarEventoAssinatura(payload, chave, ultima);
   }
 
@@ -770,8 +775,19 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
       const contestada = await estornos.marcarContestada(payload.chargeId);
       if (contestada.semCobranca && payload.chargeId) throw cobrancaAindaNaoRegistrada(payload);
       for (const aviso of contestada.avisos || []) await registrarPendencia(payload, aviso);
-    } else if (payload.chargeId && (await estornos.registrarEstornoDoPsp(payload)).semCobranca) {
-      throw cobrancaAindaNaoRegistrada(payload);
+    } else if (payload.chargeId) {
+      const r = await estornos.registrarEstornoDoPsp(payload);
+      if (r.semCobranca) throw cobrancaAindaNaoRegistrada(payload);
+      // Reentrega (este caminho não passa pela reserva de dedupe): a decisão
+      // já está na fila — a não ser que o processo tenha morrido antes de
+      // gravá-la.
+      if (r.repetido) {
+        const { rowCount } = await pool.query(
+          "SELECT 1 FROM eventos_assinatura_pendentes WHERE payload->>'eventoId' = $1 LIMIT 1",
+          [payload.eventoId],
+        );
+        if (rowCount) return;
+      }
     }
     return registrarPendencia(
       payload,

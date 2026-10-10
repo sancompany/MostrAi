@@ -306,8 +306,13 @@ async function aplicarEstornoTotal(db, cobranca, motivo, { coberturaJaDesfeita =
   // limite: uma renovação devolvida exatamente no último dia do ciclo
   // anterior perde o resto desse dia — distinguir pediria guardar a
   // cobertura de antes de cada ciclo.
+  // O ciclo que ABRIU a cobertura também acaba agora: a compra soma os meses
+  // ao dia UTC do pagamento (san-checkout.js, `setMonth`), que das 21h à
+  // meia-noite de Matão já é amanhã — o que sobra (até o dia UTC da compra)
+  // não é dia pago por ninguém.
   const hoje = vigencia.hojeComercial();
-  const fim = nova === hoje ? vigencia.somarDias(hoje, -1) : nova;
+  const abriu = nova > hoje && nova <= new Date(ciclo.criado_em).toISOString().slice(0, 10);
+  const fim = nova === hoje || abriu ? vigencia.somarDias(hoje, -1) : nova;
   await db.query('UPDATE anunciantes SET data_expiracao = $2 WHERE id = $1', [conta.id, fim]);
   return avisos;
 }

@@ -305,6 +305,33 @@ test('Admin estorna cobrança elegível: pedido com operador, motivo, valor; NÃ
   assert.ok(Number(reembolso[0].segundos) < 0);
 });
 
+test('estorno total de uma compra feita à noite (dia UTC já é amanhã) não deixa um dia de cobertura sobrando', async () => {
+  const conta = await criarConta();
+  const { assinatura, chargeId, cobranca } = await pagar(conta);
+  // A compra das 21h–24h de Matão: o dia UTC do pagamento é amanhã, e a
+  // cobertura foi contada a partir dele.
+  const amanha = vigencia.somarDias(vigencia.hojeComercial(), 1);
+  await pool.query(
+    "UPDATE ciclos_contratados SET criado_em = ($2::date + time '00:30') AT TIME ZONE 'UTC' WHERE cobranca_confirmada_id = $1",
+    [cobranca.id, amanha],
+  );
+  await pool.query("UPDATE anunciantes SET data_expiracao = ($2::date + interval '1 month')::date WHERE id = $1", [
+    conta.id,
+    amanha,
+  ]);
+  const r = await admin('POST', `/admin/cobrancas/${cobranca.id}/estornos`, {
+    tipo: 'ordinario',
+    motivo: 'cliente pediu',
+  });
+  assert.equal(r.status, 201, r.texto);
+  await estornoDoPsp(assinatura, conta, chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+  const depois = await linha('SELECT data_expiracao FROM anunciantes WHERE id = $1', [conta.id]);
+  assert.ok(
+    vigencia.coberturaVencida(depois.data_expiracao),
+    `a cobertura acaba agora (${vigencia.diaTexto(depois.data_expiracao)})`,
+  );
+});
+
 test('estorno parcial confirmado é só dinheiro: horas e cobertura iguais', async () => {
   const conta = await criarConta();
   const { assinatura, chargeId, cobranca } = await pagar(conta);
