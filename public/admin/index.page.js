@@ -213,6 +213,9 @@ function ligarCategoriaBusca(idPrefixo, categorias, aoEscolher, { excluirId = nu
     lista.hidden = true;
     if (aoEscolher) aoEscolher(categoria);
   });
+  // A lista chega depois do modal aberto: quem já digitou antes dela chegar
+  // vê o resultado sem precisar digitar de novo.
+  if (document.activeElement === input) abrir(input.value);
 }
 
 let toastTimer;
