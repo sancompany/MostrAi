@@ -572,6 +572,55 @@ test('negócio adicional com o nome da conta, antes de existir o principal: recu
   );
 });
 
+// Revisão do PR #133 (Codex): o Admin escolhe, no upload pela ficha, qual
+// negócio da conta a peça divulga; e a validação do negócio só fica se a
+// peça ficar aprovada (mesma transação).
+test('upload do Admin: peça no negócio escolhido; falhou a aprovação, o negócio não fica validado', async () => {
+  const conta = await novaConta({ categoria: await idDaCategoria('Academia') });
+  const env = await enviar(conta, {
+    negocio_nome: 'Academia Pizza',
+    negocio_categoria_id: await idDaCategoria('Pizzaria'),
+    negocio_mesmo_grupo: '1',
+  });
+  assert.strictEqual(env.status, 201);
+  const uploadDoAdmin = async (campos = {}) => {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(campos)) form.append(k, String(v));
+    form.append('arquivo', new Blob([Buffer.from('video')], { type: 'video/mp4' }), 'peca.mp4');
+    const r = await fetch(`${base}/admin/anunciantes/${conta.id}/criativos`, {
+      method: 'POST',
+      headers: { 'x-admin': 'operador-teste' },
+      body: form,
+    });
+    return { status: r.status, json: await r.json().catch(() => null) };
+  };
+  // A aprovação final falha: nada da validação fica.
+  const criativosRepo = require('../src/anunciantes/criativos-repository');
+  const atualizar = criativosRepo.atualizar;
+  criativosRepo.atualizar = async (id, dados, db) => {
+    if (dados.status === 'aprovado') throw new Error('falha simulada na aprovação');
+    return atualizar(id, dados, db);
+  };
+  let falhou;
+  try {
+    falhou = await uploadDoAdmin({ negocio_id: env.json.negocio_id });
+  } finally {
+    criativosRepo.atualizar = atualizar;
+  }
+  assert.strictEqual(falhou.status, 400);
+  assert.strictEqual((await linha('negocios', env.json.negocio_id)).validado_em, null);
+  const auditoria = await pool.query('SELECT count(*)::int AS n FROM negocios_validacoes WHERE negocio_id = $1', [
+    env.json.negocio_id,
+  ]);
+  assert.strictEqual(auditoria.rows[0].n, 0);
+  // Sem falha: a peça do Admin vai pro negócio escolhido, aprovada e validada.
+  const ok = await uploadDoAdmin({ negocio_id: env.json.negocio_id });
+  assert.strictEqual(ok.status, 201);
+  assert.strictEqual(ok.json.negocio_id, env.json.negocio_id);
+  assert.strictEqual(ok.json.status, 'aprovado');
+  assert.ok((await linha('negocios', env.json.negocio_id)).validado_em);
+});
+
 // Revisão do PR #133 (Codex): a substituta herda o negócio da peça que ela
 // troca — não há negócio nem categoria pro cliente corrigir. Em "correção",
 // ela sumiria de toda checagem de "substituta em análise" e a conta poderia

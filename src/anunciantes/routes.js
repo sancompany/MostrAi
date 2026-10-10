@@ -1189,19 +1189,32 @@ async function subirCriativo(
       // acabou de subir. Fazer o dono aprovar o próprio upload seria um clique
       // sem decisão nenhuma por trás. Substituto é a exceção: a troca só
       // acontece na aprovação, então ele espera em análise.
+      const final = {
+        ...normalizado,
+        ...(peloOperador ? { editado_pelo_operador: true } : {}),
+        ...(peloOperador && !substitui ? { status: 'aprovado' } : {}),
+      };
       // Aprovada aqui = negócio validado pelo operador (migration 121), com o
-      // nome dele na auditoria. Sem exigir categoria: é o Admin decidindo, e
-      // conta sem categoria nunca foi barrada como concorrente.
-      if (peloOperador && !substitui && validacao) {
-        await negocios.validarNaAprovacao(pool, criativoTemp, { ...validacao, exigirCategoria: false });
-      }
-      const criativo = await medir('db_finalizar_ms', () =>
-        criativosRepo.atualizar(criativoTemp.id, {
-          ...normalizado,
-          ...(peloOperador ? { editado_pelo_operador: true } : {}),
-          ...(peloOperador && !substitui ? { status: 'aprovado' } : {}),
-        }),
-      );
+      // nome dele na auditoria — na MESMA transação da aprovação: upload que
+      // falha não deixa negócio validado sem peça (revisão do PR #133). Sem
+      // exigir categoria: é o Admin decidindo, e conta sem categoria nunca
+      // foi barrada como concorrente.
+      const criativo = await medir('db_finalizar_ms', async () => {
+        if (!(peloOperador && !substitui && validacao)) return criativosRepo.atualizar(criativoTemp.id, final);
+        const cliente = await pool.connect();
+        try {
+          await cliente.query('BEGIN');
+          await negocios.validarNaAprovacao(cliente, criativoTemp, { ...validacao, exigirCategoria: false });
+          const aprovado = await criativosRepo.atualizar(criativoTemp.id, final, cliente);
+          await cliente.query(aprovado ? 'COMMIT' : 'ROLLBACK');
+          return aprovado;
+        } catch (err) {
+          await cliente.query('ROLLBACK').catch(() => {});
+          throw err;
+        } finally {
+          cliente.release();
+        }
+      });
       if (!criativo) {
         // A linha saiu no meio do processamento (a exclusão do cliente
         // recusa isso; aqui é a rede de segurança). Nunca 201 de um criativo

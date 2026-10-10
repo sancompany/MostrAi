@@ -233,6 +233,23 @@ check(
 );
 await admin.screenshot({ path: `${SAIDA}4-ficha.png`, fullPage: true });
 
+console.log('== 7b. o Admin adiciona peça pela ficha e diz quem ela divulga ==');
+await admin.locator('[data-cr-adicionar]').click();
+await admin.locator('#negocioUpload').waitFor({ timeout: 15000 });
+const opcoesUpload = await admin.locator('#negocioUpload option').allInnerTexts();
+check(
+  'o upload do Admin pergunta quem a peça divulga',
+  opcoesUpload.length === 2 && opcoesUpload.some((t) => t.includes('Academia Pizza')),
+  opcoesUpload.join(' | '),
+);
+await admin.selectOption('#negocioUpload', String(pizza));
+await admin.setInputFiles('#arquivoCriativo', VIDEO);
+await esperar(async () => PG(`SELECT count(*) FROM criativos WHERE anunciante_id = ${contaId}`) === '3', 60000);
+check(
+  'a peça do Admin ficou no negócio escolhido',
+  PG(`SELECT negocio_id FROM criativos WHERE anunciante_id = ${contaId} ORDER BY id DESC LIMIT 1`) === String(pizza),
+);
+
 console.log('== 8. o cliente não altera negócio validado ==');
 const tentativa = await ctx.request.patch(`${B}/anunciantes/me/negocios/${pizza}`, { data: { nome: 'Outro nome' } });
 check('PATCH de negócio validado: 409', tentativa.status() === 409, String(tentativa.status()));

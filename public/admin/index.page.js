@@ -6896,15 +6896,26 @@ function desenharContaCriativos(el, ctx) {
       if (ok && (await salvar(`/admin/criativos/${c.id}`, { status: 'aprovado' }))) recarregar();
     }),
   );
-  el.querySelector('[data-cr-adicionar]')?.addEventListener('click', () =>
+  el.querySelector('[data-cr-adicionar]')?.addEventListener('click', async () => {
+    // Os negócios da conta (migration 121): sem a lista, não abre — a peça
+    // não pode cair calada no principal.
+    let negocios = [];
+    if (!ctx.conta.conta_propria) {
+      try {
+        negocios = (await pegar(`/admin/anunciantes/${ctx.conta.id}/negocios`)).negocios;
+      } catch {
+        return toast('Não foi possível carregar os negócios desta conta. Tente de novo.', 'err');
+      }
+    }
     enviarCriativo({
       titulo: 'Adicionar criativo',
       explicacao:
         'O arquivo é normalizado e entra aprovado (subido pelo Mostraí). Vídeo de 3 a 60 segundos, ou imagem.',
       url: `/admin/anunciantes/${ctx.conta.id}/criativos`,
       aoTerminar: recarregar,
-    }),
-  );
+      negocios,
+    });
+  });
   el.querySelectorAll('[data-cr-substituir]').forEach((b) =>
     b.addEventListener('click', () =>
       enviarCriativo({
@@ -7140,10 +7151,24 @@ function recusarCriativo(c, aoTerminar) {
 }
 
 // Upload com retorno dentro do modal (normalizar leva alguns segundos).
-function enviarCriativo({ titulo, explicacao, url, aoTerminar }) {
+// `negocios` (migration 121): com mais de um na conta, o operador diz quem a
+// peça divulga — senão ela cairia no principal, com a categoria dele na
+// trava de concorrentes.
+function enviarCriativo({ titulo, explicacao, url, aoTerminar, negocios = [] }) {
+  const escolha =
+    negocios.length > 1
+      ? `<label for="negocioUpload">Quem esta peça divulga?</label>
+      <select id="negocioUpload">${negocios
+        .map(
+          (n) =>
+            `<option value="${n.id}"${n.principal ? ' selected' : ''}>${esc(n.nome)} · ${esc(n.categoria?.nome || n.categoriaLivre || 'sem categoria')}</option>`,
+        )
+        .join('')}</select>`
+      : '';
   const { dlg, fechar } = abrirModal({
     titulo,
     corpo: `<p class="u-mt-0">${esc(explicacao)}</p>
+      ${escolha}
       <label class="btn ghost" for="arquivoCriativo">Escolher arquivo<input type="file" id="arquivoCriativo" accept="video/*,image/*" hidden></label>
       <p class="form-msg" data-msg role="status"></p>`,
     rodape: '<button type="button" class="btn ghost" data-fechar>Fechar</button>',
@@ -7157,6 +7182,8 @@ function enviarCriativo({ titulo, explicacao, url, aoTerminar }) {
     msg.className = 'form-msg';
     input.disabled = true;
     const dados = new FormData();
+    const negocio = dlg.querySelector('#negocioUpload')?.value;
+    if (negocio) dados.append('negocio_id', negocio);
     dados.append('arquivo', arquivo);
     const r = await fetch(`${API_BASE_URL}${url}`, { method: 'POST', body: dados, credentials: 'include' });
     input.disabled = false;
