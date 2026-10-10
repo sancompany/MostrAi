@@ -171,9 +171,11 @@
     }
   }
 
-  // A escolha: os negócios da conta (o principal primeiro) e, sob pedido, um
-  // negócio novo com nome, categoria e a declaração de que é do mesmo
-  // responsável ou grupo. `prefixo` separa o envio do modal de correção.
+  // A escolha: os negócios da conta (o principal primeiro) e, como opção do
+  // mesmo grupo de rádios, "outro negócio ou marca" — que abre nome,
+  // categoria e a declaração de que é do mesmo responsável ou grupo. Um
+  // rádio só (e não um botão que desmarca tudo): sempre há uma escolha
+  // marcada à vista. `prefixo` separa o envio do modal de correção.
   function htmlEscolhaNegocio(prefixo, selecionado) {
     const marcado = selecionado ?? negocios[0]?.id;
     const opcoes = negocios
@@ -184,51 +186,60 @@
           <span><strong>${esc(n.nome)}</strong><small>${esc(rotuloCategoria(n))}</small></span></label>`,
       )
       .join('');
-    return `<div class="negocio-opcoes">${opcoes}</div>
-      <button type="button" class="btn ghost mini negocio-outro" data-negocio-outro aria-expanded="false">+ Anunciar outro negócio ou marca</button>
-      <div class="negocio-novo" data-negocio-novo hidden>
-        <div class="campo"><label for="${prefixo}_nome">Nome do negócio ou marca</label><input id="${prefixo}_nome" maxlength="80" autocomplete="off" data-negocio-nome></div>
+    return `<div class="negocio-opcoes">${opcoes}
+        <label class="negocio-outro-opcao"><input type="radio" name="${prefixo}_negocio" value="" data-negocio-outro aria-controls="${prefixo}_novo">
+          <span><strong>+ Anunciar outro negócio ou marca</strong><small>Do mesmo responsável ou grupo</small></span></label>
+      </div>
+      <div class="negocio-novo" id="${prefixo}_novo" role="group" aria-labelledby="${prefixo}_novo_titulo" data-negocio-novo hidden>
+        <p class="negocio-novo-titulo" id="${prefixo}_novo_titulo">Novo negócio ou marca</p>
+        <div class="campo"><label for="${prefixo}_nome">Nome</label><input id="${prefixo}_nome" maxlength="80" autocomplete="off" data-negocio-nome></div>
         <div class="campo"><label for="${prefixo}_categoria_id">Categoria</label><select id="${prefixo}_categoria_id" name="categoria_id" data-categorias></select></div>
         <div class="campo" data-categoria-livre hidden><label for="${prefixo}_categoria_livre">Qual?</label><input id="${prefixo}_categoria_livre" name="categoria_livre"></div>
         <label class="negocio-declaracao"><input type="checkbox" data-negocio-grupo> Este negócio ou marca pertence ao mesmo responsável ou grupo desta conta.</label>
       </div>`;
   }
 
-  // Abre/fecha o negócio novo; marcar um da lista fecha. O seletor de
-  // categoria é o do cadastro (formulario.js).
+  // Os campos do negócio novo aparecem só com "outro negócio ou marca"
+  // marcado. O seletor de categoria é o do cadastro (formulario.js).
+  // Uma vez por raiz: a do envio é redesenhada sem ser trocada.
   function ligarEscolha(raiz) {
-    const novo = raiz.querySelector('[data-negocio-novo]');
-    const botao = raiz.querySelector('[data-negocio-outro]');
-    botao.addEventListener('click', () => {
-      novo.hidden = false;
-      botao.hidden = true;
-      botao.setAttribute('aria-expanded', 'true');
-      for (const r of raiz.querySelectorAll('input[type=radio]')) r.checked = false;
-      raiz.querySelector('[data-negocio-nome]').focus();
-    });
-    raiz.addEventListener('change', (ev) => {
-      if (ev.target.type !== 'radio') return;
-      novo.hidden = true;
-      botao.hidden = false;
-      botao.setAttribute('aria-expanded', 'false');
-    });
+    if (!raiz.dataset.escolhaLigada) {
+      raiz.dataset.escolhaLigada = '1';
+      raiz.addEventListener('change', (ev) => {
+        if (ev.target.type !== 'radio') return;
+        raiz.querySelector('[data-negocio-novo]').hidden = !raiz.querySelector('[data-negocio-outro]').checked;
+      });
+    }
     window.ligarCategorias?.(raiz);
   }
 
   // O que vai no envio: `{ campos }` (o negócio marcado ou o novo) ou
-  // `{ erro }` — o negócio novo só sai inteiro.
+  // `{ erro, campo }` — o negócio novo só sai inteiro; `campo` é onde
+  // está o que falta. Quem decide é o rádio marcado.
   function lerEscolhaNegocio(raiz) {
     const novo = raiz?.querySelector('[data-negocio-novo]');
-    if (novo && !novo.hidden) {
-      const nome = novo.querySelector('[data-negocio-nome]').value.trim();
-      const categoriaId = novo.querySelector('select[name="categoria_id"]').value;
+    if (novo && raiz.querySelector('[data-negocio-outro]')?.checked) {
+      const campoNome = novo.querySelector('[data-negocio-nome]');
+      const nome = campoNome.value.trim();
+      const select = novo.querySelector('select[name="categoria_id"]');
+      const categoriaId = select.value;
       const caixaLivre = novo.querySelector('[data-categoria-livre]');
       const livre =
         caixaLivre && !caixaLivre.hidden ? novo.querySelector('input[name="categoria_livre"]').value.trim() : '';
-      if (nome.length < 2) return { erro: 'Escreva o nome do negócio ou marca.' };
-      if (!categoriaId && livre.length < 2) return { erro: 'Escolha a categoria do negócio ou marca.' };
-      if (!novo.querySelector('[data-negocio-grupo]').checked) {
-        return { erro: 'Confirme que o negócio ou marca pertence ao mesmo responsável ou grupo desta conta.' };
+      if (nome.length < 2) return { erro: 'Escreva o nome do negócio ou marca.', campo: campoNome };
+      if (!categoriaId && livre.length < 2) {
+        const busca = caixaLivre && !caixaLivre.hidden ? caixaLivre.querySelector('input') : null;
+        return {
+          erro: 'Escolha a categoria do negócio ou marca.',
+          campo: busca || novo.querySelector(`#${select.id}_busca`) || select,
+        };
+      }
+      const grupo = novo.querySelector('[data-negocio-grupo]');
+      if (!grupo.checked) {
+        return {
+          erro: 'Confirme que o negócio ou marca pertence ao mesmo responsável ou grupo desta conta.',
+          campo: grupo,
+        };
       }
       return {
         campos: {
@@ -238,7 +249,7 @@
         },
       };
     }
-    const marcado = raiz?.querySelector('input[type=radio]:checked');
+    const marcado = raiz?.querySelector('input[type=radio]:checked:not([data-negocio-outro])');
     return { campos: marcado ? { negocio_id: marcado.value } : {} };
   }
 
@@ -319,7 +330,10 @@
   // sobe 95 MB pra ouvir um não.
   function desenharEnvio() {
     desenharControles();
-    if (!modo || !dados) return;
+    if (!modo || !dados) {
+      posicionarMensagem(false);
+      return;
+    }
     const trocando = modo === 'substituir';
     // Durante o envio a lista muda por causa dele mesmo (a substituta nasce
     // "em análise" e a peça trocada deixa de ser elegível; a linha nova
@@ -334,6 +348,9 @@
         'Nenhuma peça pode ser substituída agora: só uma peça aprovada pode ser trocada, e cada uma aceita uma substituta por vez. Espere a análise terminar ou exclua uma peça da biblioteca.';
     }
     $('tituloEnvio').textContent = trocando ? 'Substituir criativo' : 'Novo criativo';
+    $('envioSub').textContent = trocando
+      ? 'A peça nova passa pela análise; a atual segue como está até ela ser aprovada.'
+      : 'Configure a peça antes de enviá-la para análise.';
     $('envioAviso').textContent = aviso;
     $('envioAviso').hidden = !aviso;
     const escolhendoPeca = !aviso && trocando && !peca;
@@ -346,21 +363,25 @@
         ? `<strong>${esc(peca.negocio.nome)}</strong> · ${esc(rotuloCategoria(peca.negocio))}`
         : '<strong>esta conta</strong>';
       $('envioTravado').innerHTML =
-        `Substituindo criativo de: ${negocio}<span>A peça nova divulga o mesmo negócio ou marca e passa pela análise; a atual segue como está até a nova ser aprovada.</span>`;
+        `Substituindo criativo de: ${negocio}<span>A peça nova divulga o mesmo negócio ou marca.</span>`;
     }
     $('etapaArquivo').hidden = !pronto;
     $('negocioEnvio').hidden = !pronto || trocando;
     $('envioRodape').hidden = !pronto;
-    $('rotuloEtapaArquivo').textContent = trocando ? 'Novo arquivo' : '1. Arquivo';
-    $('escolherArquivo').textContent = escolhido
-      ? 'Trocar arquivo'
-      : trocando
-        ? 'Selecionar novo arquivo'
-        : 'Selecionar vídeo ou imagem';
-    $('arquivoEscolhido').hidden = !escolhido;
-    $('arquivoEscolhido').textContent = escolhido
-      ? `Arquivo escolhido: ${escolhido.arquivo.name} (${tamanho(escolhido.arquivo.size)})`
-      : '';
+    posicionarMensagem(pronto);
+    $('rotuloEtapaArquivo').textContent = trocando ? 'Novo arquivo' : 'Arquivo';
+    $('escolherArquivo').textContent = trocando ? 'Selecionar novo arquivo' : 'Selecionar arquivo';
+    // O arquivo escolhido aparece na mesma área de soltar: prévia, nome,
+    // tamanho e o estado (escolhido, enviando, processando, recusado).
+    $('dropzoneVazia').hidden = !!escolhido;
+    $('arquivoCard').hidden = !escolhido;
+    $('dropzone').classList.toggle('com-arquivo', !!escolhido);
+    if (escolhido) {
+      $('arquivoEscolhido').textContent = escolhido.arquivo.name;
+      $('arquivoTamanho').textContent = tamanho(escolhido.arquivo.size);
+      $('arquivoEstado').textContent = escolhido.estado.texto;
+      $('arquivoEstado').className = `arquivo-estado ${escolhido.estado.tipo}`;
+    }
     // Durante o envio: tudo travado (o <fieldset disabled> trava os campos
     // sem mexer no estado de cada um) e sem "Cancelar" — o arquivo já está
     // subindo; o resultado aparece na mensagem.
@@ -368,6 +389,99 @@
     $('cancelarEnvio').hidden = enviando;
     $('envioCriativo').setAttribute('aria-busy', String(enviando));
     $('enviarParaAnalise').textContent = enviando ? 'Enviando...' : 'Enviar para análise';
+    desenharRodape();
+  }
+
+  // O que falta pra enviar — nada (null) ou a frase, e onde está: o arquivo
+  // e, no novo criativo, o negócio novo inteiro (a mesma leitura do envio).
+  function faltaParaEnviar() {
+    if (!escolhido) return { erro: 'Selecione o arquivo da peça para enviar.', campo: $('escolherArquivo') };
+    if (modo === 'novo') {
+      const escolha = lerEscolhaNegocio($('negocioEscolha'));
+      if (escolha.erro) return escolha;
+    }
+    return null;
+  }
+
+  // Rodapé do bloco: à esquerda a mensagem do envio ou, sem ela, o que
+  // falta; à direita "Enviar para análise", inativo (aria-disabled: segue
+  // focável e diz o porquê) enquanto falta algo.
+  function desenharRodape() {
+    if (!modo) return;
+    const falta = enviando ? null : faltaParaEnviar();
+    const botao = $('enviarParaAnalise');
+    botao.setAttribute('aria-disabled', String(!!falta));
+    const dica = $('envioDica');
+    dica.textContent = falta?.erro || '';
+    if (!falta) dica.classList.remove('alerta');
+    dica.hidden = !falta || !!$('uploadMsg').textContent;
+  }
+
+  // A mensagem do envio (#uploadMsg, a região lida pelo leitor de tela) fica
+  // ao lado de "Enviar para análise" enquanto o bloco está pronto pra enviar;
+  // fora disso, logo abaixo do bloco — onde a biblioteca a mostra depois do
+  // envio. Um elemento só, movido: nunca duas mensagens.
+  function posicionarMensagem(noRodape) {
+    const msg = $('uploadMsg');
+    if (noRodape) {
+      if (msg.parentNode !== $('envioRodapeTexto')) $('envioRodapeTexto').prepend(msg);
+    } else if (msg.previousElementSibling !== $('envioCriativo')) {
+      $('envioCriativo').after(msg);
+    }
+  }
+
+  // O estado do arquivo na área de soltar (só a tela; a mensagem do envio,
+  // lida pelo leitor de tela, continua em #uploadMsg).
+  function marcarArquivo(texto, tipo = '') {
+    if (!escolhido) return;
+    escolhido.estado = { texto, tipo };
+    $('arquivoEstado').textContent = texto;
+    $('arquivoEstado').className = `arquivo-estado ${tipo}`;
+  }
+
+  // Prévia local do arquivo escolhido: vídeo por blob: (media-src da CSP),
+  // imagem por data: (img-src não aceita blob:). Imagem grande fica sem
+  // prévia — o nome e o tamanho bastam.
+  let previaUrl = null;
+  function soltarPrevia() {
+    if (previaUrl) URL.revokeObjectURL(previaUrl);
+    previaUrl = null;
+    $('arquivoPrevia').replaceChildren();
+  }
+  function mostrarPrevia(arquivo) {
+    soltarPrevia();
+    const caixa = $('arquivoPrevia');
+    // Sem prévia (formato que o navegador não abre, imagem grande), o
+    // marcador: o ▶ só pra vídeo.
+    caixa.classList.toggle('e-video', /^video\//.test(arquivo.type));
+    if (/^video\//.test(arquivo.type)) {
+      previaUrl = URL.createObjectURL(arquivo);
+      const video = document.createElement('video');
+      Object.assign(video, { muted: true, playsInline: true, preload: 'metadata', src: `${previaUrl}#t=0.1` });
+      video.addEventListener('error', () => video.remove(), { once: true });
+      caixa.append(video);
+    } else if (/^image\//.test(arquivo.type) && arquivo.size <= 15 * 1048576) {
+      const leitor = new FileReader();
+      leitor.addEventListener('load', () => {
+        if (escolhido?.arquivo !== arquivo) return;
+        const img = new Image();
+        img.alt = '';
+        img.src = leitor.result;
+        caixa.append(img);
+      });
+      leitor.readAsDataURL(arquivo);
+    }
+  }
+
+  // Escolher (pelo seletor ou soltando na área) só guarda: nada sobe antes
+  // do "Enviar para análise". Uma chave por arquivo escolhido — escolher de
+  // novo (mesmo o mesmo arquivo) é um envio novo, de propósito.
+  function guardarArquivo(arquivo) {
+    if (!arquivo || !modo || enviando) return;
+    escolhido = { arquivo, chave: novaChave(), estado: { texto: 'Selecionado', tipo: '' } };
+    limparMensagem();
+    mostrarPrevia(arquivo);
+    desenharEnvio();
   }
 
   // Mensagem do envio anterior que ainda acompanha um arquivo (conferindo
@@ -394,6 +508,7 @@
     modo = qual;
     alvo = peca;
     escolhido = null;
+    soltarPrevia();
     abertura += 1;
     alvosDesenhados = null;
     $('alvosSubstituicao').innerHTML = '';
@@ -412,6 +527,7 @@
     modo = null;
     alvo = null;
     escolhido = null;
+    soltarPrevia();
     $('arquivoCriativo').value = '';
     $('negocioEscolha').innerHTML = '';
     desenhadoCom = null;
@@ -507,10 +623,18 @@
     const limite = dados.limiteCadastro;
     $('contadorCriativos').textContent =
       `${dados.emUso} de ${limite} ${limite === 1 ? 'criativo utilizado' : 'criativos utilizados'}`;
-    const duracao = dados.duracaoMaxima
-      ? `Vídeo ou imagem vertical de até ${dados.duracaoMaxima} segundos`
-      : 'Vídeo ou imagem vertical';
-    $('criativosSubtitulo').textContent = `${duracao} · até 95 MB · sem áudio. ${ondeRoda()}`.trim();
+    // As regras do arquivo, curtas, dentro da área de soltar; onde a peça
+    // aprovada roda, embaixo dela, em segundo plano.
+    $('criativosSubtitulo').textContent = [
+      'Vertical',
+      dados.duracaoMaxima ? `até ${dados.duracaoMaxima} s` : null,
+      'até 95 MB',
+      'sem áudio',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    $('criativosOndeRoda').textContent = ondeRoda();
+    $('criativosOndeRoda').hidden = !ondeRoda();
     const conta = obterConta();
     if (window.linkWhatsApp && conta) {
       $('linkArteSimples').href = window.linkWhatsApp(
@@ -590,7 +714,7 @@
         window.publicarResumo?.('criativos', {});
         fecharEnvio(null);
         $('contadorCriativos').hidden = true;
-        $('criativosSubtitulo').textContent = 'Vídeo ou imagem vertical · até 95 MB · sem áudio';
+        $('criativosSubtitulo').textContent = 'Vertical · até 95 MB · sem áudio';
         desenharControles();
         lista.innerHTML = `<p class="empty-state" data-criativos-aguardando>${
           dados.aguardandoBeneficio === 'instalacao'
@@ -628,6 +752,8 @@
     const msg = $('uploadMsg');
     msg.textContent = texto;
     msg.className = `form-msg ${tipo || ''}`.trim();
+    // No rodapé do bloco, a mensagem toma o lugar do "o que falta".
+    if (modo) desenharRodape();
   }
 
   // Botão ao lado da mensagem do envio: "Tentar de novo", "Verificar de
@@ -681,14 +807,20 @@
       xhr.open('POST', `${API_BASE_URL}/anunciantes/${t.contaId}/criativos`);
       xhr.withCredentials = true;
       xhr.setRequestHeader('Idempotency-Key', t.chave);
+      // O arquivo na área de soltar acompanha o envio (só se ainda é ele
+      // que está ali — um "Tentar de novo" de outro envio não mexe nele).
+      const doArquivo = (texto, tipo) => escolhido?.arquivo === t.arquivo && marcarArquivo(texto, tipo);
       xhr.upload.addEventListener('progress', (e) => {
         if (e.lengthComputable && e.loaded < e.total) {
-          mensagem(`Enviando o arquivo... ${Math.floor((e.loaded / e.total) * 100)}%`);
+          const pct = Math.floor((e.loaded / e.total) * 100);
+          mensagem(`Enviando o arquivo... ${pct}%`);
+          doArquivo(`Enviando… ${pct}%`, 'andamento');
         }
       });
-      xhr.upload.addEventListener('load', () =>
-        mensagem('Arquivo recebido. Processando o vídeo, pode levar um minuto...'),
-      );
+      xhr.upload.addEventListener('load', () => {
+        mensagem('Arquivo recebido. Processando o vídeo, pode levar um minuto...');
+        doArquivo('Processando…', 'andamento');
+      });
       xhr.addEventListener('load', () => {
         let corpo = null;
         try {
@@ -821,6 +953,7 @@
     aguardando = null;
     acao(null);
     mensagem('Enviando o arquivo...');
+    if (escolhido?.arquivo === t.arquivo) marcarArquivo('Enviando…', 'andamento');
     desenharEnvio();
     const resposta = await postar(t);
     enviando = false;
@@ -834,6 +967,7 @@
     if (desfecho === 'sessao') return window.sessaoExpirada();
     if (desfecho === 'enviado') return concluir(t);
     if (desfecho === 'erro') {
+      if (escolhido?.arquivo === t.arquivo) marcarArquivo('Recusado', 'erro');
       mensagem(window.frase(resposta.corpo.erro), 'err');
       if (modo) $('enviarParaAnalise').focus();
       return carregar();
@@ -849,17 +983,17 @@
   function enviarDoModo() {
     const conta = obterConta();
     if (!conta || enviando || !modo) return;
-    if (!escolhido) {
-      mensagem('Selecione o vídeo ou a imagem do anúncio.', 'err');
-      $('escolherArquivo').focus();
+    // Botão inativo (falta algo): o rodapé já diz o quê — destaca a frase e
+    // leva o foco ao campo, sem enviar.
+    const falta = faltaParaEnviar();
+    if (falta) {
+      limparMensagem();
+      $('envioDica').classList.add('alerta');
+      desenharRodape();
+      falta.campo?.focus();
       return;
     }
-    let negocio = {};
-    if (modo === 'novo') {
-      const escolha = lerEscolhaNegocio($('negocioEscolha'));
-      if (escolha.erro) return mensagem(escolha.erro, 'err');
-      negocio = escolha.campos;
-    }
+    const negocio = modo === 'novo' ? lerEscolhaNegocio($('negocioEscolha')).campos : {};
     enviarTentativa({
       arquivo: escolhido.arquivo,
       chave: escolhido.chave,
@@ -978,18 +1112,43 @@
       fecharEnvio();
     });
     $('continuarSubstituicao')?.addEventListener('click', continuarSubstituicao);
-    $('escolherArquivo')?.addEventListener('click', () => $('arquivoCriativo').click());
-    // Escolher o arquivo só guarda: nada sobe antes do "Enviar para
-    // análise". Uma chave por arquivo escolhido — escolher de novo (mesmo o
-    // mesmo arquivo) é um envio novo, de propósito.
+    // Área de soltar: os botões são o caminho do teclado; clicar em qualquer
+    // outro ponto da área abre o mesmo seletor; soltar um arquivo nela é o
+    // mesmo que escolhê-lo.
+    const abrirSeletor = () => !enviando && $('arquivoCriativo').click();
+    $('escolherArquivo')?.addEventListener('click', abrirSeletor);
+    $('trocarArquivo')?.addEventListener('click', abrirSeletor);
+    const zona = $('dropzone');
+    zona?.addEventListener('click', (ev) => {
+      if (!ev.target.closest('button')) abrirSeletor();
+    });
+    zona?.addEventListener('dragover', (ev) => {
+      if (!modo || enviando) return;
+      ev.preventDefault();
+      zona.classList.add('arrastando');
+    });
+    zona?.addEventListener('dragleave', (ev) => {
+      if (!zona.contains(ev.relatedTarget)) zona.classList.remove('arrastando');
+    });
+    zona?.addEventListener('drop', (ev) => {
+      ev.preventDefault();
+      zona.classList.remove('arrastando');
+      guardarArquivo(ev.dataTransfer?.files?.[0]);
+    });
+    // Arquivo solto fora da área, mas dentro do bloco: o navegador não troca
+    // a página pelo arquivo (e o que foi preenchido não se perde).
+    for (const evento of ['dragover', 'drop']) {
+      $('envioCriativo')?.addEventListener(evento, (ev) => ev.preventDefault());
+    }
     $('arquivoCriativo')?.addEventListener('change', (ev) => {
       const arquivo = ev.target.files[0];
       ev.target.value = '';
-      if (!arquivo || !modo || enviando) return;
-      escolhido = { arquivo, chave: novaChave() };
-      limparMensagem();
-      desenharEnvio();
+      guardarArquivo(arquivo);
     });
+    // Preencher o negócio novo atualiza o "o que falta" e o botão de envio.
+    for (const evento of ['input', 'change']) {
+      $('negocioEscolha')?.addEventListener(evento, () => desenharRodape());
+    }
     $('enviarParaAnalise')?.addEventListener('click', enviarDoModo);
     // Enter num campo do negócio novo nunca recarrega a página.
     $('negocioEnvio')?.addEventListener('submit', (ev) => ev.preventDefault());

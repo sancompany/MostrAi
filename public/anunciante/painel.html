@@ -149,31 +149,59 @@
                  troca, com o negócio da peça travado. -->
             <section class="envio-criativo" id="envioCriativo" aria-labelledby="tituloEnvio" hidden>
               <div class="envio-topo">
-                <h3 id="tituloEnvio">Novo criativo</h3>
-                <button type="button" class="btn ghost mini" id="cancelarEnvio">← Cancelar envio</button>
+                <div>
+                  <h3 id="tituloEnvio">Novo criativo</h3>
+                  <p class="envio-sub" id="envioSub">Configure a peça antes de enviá-la para análise.</p>
+                </div>
+                <button type="button" class="envio-cancelar" id="cancelarEnvio" aria-label="Cancelar envio">Cancelar</button>
               </div>
               <fieldset class="envio-campos" id="envioCampos">
                 <p class="envio-aviso" id="envioAviso" hidden></p>
-                <fieldset class="envio-etapa" id="etapaAlvo" hidden>
-                  <legend class="envio-legenda">Qual criativo você quer substituir?</legend>
+                <fieldset class="envio-secao" id="etapaAlvo" hidden>
+                  <legend class="envio-legenda">Peça a substituir</legend>
+                  <p class="envio-dica-secao">Qual criativo você quer substituir?</p>
                   <div class="alvos" id="alvosSubstituicao"></div>
-                  <button type="button" class="btn primary" id="continuarSubstituicao">Continuar</button>
+                  <div class="envio-rodape"><button type="button" class="btn primary" id="continuarSubstituicao">Continuar</button></div>
                 </fieldset>
                 <p class="envio-travado" id="envioTravado" hidden></p>
-                <div class="envio-etapa" id="etapaArquivo" role="group" aria-labelledby="rotuloEtapaArquivo">
-                  <p class="envio-legenda" id="rotuloEtapaArquivo">1. Arquivo</p>
-                  <button type="button" class="btn ghost" id="escolherArquivo" aria-describedby="arquivoEscolhido criativosSubtitulo">Selecionar vídeo ou imagem</button>
+                <div class="envio-secao" id="etapaArquivo" role="group" aria-labelledby="rotuloEtapaArquivo">
+                  <p class="envio-legenda" id="rotuloEtapaArquivo">Arquivo</p>
+                  <!-- Área de soltar: clicar em qualquer ponto ou arrastar o
+                       arquivo; o botão é o caminho do teclado. Escolhido, o
+                       arquivo aparece aqui mesmo, com prévia e "Trocar". -->
+                  <div class="dropzone" id="dropzone">
+                    <div class="dropzone-vazia" id="dropzoneVazia">
+                      <svg class="dropzone-icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>
+                      <p class="dropzone-titulo">Arraste seu vídeo ou imagem aqui</p>
+                      <button type="button" class="btn ghost mini" id="escolherArquivo" aria-describedby="criativosSubtitulo">Selecionar arquivo</button>
+                    </div>
+                    <div class="arquivo-card" id="arquivoCard" hidden>
+                      <div class="arquivo-previa" id="arquivoPrevia" aria-hidden="true"></div>
+                      <div class="arquivo-info">
+                        <p class="arquivo-nome" id="arquivoEscolhido"></p>
+                        <p class="arquivo-meta"><span id="arquivoTamanho"></span><span class="arquivo-estado" id="arquivoEstado"></span></p>
+                      </div>
+                      <button type="button" class="btn ghost mini" id="trocarArquivo">Trocar arquivo</button>
+                    </div>
+                    <p class="dropzone-regras" id="criativosSubtitulo">Vertical · até 95 MB · sem áudio</p>
+                  </div>
                   <input type="file" id="arquivoCriativo" accept="video/*,image/*" hidden>
-                  <p class="envio-arquivo" id="arquivoEscolhido" hidden></p>
-                  <p class="envio-nota" id="criativosSubtitulo">Vídeo ou imagem vertical · até 95 MB · sem áudio</p>
+                  <p class="envio-nota" id="criativosOndeRoda"></p>
                 </div>
                 <!-- Quem este anúncio divulga? (migration 121): o negócio
                      principal já vem marcado; outro negócio ou marca da mesma
-                     conta só aparece se a pessoa pedir. -->
-                <form class="negocio-envio envio-etapa" id="negocioEnvio" novalidate>
-                  <fieldset><legend>2. Quem este anúncio divulga?</legend><div id="negocioEscolha"></div></fieldset>
+                     conta é uma opção a mais, e os campos só aparecem com ela. -->
+                <form class="negocio-envio envio-secao" id="negocioEnvio" novalidate>
+                  <fieldset>
+                    <legend class="envio-legenda">Negócio anunciado</legend>
+                    <p class="envio-dica-secao">Escolha quem aparece nesta peça.</p>
+                    <div id="negocioEscolha"></div>
+                  </fieldset>
                 </form>
-                <div class="envio-rodape" id="envioRodape"><button type="button" class="btn primary" id="enviarParaAnalise">Enviar para análise</button></div>
+                <div class="envio-rodape" id="envioRodape">
+                  <div class="envio-rodape-texto" id="envioRodapeTexto"><p class="envio-dica" id="envioDica"></p></div>
+                  <button type="button" class="btn primary" id="enviarParaAnalise" aria-describedby="envioDica">Enviar para análise</button>
+                </div>
               </fieldset>
             </section>
             <p class="form-msg" id="uploadMsg" role="status"></p>

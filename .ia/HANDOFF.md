@@ -1,6 +1,17 @@
 # Current Handoff
 
 ## Updated
+2026-10-10 — **Composer "Novo criativo" refinado** (só tela; sem servidor,
+banco ou regra). Área de soltar com o cartão do arquivo (prévia: vídeo por
+`blob:`, que a CSP aceita em `media-src`; imagem por `data:`, porque
+`img-src` não aceita `blob:`), cards de negócio com "outro negócio ou marca"
+como rádio do mesmo grupo (antes era um botão que desmarcava tudo e deixava
+"nenhum marcado"), rodapé com o que falta + "Enviar para análise"
+aria-disabled (o clique leva o foco ao campo; e2e usam `{ force: true }`
+nesse clique). A mensagem do envio (`#uploadMsg`) muda de lugar: no rodapé
+com o bloco pronto, abaixo do bloco fora disso — um elemento só. O
+Chromium do Playwright não tem H.264: a prévia de .mp4 cai no marcador ▶.
+
 2026-10-10 — **Card "Meus criativos": envio sob demanda e substituição no
 limite** (só tela, sem migration; branch `claude/busy-noether-hheir2`).
 - Fechado, o card é a biblioteca: "X de Y criativos utilizados" + um botão.

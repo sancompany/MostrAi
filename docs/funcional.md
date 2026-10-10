@@ -245,10 +245,17 @@ Escrito por grupo, porque o padrão se repete.
   com o limite: "0 de 1 criativo utilizado", "2 de 3 criativos utilizados";
   o número é o de sempre, peças que ocupam vaga do plano) e um botão. Abaixo
   do limite o botão é **"+ Enviar criativo"**, que abre dentro do card o
-  bloco "Novo criativo": 1. Arquivo [Selecionar vídeo ou imagem] → 2. Quem
-  este anúncio divulga? (o principal marcado, os outros negócios da conta
-  listados, "+ Anunciar outro negócio ou marca" sob demanda) → [Enviar para
-  análise]. Escolher o arquivo só guarda; nada sobe antes do envio, então
+  bloco "Novo criativo" (refinado em 10/10/2026): ARQUIVO — uma área de
+  soltar (arrastar o arquivo ou clicar em qualquer ponto dela; [Selecionar
+  arquivo] é o caminho do teclado) que, com o arquivo escolhido, vira o
+  cartão dele: prévia, nome, tamanho, estado (Selecionado → Enviando… →
+  Processando… ou Recusado) e [Trocar arquivo] → NEGÓCIO ANUNCIADO — cards
+  com rádio: o principal marcado, os outros negócios da conta e, no mesmo
+  grupo, "+ Anunciar outro negócio ou marca", que abre o sub-bloco "Novo
+  negócio ou marca" (nome, categoria, declaração) só enquanto está marcado
+  → rodapé com [Enviar para análise], inativo (aria-disabled, ainda
+  focável) enquanto falta algo, com o que falta escrito ao lado; clicar
+  nele inativo leva o foco ao campo. Escolher o arquivo só guarda; nada sobe antes do envio, então
   **"← Cancelar envio"** volta à biblioteca sem peça nem negócio novo (o
   negócio só nasce no servidor, junto com a peça). Arquivo chegou (ou pode
   ter chegado): o card volta à biblioteca com a mensagem; recusa com motivo
