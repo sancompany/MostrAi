@@ -1,6 +1,25 @@
 # Current Handoff
 
 ## Updated
+2026-10-10 — **Testes flaky de concorrência** (PR #131, só testes).
+- `node --test` roda os ARQUIVOS em paralelo no mesmo Postgres. Teste que
+  lê estado global (max(id), "o que esta chamada devolveu") falha ao acaso.
+  Regra: cada teste confere só as próprias linhas.
+  - `playlist-invalidacao` SV3 "fora de ordem": T1/T2 em REPEATABLE READ —
+    o `max(id)` de `playlist_mudancas` é a marca da própria transação.
+  - `pontos-ocupacao` e `rede-admin-v2` (teste 4): conferem
+    `escolha_bloqueada_em` do ponto, não o retorno de `avaliarBloqueios()`
+    (outras rotas rodam a mesma avaliação global e travam primeiro).
+- Antes de mexer num teste "flaky", reproduzir com carga concorrente (ver a
+  descrição do PR #131); nunca pular/desligar.
+
+2026-10-10 — **PR #130 no ar** (merge `de28389`, deploy conferido; backup
+`mostrai-20261010-001425.sql.gz` antes). Smoke somente leitura: a primeira
+cobrança real íntegra, migration 120 aplicada. Rodadas de Codex fechadas;
+limite aceito pelo dono: estorno total ajusta cobertura por inferência
+(`CONSTRAINTS.md`, `docs/PENDENCIAS.md` PG5 — o conserto é gravar janela e
+contribuição à fila por ciclo). Próximo: e2e 02 (roteiro desatualizado).
+
 2026-10-09 — **Pagamentos: cancelar ≠ estornar** (migration 120; ADR-046;
 RN-73; branch `claude/busy-noether-hheir2`).
 - `src/financeiro/estornos.js` é o domínio inteiro:
