@@ -1067,7 +1067,6 @@ select.mini, input.mini { background: var(--bg-alt); border: 1px solid var(--bor
 }
 .criativo-placeholder { width: 100%; aspect-ratio: 9/16; display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-size: .8rem; }
 .criativo-card .badge { position: absolute; bottom: 8px; left: 8px; }
-.upload-label { cursor: pointer; }
 
 /* Olhinho de mostrar/esconder senha — some sobre o input, sem tirar espaço
    do layout em flex (.field-row já cuida da largura). */

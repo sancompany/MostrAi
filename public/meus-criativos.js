@@ -13,6 +13,14 @@
 // vem marcado; outro negócio ou marca do mesmo responsável/grupo só aparece
 // se a pessoa pedir. Plano, horas e limite de peças continuam da conta.
 //
+// Envio sob demanda (10/10/2026): fechado, o card é só a biblioteca — o
+// contador e um botão. "Enviar criativo" abre o novo criativo dentro do card
+// (arquivo, negócio, "Enviar para análise"); no limite do plano o botão vira
+// "Substituir criativo": escolher a peça, depois o arquivo, com o negócio da
+// peça travado. Nada sobe antes do "Enviar para análise", então cancelar não
+// deixa peça nem negócio pela metade (o negócio novo só nasce no servidor,
+// junto com a peça).
+//
 // Uso: montarMeusCriativos({ obterConta }). Requer /config.js, /layout.js e
 // /eventos.js. Idempotente: cada carga reescreve a lista; ouvintes por
 // delegação, registrados uma vez.
@@ -22,17 +30,34 @@
   let montado = false;
   let carregando = null;
   let enviando = false;
-  // Negócios ou marcas da conta (GET /anunciantes/me/negocios) e o marcado
-  // no envio. `desenhadoCom` evita redesenhar a escolha (e apagar o que a
-  // pessoa está digitando) a cada atualização da lista.
+  // Negócios ou marcas da conta (GET /anunciantes/me/negocios).
+  // `desenhadoCom` evita redesenhar a escolha (e apagar o que a pessoa está
+  // digitando) a cada atualização da lista.
   let negocios = [];
-  let negocioMarcado = null;
   let desenhadoCom = null;
+  // Modo do card: null (a biblioteca), 'novo' ou 'substituir'. `alvo` é a
+  // peça a trocar; `escolhido`, o arquivo e a chave do envio dele.
+  // `abertura` conta as aberturas: o fim de um envio só fecha o modo que o
+  // enviou. `alvosDesenhados` evita redesenhar a lista da troca (e perder a
+  // marcação) a cada atualização.
+  let modo = null;
+  let alvo = null;
+  let escolhido = null;
+  let abertura = 0;
+  let alvosDesenhados = null;
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => window.esc(s);
   const ehVideo = (url) => /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url || '');
   const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+  // Peça aprovada em qualquer estágio da entrada no ar.
+  const ATIVAS = ['no_ar', 'aprovado', 'programado', 'aguardando_primeira_exibicao', 'atrasado'];
+  // Dá pra substituir: aprovada e sem substituta em análise — as duas
+  // recusas do servidor (400 "só dá pra substituir uma peça aprovada", 409
+  // "essa peça já tem uma substituta em análise").
+  const substituivel = (c) => ATIVAS.includes(c.situacao) && !c.substitutaEmAnalise;
+  const tipoDe = (c) => (c.arquivoUrl && ehVideo(c.arquivoUrl) ? 'Vídeo' : 'Imagem');
+  const duracaoDe = (c) => (c.duracaoSegundos ? `${Number(c.duracaoSegundos)}s` : 'Processando');
 
   function explicacao(c) {
     switch (c.situacao) {
@@ -87,13 +112,12 @@
   }
 
   function htmlCriativo(c) {
-    const tipo = c.arquivoUrl && ehVideo(c.arquivoUrl) ? 'Vídeo' : 'Imagem';
-    const duracao = c.duracaoSegundos ? `${Number(c.duracaoSegundos)}s` : 'Processando';
+    const tipo = tipoDe(c);
+    const duracao = duracaoDe(c);
     // Peça aprovada em qualquer estágio da entrada no ar: dá pra substituir
     // e pausar — menos enquanto uma substituta está em análise (a troca é
     // que decide o destino dela). Pausada por você: só Retomar.
-    const ativa = ['no_ar', 'aprovado', 'programado', 'aguardando_primeira_exibicao', 'atrasado'].includes(c.situacao);
-    const podeMexer = ativa && !c.substitutaEmAnalise;
+    const podeMexer = substituivel(c);
     const acoes = [
       podeMexer ? '<button type="button" class="btn ghost mini" data-acao="substituir">Substituir</button>' : '',
       podeMexer ? '<button type="button" class="btn ghost mini" data-acao="pausar">Pausar</button>' : '',
@@ -218,19 +242,198 @@
     return { campos: marcado ? { negocio_id: marcado.value } : {} };
   }
 
-  function desenharEscolhaDoEnvio() {
-    const form = $('negocioEnvio');
-    if (!form) return;
-    form.hidden = false;
+  // `forcar` (ao abrir o novo criativo): começa do zero, com o principal
+  // marcado. Sem ele, só redesenha se a lista de negócios mudou e ninguém
+  // está preenchendo um negócio novo — e mantém a marcação.
+  function desenharEscolhaDoEnvio(forcar = false) {
+    const raiz = $('negocioEscolha');
+    if (!raiz) return;
     const assinatura = JSON.stringify(negocios.map((n) => [n.id, n.nome, rotuloCategoria(n)]));
-    const aberto = form.querySelector('[data-negocio-novo]:not([hidden])');
-    if (assinatura === desenhadoCom || aberto) return;
-    const atual = form.querySelector('input[type=radio]:checked');
-    if (atual) negocioMarcado = Number(atual.value);
-    if (!negocios.some((n) => n.id === negocioMarcado)) negocioMarcado = negocios[0]?.id ?? null;
-    $('negocioEscolha').innerHTML = htmlEscolhaNegocio('envio', negocioMarcado);
-    ligarEscolha($('negocioEscolha'));
+    const preenchendo = raiz.querySelector('[data-negocio-novo]:not([hidden])');
+    if (!forcar && (assinatura === desenhadoCom || preenchendo)) return;
+    const atual = forcar ? null : Number(raiz.querySelector('input[type=radio]:checked')?.value);
+    const marcado = negocios.some((n) => n.id === atual) ? atual : negocios[0]?.id;
+    raiz.innerHTML = htmlEscolhaNegocio('envio', marcado);
+    ligarEscolha(raiz);
     desenhadoCom = assinatura;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Envio sob demanda: biblioteca ⇄ novo criativo ⇄ substituir
+  // ---------------------------------------------------------------------------
+  // O que fica fora do bloco de envio: os botões do cabeçalho, o aviso de
+  // limite, a ajuda de arte e a biblioteca. Com o modo aberto, o envio fica
+  // sozinho no card. No limite do plano não há "Enviar" desabilitado: o
+  // botão é "Substituir".
+  function desenharControles() {
+    const liberado = !!dados?.temPlano;
+    const cheio = liberado && dados.emUso >= dados.limiteCadastro;
+    $('botaoEnviarCriativo').hidden = !liberado || cheio || !!modo;
+    $('botaoSubstituirCriativo').hidden = !liberado || !cheio || !!modo;
+    $('avisoLimite').hidden = !cheio;
+    $('ajudaArte').hidden = !liberado || !!modo || dados.criativos.length > 0;
+    $('listaCriativos').hidden = !!modo;
+    $('envioCriativo').hidden = !modo;
+  }
+
+  const tamanho = (bytes) =>
+    bytes < 1048576
+      ? `${Math.max(1, Math.round(bytes / 1024))} KB`
+      : `${(bytes / 1048576).toFixed(1).replace('.', ',')} MB`;
+
+  function htmlAlvo(c, marcado) {
+    const capa = c.thumbnailUrl || (c.arquivoUrl && !ehVideo(c.arquivoUrl) ? c.arquivoUrl : '');
+    const rotulo = window.ROTULOS.criativoSituacao[c.situacao] || c.situacao;
+    return `<label class="alvo-opcao"><input type="radio" name="alvo_substituicao" value="${c.id}"${c.id === marcado ? ' checked' : ''}>
+      ${capa ? `<img class="alvo-capa" src="${esc(capa)}" alt="">` : '<span class="alvo-capa" aria-hidden="true"></span>'}
+      <span class="alvo-texto"><strong>${esc(c.negocio?.nome || 'Criativo da conta')}</strong>
+        <small>${c.negocio ? `${esc(rotuloCategoria(c.negocio))} · ` : ''}${tipoDe(c)} · ${duracaoDe(c)}</small>
+        <span class="badge ${window.ROTULOS.criativoSituacaoClasse[c.situacao] || 'badge-neutro'}">${esc(rotulo)}</span></span></label>`;
+  }
+
+  // As peças que dá pra trocar, a marcação preservada; com uma só, ela já
+  // vem marcada.
+  function desenharAlvos(elegiveis) {
+    const raiz = $('alvosSubstituicao');
+    const assinatura = JSON.stringify(elegiveis.map((c) => [c.id, c.situacao, c.negocio?.id, c.thumbnailUrl]));
+    if (assinatura === alvosDesenhados) return;
+    const atual = Number(raiz.querySelector('input:checked')?.value);
+    const marcado = elegiveis.some((c) => c.id === atual) ? atual : elegiveis.length === 1 ? elegiveis[0].id : null;
+    raiz.innerHTML = elegiveis.map((c) => htmlAlvo(c, marcado)).join('');
+    // Capa que não carrega vira o bloco escuro, nunca o ícone de imagem quebrada.
+    for (const img of raiz.querySelectorAll('img.alvo-capa')) {
+      img.addEventListener(
+        'error',
+        () => img.replaceWith(Object.assign(document.createElement('span'), { className: 'alvo-capa' })),
+        {
+          once: true,
+        },
+      );
+    }
+    alvosDesenhados = assinatura;
+  }
+
+  // O miolo do bloco, conforme o modo, a peça escolhida e o arquivo. Os dois
+  // tetos do servidor chegam antes do arquivo: o de cadastro (peças
+  // guardadas, as fora do ar inclusive) e o "nada pra trocar" — a pessoa não
+  // sobe 95 MB pra ouvir um não.
+  function desenharEnvio() {
+    desenharControles();
+    if (!modo || !dados) return;
+    const trocando = modo === 'substituir';
+    // Durante o envio a lista muda por causa dele mesmo (a substituta nasce
+    // "em análise" e a peça trocada deixa de ser elegível; a linha nova
+    // conta no teto): o bloco fica como estava até a resposta.
+    const peca = trocando ? dados.criativos.find((c) => c.id === alvo && (enviando || substituivel(c))) : null;
+    const elegiveis = trocando ? dados.criativos.filter(substituivel) : [];
+    let aviso = '';
+    if (!enviando && dados.guardados >= dados.tetoGuardados) {
+      aviso = `Sua conta já guarda ${dados.tetoGuardados} criativos, contando os que estão fora do ar — o máximo por conta. Exclua um da biblioteca para enviar outro.`;
+    } else if (!enviando && trocando && !peca && !elegiveis.length) {
+      aviso =
+        'Nenhuma peça pode ser substituída agora: só uma peça aprovada pode ser trocada, e cada uma aceita uma substituta por vez. Espere a análise terminar ou exclua uma peça da biblioteca.';
+    }
+    $('tituloEnvio').textContent = trocando ? 'Substituir criativo' : 'Novo criativo';
+    $('envioAviso').textContent = aviso;
+    $('envioAviso').hidden = !aviso;
+    const escolhendoPeca = !aviso && trocando && !peca;
+    $('etapaAlvo').hidden = !escolhendoPeca;
+    if (escolhendoPeca) desenharAlvos(elegiveis);
+    const pronto = !aviso && (!trocando || !!peca);
+    $('envioTravado').hidden = !(pronto && trocando);
+    if (pronto && trocando) {
+      const negocio = peca.negocio
+        ? `<strong>${esc(peca.negocio.nome)}</strong> · ${esc(rotuloCategoria(peca.negocio))}`
+        : '<strong>esta conta</strong>';
+      $('envioTravado').innerHTML =
+        `Substituindo criativo de: ${negocio}<span>A peça nova divulga o mesmo negócio ou marca e passa pela análise; a atual segue como está até a nova ser aprovada.</span>`;
+    }
+    $('etapaArquivo').hidden = !pronto;
+    $('negocioEnvio').hidden = !pronto || trocando;
+    $('envioRodape').hidden = !pronto;
+    $('rotuloEtapaArquivo').textContent = trocando ? 'Novo arquivo' : '1. Arquivo';
+    $('escolherArquivo').textContent = escolhido
+      ? 'Trocar arquivo'
+      : trocando
+        ? 'Selecionar novo arquivo'
+        : 'Selecionar vídeo ou imagem';
+    $('arquivoEscolhido').hidden = !escolhido;
+    $('arquivoEscolhido').textContent = escolhido
+      ? `Arquivo escolhido: ${escolhido.arquivo.name} (${tamanho(escolhido.arquivo.size)})`
+      : '';
+    // Durante o envio: tudo travado (o <fieldset disabled> trava os campos
+    // sem mexer no estado de cada um) e sem "Cancelar" — o arquivo já está
+    // subindo; o resultado aparece na mensagem.
+    $('envioCampos').disabled = enviando;
+    $('cancelarEnvio').hidden = enviando;
+    $('envioCriativo').setAttribute('aria-busy', String(enviando));
+    $('enviarParaAnalise').textContent = enviando ? 'Enviando...' : 'Enviar para análise';
+  }
+
+  // Mensagem do envio anterior que ainda acompanha um arquivo (conferindo
+  // um resultado incerto) não é apagada por abrir, escolher ou cancelar.
+  function limparMensagem() {
+    if (aguardando || enviando) return;
+    mensagem('');
+    acao(null);
+  }
+
+  // Primeiro controle visível do bloco: o arquivo, a peça marcada (ou a
+  // primeira) da troca ou, sem nada a fazer (aviso), o "Cancelar".
+  function focarEnvio() {
+    const controles = [
+      $('alvosSubstituicao').querySelector('input:checked'),
+      ...$('envioCampos').querySelectorAll('input[type=radio], button'),
+    ];
+    const primeiro = controles.find((el) => el && el.offsetParent !== null);
+    (primeiro || $('cancelarEnvio')).focus();
+  }
+
+  function abrirEnvio(qual, peca = null) {
+    if (!dados?.temPlano || enviando) return;
+    modo = qual;
+    alvo = peca;
+    escolhido = null;
+    abertura += 1;
+    alvosDesenhados = null;
+    $('alvosSubstituicao').innerHTML = '';
+    limparMensagem();
+    if (qual === 'novo') desenharEscolhaDoEnvio(true);
+    desenharEnvio();
+    focarEnvio();
+  }
+
+  // Volta à biblioteca. O negócio novo digitado pela metade é descartado
+  // junto (ele só existe no servidor quando a peça sobe). `foco`: pra onde
+  // vai o teclado — o botão que abriu (cancelar) ou o título do card (fim
+  // do envio, quando o botão pode ter mudado de "Enviar" pra "Substituir").
+  function fecharEnvio(foco = 'botao') {
+    if (!modo) return;
+    modo = null;
+    alvo = null;
+    escolhido = null;
+    $('arquivoCriativo').value = '';
+    $('negocioEscolha').innerHTML = '';
+    desenhadoCom = null;
+    desenharEnvio();
+    if (foco === 'botao') {
+      const botao = [$('botaoEnviarCriativo'), $('botaoSubstituirCriativo')].find((b) => !b.hidden);
+      botao?.focus();
+    } else if (foco === 'titulo') {
+      $('tituloCriativos').focus();
+    }
+  }
+
+  function continuarSubstituicao() {
+    const marcada = $('alvosSubstituicao').querySelector('input:checked');
+    if (!marcada) {
+      mensagem('Escolha qual criativo você quer substituir.', 'err');
+      return;
+    }
+    limparMensagem();
+    alvo = Number(marcada.value);
+    desenharEnvio();
+    $('escolherArquivo').focus();
   }
 
   // "Revisar e reenviar": a mesma peça volta pra análise com o negócio
@@ -297,18 +500,17 @@
     return lugares.length ? `Peças aprovadas rodam ${lugares.join(' e ')}.` : '';
   }
 
+  // "0 de 1 criativo utilizado", "2 de 3 criativos utilizados": o número é
+  // o mesmo de sempre (peças que ocupam vaga do plano, `emUso`), a palavra
+  // concorda com o limite.
   function desenharCabecalho() {
-    const cheio = dados.emUso >= dados.limiteCadastro;
-    $('contadorCriativos').textContent = `${dados.emUso} de ${dados.limiteCadastro}`;
-    $('contadorCriativos').className = `badge ${cheio ? 'badge-pendente' : 'badge-neutro'}`;
-    $('arquivoCriativo').disabled = cheio || enviando;
-    $('rotuloEnviarCriativo').classList.toggle('desabilitado', cheio);
-    $('rotuloEnviarCriativo').title = cheio ? 'Limite do plano atingido — exclua ou substitua uma peça' : '';
+    const limite = dados.limiteCadastro;
+    $('contadorCriativos').textContent =
+      `${dados.emUso} de ${limite} ${limite === 1 ? 'criativo utilizado' : 'criativos utilizados'}`;
     const duracao = dados.duracaoMaxima
       ? `Vídeo ou imagem vertical de até ${dados.duracaoMaxima} segundos`
       : 'Vídeo ou imagem vertical';
     $('criativosSubtitulo').textContent = `${duracao} · até 95 MB · sem áudio. ${ondeRoda()}`.trim();
-    $('ajudaArte').hidden = dados.criativos.length > 0;
     const conta = obterConta();
     if (window.linkWhatsApp && conta) {
       $('linkArteSimples').href = window.linkWhatsApp(
@@ -386,11 +588,10 @@
         // o módulo aparece com o envio fechado e o motivo — o servidor só
         // aceita criativo com plano ou Básico ativo.
         window.publicarResumo?.('criativos', {});
-        $('rotuloEnviarCriativo').hidden = true;
+        fecharEnvio(null);
         $('contadorCriativos').hidden = true;
-        $('ajudaArte').hidden = true;
-        if ($('negocioEnvio')) $('negocioEnvio').hidden = true;
         $('criativosSubtitulo').textContent = 'Vídeo ou imagem vertical · até 95 MB · sem áudio';
+        desenharControles();
         lista.innerHTML = `<p class="empty-state" data-criativos-aguardando>${
           dados.aguardandoBeneficio === 'instalacao'
             ? 'Aguardando ativação do benefício: o envio de criativos abre quando a tela do seu ponto estiver instalada e o Plano Básico ativar.'
@@ -400,18 +601,19 @@
         return true;
       }
       if (!dados.temPlano) {
+        fecharEnvio(null);
         secao.hidden = true;
         window.publicarResumo?.('criativos', {});
         return true;
       }
-      $('rotuloEnviarCriativo').hidden = false;
       $('contadorCriativos').hidden = false;
       publicar();
       desenharCabecalho();
-      desenharEscolhaDoEnvio();
+      if (modo === 'novo') desenharEscolhaDoEnvio();
+      desenharEnvio();
       lista.innerHTML = dados.criativos.length
         ? `<div class="criativos-lista">${dados.criativos.map(htmlCriativo).join('')}</div>`
-        : '<p class="empty-state">Nenhum criativo enviado ainda.</p>';
+        : '<div class="criativos-vazio"><p class="criativos-vazio-titulo">Nenhum criativo enviado ainda.</p><p>Use “+ Enviar criativo” para mandar a primeira peça para análise. Ela aparece aqui com a situação de cada etapa.</p></div>';
     } catch (err) {
       console.error('falha ao carregar os criativos', err);
       ok = false;
@@ -618,23 +820,22 @@
     enviando = true;
     aguardando = null;
     acao(null);
-    $('arquivoCriativo').disabled = true;
     mensagem('Enviando o arquivo...');
+    desenharEnvio();
     const resposta = await postar(t);
     enviando = false;
-    if (dados) desenharCabecalho();
-    else $('arquivoCriativo').disabled = false;
     const desfecho = desfechoDoEnvio(resposta);
+    // O arquivo chegou (ou pode ter chegado): o modo que enviou fecha e o
+    // card volta à biblioteca — a mensagem e o [Tentar de novo] ficam nela.
+    // Recusa com motivo mantém o modo aberto, pra trocar o arquivo ou o
+    // negócio e mandar de novo.
+    if (desfecho !== 'erro' && desfecho !== 'sessao' && modo && t.abertura === abertura) fecharEnvio('titulo');
+    else desenharEnvio();
     if (desfecho === 'sessao') return window.sessaoExpirada();
-    // Negócio novo nasceu com a peça: a escolha passa a mostrá-lo, marcado.
-    if (desfecho === 'enviado' && t.negocio?.negocio_nome) {
-      negocioMarcado = resposta.corpo?.negocio_id ?? negocioMarcado;
-      desenhadoCom = null;
-      $('negocioEscolha').innerHTML = '';
-    }
     if (desfecho === 'enviado') return concluir(t);
     if (desfecho === 'erro') {
       mensagem(window.frase(resposta.corpo.erro), 'err');
+      if (modo) $('enviarParaAnalise').focus();
       return carregar();
     }
     if (desfecho === 'processando') carregar();
@@ -642,18 +843,31 @@
     return conferir(t);
   }
 
-  function enviar(arquivo, substitui) {
+  // "Enviar para análise": o arquivo escolhido e, no novo criativo, o
+  // negócio (na substituição o servidor usa o da peça trocada e ignora
+  // qualquer outro). O negócio novo só sai inteiro.
+  function enviarDoModo() {
     const conta = obterConta();
-    if (!arquivo || !conta || enviando) return;
+    if (!conta || enviando || !modo) return;
+    if (!escolhido) {
+      mensagem('Selecione o vídeo ou a imagem do anúncio.', 'err');
+      $('escolherArquivo').focus();
+      return;
+    }
     let negocio = {};
-    if (!substitui) {
+    if (modo === 'novo') {
       const escolha = lerEscolhaNegocio($('negocioEscolha'));
       if (escolha.erro) return mensagem(escolha.erro, 'err');
       negocio = escolha.campos;
     }
-    // Uma chave por arquivo escolhido: escolher de novo (mesmo o mesmo
-    // arquivo) é um envio novo, de propósito.
-    enviarTentativa({ arquivo, substitui, contaId: conta.id, chave: novaChave(), negocio });
+    enviarTentativa({
+      arquivo: escolhido.arquivo,
+      chave: escolhido.chave,
+      substitui: modo === 'substituir' ? alvo : null,
+      contaId: conta.id,
+      negocio,
+      abertura,
+    });
   }
 
   // Confirmação em modal Mostraí (confirmar.js): o DELETE roda dentro do
@@ -749,39 +963,36 @@
       if (acao === 'pausar') return pausar(Number(card.dataset.id));
       if (acao === 'retomar') return retomar(Number(card.dataset.id));
       if (acao === 'reenviar') return reenviar(Number(card.dataset.id));
-      if (acao === 'substituir') {
-        const input = $('arquivoSubstituto');
-        input.dataset.substitui = card.dataset.id;
-        input.click();
-        return;
-      }
+      // "Substituir" no card: a troca já com a peça escolhida.
+      if (acao === 'substituir') return abrirEnvio('substituir', Number(card.dataset.id));
       if (ev.target.closest('video')) {
         card.querySelector('video').pause();
         card.classList.remove('tocando');
       }
     });
-    // Negócio novo incompleto: diz o que falta antes de abrir o seletor de
-    // arquivo, em vez de recusar o arquivo depois de escolhido.
-    $('rotuloEnviarCriativo')?.addEventListener('click', (ev) => {
-      if ($('arquivoCriativo').disabled) return;
-      const escolha = lerEscolhaNegocio($('negocioEscolha'));
-      if (escolha.erro) {
-        ev.preventDefault();
-        mensagem(escolha.erro, 'err');
-      }
+    $('botaoEnviarCriativo')?.addEventListener('click', () => abrirEnvio('novo'));
+    $('botaoSubstituirCriativo')?.addEventListener('click', () => abrirEnvio('substituir'));
+    $('cancelarEnvio')?.addEventListener('click', () => {
+      if (enviando) return;
+      limparMensagem();
+      fecharEnvio();
     });
-    // Um controle só: escolher o arquivo já envia.
+    $('continuarSubstituicao')?.addEventListener('click', continuarSubstituicao);
+    $('escolherArquivo')?.addEventListener('click', () => $('arquivoCriativo').click());
+    // Escolher o arquivo só guarda: nada sobe antes do "Enviar para
+    // análise". Uma chave por arquivo escolhido — escolher de novo (mesmo o
+    // mesmo arquivo) é um envio novo, de propósito.
     $('arquivoCriativo')?.addEventListener('change', (ev) => {
       const arquivo = ev.target.files[0];
       ev.target.value = '';
-      enviar(arquivo, null);
+      if (!arquivo || !modo || enviando) return;
+      escolhido = { arquivo, chave: novaChave() };
+      limparMensagem();
+      desenharEnvio();
     });
-    $('arquivoSubstituto')?.addEventListener('change', (ev) => {
-      const arquivo = ev.target.files[0];
-      const alvo = Number(ev.target.dataset.substitui);
-      ev.target.value = '';
-      enviar(arquivo, alvo);
-    });
+    $('enviarParaAnalise')?.addEventListener('click', enviarDoModo);
+    // Enter num campo do negócio novo nunca recarrega a página.
+    $('negocioEnvio')?.addEventListener('submit', (ev) => ev.preventDefault());
     $('uploadAcao')?.addEventListener('click', () => acaoAtual?.());
     // A MESMA função nos quatro eventos: o resync do eventos.js deduplica por
     // função, e cada volta pra aba vira uma leitura só (e2e 15).

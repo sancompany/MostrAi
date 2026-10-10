@@ -1709,6 +1709,12 @@ router.get('/anunciantes/me/criativos', exigirAnuncianteLogado, async (req, res)
     limiteNoAr: limite,
     limiteCadastro: direitos.limiteCriativos,
     emUso,
+    // O teto de CADASTRO (só leitura, a regra é a de `subirCriativo`): quantas
+    // peças a conta guarda, as fora do ar inclusive, e o máximo — vale pra
+    // todo envio do cliente, substituição inclusive. O painel avisa antes de
+    // a pessoa escolher um arquivo que o servidor recusaria (10/10/2026).
+    guardados: await criativosRepo.contarCadastrados(conta.id),
+    tetoGuardados: CRIATIVOS_POR_CONTA,
     duracaoMaxima: direitos.duracaoMaxima,
   });
 });

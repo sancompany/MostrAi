@@ -137,4 +137,38 @@ test('substituir: só peça aprovada da própria conta, uma substituta por vez',
   }
 });
 
+// Envio sob demanda (10/10/2026): o painel avisa do teto de CADASTRO antes de
+// a pessoa escolher o arquivo. A lista diz quantas peças a conta guarda (a
+// mesma conta de `contarCadastrados`, que o upload usa) e o teto — só
+// leitura: a regra continua no upload, e os dois têm que concordar.
+test('lista traz o teto de cadastro: retirada conta, recusada e substituta em análise não; o upload concorda', async () => {
+  const { CRIATIVOS_POR_CONTA } = require('../src/lib/limites');
+  const conta = await criarConta();
+  const app = await subirApp();
+  try {
+    const vazia = await app.chamar('GET', '/anunciantes/me/criativos', conta.id);
+    assert.equal(vazia.corpo.guardados, 0);
+    assert.equal(vazia.corpo.tetoGuardados, CRIATIVOS_POR_CONTA);
+    const aprovada = await criativo(conta.id, 'aprovado');
+    await criativo(conta.id, 'pendente', { substitui: aprovada });
+    await criativo(conta.id, 'reprovado');
+    await criativo(conta.id, 'retirado');
+    const r = await app.chamar('GET', '/anunciantes/me/criativos', conta.id);
+    assert.equal(r.corpo.guardados, 2, 'aprovada + retirada');
+    assert.equal(r.corpo.emUso, 1, 'a vaga do plano segue sem a retirada');
+    const outra = await criativo(conta.id, 'aprovado');
+    const cheia = await app.chamar('GET', '/anunciantes/me/criativos', conta.id);
+    assert.equal(cheia.corpo.guardados, CRIATIVOS_POR_CONTA);
+    const fd = new FormData();
+    fd.append('arquivo', new Blob(['nao e video'], { type: 'video/mp4' }), 'a.mp4');
+    fd.append('substitui', String(outra));
+    const troca = await app.chamar('POST', `/anunciantes/${conta.id}/criativos`, conta.id, fd);
+    assert.equal(troca.status, 400, 'teto cheio: o upload recusa a substituição também');
+    assert.match(troca.corpo.erro, /criativos cadastrados/);
+  } finally {
+    await app.fechar();
+    await limpar(conta.id);
+  }
+});
+
 test.after(() => pool.end());

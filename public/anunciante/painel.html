@@ -137,16 +137,45 @@
         <section class="dashboard-section" id="modCriativos" aria-labelledby="tituloCriativos" hidden>
           <article class="panel painel-criativos">
             <div class="panel-head criativos-head">
-              <div><p class="section-eyebrow">Biblioteca de anúncios</p><h2 id="tituloCriativos">Meus criativos</h2><span class="panel-subtitle" id="criativosSubtitulo">Vídeo ou imagem vertical · até 95 MB · sem áudio</span></div>
-              <div class="criativos-actions"><span class="badge badge-neutro" id="contadorCriativos"></span><label class="btn primary upload-label" id="rotuloEnviarCriativo">Enviar criativo<input type="file" id="arquivoCriativo" accept="video/*,image/*" hidden></label></div>
+              <div><p class="section-eyebrow">Biblioteca de anúncios</p><h2 id="tituloCriativos" tabindex="-1">Meus criativos</h2><p class="criativos-uso" id="contadorCriativos"></p><p class="criativos-uso criativos-limite" id="avisoLimite" hidden>Limite de criativos do plano atingido.</p></div>
+              <div class="criativos-actions">
+                <button type="button" class="btn primary" id="botaoEnviarCriativo" hidden>+ Enviar criativo</button>
+                <button type="button" class="btn primary" id="botaoSubstituirCriativo" hidden>↻ Substituir criativo</button>
+              </div>
             </div>
-            <!-- Quem este anúncio divulga? (migration 121): o negócio
-                 principal já vem marcado; outro negócio ou marca da mesma
-                 conta só aparece se a pessoa pedir. -->
-            <form class="negocio-envio" id="negocioEnvio" hidden novalidate>
-              <fieldset><legend>Quem este anúncio divulga?</legend><div id="negocioEscolha"></div></fieldset>
-            </form>
-            <input type="file" id="arquivoSubstituto" accept="video/*,image/*" hidden>
+            <!-- Envio sob demanda (10/10/2026): fechado, o card é só a
+                 biblioteca. "Enviar criativo" abre o novo criativo aqui
+                 dentro; no limite do plano, "Substituir criativo" abre a
+                 troca, com o negócio da peça travado. -->
+            <section class="envio-criativo" id="envioCriativo" aria-labelledby="tituloEnvio" hidden>
+              <div class="envio-topo">
+                <h3 id="tituloEnvio">Novo criativo</h3>
+                <button type="button" class="btn ghost mini" id="cancelarEnvio">← Cancelar envio</button>
+              </div>
+              <fieldset class="envio-campos" id="envioCampos">
+                <p class="envio-aviso" id="envioAviso" hidden></p>
+                <fieldset class="envio-etapa" id="etapaAlvo" hidden>
+                  <legend class="envio-legenda">Qual criativo você quer substituir?</legend>
+                  <div class="alvos" id="alvosSubstituicao"></div>
+                  <button type="button" class="btn primary" id="continuarSubstituicao">Continuar</button>
+                </fieldset>
+                <p class="envio-travado" id="envioTravado" hidden></p>
+                <div class="envio-etapa" id="etapaArquivo" role="group" aria-labelledby="rotuloEtapaArquivo">
+                  <p class="envio-legenda" id="rotuloEtapaArquivo">1. Arquivo</p>
+                  <button type="button" class="btn ghost" id="escolherArquivo" aria-describedby="arquivoEscolhido criativosSubtitulo">Selecionar vídeo ou imagem</button>
+                  <input type="file" id="arquivoCriativo" accept="video/*,image/*" hidden>
+                  <p class="envio-arquivo" id="arquivoEscolhido" hidden></p>
+                  <p class="envio-nota" id="criativosSubtitulo">Vídeo ou imagem vertical · até 95 MB · sem áudio</p>
+                </div>
+                <!-- Quem este anúncio divulga? (migration 121): o negócio
+                     principal já vem marcado; outro negócio ou marca da mesma
+                     conta só aparece se a pessoa pedir. -->
+                <form class="negocio-envio envio-etapa" id="negocioEnvio" novalidate>
+                  <fieldset><legend>2. Quem este anúncio divulga?</legend><div id="negocioEscolha"></div></fieldset>
+                </form>
+                <div class="envio-rodape" id="envioRodape"><button type="button" class="btn primary" id="enviarParaAnalise">Enviar para análise</button></div>
+              </fieldset>
+            </section>
             <p class="form-msg" id="uploadMsg" role="status"></p>
             <button type="button" class="btn ghost mini" id="uploadAcao" hidden></button>
             <div class="ajuda-arte" id="ajudaArte" hidden><p class="u-m-0">Ainda não tem uma peça pronta? <a id="linkArteSimples" href="#" target="_blank" rel="noopener">Fale com a gente</a>.</p></div>

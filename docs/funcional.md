@@ -240,6 +240,32 @@ Escrito por grupo, porque o padrão se repete.
   [Tentar novamente]; numa recarga em segundo plano (SSE, volta pra aba) a
   tela fica como está e a próxima recarga tenta de novo. Entrar ou sair do
   admin no mesmo navegador não mexe na conta (cookies separados).
+- *Meus criativos, envio sob demanda* (10/10/2026): fechado, o card é só a
+  biblioteca — o título, "X de Y criativos utilizados" (a palavra concorda
+  com o limite: "0 de 1 criativo utilizado", "2 de 3 criativos utilizados";
+  o número é o de sempre, peças que ocupam vaga do plano) e um botão. Abaixo
+  do limite o botão é **"+ Enviar criativo"**, que abre dentro do card o
+  bloco "Novo criativo": 1. Arquivo [Selecionar vídeo ou imagem] → 2. Quem
+  este anúncio divulga? (o principal marcado, os outros negócios da conta
+  listados, "+ Anunciar outro negócio ou marca" sob demanda) → [Enviar para
+  análise]. Escolher o arquivo só guarda; nada sobe antes do envio, então
+  **"← Cancelar envio"** volta à biblioteca sem peça nem negócio novo (o
+  negócio só nasce no servidor, junto com a peça). Arquivo chegou (ou pode
+  ter chegado): o card volta à biblioteca com a mensagem; recusa com motivo
+  (duração, arquivo ilegível) deixa o bloco aberto pra trocar o arquivo.
+  **No limite do plano** não há "Enviar" desabilitado: o botão vira
+  **"↻ Substituir criativo"**, com "Limite de criativos do plano atingido.":
+  "Qual criativo você quer substituir?" lista as peças aprovadas sem
+  substituta em análise (negócio, categoria, situação) → [Continuar] →
+  "Substituindo criativo de: <negócio> · <categoria>" → novo arquivo →
+  [Enviar para análise]. O negócio fica travado (o servidor usa o da peça
+  trocada); a atual segue como está até a nova ser aprovada. O "Substituir"
+  de cada peça abre a mesma troca já com ela escolhida. Sem peça que dê pra
+  trocar, o bloco diz por quê. **Teto de cadastro:** com 3 peças guardadas
+  (as fora do ar contam; recusada e substituta em análise não) o bloco avisa
+  antes de pedir arquivo — "Exclua um da biblioteca para enviar outro" — a
+  mesma regra do upload (`guardados`/`tetoGuardados` na lista). Por essa
+  regra, um Prime com 3 peças ativas não substitui sem antes excluir uma.
 - *Enviar criativo* (27/09/2026): a mensagem passa por "Enviando o arquivo…
   (%)" → "Arquivo recebido. Processando o vídeo…" → "Criativo enviado! Ele
   entra em análise antes de ir pro ar." O card aparece como "processando"
@@ -869,7 +895,10 @@ com a conta — o banco recusa negócio de outra conta).
   negócios que a conta já usou; "+ Anunciar outro negócio ou marca" abre
   nome, categoria e a declaração "Este negócio ou marca pertence ao mesmo
   responsável ou grupo desta conta" — sem ela, não nasce. Quem tem um
-  negócio só não vê nada a mais além da linha marcada.
+  negócio só não vê nada a mais além da linha marcada. Desde 10/10/2026 a
+  escolha só aparece dentro do "Novo criativo" (o card fechado é só a
+  biblioteca); na substituição ela não aparece — a substituta divulga o
+  negócio da peça trocada.
 - **Categoria validada.** A categoria declarada é só a palavra do cliente até
   a Mostraí aprovar um criativo daquele negócio (`validado_em`). A trava de
   ramo (RN-57) só compara categoria validada — peça não aprovada nunca
