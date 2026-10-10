@@ -1,6 +1,12 @@
 # Current Handoff
 
 ## Updated
+2026-10-10 — **E2E 02 de volta ao verde** (só roteiros). Depende do 01
+(contas ana/joao e cookies) e agora para na hora, dizendo isso, se rodado
+sozinho. `reset-db.sh` limpa `webhooks_recebidos`: os ids fixos do 02
+(`ev-1`…) eram tidos como reentrega da segunda rodada em diante. O roteiro
+sai com código ≠ 0 quando há falha. Ordem: reset → restart → 01 → 02.
+
 2026-10-10 — **Testes flaky de concorrência** (PR #131, só testes).
 - `node --test` roda os ARQUIVOS em paralelo no mesmo Postgres. Teste que
   lê estado global (max(id), "o que esta chamada devolveu") falha ao acaso.

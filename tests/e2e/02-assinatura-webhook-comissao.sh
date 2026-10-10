@@ -34,6 +34,12 @@ esperar(){ if echo "$3" | grep -qE "$2"; then ok "$1"; else falha "$1" "$3"; fi;
 
 ANA=$($PG -c "select id from anunciantes where contato_email='ana@x.com'")
 JOAO=$($PG -c "select id from anunciantes where contato_email='joao@x.com'")
+# Rodado sozinho, sem o 01 antes, tudo falhava em cascata ("não encontrado",
+# 401) e parecia roteiro velho. Para logo, dizendo o que falta.
+if [ -z "$ANA" ] || [ -z "$JOAO" ] || [ ! -s adm.txt ] || [ ! -s ana.txt ]; then
+  echo "  FALHA pré-condição: rode tests/e2e/reset-db.sh, restart.sh e 01-fluxo-api.sh antes deste (contas ana/joao e cookies adm.txt/ana.txt)"
+  exit 1
+fi
 
 echo "== parceiro: status de conta com desconto e piso de compromisso (item 4) =="
 curl -s -b adm.txt -X PATCH $B/admin/anunciantes/$ANA -H "$J" \
@@ -155,3 +161,4 @@ CHAVE=$(echo $r | sed 's/.*"chaveAparelho":"\([^"]*\)".*/\1/')
 r=$(curl -s -H "X-Aparelho-Key: $CHAVE" -H "X-Player-Version: 1.0.0+12" "$B/playlist/$DID"); esperar "playlist responde no envelope do contrato (versaoContrato 2 + itens)" '^\{"versaoContrato":2,.*"itens":\[' "$r"
 
 echo; echo "falhas: $falhas"
+[ "$falhas" -eq 0 ]
