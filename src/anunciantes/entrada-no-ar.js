@@ -196,6 +196,11 @@ async function travaDoNegocio(conta, categoriaId, db = pool) {
 // gerador grava programadas mesmo assim), mas com a tela apagada nada toca.
 // `barrada` (migration 121): o contador é da CONTA; uma hora num ponto onde
 // o negócio desta peça é barrado foi de outra peça dela, nunca desta.
+// limite: a trava é avaliada com o ramo e a casa da tela HOJE (como o resto
+// desta previsão), não os da hora programada — tela móvel realocada ou ponto
+// reclassificado entre a hora e a primeira exibição pode trocar o rótulo
+// (programado × aguardando) até o comprovante chegar. Caminho de upgrade:
+// gravar ramo e casa da tela em `exibicoes_contador` na hora programada.
 async function primeiraHoraProgramada(contaId, desde, db = pool, barrada = () => false) {
   const { rows: todas } = await db.query(
     `SELECT e.janela_hora, e.vezes_programadas, p.id AS ponto_id, p.horario_semanal,

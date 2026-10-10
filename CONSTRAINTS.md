@@ -228,6 +228,14 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
     aprovação exige categoria antes de aprovar.
   - Criativo do anunciante não tem nome próprio: a fila mostra prévia, tipo,
     duração, data, conta, negócio e categoria.
+  - A previsão de entrada no ar de cada peça descarta as horas programadas
+    em ponto onde o negócio dela é barrado, mas avalia a trava com o ramo e a
+    casa da tela de HOJE: tela móvel realocada (ou ponto reclassificado)
+    entre a hora programada e a primeira exibição pode trocar o rótulo
+    "programado"/"aguardando" até o comprovante chegar. Só afeta o rótulo,
+    nunca o que toca. limite: gravar ramo e casa da tela em
+    `exibicoes_contador` na hora programada (mexe no contador do comprovante
+    — fora do escopo desta estação).
 - ~~`og:image` com caminho relativo~~ — **limite fechado em 14/09/2026**: o
   domínio existe (`mostrai.sancocore.com.br`), e `og:image`, `og:url` e
   `canonical` passaram a ser absolutos nas 26 páginas.
