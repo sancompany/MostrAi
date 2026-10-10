@@ -113,6 +113,10 @@ async function criarAdicional(contaId, { nome, categoriaId, categoriaLivre, mesm
   if (!sim(mesmoGrupo)) {
     throw new ErroNegocio('confirme que este negócio ou marca pertence ao mesmo responsável ou grupo desta conta');
   }
+  // O principal existe antes de qualquer adicional: senão um adicional com o
+  // nome da empresa ocuparia o nome e o principal nunca mais nasceria
+  // (revisão do PR #133). Com ele criado, o nome repetido cai no 409 abaixo.
+  await principalDaConta(contaId, db);
   const { rows } = await db.query(
     `INSERT INTO negocios (anunciante_id, nome, categoria_id, categoria_livre, mesmo_grupo_declarado_em)
      VALUES ($1, $2, $3, $4, now())

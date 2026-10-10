@@ -246,7 +246,10 @@ test('[4][5][6][7][8] negócio novo nasce no envio, na mesma conta, sem assinatu
       obrigacoes: await q('SELECT count(*)::int AS n FROM obrigacoes_veiculacao WHERE anunciante_id = $1'),
       cobrancas: await q('SELECT count(*)::int AS n FROM cobrancas_confirmadas WHERE anunciante_id = $1'),
       saldoHospedagem: await q('SELECT count(*)::int AS n FROM saldo_hospedagem_lancamentos WHERE conta_id = $1'),
-      contas: (await pool.query('SELECT count(*)::int AS n FROM anunciantes')).rows[0].n,
+      // Nenhuma conta nova com o nome do negócio (contar a tabela inteira
+      // quebrava com os outros arquivos de teste criando contas em paralelo).
+      contas: (await pool.query(`SELECT count(*)::int AS n FROM anunciantes WHERE nome_empresa ILIKE 'Academia Pizza'`))
+        .rows[0].n,
     };
   };
   const antes = await contar();
@@ -265,7 +268,8 @@ test('[4][5][6][7][8] negócio novo nasce no envio, na mesma conta, sem assinatu
   assert.ok(negocio.mesmo_grupo_declarado_em, 'a declaração do cliente fica registrada');
   assert.strictEqual(negocio.validado_em, null);
   const depois = await contar();
-  assert.deepStrictEqual({ ...depois, contas: depois.contas - antes.contas }, { ...antes, contas: 0 });
+  assert.deepStrictEqual(depois, antes);
+  assert.strictEqual(depois.contas, 0);
   // Sem a declaração de mesmo responsável/grupo, não nasce.
   const sem = await enviar(conta, { negocio_nome: 'Outra Marca', negocio_categoria_id: pizzaria });
   assert.strictEqual(sem.status, 400);
@@ -541,6 +545,31 @@ test('negócio validado sem categoria: peça nova do cliente ainda exige a categ
   });
   assert.strictEqual(ok.status, 200);
   assert.strictEqual((await linha('negocios', doOperador.negocio_id)).categoria_id, await idDaCategoria('Academia'));
+});
+
+// Revisão do PR #133 (Codex): conta nova ainda sem o principal criado manda
+// um negócio "adicional" com o nome da própria empresa. Sem criar o
+// principal antes, o adicional ocupava o nome e o principal nunca mais
+// nascia (o GET da lista quebrava).
+test('negócio adicional com o nome da conta, antes de existir o principal: recusado; a lista segue de pé', async () => {
+  const conta = await novaConta({ categoria: await idDaCategoria('Academia') });
+  assert.strictEqual(
+    (await pool.query('SELECT count(*)::int AS n FROM negocios WHERE anunciante_id = $1', [conta.id])).rows[0].n,
+    0,
+    'conta nova: o principal ainda não existe',
+  );
+  const env = await enviar(conta, {
+    negocio_nome: conta.nome_empresa,
+    negocio_categoria_id: await idDaCategoria('Pizzaria'),
+    negocio_mesmo_grupo: '1',
+  });
+  assert.strictEqual(env.status, 409);
+  const lista = await chamar('GET', '/anunciantes/me/negocios', { conta });
+  assert.strictEqual(lista.status, 200);
+  assert.deepStrictEqual(
+    lista.json.negocios.map((n) => [n.nome, n.principal]),
+    [[conta.nome_empresa, true]],
+  );
 });
 
 // Revisão do PR #133 (Codex): a substituta herda o negócio da peça que ela

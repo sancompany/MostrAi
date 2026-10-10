@@ -14,11 +14,26 @@ const basicoRepo = require('../pontos/basico');
 // escolha dele, só o painel é que escondia a lista (e com ela o próprio
 // ponto de quem é dono de comércio). "Acompanhe suas exibições" se completa
 // sozinho, na primeira exibição confirmada por uma tela.
+//
+// Peça em "Correção necessária" (migration 121) não conta como enviada — a
+// vaga está ocupada, mas o passo é do cliente: revisar e reenviar a mesma
+// peça (não mandar outra). `correcao` troca o botão do painel.
+function detalheDoCriativo({ criativosEnviados, criativosAprovados, criativosRecusados, criativosEmCorrecao }) {
+  if (criativosEnviados > 0 && criativosAprovados === 0) return 'Em análise pela Mostraí';
+  if (criativosEnviados === 0 && criativosEmCorrecao > 0)
+    return 'A Mostraí pediu uma correção: revise e reenvie a peça';
+  // Recusado não conta como enviado: nunca vai ao ar, então o passo
+  // continua sendo mandar uma peça que sirva (revisão Codex do PR #77).
+  if (criativosEnviados === 0 && criativosRecusados > 0) return 'Seu criativo foi recusado: envie uma nova peça';
+  return null;
+}
+
 function etapasDosPrimeirosPassos({
   temPlano,
   criativosEnviados,
   criativosAprovados,
   criativosRecusados = 0,
+  criativosEmCorrecao = 0,
   pontosEscolhidos,
   exibicoes,
   soSaldoHospedagem = false,
@@ -34,14 +49,8 @@ function etapasDosPrimeirosPassos({
       titulo: 'Envie seu criativo',
       feito: criativosEnviados > 0,
       opcional: false,
-      // Recusado não conta como enviado: nunca vai ao ar, então o passo
-      // continua sendo mandar uma peça que sirva (revisão Codex do PR #77).
-      detalhe:
-        criativosEnviados > 0 && criativosAprovados === 0
-          ? 'Em análise pela Mostraí'
-          : criativosEnviados === 0 && criativosRecusados > 0
-            ? 'Seu criativo foi recusado: envie uma nova peça'
-            : null,
+      detalhe: detalheDoCriativo({ criativosEnviados, criativosAprovados, criativosRecusados, criativosEmCorrecao }),
+      correcao: criativosEnviados === 0 && criativosEmCorrecao > 0,
     },
     {
       id: 'pontos',
@@ -86,6 +95,7 @@ function etapasDoDonoDePonto({
   criativosEnviados,
   criativosAprovados,
   criativosRecusados = 0,
+  criativosEmCorrecao = 0,
   exibicoes,
 }) {
   const etapas = [
@@ -113,13 +123,9 @@ function etapasDoDonoDePonto({
       titulo: 'Envie seu criativo',
       feito: criativosEnviados > 0,
       detalhe:
-        criativosEnviados > 0 && criativosAprovados === 0
-          ? 'Em análise pela Mostraí'
-          : criativosEnviados === 0 && criativosRecusados > 0
-            ? 'Seu criativo foi recusado: envie uma nova peça'
-            : !basicoAtivo
-              ? 'Disponível quando o Plano Básico ativar'
-              : null,
+        detalheDoCriativo({ criativosEnviados, criativosAprovados, criativosRecusados, criativosEmCorrecao }) ??
+        (!basicoAtivo ? 'Disponível quando o Plano Básico ativar' : null),
+      correcao: criativosEnviados === 0 && criativosEmCorrecao > 0,
     },
     { id: 'exibicoes', titulo: 'Acompanhe suas exibições', feito: exibicoes > 0 },
   ];
@@ -144,7 +150,8 @@ async function primeirosPassosDaConta(conta) {
     pool.query(
       `SELECT COUNT(*) FILTER (WHERE status IN ('pendente', 'aprovado'))::int AS enviados,
               COUNT(*) FILTER (WHERE status = 'aprovado')::int AS aprovados,
-              COUNT(*) FILTER (WHERE status = 'reprovado')::int AS recusados
+              COUNT(*) FILTER (WHERE status = 'reprovado')::int AS recusados,
+              COUNT(*) FILTER (WHERE status = 'correcao')::int AS em_correcao
          FROM criativos WHERE anunciante_id = $1`,
       [conta.id],
     ),
@@ -167,6 +174,7 @@ async function primeirosPassosDaConta(conta) {
     criativosEnviados: criativos.rows[0].enviados,
     criativosAprovados: criativos.rows[0].aprovados,
     criativosRecusados: criativos.rows[0].recusados,
+    criativosEmCorrecao: criativos.rows[0].em_correcao,
     exibicoes: exibicoes.rows[0].n,
   };
   // Sem plano comercial em vigor e dono de ponto da rede: o fluxo do ponto
