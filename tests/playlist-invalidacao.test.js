@@ -135,10 +135,14 @@ test('SV3: transações que fecham fora de ordem têm a marca na ordem do COMMIT
   const t1 = await pool.connect();
   const t2 = await pool.connect();
   try {
-    await t1.query('BEGIN');
+    // REPEATABLE READ: o retrato é tirado antes da marca de cada transação,
+    // então o max(id) é a dela — com READ COMMITTED, uma marca que outro
+    // arquivo de teste gravou e commitou no meio passava por ela (CI do PR
+    // #130).
+    await t1.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
     await t1.query("UPDATE pontos SET status = 'em_operacao' WHERE id = $1", [p1]);
     const [{ id: id1 }] = (await t1.query('SELECT max(id) AS id FROM playlist_mudancas')).rows;
-    await t2.query('BEGIN');
+    await t2.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
     await t2.query("UPDATE pontos SET status = 'em_operacao' WHERE id = $1", [p2]);
     const [{ id: id2 }] = (await t2.query('SELECT max(id) AS id FROM playlist_mudancas')).rows;
     await t2.query('COMMIT');

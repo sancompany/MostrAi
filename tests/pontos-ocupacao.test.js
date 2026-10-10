@@ -6,7 +6,11 @@ const pontosRepo = require('../src/pontos/repository');
 
 // Bloqueio de escolha por ponto cheio (G.7, docs/PENDENCIAS.md). Cada teste
 // cria e apaga o próprio ponto/anunciante/plano, com nomes/e-mails únicos,
-// pra não colidir com outra rodada da suíte.
+// pra não colidir com outra rodada da suíte. O que se confere é o ESTADO do
+// ponto, não a lista que `avaliarBloqueios` devolve: ela traz só o que
+// aquela chamada travou, e outros arquivos de teste rodam a mesma avaliação
+// global ao mesmo tempo (pontos-disponiveis, PUT me/pontos, tabela do
+// admin) — às vezes travam o nosso ponto primeiro.
 
 async function planoDeTeste(segundosPorHora) {
   const id = `plano-teste-ocupacao-${randomUUID()}`;
@@ -59,10 +63,8 @@ test('avaliarBloqueios trava sozinho ao cruzar 80%, e nunca destrava sozinho', a
       pontoId,
     ]);
 
-    const bloqueados = await pontosRepo.avaliarBloqueios();
-    assert.ok(bloqueados.includes(pontoId), 'ponto com 83% de ocupação deveria travar');
-
-    assert.ok(await bloqueadaEm(pontoId), 'escolha_bloqueada_em deve estar preenchido');
+    await pontosRepo.avaliarBloqueios();
+    assert.ok(await bloqueadaEm(pontoId), 'ponto com 83% de ocupação deveria travar');
 
     // Esvazia o ponto — a ocupação cai a zero, mas o bloqueio é STICKY.
     await pool.query('DELETE FROM anunciantes_pontos WHERE ponto_id = $1', [pontoId]);
@@ -82,8 +84,8 @@ test('avaliarBloqueios não trava ponto abaixo de 80%', async () => {
       anuncianteId,
       pontoId,
     ]);
-    const bloqueados = await pontosRepo.avaliarBloqueios();
-    assert.ok(!bloqueados.includes(pontoId), 'ponto com 78% de ocupação não deveria travar');
+    await pontosRepo.avaliarBloqueios();
+    assert.strictEqual(await bloqueadaEm(pontoId), null, 'ponto com 78% de ocupação não deveria travar');
   } finally {
     await limpar({ anuncianteId, pontoId, planoId });
   }

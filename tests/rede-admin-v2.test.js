@@ -669,13 +669,17 @@ test('4. capacidade da hora: 3600 s × telas ativas na rede (no mínimo 1); 3600
       `UPDATE pontos SET status = 'em_operacao', escolha_bloqueada_em = NULL WHERE id = ANY($1::int[])`,
       [ids],
     );
-    const bloqueados = await pontosRepo.avaliarBloqueios();
-    assert.ok(bloqueados.includes(fixo.id), 'fixo: 3000 s ≥ 80% de 3600 s');
-    assert.ok(!bloqueados.includes(rede.id), 'rede com 2 telas ativas: 3000 s < 80% de 7200 s');
-    assert.ok(!bloqueados.includes(semTela.id), 'rede sem tela vale 1 hora (nunca 0): 2000 s < 80% de 3600 s');
-    assert.ok(await bloqueadaEm(fixo.id));
-    assert.strictEqual(await bloqueadaEm(rede.id), null);
-    assert.strictEqual(await bloqueadaEm(semTela.id), null);
+    // Confere o estado, não a lista devolvida: ela traz só o que ESTA chamada
+    // travou, e outros arquivos de teste rodam a mesma avaliação global ao
+    // mesmo tempo (pontos-disponiveis, PUT me/pontos) — às vezes primeiro.
+    await pontosRepo.avaliarBloqueios();
+    assert.ok(await bloqueadaEm(fixo.id), 'fixo: 3000 s ≥ 80% de 3600 s');
+    assert.strictEqual(await bloqueadaEm(rede.id), null, 'rede com 2 telas ativas: 3000 s < 80% de 7200 s');
+    assert.strictEqual(
+      await bloqueadaEm(semTela.id),
+      null,
+      'rede sem tela vale 1 hora (nunca 0): 2000 s < 80% de 3600 s',
+    );
     assert.strictEqual(await pontosRepo.liberarEscolha(fixo.id), false, 'fixo: 3600 − 900 < 3000');
 
     // A régua da Mídia Mostraí (/admin/capacidade-rede, preview e trava de
@@ -705,7 +709,8 @@ test('4. capacidade da hora: 3600 s × telas ativas na rede (no mínimo 1); 3600
 
     // Só telas ATIVAS contam: com uma em reparo, a rede vale 1 hora e fecha.
     await pool.query(`UPDATE dispositivos SET status = 'reparo' WHERE id = $1`, [t2]);
-    assert.ok((await pontosRepo.avaliarBloqueios()).includes(rede.id), '1 tela ativa: 3000 s ≥ 2880 s');
+    await pontosRepo.avaliarBloqueios();
+    assert.ok(await bloqueadaEm(rede.id), '1 tela ativa: 3000 s ≥ 2880 s');
     assert.strictEqual(await pontosRepo.liberarEscolha(rede.id), false, '3600 − 900 < 3000');
     await pool.query(`UPDATE dispositivos SET status = 'ativo' WHERE id = $1`, [t2]);
     assert.strictEqual(await pontosRepo.liberarEscolha(rede.id), true, '2 telas: 7200 − 900 ≥ 3000');
