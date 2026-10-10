@@ -88,6 +88,11 @@ await p.fill('#email', email);
 await p.fill('#senha', 'Senha@Forte1');
 await p.click('button[type="submit"]');
 await p.waitForURL(/painel\.html/, { timeout: 15000 });
+// Envio sob demanda (10/10/2026): fechado, o card é só a biblioteca; a
+// escolha do negócio aparece no "Enviar criativo".
+await p.waitForSelector('#botaoEnviarCriativo:not([hidden])', { timeout: 15000 });
+check('fechado, o card não mostra a escolha do negócio', !(await p.isVisible('#negocioEnvio')));
+await p.click('#botaoEnviarCriativo');
 await p.waitForSelector('#negocioEnvio:not([hidden]) .negocio-opcao', { timeout: 15000 });
 check('"Quem este anúncio divulga?" aparece no envio', (await p.textContent('#negocioEnvio legend')).includes('Quem este anúncio divulga?'));
 check('uma opção só — o negócio principal', (await p.locator('.negocio-opcao').count()) === 1);
@@ -98,6 +103,7 @@ await p.screenshot({ path: `${SAIDA}1-um-negocio.png`, fullPage: true });
 
 console.log('== 2. envio do negócio principal: o mesmo gesto de sempre ==');
 await p.setInputFiles('#arquivoCriativo', VIDEO);
+await p.click('#enviarParaAnalise');
 await esperar(async () => (await p.locator('.criativo-card').count()) === 1 && /enviado/i.test(await p.textContent('#uploadMsg')));
 check('peça enviada', (await p.locator('.criativo-card').count()) === 1, await p.textContent('#uploadMsg'));
 check('com um negócio só, o card não ganha linha a mais', (await p.locator('.criativo-divulga').count()) === 0);
@@ -108,23 +114,28 @@ check(
 );
 
 console.log('== 3. "+ Anunciar outro negócio ou marca" ==');
+await p.click('#botaoEnviarCriativo');
 await p.click('[data-negocio-outro]');
 check('abre o formulário pequeno', await p.isVisible('[data-negocio-novo]'));
 await p.fill('[data-negocio-nome]', 'Academia Pizza');
-// Sem a declaração, o seletor de arquivo nem abre: a tela diz o que falta.
-await p.click('#rotuloEnviarCriativo');
+await p.setInputFiles('#arquivoCriativo', VIDEO);
+// Sem categoria e sem a declaração, nada sobe: a tela diz o que falta.
+await p.click('#enviarParaAnalise');
 await esperar(async () => /categoria|responsável/.test(await p.textContent('#uploadMsg')));
 check('sem categoria: diz o que falta', /categoria/i.test(await p.textContent('#uploadMsg')), await p.textContent('#uploadMsg'));
 await p.fill('#envio_categoria_id_busca', 'Pizzaria');
 await p.click('#envio_categoria_id_busca_lista li:has-text("Pizzaria")');
-await p.click('#rotuloEnviarCriativo');
+await p.click('#enviarParaAnalise');
 check('sem a declaração: diz o que falta', /mesmo responsável ou grupo/.test(await p.textContent('#uploadMsg')));
+check('e nada subiu', PG(`SELECT count(*) FROM criativos WHERE anunciante_id = ${contaId}`) === '1');
 await p.check('[data-negocio-grupo]');
-await p.setInputFiles('#arquivoCriativo', VIDEO);
+await p.click('#enviarParaAnalise');
 await esperar(async () => (await p.locator('.criativo-card').count()) === 2);
 check('segunda peça enviada', (await p.locator('.criativo-card').count()) === 2, await p.textContent('#uploadMsg'));
+await p.click('#botaoEnviarCriativo');
 await esperar(async () => (await p.locator('.negocio-opcao').count()) === 2);
 check('o negócio novo vira opção da lista', (await p.locator('.negocio-opcao').count()) === 2);
+await p.click('#cancelarEnvio');
 check(
   'e os cards dizem quem cada peça divulga',
   /Divulga: Academia Pizza · Pizzaria/.test(await p.textContent('#listaCriativos')),

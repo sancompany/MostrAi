@@ -120,9 +120,23 @@ check('onde roda: rede e tela do comércio', /pontos do seu plano e na tela do s
 check('duração do plano no subtítulo', (await p.textContent('#criativosSubtitulo')).includes('15 segundos'));
 // Mesma conta de criativosRepo.contarNaoReprovados: retirado (fora do ar)
 // não ocupa vaga desde o #88 (finalização, 28/09/2026).
-check('contador de cadastro', (await p.textContent('#contadorCriativos')).trim() === `${PG(`SELECT count(*) FROM criativos WHERE anunciante_id=${conta.id} AND status NOT IN ('reprovado', 'retirado') AND NOT (status='pendente' AND substitui_criativo_id IS NOT NULL)`)} de 1`);
+check('contador de cadastro', (await p.textContent('#contadorCriativos')).trim() === `${PG(`SELECT count(*) FROM criativos WHERE anunciante_id=${conta.id} AND status NOT IN ('reprovado', 'retirado') AND NOT (status='pendente' AND substitui_criativo_id IS NOT NULL)`)} de 1 criativo utilizado`);
 check('uma biblioteca só (sem "Meu anúncio na minha tela")', !/Meu anúncio na minha tela/.test(await p.textContent('body')));
 await shot(p, '1-situacoes');
+
+console.log('== teto de cadastro: o "Substituir" do card avisa antes de pedir arquivo ==');
+// 3 guardados (as duas aprovadas + a retirada; a substituta em análise e a
+// recusada não contam): a troca esbarraria no teto — o modo diz isso e não
+// oferece arquivo. Excluir a retirada libera.
+await p.click(`.criativo-card[data-id="${reserva}"] [data-acao="substituir"]`);
+await p.waitForSelector('#envioCriativo:not([hidden])');
+check('teto de cadastro avisado antes do arquivo', /já guarda 3 criativos/.test(await p.textContent('#envioAviso')) && !(await p.isVisible('#etapaArquivo')));
+await p.click('#cancelarEnvio');
+const retirada = PG(`SELECT id FROM criativos WHERE anunciante_id = ${conta.id} AND status = 'retirado'`);
+await p.click(`.criativo-card[data-id="${retirada}"] [data-acao="excluir"]`);
+await p.waitForSelector('dialog.dlg-confirmar[open]', { timeout: 5000 });
+await p.click('dialog.dlg-confirmar [data-confirmar]');
+await p.waitForFunction((id) => !document.querySelector(`.criativo-card[data-id="${id}"]`), retirada, { timeout: 8000 });
 
 console.log('== substituir envia a peça apontando pra atual ==');
 // O Chromium não entrega o corpo multipart com arquivo ao Playwright:
@@ -141,14 +155,18 @@ await p.evaluate(() => {
     return enviarXhr.call(this, corpo);
   };
 });
-const [escolha] = await Promise.all([
-  p.waitForEvent('filechooser'),
-  p.click(`.criativo-card[data-id="${reserva}"] [data-acao="substituir"]`),
-]);
+// "Substituir" no card abre a troca já com a peça escolhida e o negócio
+// travado; o arquivo só sobe no "Enviar para análise".
+await p.click(`.criativo-card[data-id="${reserva}"] [data-acao="substituir"]`);
+check('o "Substituir" do card já traz a peça escolhida', /Substituindo criativo de:/.test(await p.textContent('#envioTravado')) && !(await p.isVisible('#etapaAlvo')));
+const [escolha] = await Promise.all([p.waitForEvent('filechooser'), p.click('#escolherArquivo')]);
 await escolha.setFiles({ name: 'nova.png', mimeType: 'image/png', buffer: Buffer.from('nao e imagem') });
+await p.click('#enviarParaAnalise');
 await p.waitForFunction(() => /./.test(document.getElementById('uploadMsg').textContent) && !/Enviando|Processando/.test(document.getElementById('uploadMsg').textContent));
 check('o envio carregou o campo "substitui" da peça certa', (await p.evaluate(() => window.__substitui)) === String(reserva));
 check('erro de arquivo aparece sem quebrar a tela', (await p.textContent('#uploadMsg')).length > 0);
+check('recusa com motivo mantém a troca aberta pra outro arquivo', await p.isVisible('#envioCriativo'));
+await p.click('#cancelarEnvio');
 
 console.log('== recusas do servidor na substituição ==');
 const recusaPendente = await p.evaluate(
@@ -235,7 +253,9 @@ await p.waitForSelector('#modCriativos:not([hidden])', { timeout: 8000 }).catch(
 check(
   'dono sem plano (só o comodato legado) não envia criativo: módulo diz aguardando instalação',
   (await p.isVisible('[data-criativos-aguardando]')) &&
-    !(await p.isVisible('#rotuloEnviarCriativo')) &&
+    (await p.locator('#botaoEnviarCriativo').count()) === 1 &&
+    !(await p.isVisible('#botaoEnviarCriativo')) &&
+    !(await p.isVisible('#botaoSubstituirCriativo')) &&
     /tela do seu ponto estiver instalada/.test(await p.textContent('#modCriativos')),
 );
 await irQuieto(p, `${B}/anunciante/ponto.html`);

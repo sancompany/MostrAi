@@ -142,7 +142,9 @@ check('chip de pontos: "0 de 1 em operação"', /0 de 1 em operação/.test(resu
 check(
   'criativos: módulo com o envio fechado e o motivo',
   (await p.isVisible('[data-criativos-aguardando]')) &&
-    !(await p.isVisible('#rotuloEnviarCriativo')) &&
+    (await p.locator('#botaoEnviarCriativo').count()) === 1 &&
+    !(await p.isVisible('#botaoEnviarCriativo')) &&
+    !(await p.isVisible('#botaoSubstituirCriativo')) &&
     /Aguardando ativação do benefício/.test(await p.textContent('#modCriativos')),
 );
 check('Planos continua no menu (opcional, não obrigação)', await p.isVisible('header a[href="/planos.html"]'));

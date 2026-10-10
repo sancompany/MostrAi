@@ -176,7 +176,9 @@ check(
   'dono: Meus criativos com o envio fechado até o Básico ativar',
   (await visivel(s.p, '#modCriativos')) &&
     (await visivel(s.p, '[data-criativos-aguardando]')) &&
-    !(await visivel(s.p, '#rotuloEnviarCriativo')),
+    (await s.p.locator('#botaoEnviarCriativo').count()) === 1 &&
+    !(await visivel(s.p, '#botaoEnviarCriativo')) &&
+    !(await visivel(s.p, '#botaoSubstituirCriativo')),
 );
 check('dono: sem Financeiro (nada pago, nada a receber)', !(await visivel(s.p, '#modFinanceiro')));
 // Sem plano, o card some — a ação principal mora nos primeiros passos, uma

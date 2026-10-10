@@ -1,6 +1,29 @@
 # Current Handoff
 
 ## Updated
+2026-10-10 — **Card "Meus criativos": envio sob demanda e substituição no
+limite** (só tela, sem migration; branch `claude/busy-noether-hheir2`).
+- Fechado, o card é a biblioteca: "X de Y criativos utilizados" + um botão.
+  "+ Enviar criativo" abre o "Novo criativo" dentro do card (arquivo →
+  negócio → "Enviar para análise"); nada sobe antes do envio, então
+  "Cancelar envio" não deixa peça nem negócio. No limite o botão vira
+  "↻ Substituir criativo" (escolher peça → arquivo, negócio travado). O
+  "Substituir" de cada peça abre a mesma troca. Código:
+  `public/meus-criativos.js` (`modo` null/'novo'/'substituir',
+  `abrirEnvio`/`fecharEnvio`/`desenharEnvio`, `enviarDoModo`); o envio
+  confiável (XHR, chave por arquivo, conferência) não mudou.
+- Servidor: só leitura nova em `GET /anunciantes/me/criativos` —
+  `guardados` (= `contarCadastrados`) e `tetoGuardados`
+  (`CRIATIVOS_POR_CONTA`). Nenhuma regra mudou.
+- Decisão do dono em aberto: pelo teto de cadastro (3 guardados, retirados
+  contam; revisão do PR #88), um Prime com 3 peças ativas NÃO consegue
+  substituir sem antes excluir uma — o card diz isso antes do arquivo.
+  Também: duas substituições simultâneas da mesma peça (duas abas, mesmo
+  instante) dependem só do SELECT antes do INSERT no servidor; fechar de vez
+  pede índice único parcial (migration) — não feito.
+- Testes: e2e 48 (os 27 itens), e2e 13/25/47/15/43 adaptados ao modo, e
+  `tests/meus-criativos.test.js` (teto na lista = teto no upload).
+
 2026-10-10 — **Negócio ou marca por criativo** (migration 121; RN-74;
 branch `claude/busy-noether-hheir2`). Decisões do dono: negócio validado
 fica TRAVADO para o cliente (só o Admin muda); "Correção necessária" conta

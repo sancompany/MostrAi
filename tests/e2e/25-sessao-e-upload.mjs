@@ -221,6 +221,13 @@ await outra.evaluate(() => {
   window.__semReload = true;
 });
 const msg = () => p.textContent('#uploadMsg');
+// Envio sob demanda (10/10/2026): abre o novo criativo (a recusa com motivo
+// deixa o modo aberto — aí não precisa), escolhe o arquivo e manda.
+async function enviarArquivo(arquivo) {
+  if (await p.isVisible('#botaoEnviarCriativo')) await p.click('#botaoEnviarCriativo');
+  await p.setInputFiles('#arquivoCriativo', arquivo);
+  await p.click('#enviarParaAnalise');
+}
 const esperarMsg = (re, teto = 30000) =>
   p.waitForFunction((r) => new RegExp(r).test(document.getElementById('uploadMsg').textContent), re.source, {
     timeout: teto,
@@ -235,7 +242,7 @@ await p.evaluate(() => {
   });
 });
 const inicioA = Date.now();
-await p.setInputFiles('#arquivoCriativo', MIDIA.valido);
+await enviarArquivo(MIDIA.valido);
 await esperarMsg(/Criativo enviado!/);
 const totalA = Date.now() - inicioA;
 const sequencia = await p.evaluate(() => window.__msgs);
@@ -294,7 +301,7 @@ await interceptarUpload(async (route) => {
   await espera(4000);
   await route.fulfill(resposta);
 });
-await p.setInputFiles('#arquivoCriativo', MIDIA.valido);
+await enviarArquivo(MIDIA.valido);
 await espera(2500);
 check(
   'B. durante a espera: enviando/processando, nunca erro',
@@ -312,7 +319,7 @@ await interceptarUpload(async (route) => {
   await encaminhar(route); // o servidor processa e cria
   await route.fulfill({ status: 524, contentType: 'text/html', body: '<html><h1>524 A timeout occurred</h1></html>' });
 });
-await p.setInputFiles('#arquivoCriativo', MIDIA.valido);
+await enviarArquivo(MIDIA.valido);
 await esperarMsg(/Criativo enviado!|não foi concluído|Não conseguimos confirmar/);
 check('D. NÃO diz "Não foi possível enviar"', !/Não foi possível enviar/.test(await msg()), await msg());
 check('D. reconcilia e diz "Criativo enviado!"', (await msg()).includes('Criativo enviado!'), await msg());
@@ -326,7 +333,7 @@ await interceptarUpload(async (route) => {
   await encaminhar(route);
   await route.abort('connectionreset');
 });
-await p.setInputFiles('#arquivoCriativo', MIDIA.valido);
+await enviarArquivo(MIDIA.valido);
 await esperarMsg(/Criativo enviado!|não foi concluído|Não conseguimos confirmar/);
 check('D2. reconcilia e diz "Criativo enviado!"', (await msg()).includes('Criativo enviado!'), await msg());
 check('D2. exatamente 1 criativo', contarCriativos() === 1);
@@ -339,7 +346,7 @@ await interceptarUpload(async (route) => {
   chaves.push(route.request().headers()['idempotency-key']);
   await route.abort('failed');
 });
-await p.setInputFiles('#arquivoCriativo', MIDIA.valido);
+await enviarArquivo(MIDIA.valido);
 await esperarMsg(/não foi concluído/);
 check('E. diz "O envio não foi concluído" (verdade: nada foi criado)', contarCriativos() === 0);
 check('E. oferece [Tentar de novo]', await p.isVisible('#uploadAcao'));
@@ -385,7 +392,7 @@ await interceptarUpload(async (route) => {
   listaFalha = true;
   await route.fulfill(resposta);
 });
-await p.setInputFiles('#arquivoCriativo', MIDIA.valido);
+await enviarArquivo(MIDIA.valido);
 await esperarMsg(/Não conseguimos atualizar a lista agora/);
 check('C. diz que ENVIOU', (await msg()).includes('Criativo enviado!'), await msg());
 check('C. e que só a lista não atualizou', (await msg()).includes('Não conseguimos atualizar a lista agora'));
@@ -400,7 +407,7 @@ await soltarUpload();
 limparCriativos();
 
 etapa('== UPLOAD F/G/H: erros reais continuam erros reais, sem registro residual ==');
-await p.setInputFiles('#arquivoCriativo', MIDIA.lixo);
+await enviarArquivo(MIDIA.lixo);
 await esperarMsg(/Não foi possível ler esse arquivo|não foi possível ler esse arquivo/i);
 check('F. arquivo inválido: mensagem do servidor', /ler esse arquivo/i.test(await msg()), await msg());
 check('F. nenhum registro residual', contarCriativos() === 0);
@@ -414,13 +421,13 @@ await interceptarUpload((route) =>
     }),
   }),
 );
-await p.setInputFiles('#arquivoCriativo', MIDIA.valido);
+await enviarArquivo(MIDIA.valido);
 await esperarMsg(/armazenamento não respondeu/i);
 check('G. storage 502: mensagem certa (o problema foi nosso)', /armazenamento não respondeu/i.test(await msg()));
 check('G. nenhum criativo', contarCriativos() === 0);
 await soltarUpload();
 
-await p.setInputFiles('#arquivoCriativo', MIDIA.longo);
+await enviarArquivo(MIDIA.longo);
 await esperarMsg(/até 30s/);
 check('H. vídeo de 35 s num plano de 30 s: bloqueio continua', /seu plano aceita peça de até 30s/i.test(await msg()), await msg());
 check('H. nenhum criativo', contarCriativos() === 0);
