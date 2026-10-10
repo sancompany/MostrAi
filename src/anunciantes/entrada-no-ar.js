@@ -166,12 +166,27 @@ async function coberturaDaConta(
     : [];
   const naFatia = new Set(redeInteira ? idsNoAr : ids);
   const proprios = new Set(basicos.map((b) => b.ponto_id));
-  return noAr.filter(
-    (p) =>
-      proprios.has(p.id) ||
-      (naFatia.has(p.id) &&
-        (!concorrencia.bloqueia(p.categoria_id, categoriaId, concorrentes) ||
-          (p.casa_id === conta.id && escolhidos.includes(p.id)))),
+  const barrada = barradaNoPonto(conta, categoriaId, concorrentes, escolhidos);
+  return noAr.filter((p) => proprios.has(p.id) || (naFatia.has(p.id) && !barrada(p)));
+}
+
+// A trava de ramo de uma peça num ponto `{id, categoria_id, casa_id}` (a
+// do gerador): barrada quando o ramo do ponto é o do negócio dela ou
+// concorrente direto — salvo o próprio ponto que a dona escolheu.
+const barradaNoPonto = (conta, categoriaId, concorrentes, escolhidos) => (p) =>
+  concorrencia.bloqueia(p.categoria_id, categoriaId, concorrentes) &&
+  !(p.casa_id === conta.id && escolhidos.includes(p.id));
+
+async function travaDoNegocio(conta, categoriaId, db = pool) {
+  const [{ rows: escolhas }, concorrentes] = await Promise.all([
+    db.query('SELECT ponto_id FROM anunciantes_pontos WHERE anunciante_id = $1', [conta.id]),
+    concorrencia.concorrentesDe(categoriaId, db),
+  ]);
+  return barradaNoPonto(
+    conta,
+    categoriaId,
+    concorrentes,
+    escolhas.map((r) => r.ponto_id),
   );
 }
 
@@ -179,9 +194,12 @@ async function coberturaDaConta(
 // playlist) a partir de `desde`, só em hora em que o ponto daquela tela
 // estava aberto: a TV continua pedindo playlist fora do horário (e o
 // gerador grava programadas mesmo assim), mas com a tela apagada nada toca.
-async function primeiraHoraProgramada(contaId, desde, db = pool) {
-  const { rows } = await db.query(
-    `SELECT e.janela_hora, e.vezes_programadas, p.id AS ponto_id, p.horario_semanal
+// `barrada` (migration 121): o contador é da CONTA; uma hora num ponto onde
+// o negócio desta peça é barrado foi de outra peça dela, nunca desta.
+async function primeiraHoraProgramada(contaId, desde, db = pool, barrada = () => false) {
+  const { rows: todas } = await db.query(
+    `SELECT e.janela_hora, e.vezes_programadas, p.id AS ponto_id, p.horario_semanal,
+            ${categoriaDaTelaSql('p', 'd')} AS categoria_id, ${casaDaTelaSql('p', 'd')} AS casa_id
        FROM exibicoes_contador e
        JOIN dispositivos d ON d.id = e.dispositivo_id
        JOIN pontos p ON p.id = d.ponto_id
@@ -190,6 +208,7 @@ async function primeiraHoraProgramada(contaId, desde, db = pool) {
       LIMIT 500`,
     [contaId, desde],
   );
+  const rows = todas.filter((r) => !barrada({ id: r.ponto_id, categoria_id: r.categoria_id, casa_id: r.casa_id }));
   if (!rows.length) return null;
   const relogio = criarRelogioDaCobertura(rows.map((r) => ({ id: r.ponto_id, horario_semanal: r.horario_semanal })));
   const aberta = rows.find((r) => relogio.abertoNaHora(r.ponto_id, new Date(r.janela_hora)));
@@ -226,7 +245,11 @@ async function entradaNoArDasPecas({
       const cobertura = cobre
         ? await coberturaDaConta(conta, plano, db, basicos, { redeInteira: !plano && !basicos.length, categoriaId })
         : [];
-      porCategoria.set(categoriaId, { cobertura, relogio: criarRelogioDaCobertura(cobertura) });
+      porCategoria.set(categoriaId, {
+        cobertura,
+        relogio: criarRelogioDaCobertura(cobertura),
+        barrada: cobertura.length ? await travaDoNegocio(conta, categoriaId, db) : () => false,
+      });
     }
     return porCategoria.get(categoriaId);
   };
@@ -263,14 +286,14 @@ async function entradaNoArDasPecas({
       resultado.set(c.id, { ...base, estado: ESTADOS.NO_AR });
       continue;
     }
-    const { cobertura, relogio } = await coberturaDaPeca(c);
+    const { cobertura, relogio, barrada } = await coberturaDaPeca(c);
     if (!cobertura.length) {
       resultado.set(c.id, { ...base, estado: ESTADOS.APROVADO, motivo: 'sem_ponto_no_ar_na_cobertura' });
       continue;
     }
 
     const inicio = horaCheiaSeguinte(aprovadoEm);
-    const programada = await primeiraHoraProgramada(conta.id, inicio, db);
+    const programada = await primeiraHoraProgramada(conta.id, inicio, db, barrada);
     // A hora programada (fato) vale sobre a previsão: é a hora em que a
     // conta de fato entrou numa playlist servida.
     const janela = programada?.janela || primeiraHoraAberta(relogio, inicio);

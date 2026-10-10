@@ -621,6 +621,53 @@ test('upload do Admin: peça no negócio escolhido; falhou a aprovação, o neg�
   assert.ok((await linha('negocios', env.json.negocio_id)).validado_em);
 });
 
+// Revisão do PR #133 (Codex): o contador de programadas é da CONTA. A hora
+// em que a peça do principal entrou na playlist da pizzaria não pode fazer a
+// peça da pizza — barrada lá — aparecer como "aguardando" ou "atrasada".
+test('entrada no ar: hora programada num ponto onde a peça é barrada não vale pra ela', async () => {
+  const { entradaNoArDasPecas, ESTADOS } = require('../src/anunciantes/entrada-no-ar');
+  const planosRepo = require('../src/financeiro/planos-repository');
+  const criativosRepo = require('../src/anunciantes/criativos-repository');
+  const pizzariaCat = await idDaCategoria('Pizzaria');
+  const conta = await novaConta({ categoria: await idDaCategoria('Academia') });
+  const pizzaria = await telaNoPonto(pizzariaCat);
+  const outro = await telaNoPonto(await idDaCategoria('Utilidades domésticas'));
+  await escolherPonto(conta, pizzaria.ponto);
+  await escolherPonto(conta, outro.ponto);
+  const principal = await enviar(conta);
+  const pizza = await enviar(conta, {
+    negocio_nome: 'Academia Pizza',
+    negocio_categoria_id: pizzariaCat,
+    negocio_mesmo_grupo: '1',
+  });
+  assert.strictEqual((await aprovar(principal.json.id)).status, 200);
+  assert.strictEqual((await aprovar(pizza.json.id)).status, 200);
+  const agora = new Date();
+  const janela = new Date(Math.floor(agora.getTime() / 3_600_000) * 3_600_000);
+  const aprovadoEm = new Date(janela.getTime() - 10 * 60_000);
+  // A conta entrou na playlist da pizzaria nesta hora — pela peça do principal.
+  await pool.query(
+    `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas,
+                                     vezes_confirmadas, segundos_obrigacao, duracao_segundos, minutos_abertos)
+     VALUES ($1, $2, $3, 2, 2, 0, 0, 10, 60)`,
+    [conta.id, pizzaria.dispositivo.id, janela],
+  );
+  const criativos = (await criativosRepo.listarPorAnunciante(conta.id)).map((c) => ({
+    ...c,
+    em_rodizio: true,
+    aprovado_em: aprovadoEm,
+  }));
+  const entrada = await entradaNoArDasPecas({
+    conta,
+    plano: await planosRepo.buscarPorId(conta.plano_id),
+    contaVeicula: true,
+    criativos,
+    agora,
+  });
+  assert.strictEqual(entrada.get(principal.json.id).estado, ESTADOS.AGUARDANDO, 'a do principal estava na playlist');
+  assert.strictEqual(entrada.get(pizza.json.id).estado, ESTADOS.PROGRAMADO, 'a da pizza é barrada na pizzaria');
+});
+
 // Revisão do PR #133 (Codex): a substituta herda o negócio da peça que ela
 // troca — não há negócio nem categoria pro cliente corrigir. Em "correção",
 // ela sumiria de toda checagem de "substituta em análise" e a conta poderia
