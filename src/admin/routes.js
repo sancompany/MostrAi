@@ -350,10 +350,18 @@ router.get('/admin/resumo', async (_req, res) => {
     // sem comunicação não é falha (src/lib/status-tela.js, Rede Front V3).
     dispositivosRepo.telasComAtencao(),
     pool.query(
-      `SELECT to_char(date_trunc('month', criado_em), 'YYYY-MM') AS mes, SUM(valor)::numeric AS total
-       FROM cobrancas_confirmadas
-       WHERE criado_em > now() - interval '6 months'
-       GROUP BY mes ORDER BY mes`,
+      // Receita LÍQUIDA de estornos confirmados pelo PSP (migration 120): o
+      // dinheiro que voltou não é receita, e sai do mês em que a Asaas
+      // confirmou a devolução (a mesma régua de src/admin/metrica.js).
+      // Cancelamento não mexe aqui.
+      `SELECT to_char(mes, 'YYYY-MM') AS mes, SUM(total)::numeric AS total FROM (
+         SELECT date_trunc('month', criado_em) AS mes, valor AS total
+           FROM cobrancas_confirmadas WHERE criado_em > now() - interval '6 months'
+         UNION ALL
+         SELECT date_trunc('month', confirmado_em), -valor_confirmado
+           FROM estornos WHERE status = 'confirmado' AND confirmado_em > now() - interval '6 months'
+       ) lancamentos
+       GROUP BY 1 ORDER BY 1`,
     ),
     pool.query(
       `SELECT COALESCE(SUM(vezes_confirmadas), 0)::int AS confirmadas,

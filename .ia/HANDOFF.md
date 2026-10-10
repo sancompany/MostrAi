@@ -1,6 +1,43 @@
 # Current Handoff
 
 ## Updated
+2026-10-09 — **Pagamentos: cancelar ≠ estornar** (migration 120; ADR-046;
+RN-73; branch `claude/busy-noether-hheir2`).
+- `src/financeiro/estornos.js` é o domínio inteiro:
+  - `elegibilidade` é pura e usa o relógio do servidor;
+  - `solicitar` trava a cobrança com `FOR UPDATE`, e o índice único decide
+    a corrida;
+  - `cancelar`;
+  - `registrarEstornoDoPsp` é a única porta para `confirmado`; o acumulado
+    só anda pra frente;
+  - `aplicarEstornoTotal` reverte o lote pela chave `reembolso:<lote>` e
+    encolhe a cobertura;
+  - `marcarContestada`;
+  - `solicitarDevolucoesDaDesistencia`.
+- `aplicarCicloPago` grava `charge_id` e `pago_em` (de `ocorridoEm` via
+  `pagoEmDoPayload`).
+- Webhook:
+  - `cobranca_estornada` (e `troca_revertida` sem chargeback) chamam
+    `registrarEstornoDoPsp`;
+  - `cobranca_contestada` chama `marcarContestada`.
+- Rotas do Admin:
+  - `GET /admin/cobrancas` traz trilha e elegibilidade;
+  - `POST /admin/cobrancas/:id/estornos`;
+  - `POST /admin/estornos/:id/cancelar`;
+  - `/admin/arrependimentos/:id/estornado` → 410;
+  - eventos de estorno/contestação/cancelamento não são "aplicáveis".
+- Desistência: um pedido por cobrança; fecha com a confirmação do PSP.
+- Receita líquida de `valor_estornado`.
+- O cliente vê `situacao` em `/anunciantes/me/financeiro`.
+- Cancelar assinatura aparece também para conta suspensa.
+- O backfill da 120 casa cada cobrança com o webhook guardado pelo
+  significado. Precisa rodar antes de ~08/11 (retenção de 30 dias da
+  inbox).
+- Testes: `tests/estorno.test.js` (inclui o caso real: pago → cancelado sem
+  estorno) e E2E 46.
+- Pendências PG1–PG4 em `docs/PENDENCIAS.md`. Procedimento: RUNBOOK §6.3.
+- Review-Master segue PAUSADA.
+
 2026-10-08 — **PA2: POP julgado pelo horário da hora congelada** (migration
 119; ADR-045; branch `claude/busy-noether-hheir2`). Causa: o POP atrasado
 (lote de 60 s, fila offline) era julgado pelo horário em vigor quando

@@ -20,9 +20,15 @@ const SQL_MARGEM = `
     SELECT date_trunc('month', now()) - (n || ' months')::interval AS mes
       FROM generate_series(0, $1::int - 1) n
   ),
+  -- Líquida de estorno (migration 120): a devolução sai do mês em que a
+  -- Asaas a CONFIRMOU, não do mês do pagamento — senão um estorno de outubro
+  -- reescreveria setembro (revisão Codex do PR #130).
   receita AS (
-    SELECT date_trunc('month', criado_em) AS mes, COALESCE(SUM(valor), 0) AS total
-      FROM cobrancas_confirmadas GROUP BY 1
+    SELECT mes, SUM(total) AS total FROM (
+      SELECT date_trunc('month', criado_em) AS mes, valor AS total FROM cobrancas_confirmadas
+      UNION ALL
+      SELECT date_trunc('month', confirmado_em), -valor_confirmado FROM estornos WHERE status = 'confirmado'
+    ) lancamentos GROUP BY 1
   ),
   custo_atual AS (
     SELECT

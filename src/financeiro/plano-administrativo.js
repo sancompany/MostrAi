@@ -378,9 +378,10 @@ function diasAte(dataISO) {
 }
 
 // Dias que `meses` de calendário valem a partir de hoje (mesma aritmética de
-// `setMonth` que o ciclo pago já usa).
-function diasDeMeses(meses) {
-  const hoje = new Date(`${hojeISO()}T00:00:00Z`);
+// `setMonth` que o ciclo pago já usa). `desde` ('AAAA-MM-DD') refaz a conta de
+// um ciclo já pago — o estorno tira da fila exatamente o que ele pôs.
+function diasDeMeses(meses, desde = hojeISO()) {
+  const hoje = new Date(`${desde}T00:00:00Z`);
   const fim = new Date(hoje);
   fim.setUTCMonth(fim.getUTCMonth() + Number(meses));
   return Math.round((fim - hoje) / 86400000);
@@ -741,6 +742,7 @@ module.exports = {
   resgatarOuConcederBeneficio,
   NIVEL_TIER,
   nivelDoTier,
+  diasDeMeses,
   preverPagamento,
   aplicarPagamentoNaFila,
   encerrarProgramadosAbaixo,

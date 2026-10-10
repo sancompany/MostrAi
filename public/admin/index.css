@@ -4794,3 +4794,21 @@ button.rede-resumo-item:focus-visible {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
+
+/* Estorno (estação Pagamentos, 09/10/2026): o aviso "estorno não é
+   cancelamento" no modal — âmbar, "vale ler", não erro. */
+.aviso-bloco.aviso-estorno {
+  border-left-color: var(--atencao);
+  background: var(--atencao-tint);
+}
+.aviso-bloco.aviso-estorno p {
+  margin: 0 0 6px;
+}
+/* A coluna "Estorno" carrega o histórico do pedido (estado, valor, tipo,
+   data, operador): quebra em linhas em vez de empurrar a tabela pra fora
+   da largura do painel (mesmo motivo de `.celula-ponto`). */
+.tabela-caixa td.col-estorno {
+  white-space: normal;
+  min-width: 220px;
+  max-width: 360px;
+}

@@ -258,14 +258,18 @@ async function encerrarBeneficio(db, { planoAdministrativoId, agora = new Date()
 // ciclo PAGO da conta até o pedido (`ate`) some. O que já tinha sido entregue
 // dele não desaparece contabilmente — vira saldo técnico negativo no cálculo
 // (interno), que a próxima contratação desconta. Benefício não foi pago em
-// dinheiro: fica. Ciclo contratado DEPOIS do pedido nunca entra.
-async function registrarReembolsoDaConta(db, { anuncianteId, motivo, ate = null }) {
+// dinheiro: fica. Ciclo contratado DEPOIS do pedido nunca entra. `ciclos`
+// (ids de `ciclos_contratados`) restringe ao contrato desistido — o de antes,
+// ainda pago, continua devido (revisão Codex do PR #130); sem ele, a conta
+// inteira, como sempre.
+async function registrarReembolsoDaConta(db, { anuncianteId, motivo, ate = null, ciclos = null }) {
   const { rows: lotes } = await db.query(
     `SELECT o.* FROM obrigacoes_veiculacao o
       WHERE o.anunciante_id = $1 AND o.tipo IN ('ciclo', 'troca') AND o.segundos > 0
         AND ($2::timestamptz IS NULL OR o.criado_em <= $2)
+        AND ($3::int[] IS NULL OR o.ciclo_contratado_id = ANY($3))
         AND NOT EXISTS (SELECT 1 FROM obrigacoes_veiculacao r WHERE r.tipo = 'reembolso' AND r.referencia_id = o.id)`,
-    [anuncianteId, ate],
+    [anuncianteId, ate, ciclos],
   );
   const feitos = [];
   for (const lote of lotes) {
@@ -286,18 +290,56 @@ async function registrarReembolsoDaConta(db, { anuncianteId, motivo, ate = null 
   return feitos;
 }
 
+// ESTORNO TOTAL de UMA cobrança confirmado pelo PSP (ADR-046): o lote do
+// ciclo que ela pagou some, com a mesma regra do reembolso integral — o que
+// já tinha sido entregue vira saldo técnico interno. Mesma chave
+// (`reembolso:<lote>`) que `registrarReembolsoDaConta`: a desistência que já
+// reverteu a conta inteira não reverte de novo quando a devolução confirma.
+// Cobrança sem ciclo ligado (acerto de troca) não tem lote aqui.
+async function registrarReembolsoDaCobranca(db, { cobrancaId, motivo }) {
+  const { rows: lotes } = await db.query(
+    `SELECT o.* FROM obrigacoes_veiculacao o
+       JOIN ciclos_contratados cic ON cic.id = o.ciclo_contratado_id
+      WHERE cic.cobranca_confirmada_id = $1 AND o.tipo IN ('ciclo', 'troca') AND o.segundos > 0`,
+    [cobrancaId],
+  );
+  const feitos = [];
+  for (const lote of lotes) {
+    const linha = await lancar(db, {
+      anuncianteId: lote.anunciante_id,
+      tipo: 'reembolso',
+      chave: `reembolso:${lote.id}`,
+      segundos: -Number(lote.segundos),
+      planoId: lote.plano_id,
+      cicloContratadoId: lote.ciclo_contratado_id,
+      referenciaId: lote.id,
+      inicio: lote.inicio,
+      fim: lote.fim,
+      motivo,
+    });
+    if (linha) feitos.push(linha);
+  }
+  return feitos;
+}
+
 // Rede de segurança da conciliação diária: o pedido de arrependimento é
 // gravado antes do lançamento do reembolso, e um erro entre os dois deixaria
 // a obrigação viva sem ninguém pra repetir (o pedido aberto barra um segundo
 // clique). Idempotente: só o que ainda não foi lançado, até a data do pedido.
 async function conferirReembolsos(db = pool) {
-  const { rows } = await db.query('SELECT id, anunciante_id, pedido_em FROM arrependimentos ORDER BY id');
+  const { rows } = await db.query(
+    'SELECT id, anunciante_id, pedido_em, contratado_em FROM arrependimentos ORDER BY id',
+  );
+  // Sob demanda: estornos.js já depende deste módulo.
+  const { ciclosDoContrato } = require('../financeiro/estornos');
   let lancados = 0;
   for (const p of rows) {
+    const ciclos = await ciclosDoContrato(db, p.anunciante_id, p.contratado_em);
     const feitos = await registrarReembolsoDaConta(db, {
       anuncianteId: p.anunciante_id,
       motivo: `arrependimento (reembolso integral, pedido ${p.id})`,
       ate: p.pedido_em,
+      ciclos: ciclos?.map((c) => c.id),
     });
     lancados += feitos.length;
   }
@@ -838,6 +880,7 @@ module.exports = {
   registrarBeneficio,
   encerrarBeneficio,
   registrarReembolsoDaConta,
+  registrarReembolsoDaCobranca,
   conferirReembolsos,
   motivoDeIndisponibilidadeDoCliente,
   avaliarDisponibilidade,

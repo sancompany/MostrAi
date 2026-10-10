@@ -1742,3 +1742,48 @@ deploy): sem registro, vale o horário de agora, como antes.
 histórico do horário do ponto fixo, e a tela móvel teria de reconstruir a
 alocação do instante); gravar o horário por POP ou por item (a hora é a
 unidade que já está congelada).
+
+
+## ADR-046 — Cancelar ≠ estornar; estorno só pelo Admin e só conta com o PSP (09/10/2026)
+
+**Contexto.** A primeira cobrança real em produção foi paga, ativou o plano
+e foi cancelada — sem estorno, como devia. Mas a estação de pagamentos
+achou riscos no caminho do dinheiro. A cobrança não guardava o `chargeId`
+nem a hora da confirmação no PSP, então nenhuma janela de estorno podia ser
+contada certa. `cobranca_estornada` só virava pendência. A desistência
+(art. 49) fechava por um clique "Registrar comprovante", sem o PSP dizer
+nada. E o `/estornar` do San Checkout não alcança cobrança de assinatura
+(procura por `pedido_id`).
+
+**Decisão.**
+- Cancelar só para a recorrência. Estornar devolve o dinheiro de UMA
+  cobrança. Nenhum dispara o outro.
+- O estorno é um **pedido** do Admin (`estornos`, migration 120), registrado
+  com operador, motivo, valor, chargeId e estado antes. O operador o executa
+  na Asaas. Só o webhook `cobranca_estornada`, casado pelo chargeId, leva o
+  pedido a `confirmado`. O acumulado devolvido só anda pra frente, o que
+  torna o processo idempotente.
+- O ordinário vale 7 dias corridos de `pago_em` (o `ocorridoEm` do evento),
+  por cobrança — renovação inclusive. O excepcional exige categoria.
+- O estorno total confirmado desfaz o ciclo daquela cobrança (lote de horas
+  e cobertura). O parcial é só dinheiro. Nenhum dos dois cancela a
+  assinatura ou suspende a conta.
+- A desistência vira um pedido por cobrança e fecha quando o PSP confirma a
+  última.
+- O backfill da migration 120 casa cada cobrança antiga com o webhook
+  guardado **pelo significado**: assinatura, evento, status, valor, hora e o
+  registro de dedupe. Nunca por id fixo.
+- Estorno ou chargeback de um chargeId que ainda não é de cobrança daqui
+  **tenta de novo** pela inbox (o aviso do pagamento pode estar atrás na
+  fila). Não vira pendência: pendência dava o evento por processado e o
+  dinheiro de volta se perdia.
+- Chargeback com pedido aberto deixa o pedido **em espera** (tela e aviso).
+  Ele não se cancela sozinho, porque a disputa não tem evento de fim.
+
+**Recusado.**
+- Mudar o San Checkout para estornar assinatura pela API (fora da estação;
+  PG1).
+- Marcar devolvido por clique.
+- Janela contada da hora em que a Mostraí gravou, quando o PSP dá a hora.
+- Polling para "acelerar" a ativação: a demora (~110 s) é da Asaas.
+- Cancelar a assinatura junto com o estorno.

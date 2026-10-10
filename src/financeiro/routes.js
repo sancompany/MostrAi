@@ -35,6 +35,7 @@ const creditosRepo = require('../creditos/repository');
 const { nomeDoCiclo } = require('../lib/ciclos');
 const { cotarPlano } = require('./cotacao');
 const cicloContratado = require('./ciclo-contratado');
+const estornos = require('./estornos');
 const { multiplicar } = require('../lib/dinheiro');
 const sse = require('../lib/sse');
 const dataBR = (iso) => `${String(iso).slice(8, 10)}/${String(iso).slice(5, 7)}/${String(iso).slice(0, 4)}`;
@@ -835,6 +836,17 @@ router.post('/admin/anunciantes/:id/plano-administrativo/encerrar', async (req, 
   res.json(await planoAdministrativo.encerrar({ conta, adminUsuario: req.session.adminUsuario }));
 });
 
+// Evento em que o dinheiro VOLTOU ou foi contestado (ou a assinatura acabou):
+// "Aplicar este ciclo" não faz sentido — antes o botão aparecia e podia
+// fechar a pendência como "já creditada" sem ninguém decidir nada sobre o
+// estorno (estação Pagamentos, 09/10/2026).
+const EVENTOS_SEM_CICLO_A_APLICAR = new Set([
+  'cobranca_estornada',
+  'cobranca_contestada',
+  'troca_revertida',
+  'cancelada',
+]);
+
 // Fila de reconciliação manual (webhooks que não deram pra correlacionar
 // automaticamente ou eventos sem ação automática — ver san-checkout.js)
 router.get('/admin/eventos-pendentes', async (_req, res) => {
@@ -847,7 +859,10 @@ router.get('/admin/eventos-pendentes', async (_req, res) => {
   const resposta = [];
   for (const e of rows) {
     const assinatura = e.payload?.planoId ? await assinaturasRepo.buscarPorId(e.payload.planoId) : null;
-    const aplicavel = !!assinatura && !(await sanCheckout.intencaoCanceladaSemPagamento(assinatura));
+    const aplicavel =
+      !!assinatura &&
+      !EVENTOS_SEM_CICLO_A_APLICAR.has(e.payload?.evento) &&
+      !(await sanCheckout.intencaoCanceladaSemPagamento(assinatura));
     resposta.push({ ...e, aplicavel });
   }
   res.json(resposta);
@@ -864,6 +879,9 @@ router.post('/admin/eventos-pendentes/:id/aplicar', async (req, res) => {
   if (evento.resolvido) return res.status(400).json({ erro: 'esse evento já foi resolvido' });
 
   const payload = evento.payload || {};
+  if (EVENTOS_SEM_CICLO_A_APLICAR.has(payload.evento)) {
+    return res.status(409).json({ erro: 'este evento não credita ciclo (estorno, contestação ou cancelamento)' });
+  }
   const assinatura = payload.planoId ? await assinaturasRepo.buscarPorId(payload.planoId) : null;
   if (!assinatura) {
     return res
@@ -919,7 +937,12 @@ router.post('/admin/eventos-pendentes/:id/aplicar', async (req, res) => {
   }
 
   try {
-    await sanCheckout.aplicarCicloPago(assinatura, chave, { ...payload, origem: 'admin' });
+    await sanCheckout.aplicarCicloPago(
+      assinatura,
+      chave,
+      { ...payload, origem: 'admin' },
+      { chargeId: ultima.chargeId },
+    );
   } catch (err) {
     return res.status(502).json({ erro: `não deu pra aplicar o ciclo: ${err.message}` });
   }
@@ -970,12 +993,89 @@ router.get('/admin/pedidos-avulsos', async (_req, res) => {
   res.json(rows);
 });
 
+// Cobranças com o estado do DINHEIRO (migration 120): confirmada, estornada
+// (parcial/total) ou contestada; o chargeId do PSP; a assinatura do ciclo; e
+// o que o Admin pode fazer com ela agora. A elegibilidade sai do relógio do
+// servidor — a tela só mostra; o POST confere tudo de novo.
 router.get('/admin/cobrancas', async (_req, res) => {
-  const { rows } = await pool.query(
-    `SELECT c.*, a.nome_empresa FROM cobrancas_confirmadas c
-     JOIN anunciantes a ON a.id = c.anunciante_id ORDER BY c.criado_em DESC`,
+  const [{ rows }, { rows: historico }] = await Promise.all([
+    pool.query(
+      `SELECT c.id, c.anunciante_id, c.plano_id, c.plano_anterior_id, c.valor, c.valor_estornado, c.status_financeiro,
+              c.charge_id, c.pago_em, c.pago_em_fonte, c.criado_em, a.nome_empresa,
+              p.nome AS plano_nome, p.compromisso_meses, cic.assinatura_id, s.status AS assinatura_status
+         FROM cobrancas_confirmadas c
+         JOIN anunciantes a ON a.id = c.anunciante_id
+         LEFT JOIN planos p ON p.id = c.plano_id
+         LEFT JOIN ciclos_contratados cic ON cic.cobranca_confirmada_id = c.id
+         LEFT JOIN assinaturas s ON s.id = cic.assinatura_id
+        ORDER BY c.pago_em DESC, c.id DESC`,
+    ),
+    pool.query(
+      `SELECT id, cobranca_id, tipo, categoria, valor, valor_confirmado, motivo, status, solicitado_por,
+              solicitado_por_access, solicitado_em, confirmado_em, cancelado_por, cancelado_motivo, cancelado_em,
+              arrependimento_id
+         FROM estornos ORDER BY solicitado_em`,
+    ),
+  ]);
+  const porCobranca = new Map();
+  for (const e of historico) {
+    if (!porCobranca.has(e.cobranca_id)) porCobranca.set(e.cobranca_id, []);
+    porCobranca.get(e.cobranca_id).push(e);
+  }
+  const agora = new Date();
+  res.json(
+    rows.map((c) => {
+      const estornosDela = porCobranca.get(c.id) || [];
+      const pedidoAberto = estornosDela.find((e) => e.status === 'solicitado') || null;
+      return { ...c, estornos: estornosDela, elegibilidade: estornos.elegibilidade(c, { pedidoAberto, agora }) };
+    }),
   );
-  res.json(rows);
+});
+
+// Quem está pedindo: o usuário do login do admin e, quando a requisição veio
+// pelo Cloudflare Access (a origem só aceita tráfego dele), o e-mail que o
+// Access autenticou — o login do admin é compartilhado; o Access, não.
+function operadorDaRequisicao(req) {
+  const access = String(req.get('cf-access-authenticated-user-email') || '').slice(0, 200) || null;
+  return { operador: req.session.adminUsuario || 'admin', operadorAccess: access };
+}
+
+// ESTORNAR (só Admin — está sob /admin, atrás do login e do Access). Cria o
+// PEDIDO; o dinheiro volta quando o operador executar na Asaas e só conta
+// quando o PSP confirmar pelo webhook. NÃO cancela a assinatura.
+router.post('/admin/cobrancas/:id/estornos', async (req, res) => {
+  const { tipo, categoria, valor, motivo } = req.body || {};
+  try {
+    const pedido = await estornos.solicitar({
+      cobrancaId: req.params.id,
+      tipo,
+      categoria,
+      valor,
+      motivo,
+      ...operadorDaRequisicao(req),
+    });
+    sse.emitirParaAdmin('payment.updated', { anuncianteId: pedido.anunciante_id });
+    res.status(201).json(pedido);
+  } catch (err) {
+    if (err instanceof estornos.ErroEstorno) return res.status(err.status).json({ erro: err.message });
+    throw err;
+  }
+});
+
+// Encerrar um pedido que não vai ser executado na Asaas — com quem e por quê.
+router.post('/admin/estornos/:id/cancelar', async (req, res) => {
+  try {
+    const pedido = await estornos.cancelar({
+      estornoId: req.params.id,
+      motivo: req.body?.motivo,
+      operador: operadorDaRequisicao(req).operador,
+    });
+    sse.emitirParaAdmin('payment.updated', { anuncianteId: pedido.anunciante_id });
+    res.json(pedido);
+  } catch (err) {
+    if (err instanceof estornos.ErroEstorno) return res.status(err.status).json({ erro: err.message });
+    throw err;
+  }
 });
 
 // Nota fiscal por upload (PDF → Google Drive): a tela saiu em 19/09/2026

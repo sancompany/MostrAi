@@ -56,6 +56,7 @@ async function apagar(id, rodada) {
   ]);
   await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM ciclos_contratados WHERE anunciante_id = $1', [id]);
+  await pool.query('DELETE FROM estornos WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM cobrancas_confirmadas WHERE anunciante_id = $1', [id]);
   await pool.query(
     "DELETE FROM eventos_assinatura_pendentes WHERE payload->>'planoId' IN (SELECT id FROM assinaturas WHERE anunciante_id = $1)",
@@ -177,6 +178,17 @@ test('v2: troca_revertida vira pendência com o plano anterior; chargeback suspe
   try {
     const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO });
     await assinaturasRepo.marcarAtiva(assinatura.id);
+    // As cobranças de que os avisos falam já estão aqui (os dois acertos de
+    // troca). Aviso de cobrança que ainda NÃO está aqui não vira pendência:
+    // tenta de novo pela inbox (tests/estorno.test.js).
+    for (const chargeId of [`pay_acerto_${rodada}`, `pay_acerto2_${rodada}`]) {
+      await pool.query(
+        `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, plano_anterior_id, valor, nota_fiscal_status,
+                                            charge_id, pago_em, pago_em_fonte)
+         VALUES ($1, $2, $2, 30, 'pendente', $3, now(), 'psp')`,
+        [c.id, PLANO, chargeId],
+      );
+    }
 
     const mock = semCheckout();
     try {
@@ -194,7 +206,7 @@ test('v2: troca_revertida vira pendência com o plano anterior; chargeback suspe
       await sc.processarWebhookAssinatura(
         v2(assinatura, c, rodada, {
           evento: 'cobranca_estornada',
-          chargeId: `pay_parcial_${rodada}`,
+          chargeId: null, // sem chargeId não há o que casar: pendência pra pessoa
           statusFinanceiro: 'estornado_parcialmente',
           valor: 100,
           valorEstornado: 40,
@@ -225,10 +237,63 @@ test('v2: troca_revertida vira pendência com o plano anterior; chargeback suspe
     const conta2 = (await pool.query('SELECT suspenso FROM anunciantes WHERE id = $1', [c.id])).rows[0];
     assert.equal(conta2.suspenso, true, 'chargeback do acerto suspende a conta, como cobranca_contestada');
     assert.equal(
-      (await pool.query('SELECT 1 FROM cobrancas_confirmadas WHERE anunciante_id = $1', [c.id])).rowCount,
+      (await pool.query('SELECT 1 FROM ciclos_contratados WHERE anunciante_id = $1', [c.id])).rowCount,
       0,
       'nada disso credita ciclo',
     );
+    const { rows: acertos } = await pool.query(
+      'SELECT status_financeiro FROM cobrancas_confirmadas WHERE anunciante_id = $1 ORDER BY id',
+      [c.id],
+    );
+    assert.deepEqual(
+      acertos.map((a) => a.status_financeiro),
+      ['estornado', 'contestado'],
+      'o dinheiro de cada acerto: devolvido, e em disputa',
+    );
+  } finally {
+    await apagar(c.id, rodada);
+  }
+});
+
+test('v2: troca_revertida com reserva de dedupe órfã (processo morto antes do COMMIT) ainda devolve o acerto; reentrega não duplica a pendência (revisão Codex do PR #130)', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  try {
+    const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO });
+    await assinaturasRepo.marcarAtiva(assinatura.id);
+    await pool.query(
+      `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, plano_anterior_id, valor, nota_fiscal_status,
+                                          charge_id, pago_em, pago_em_fonte)
+       VALUES ($1, $2, $2, 30, 'pendente', $3, now(), 'psp')`,
+      [c.id, PLANO, `pay_acerto_${rodada}`],
+    );
+    const ev = v2(assinatura, c, rodada, {
+      evento: 'troca_revertida',
+      chargeId: `pay_acerto_${rodada}`,
+      statusFinanceiro: 'estornado',
+      valor: 30,
+      valorEstornado: 30,
+      planoAnterior: 'plano-velho',
+      acertoCobrado: 30,
+    });
+    await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1)', [ev.eventoId]);
+    const mock = semCheckout();
+    try {
+      await sc.processarWebhookAssinatura(ev);
+      await sc.processarWebhookAssinatura(ev);
+    } finally {
+      mock.restaurar();
+    }
+    const acerto = await pool.query('SELECT status_financeiro FROM cobrancas_confirmadas WHERE charge_id = $1', [
+      `pay_acerto_${rodada}`,
+    ]);
+    assert.equal(acerto.rows[0].status_financeiro, 'estornado', 'a nova tentativa devolve o acerto');
+    const { rows: pend } = await pool.query(
+      "SELECT motivo FROM eventos_assinatura_pendentes WHERE payload->>'eventoId' = $1",
+      [ev.eventoId],
+    );
+    assert.equal(pend.length, 1, 'a decisão de voltar de plano entra uma vez só');
+    assert.match(pend[0].motivo, /revertido \(estornado, R\$ 30\)/);
   } finally {
     await apagar(c.id, rodada);
   }
@@ -363,6 +428,38 @@ test('conciliação: cobrança de OUTRA assinatura do mesmo plano no mesmo dia n
       c.id,
     ]);
     assert.equal(rows[0].n, 2, 'o ciclo pago da assinatura nova entra');
+  } finally {
+    await apagar(c.id, rodada);
+  }
+});
+
+// Revisão Codex do PR #130: o primeiro ciclo entra antes de a Asaas revelar o
+// chargeId e a cobrança fica sem ele — sem estorno pelo Admin e sem aviso do
+// PSP que a ache. A conciliação, ao reconhecer a cobrança, anota o id.
+test('conciliação: cobrança gravada sem chargeId ganha o id quando a conciliação a reconhece', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  try {
+    const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO, status: 'ativa' });
+    const mock = semCheckout();
+    try {
+      await sc.processarWebhookAssinatura(v2(assinatura, c, rodada, { evento: 'criada', chargeId: null, valor: 30 }));
+    } finally {
+      mock.restaurar();
+    }
+    const chargeId = `pay_tarde_${rodada}`;
+    const restaurar = comConciliacaoRespondendo(
+      { chargeId, status: 'confirmado', valorCobrado: 30, criadoEm: new Date().toISOString() },
+      assinatura.id,
+    );
+    try {
+      await conciliarAssinaturas({ apenasContas: [c.id] });
+    } finally {
+      restaurar();
+    }
+    const { rows } = await pool.query('SELECT charge_id FROM cobrancas_confirmadas WHERE anunciante_id = $1', [c.id]);
+    assert.equal(rows.length, 1, 'não credita de novo');
+    assert.equal(rows[0].charge_id, chargeId, 'a cobrança passa a ter o id do PSP');
   } finally {
     await apagar(c.id, rodada);
   }

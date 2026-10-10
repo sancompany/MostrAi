@@ -797,7 +797,7 @@ const SUBTITULOS = {
   eventos:
     'Eventos do San Checkout que não deram pra aplicar sozinhos: confira no Checkout e aplique o ciclo, ou marque resolvido.',
   arrependimentos:
-    'Quem desistiu da contratação dentro dos 7 dias da lei e ainda espera a devolução. A devolução em si é feita no painel do Checkout; aqui só se registra o comprovante.',
+    'Quem desistiu da contratação dentro dos 7 dias da lei e ainda espera a devolução. Cada devolução é feita na Asaas e se confirma sozinha pelo aviso dela.',
   meusanuncios: 'Vídeo institucional e mídias próprias da rede.',
   pendencias:
     'As mesmas filas da Visão geral, juntas numa lista só — sem os números do mês, só o que precisa de você agora.',
@@ -6480,7 +6480,7 @@ function desenharContaBasico(el, basico) {
 }
 
 function desenharContaPlano(el, ctx) {
-  const { s, bloqueada } = ctx;
+  const { s } = ctx;
   const p = s.plano;
   const etapa = (rotulo, corpo) =>
     `<li class="plano-etapa"><span class="plano-etapa-rotulo">${rotulo}</span><div class="plano-etapa-corpo">${corpo}</div></li>`;
@@ -6546,7 +6546,11 @@ function desenharContaPlano(el, ctx) {
         : aguardandoEntrada
           ? '<span class="badge badge-pendente" title="Peça aprovada e programada; falta a TV confirmar a primeira exibição.">Aguardando primeira exibição</span>'
           : '<span class="badge badge-pendente" title="O plano está vigente, mas nenhum criativo aprovado está no ar.">Sem peça no ar</span>';
-  const podeCancelarAssinatura = !bloqueada && p.agora?.origem === 'assinatura' && p.assinaturaAtiva;
+  // Conta SUSPENSA (chargeback, por exemplo) também pode ter a recorrência
+  // cancelada: suspender não para a cobrança na Asaas, e o botão escondido
+  // deixava o cliente em disputa sendo cobrado de novo (estação Pagamentos,
+  // 09/10/2026). Cancelar continua sem estornar nada. Excluída, não.
+  const podeCancelarAssinatura = !ctx.conta.excluidaEm && p.agora?.origem === 'assinatura' && p.assinaturaAtiva;
   el.innerHTML = `
     <div class="secao-topo"><h3>Plano</h3><div class="secao-acoes">${veicula}</div></div>
     <ol class="plano-fila">${etapas.join('')}</ol>
@@ -8574,61 +8578,252 @@ async function renderFilaTrocas(el) {
 // nenhum — reconstrua a partir do histórico do git se um dia a tela
 // precisar voltar.
 
-// ---------- histórico: cobranças ----------
-// Rodada Financeiro (22/09/2026): pura leitura, sem ação nenhuma — a emissão
-// manual de nota fiscal (upload de PDF) saiu da UI de propósito (pedido do
-// dono: não emitir/anexar nota pela Mostraí; quando existir emissão fiscal
-// automática, o resultado dela vira uma FALHA na Visão geral, não uma tarefa
-// manual aqui). `PATCH /admin/cobrancas/:id/nota-fiscal` continua no backend,
-// sem chamador nesta tela.
+// ---------- cobranças: estado do dinheiro e estorno ----------
+// Estação Pagamentos (09/10/2026, ADR-046): ESTORNO NÃO É CANCELAMENTO. Cada
+// cobrança mostra o estado do dinheiro (paga, estornada, contestada), o
+// chargeId do PSP, a assinatura e o que dá pra fazer agora — calculado pelo
+// SERVIDOR (`elegibilidade`), nunca pelo relógio deste navegador; o POST
+// confere tudo de novo. O estorno é um PEDIDO: o operador devolve na Asaas
+// e a Mostraí só marca como devolvido quando a Asaas avisa (webhook).
+const SITUACAO_COBRANCA = {
+  confirmado: ['badge-ok', 'Paga'],
+  estornado_parcialmente: ['badge-pendente', 'Estornada em parte'],
+  estornado: ['badge-neutro', 'Estornada'],
+  contestado: ['badge-err', 'Contestada (chargeback)'],
+};
+const ESTADO_ESTORNO = {
+  solicitado: ['badge-atencao', 'Solicitado · aguardando a Asaas'],
+  confirmado: ['badge-ok', 'Confirmado pela Asaas'],
+  cancelado: ['badge-neutro', 'Cancelado'],
+};
+const TIPO_ESTORNO = {
+  ordinario: 'Ordinário',
+  excepcional: 'Excepcional',
+  desistencia: 'Desistência (art. 49)',
+  externo: 'Feito direto na Asaas',
+};
+const CATEGORIAS_EXCEPCIONAIS = [
+  ['duplicidade', 'Cobrança duplicada'],
+  ['cobranca_indevida', 'Cobrança indevida'],
+  ['erro_operacional', 'Erro operacional'],
+  ['obrigacao_legal', 'Obrigação legal'],
+  ['administrativa', 'Decisão administrativa'],
+];
+const idCurto = (v) => (v ? `…${String(v).slice(-6)}` : '—');
+
+function linhaHistoricoEstorno(e) {
+  const [classe, rotulo] = ESTADO_ESTORNO[e.status] || ['badge-neutro', e.status];
+  const quem = e.solicitado_por_access || e.solicitado_por || 'sem pedido no Admin';
+  const quando =
+    e.status === 'confirmado' ? e.confirmado_em : e.status === 'cancelado' ? e.cancelado_em : e.solicitado_em;
+  const valor = e.status === 'confirmado' && e.valor_confirmado != null ? e.valor_confirmado : e.valor;
+  const motivo = e.status === 'cancelado' && e.cancelado_motivo ? `cancelado: ${e.cancelado_motivo}` : e.motivo;
+  return `<span class="celula-sub"><span class="badge ${classe}">${esc(rotulo)}</span> ${fmt(valor)} · ${esc(TIPO_ESTORNO[e.tipo] || e.tipo)} · ${esc(dataHora(quando))} · ${esc(quem)}${motivo ? ` · “${esc(motivo)}”` : ''}</span>`;
+}
+
 async function renderHistoricoCobrancas(el) {
   const cobrancas = await pegar('/admin/cobrancas');
   if (!cobrancas.length) {
     el.innerHTML = vazio('Nenhuma cobrança confirmada ainda.', 'Pagamento confirmado pelo San Checkout aparece aqui.');
     return;
   }
-  const total = cobrancas.reduce((t, c) => t + Number(c.valor), 0);
+  const pago = cobrancas.reduce((t, c) => t + Number(c.valor), 0);
+  const estornado = cobrancas.reduce((t, c) => t + Number(c.valor_estornado), 0);
+  const excepcionaveis = cobrancas.filter((c) => c.elegibilidade.excepcional.pode);
 
-  // Sem a coluna de id interno; o plano entra (humanizado) — é a pergunta
-  // que se faz olhando um pagamento: de quem, de quê, quanto, quando.
   const corpo = `<table><thead><tr>
-      <th data-ord>Data</th><th data-ord>Conta</th><th data-ord>Plano</th><th data-ord class="num">Valor</th>
+      <th data-ord>Pago em</th><th data-ord>Conta</th><th data-ord>Plano</th><th data-ord class="num">Valor</th>
+      <th>Situação</th><th>Estorno</th>
     </tr></thead><tbody>
     ${cobrancas
-      .map(
-        (c) => `<tr>
-      <td class="col-data" data-valor="${new Date(c.criado_em).getTime()}">${data(c.criado_em)}</td>
-      <td><b>${esc(c.nome_empresa)}</b></td>
-      <td>${esc(humanizarPlanoId(c.plano_id))}</td>
-      <td class="num">${fmt(c.valor)}</td>
-    </tr>`,
-      )
+      .map((c) => {
+        const [classe, rotulo] = SITUACAO_COBRANCA[c.status_financeiro] || ['badge-neutro', c.status_financeiro];
+        const eleg = c.elegibilidade;
+        const aberto = c.estornos.find((e) => e.status === 'solicitado');
+        let estorno;
+        if (aberto) {
+          // Chargeback depois do pedido: devolver agora daria o dinheiro duas
+          // vezes (o banco já devolve pela disputa) — em espera, sem instrução.
+          estorno = `${
+            c.status_financeiro === 'contestado'
+              ? `<span class="badge badge-err">Em espera · chargeback · ${fmt(aberto.valor)}</span><span class="celula-sub">Não devolva na Asaas: a cobrança está em disputa no banco do cliente.</span>`
+              : `<span class="badge badge-atencao">Solicitado · ${fmt(aberto.valor)}</span><span class="celula-sub">Devolva na Asaas (cobrança ${esc(c.charge_id || '—')}). Confirma sozinho quando a Asaas avisar.</span>`
+          }
+            <span class="celula-sub">${esc(TIPO_ESTORNO[aberto.tipo] || aberto.tipo)} · ${esc(dataHora(aberto.solicitado_em))} · ${esc(aberto.solicitado_por_access || aberto.solicitado_por || '—')} · “${esc(aberto.motivo)}”</span>
+            ${aberto.tipo === 'desistencia' || aberto.arrependimento_id ? '' : `<button type="button" class="btn ghost mini" data-cancelar-estorno="${aberto.id}">Cancelar pedido</button>`}`;
+        } else if (eleg.ordinario.pode) {
+          estorno = `<span class="celula-sub">Até ${esc(dataHora(eleg.prazoAte))} · pode voltar ${fmt(eleg.restante)}</span>
+            <button type="button" class="btn perigo-sutil mini" data-estornar="${c.id}">Estornar pagamento</button>`;
+        } else {
+          estorno = `<span class="celula-sub">${esc(eleg.ordinario.motivo)}</span>`;
+        }
+        return `<tr data-cobranca="${c.id}">
+      <td class="col-data" data-valor="${new Date(c.pago_em).getTime()}">${esc(dataHora(c.pago_em))}${c.pago_em_fonte === 'registro' ? '<span class="celula-sub">registro na Mostraí</span>' : ''}</td>
+      <td><b>${esc(c.nome_empresa)}</b><span class="celula-sub">PSP ${esc(idCurto(c.charge_id))} · assinatura ${esc(idCurto(c.assinatura_id))}${c.assinatura_status ? ` (${esc(c.assinatura_status)})` : ''}</span></td>
+      <td>${esc(c.plano_nome ? `${c.plano_nome}${c.compromisso_meses ? ` · ${nomeDoCicloAdmin(c.compromisso_meses)}` : ''}` : humanizarPlanoId(c.plano_id))}${c.plano_anterior_id ? '<span class="celula-sub">acerto de troca</span>' : ''}</td>
+      <td class="num">${fmt(c.valor)}${Number(c.valor_estornado) > 0 ? `<span class="celula-sub">−${fmt(c.valor_estornado)}</span>` : ''}</td>
+      <td><span class="badge ${classe}">${esc(rotulo)}</span></td>
+      <td class="col-estorno">${estorno}${c.estornos
+        .filter((e) => e !== aberto)
+        .map(linhaHistoricoEstorno)
+        .join('')}</td>
+    </tr>`;
+      })
       .join('')}
   </tbody></table>`;
 
   el.innerHTML = `
     <div class="mini-indicadores">
-      <div class="mini-indicador"><b>${fmt(total)}</b><span>total confirmado</span></div>
+      <div class="mini-indicador"><b>${fmt(pago - estornado)}</b><span>recebido líquido</span></div>
+      <div class="mini-indicador"><b>${fmt(estornado)}</b><span>estornado (confirmado pela Asaas)</span></div>
       <div class="mini-indicador"><b>${num(cobrancas.length)}</b><span>${cobrancas.length === 1 ? 'cobrança' : 'cobranças'}</span></div>
     </div>
+    ${excepcionaveis.length ? '<div class="acoes"><button type="button" class="btn ghost mini" data-estorno-excepcional>Estorno excepcional…</button></div>' : ''}
     ${caixaTabela({ html: corpo, unidade: 'cobrança|cobranças' })}`;
 
   turbinarTabela(el.querySelector('.tabela-caixa'));
+  const recarregar = () => renderHistoricoCobrancas(el);
+  const porId = new Map(cobrancas.map((c) => [String(c.id), c]));
+  el.querySelectorAll('[data-estornar]').forEach((b) =>
+    b.addEventListener('click', () =>
+      abrirEstorno({ cobranca: porId.get(b.dataset.estornar), tipo: 'ordinario', recarregar }),
+    ),
+  );
+  el.querySelector('[data-estorno-excepcional]')?.addEventListener('click', () =>
+    abrirEstorno({ escolhas: excepcionaveis, tipo: 'excepcional', recarregar }),
+  );
+  el.querySelectorAll('[data-cancelar-estorno]').forEach((b) =>
+    b.addEventListener('click', () => abrirCancelarEstorno(b.dataset.cancelarEstorno, recarregar)),
+  );
 }
 
-// ---------- fila financeira: devoluções por arrependimento ----------
-// Rodada Financeiro (22/09/2026): só as pendentes. O estorno acontece FORA
-// daqui (API do San Checkout não expõe estorno, é o painel do Checkout/
-// Asaas) — esta fila existe pra que o pedido não vire um e-mail que alguém
-// esquece: é dinheiro que a lei manda devolver, com prazo. Resolvida some
-// da fila; o registro (com o comprovante) continua no banco.
+function nomeDoCicloAdmin(meses) {
+  return { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' }[meses] || `${meses} meses`;
+}
+
+// Modal do estorno: o que se devolve, de quem, quanto; motivo obrigatório; o
+// aviso de que ESTORNO NÃO É CANCELAMENTO; e confirmação explícita (o botão
+// só libera depois de marcar que entendeu). `escolhas` = estorno
+// excepcional, que escolhe a cobrança aqui dentro.
+function abrirEstorno({ cobranca, escolhas = null, tipo, recarregar }) {
+  const excepcional = tipo === 'excepcional';
+  const lista = escolhas || [cobranca];
+  const { dlg, fechar } = abrirModal({
+    titulo: excepcional ? 'Estorno excepcional' : 'Estornar pagamento',
+    largo: true,
+    corpo: `<form id="formEstorno" class="modal-form">
+        ${
+          excepcional
+            ? `<div><label for="estornoCobranca">Cobrança</label><select id="estornoCobranca" name="cobranca" required>
+                ${lista.map((c) => `<option value="${c.id}">${esc(c.nome_empresa)} · ${esc(dataHora(c.pago_em))} · ${fmt(c.valor)}</option>`).join('')}
+              </select></div>
+              <div><label for="estornoCategoria">Categoria</label><select id="estornoCategoria" name="categoria" required>
+                <option value="">Escolha…</option>
+                ${CATEGORIAS_EXCEPCIONAIS.map(([v, r]) => `<option value="${v}">${esc(r)}</option>`).join('')}
+              </select></div>`
+            : ''
+        }
+        <dl class="dados" data-resumo></dl>
+        <div><label for="estornoValor">Valor a devolver (R$)</label><input type="number" id="estornoValor" name="valor" min="0.01" step="0.01" required inputmode="decimal"></div>
+        <div><label for="estornoMotivo">Motivo <span class="u-dim">(obrigatório — fica na trilha do estorno)</span></label><textarea id="estornoMotivo" name="motivo" rows="2" minlength="5" maxlength="500" required></textarea></div>
+        <div class="aviso-bloco aviso-estorno">
+          <p class="u-mt-0"><b>ESTORNO NÃO É CANCELAMENTO.</b> A assinatura <b>não</b> será cancelada automaticamente. Se a recorrência deve parar, cancele à parte, na ficha da conta.</p>
+          <p>A Mostraí não move dinheiro: depois de registrar, devolva o valor <b>na Asaas</b>. A confirmação chega sozinha pelo aviso da Asaas.</p>
+          <p>Estorno <b>total</b> confirmado desfaz o ciclo desta cobrança: as horas e a cobertura dele saem. Parcial é só dinheiro.</p>
+        </div>
+        <label class="confirmar-serio"><input type="checkbox" data-entendi> Entendi — estornar não cancela a assinatura</label>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape: `<button type="button" class="btn ghost" data-fechar>Voltar</button><button type="submit" form="formEstorno" class="btn perigo" disabled>Registrar estorno</button>`,
+  });
+  const form = dlg.querySelector('#formEstorno');
+  const botao = dlg.querySelector('[type="submit"]');
+  const atual = () => (excepcional ? lista.find((c) => String(c.id) === form.cobranca.value) : cobranca);
+  const pintarResumo = () => {
+    const c = atual();
+    dlg.querySelector('[data-resumo]').innerHTML = `
+      <div><dt>Cliente</dt><dd>${esc(c.nome_empresa)}</dd></div>
+      <div><dt>Cobrança</dt><dd>${esc(dataHora(c.pago_em))} · PSP ${esc(c.charge_id || '—')}</dd></div>
+      <div><dt>Plano</dt><dd>${esc(c.plano_nome || humanizarPlanoId(c.plano_id))}${c.compromisso_meses ? ` · ${nomeDoCicloAdmin(c.compromisso_meses)}` : ''}</dd></div>
+      <div><dt>Pago</dt><dd>${fmt(c.valor)}${Number(c.valor_estornado) > 0 ? ` · já devolvido ${fmt(c.valor_estornado)}` : ''}</dd></div>
+      <div><dt>Pode voltar</dt><dd><b>${fmt(c.elegibilidade.restante)}</b></dd></div>
+      <div><dt>Assinatura</dt><dd>${esc(idCurto(c.assinatura_id))}${c.assinatura_status ? ` · ${esc(c.assinatura_status)} — continua assim` : ''}</dd></div>`;
+    form.valor.max = c.elegibilidade.restante;
+    form.valor.value = Number(c.elegibilidade.restante).toFixed(2);
+  };
+  pintarResumo();
+  if (excepcional) form.cobranca.addEventListener('change', pintarResumo);
+  dlg.querySelector('[data-entendi]').addEventListener('change', (e) => {
+    botao.disabled = !e.target.checked;
+  });
+  form.motivo.focus();
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const c = atual();
+    const motivo = form.motivo.value.trim();
+    const valor = Number(form.valor.value);
+    if (motivo.length < 5) return erroNoModal(dlg, 'Descreva o motivo do estorno.');
+    if (!(valor > 0)) return erroNoModal(dlg, 'Informe o valor a devolver.');
+    if (excepcional && !form.categoria.value) return erroNoModal(dlg, 'Escolha a categoria do estorno excepcional.');
+    botao.disabled = true;
+    const r = await api(`/admin/cobrancas/${c.id}/estornos`, {
+      method: 'POST',
+      body: JSON.stringify({ tipo, categoria: excepcional ? form.categoria.value : undefined, valor, motivo }),
+    });
+    if (!r.ok) {
+      botao.disabled = false;
+      return erroNoModal(
+        dlg,
+        window.frase((await r.json().catch(() => ({}))).erro || 'Não foi possível registrar o estorno.'),
+      );
+    }
+    toast(`Estorno de ${fmt(valor)} registrado. Agora devolva na Asaas — a confirmação chega sozinha.`);
+    fechar();
+    recarregar();
+  });
+}
+
+function abrirCancelarEstorno(id, recarregar) {
+  const { dlg, fechar } = abrirModal({
+    titulo: 'Cancelar pedido de estorno?',
+    corpo: `<form id="formCancelarEstorno" class="modal-form">
+        <p class="u-mt-0">Use quando a devolução <b>não</b> vai ser feita na Asaas. Nada muda no dinheiro nem na cobrança; fica registrado quem cancelou e por quê.</p>
+        <div><label for="cancelarEstornoMotivo">Motivo</label><textarea id="cancelarEstornoMotivo" name="motivo" rows="2" minlength="5" maxlength="500" required></textarea></div>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape: `<button type="button" class="btn ghost" data-fechar>Voltar</button><button type="submit" form="formCancelarEstorno" class="btn primary">Cancelar pedido</button>`,
+  });
+  const form = dlg.querySelector('#formCancelarEstorno');
+  form.motivo.focus();
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const motivo = form.motivo.value.trim();
+    if (motivo.length < 5) return erroNoModal(dlg, 'Descreva o motivo.');
+    const botao = dlg.querySelector('[type="submit"]');
+    botao.disabled = true;
+    const r = await api(`/admin/estornos/${id}/cancelar`, { method: 'POST', body: JSON.stringify({ motivo }) });
+    if (!r.ok) {
+      botao.disabled = false;
+      return erroNoModal(dlg, window.frase((await r.json().catch(() => ({}))).erro || 'Não foi possível cancelar.'));
+    }
+    toast('Pedido de estorno cancelado.');
+    fechar();
+    recarregar();
+  });
+}
+
+// ---------- fila financeira: devoluções por desistência (art. 49) ----------
+// A desistência é pedida pelo CLIENTE (Termos §4) e vira um pedido de
+// estorno por cobrança (migration 120). Aqui não há "Registrar": cada
+// devolução é executada na Asaas e se confirma sozinha pelo aviso dela; a
+// desistência fecha quando a última confirmar.
 async function renderFilaDevolucoes(el) {
   const pendentes = (await pegar('/admin/arrependimentos')).filter((p) => p.status === 'pendente');
 
   if (!pendentes.length) {
     el.innerHTML = vazio(
       'Nenhuma devolução pendente.',
-      'Desistência dentro dos 7 dias da lei aparece aqui até o estorno ser registrado.',
+      'Desistência dentro dos 7 dias da lei aparece aqui até a Asaas confirmar a devolução.',
     );
     return;
   }
@@ -8637,7 +8832,7 @@ async function renderFilaDevolucoes(el) {
     busca: false,
     unidade: 'devolução|devoluções',
     html: `<table><thead><tr>
-        <th>Conta</th><th class="num">Pedida em</th><th class="num">Valor</th><th>Comprovante do estorno</th>
+        <th>Conta</th><th class="num">Pedida em</th><th class="num">Valor</th><th>Devoluções na Asaas</th>
       </tr></thead><tbody>
       ${pendentes
         .map(
@@ -8645,35 +8840,28 @@ async function renderFilaDevolucoes(el) {
           <td><b>${esc(p.nome_empresa)}</b><span class="celula-sub">${esc(p.contato_email)} · ${esc(p.cpf_cnpj)}</span></td>
           <td class="num">${data(p.pedido_em)}</td>
           <td class="num"><b>${fmt(p.valor_a_estornar)}</b></td>
-          <td><div class="acoes acoes-linha">
-            <input class="mini" placeholder="id do estorno no Checkout" data-comp="${p.id}" aria-label="Comprovante do estorno de ${esc(p.nome_empresa)}">
-            <button class="btn ghost mini" data-estornado="${p.id}">Registrar</button>
-          </div></td>
+          <td class="col-estorno">${
+            p.devolucoes.length
+              ? p.devolucoes
+                  .map((d) => {
+                    const emEspera = d.status === 'solicitado' && d.status_financeiro === 'contestado';
+                    const [classe, rotulo] = emEspera
+                      ? ['badge-err', 'Em espera · chargeback — não devolver na Asaas']
+                      : ESTADO_ESTORNO[d.status] || ['badge-neutro', d.status];
+                    // Confirmado mostra o que a Asaas devolveu, não o que foi pedido.
+                    const valor =
+                      d.status === 'confirmado' && d.valor_confirmado != null ? d.valor_confirmado : d.valor;
+                    return `<span class="celula-sub"><span class="badge ${classe}">${esc(rotulo)}</span> ${fmt(valor)} · cobrança PSP ${esc(d.charge_id || '—')}</span>`;
+                  })
+                  .join('')
+              : '<span class="celula-sub">Sem cobrança com identificador do PSP — ver Eventos do Checkout.</span>'
+          }</td>
         </tr>`,
         )
         .join('')}
       </tbody></table>`,
   });
   turbinarTabela(el.querySelector('.tabela-caixa'));
-
-  el.querySelectorAll('[data-estornado]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      const campo = el.querySelector(`[data-comp="${btn.dataset.estornado}"]`);
-      btn.disabled = true;
-      const r = await api(`/admin/arrependimentos/${btn.dataset.estornado}/estornado`, {
-        method: 'POST',
-        body: JSON.stringify({ comprovante: campo.value.trim() }),
-      });
-      if (!r.ok) {
-        btn.disabled = false;
-        return toast((await r.json().catch(() => ({}))).erro || 'Não deu pra registrar.', 'err');
-      }
-      toast('Devolução registrada.');
-      RESUMO = await pegar('/admin/resumo').catch(() => RESUMO);
-      pintarContadores();
-      renderFilaDevolucoes(el);
-    }),
-  );
 }
 
 // Fila de e-mails (migration 097): quantos estão em cada estado e os que

@@ -702,6 +702,7 @@ PAINEL DO ANUNCIANTE (aba única "Painel", renomeada de "Anúncios" em 19/09/202
   · **cliente sabe:** Você liga e desliga as novidades quando quiser; avisos de plano, pagamento e anúncio continuam chegando porque fazem parte do serviço. E o que foi opcional (contato do responsável e foto) você apaga…
 
 **Direitos do titular — arrependimento em 7 dias com estorno (CDC art. 49, RN-26)** — montarArrependimento() consulta GET /titular/arrependimento. Se já houver pedido, mostra o protocolo e o estado ('registrada e valor devolvido' ou 'devolução em andamento'). Se disponivel, mostra 'Você tem até <data> pra desistir e receber R$X de volta... O…
+  · **Atualizado em 09/10/2026 (migration 120, RN-73, ADR-046):** o estorno virou pedido do Admin (`src/financeiro/estornos.js`, tabela `estornos`). O operador devolve na Asaas, e só o webhook `cobranca_estornada` confirma. A desistência gera um pedido por cobrança e fecha com a confirmação do PSP. `POST /admin/arrependimentos/:id/estornado` → 410; `totalPago`/`marcarEstornado` saíram (`estornos.restanteDesde`). Vale o que está em `docs/funcional.md` RN-26/RN-73.
   · `public/perfil.js`, `src/titular/routes.js`, `src/titular/repository.js` · rotas: `GET /titular/arrependimento`, `POST /titular/arrependimento`, `GET /admin/arrependimentos`, `POST /admin/arrependimentos/:id/estornado` · papéis: anunciante
   · → fila do admin (o estorno em si é feito no painel do Checkout/Asaas)
   · **cliente sabe:** Desistiu em até 7 dias da primeira cobrança? O anúncio sai do ar na hora, a cobrança recorrente é cancelada e o valor pago volta inteiro — com protocolo.
@@ -1192,6 +1193,7 @@ Caminho do dinheiro do Mostraí, ponta a ponta: vitrine pública de planos (publ
   · **cliente sabe:** Download direto, com Content-Disposition attachment (mostrai-<empresa>-<data>.json).
 
 **Arrependimento em 7 dias com estorno (CDC art. 49)** — GET calcula o prazo a partir de `primeiraCobranca` (a cobrança confirmada mais antiga) e devolve disponivel/prazo_ate/valor_a_estornar (= `totalPago`, soma de TODAS as cobranças). POST: cancela no Checkout primeiro, marca a assinatura 'cancelada', grava em…
+  · **Atualizado em 09/10/2026 (migration 120, RN-73, ADR-046):** o estorno virou pedido do Admin (`src/financeiro/estornos.js`, tabela `estornos`). O operador devolve na Asaas, e só o webhook `cobranca_estornada` confirma. A desistência gera um pedido por cobrança e fecha com a confirmação do PSP. `POST /admin/arrependimentos/:id/estornado` → 410; `totalPago`/`marcarEstornado` saíram (`estornos.restanteDesde`). Vale o que está em `docs/funcional.md` RN-26/RN-73.
   · `src/titular/routes.js`, `src/titular/repository.js`, `src/financeiro/email.js` · rotas: `GET /titular/arrependimento`, `POST /titular/arrependimento`, `GET /admin/arrependimentos`, `POST /admin/arrependimentos/:id/estornado` · papéis: anunciante, admin
   · → aba Devoluções do admin (fila urgente no resumo)
   · **cliente sabe:** E-mail 'Desistência registrada' com valor a devolver e protocolo. Admin: 'A devolução é feita no painel do San Checkout/Asaas. Aqui você registra o comprovante pra fechar o pedido.'
@@ -1960,6 +1962,7 @@ Mapa dos pontos de contato FORA do site do Mostraí, lido no código real (não 
   · **cliente sabe:** Se falhar: 502 com "não conseguimos cancelar a cobrança agora — tente de novo em alguns minutos" (titular) / "falha ao cancelar no San Checkout" (admin). O cliente não recebe instrução alternativa (a…
 
 **Estorno — executado FORA do sistema, no painel do Checkout/Asaas** — A API do San Checkout não expõe estorno. O POST /titular/arrependimento cancela a recorrência, suspende a conta, tira o anúncio do ar e REGISTRA a obrigação numa fila (GET /admin/arrependimentos). Devolver o dinheiro é uma pessoa abrindo o painel do Asaas e…
+  · **Atualizado em 09/10/2026 (migration 120, RN-73, ADR-046):** o estorno virou pedido do Admin (`src/financeiro/estornos.js`, tabela `estornos`). O operador devolve na Asaas, e só o webhook `cobranca_estornada` confirma. A desistência gera um pedido por cobrança e fecha com a confirmação do PSP. `POST /admin/arrependimentos/:id/estornado` → 410; `totalPago`/`marcarEstornado` saíram (`estornos.restanteDesde`). Vale o que está em `docs/funcional.md` RN-26/RN-73.
   · `src/titular/routes.js (L79-141, fila L145+)`, `public/admin/index.page.js (L1613-1650)` · rotas: `POST /titular/arrependimento`, `GET /admin/arrependimentos`, `POST /admin/arrependimentos/:id/estornado` · papéis: anunciante, admin
   · → painel do San Checkout/Asaas (fora de tudo)
   · **cliente sabe:** Só o e-mail de enviarArrependimentoRecebido ("alguns dias úteis"). Não há tela onde o cliente acompanhe o andamento da devolução: GET /titular/arrependimento devolve {pedido} mas não há estado…

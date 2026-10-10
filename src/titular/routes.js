@@ -6,12 +6,22 @@ const checkout = require('../financeiro/san-checkout');
 const pool = require('../db/pool');
 const outbox = require('../email/outbox');
 const obrigacaoDoCiclo = require('../bancohoras/obrigacao-do-ciclo');
+const estornos = require('../financeiro/estornos');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 
 // Prazo de arrependimento: 7 dias corridos da contratação (CDC art. 49). Conta
 // da PRIMEIRA cobrança confirmada, que é quando a contratação se completou —
-// contar do cadastro encurtaria o prazo de quem demorou pra pagar.
+// contar do cadastro encurtaria o prazo de quem demorou pra pagar. É a
+// confirmação no PSP (`pago_em`, migration 120), como dizem os Termos.
 const DIAS_ARREPENDIMENTO = 7;
+
+// A última desistência atendida, quando o contrato atual é o dela (nenhuma
+// compra paga depois do pedido): o direito já foi exercido.
+async function atendidaSemContratoNovo(anuncianteId, primeira) {
+  const atendido = await repo.arrependimentoAtendido(anuncianteId);
+  if (!atendido) return null;
+  return !primeira || new Date(primeira.confirmado_em) <= new Date(atendido.pedido_em) ? atendido : null;
+}
 
 function dentroDoPrazo(contratadoEm) {
   const limite = new Date(contratadoEm).getTime() + DIAS_ARREPENDIMENTO * 24 * 3600 * 1000;
@@ -67,37 +77,45 @@ router.post('/titular/consentimento', exigirAnuncianteLogado, async (req, res) =
 router.get('/titular/arrependimento', exigirAnuncianteLogado, async (req, res) => {
   const aberto = await repo.arrependimentoAberto(req.session.anuncianteId);
   if (aberto) return res.json({ disponivel: false, pedido: aberto });
-
+  // Desistência já atendida vale para o contrato dela; só uma compra nova,
+  // paga depois do pedido, abre outro prazo.
   const primeira = await repo.primeiraCobranca(req.session.anuncianteId);
-  if (!primeira) {
-    return res.json({ disponivel: false, motivo: 'nenhuma cobrança confirmada ainda' });
-  }
-  const { dentro, limite } = dentroDoPrazo(primeira.criado_em);
+  const atendido = await atendidaSemContratoNovo(req.session.anuncianteId, primeira);
+  if (atendido) return res.json({ disponivel: false, pedido: atendido });
+  if (!primeira) return res.json({ disponivel: false, motivo: 'nenhuma cobrança confirmada ainda' });
+  const { dentro, limite } = dentroDoPrazo(primeira.confirmado_em);
   res.json({
     disponivel: dentro,
     motivo: dentro ? null : 'o prazo de 7 dias já passou',
     prazo_ate: limite,
-    valor_a_estornar: await repo.totalPago(req.session.anuncianteId),
+    // O que ainda pode voltar DESTE contrato — o que o PSP já devolveu não
+    // conta de novo, e o contrato antigo (cancelado antes) não entra.
+    valor_a_estornar: await estornos.restanteDesde(req.session.anuncianteId, primeira.confirmado_em),
   });
 });
 
-// POST executa: cancela no Checkout, tira o anúncio do ar na hora e registra o
-// estorno a pagar. O estorno em si acontece no painel do Checkout/Asaas — a
-// API dele não expõe estorno —, então o que fica aqui é a obrigação com nome,
-// valor e data, numa fila que o admin vê. Sem esse registro o pedido viraria
-// um e-mail, e e-mail não cobra ninguém.
+// POST executa: cancela no Checkout, tira o anúncio do ar na hora e registra a
+// devolução. É a ÚNICA regra documentada em que cancelar e devolver andam
+// juntos (Termos §4, art. 49) — e mesmo aqui o cliente só PEDE: cada
+// cobrança vira um pedido de estorno (migration 120), que o Admin executa na
+// Asaas (o `/estornar` do San Checkout não alcança cobrança de assinatura) e
+// que só conta quando o PSP confirma. A desistência fecha sozinha quando a
+// última devolução é confirmada — nunca por clique.
 router.post('/titular/arrependimento', exigirAnuncianteLogado, async (req, res) => {
   const id = req.session.anuncianteId;
   const jaAberto = await repo.arrependimentoAberto(id);
   if (jaAberto) return res.status(409).json({ erro: 'já existe um pedido em andamento', pedido: jaAberto });
-
   const anunciante = await anunciantesRepo.buscarPorId(id);
   if (!anunciante) return res.status(401).json({ erro: 'não autenticado' });
 
+  // Já atendida e sem compra nova depois dela: o direito sobre aquele
+  // contrato foi exercido (devolveria de novo o que já voltou).
   const primeira = await repo.primeiraCobranca(id);
+  const atendido = await atendidaSemContratoNovo(id, primeira);
+  if (atendido) return res.status(409).json({ erro: 'a desistência desta conta já foi atendida', pedido: atendido });
   if (!primeira) return res.status(400).json({ erro: 'não há cobrança confirmada pra estornar' });
 
-  const { dentro, limite } = dentroDoPrazo(primeira.criado_em);
+  const { dentro, limite } = dentroDoPrazo(primeira.confirmado_em);
   if (!dentro) {
     return res.status(400).json({
       erro: 'o prazo de 7 dias do arrependimento já passou',
@@ -125,33 +143,87 @@ router.post('/titular/arrependimento', exigirAnuncianteLogado, async (req, res) 
     }
   }
 
-  const pedido = await repo.registrarArrependimento({
-    anuncianteId: id,
-    assinaturaId: assinatura ? assinatura.id : null,
-    planoId: anunciante.plano_id || primeira.plano_id,
-    valor: await repo.totalPago(id),
-    contratadoEm: primeira.criado_em,
-  });
+  // O pedido e as devoluções dele (uma por cobrança) nascem juntos: ou a
+  // desistência fica registrada com o que tem de voltar, ou nada.
+  let pedido;
+  let avisos = [];
+  const cliente = await pool.connect();
+  try {
+    await cliente.query('BEGIN');
+    pedido = await repo.registrarArrependimento(
+      {
+        anuncianteId: id,
+        assinaturaId: assinatura ? assinatura.id : null,
+        // Em benefício, o plano da conta é o do benefício; o desistido é o pago.
+        planoId: (!anunciante.plano_cortesia && anunciante.plano_id) || primeira.plano_id,
+        valor: await estornos.restanteDesde(id, primeira.confirmado_em, cliente),
+        contratadoEm: primeira.confirmado_em,
+      },
+      cliente,
+    );
+    if (!pedido) {
+      await cliente.query('ROLLBACK');
+      return res.status(409).json({ erro: 'já existe um pedido em andamento' });
+    }
+    avisos = await estornos.solicitarDevolucoesDaDesistencia(cliente, {
+      anuncianteId: id,
+      desde: primeira.confirmado_em,
+      arrependimentoId: pedido.id,
+      motivo: `desistência em 7 dias (CDC art. 49), pedido ${pedido.id}`,
+    });
+    await cliente.query('COMMIT');
+  } catch (err) {
+    await cliente.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    cliente.release();
+  }
+  for (const aviso of avisos) {
+    await checkout
+      .registrarPendencia({ evento: 'desistencia', arrependimentoId: pedido.id }, aviso)
+      .catch((err) => console.error('pendência da desistência não registrada:', err.message));
+  }
 
-  // Fora do ar na hora: o direito é desfazer a contratação, não continuar
-  // exibindo até o fim do ciclo pago.
-  await anunciantesRepo.atualizar(id, {
-    suspenso: true,
-    plano_id: null,
-    data_expiracao: null,
-  });
-  // Reembolso integral: a obrigação de veiculação dos ciclos pagos some; o que
-  // já tinha sido entregue vira saldo técnico negativo (interno — a próxima
-  // contratação desconta), nunca dívida mostrada ao cliente (migration 111).
-  // O pedido já vale: se o lançamento falhar aqui, a conciliação diária lança
-  // (`conferirReembolsos`) — o erro não desfaz o direito exercido.
-  await obrigacaoDoCiclo
-    .registrarReembolsoDaConta(pool, {
+  // Fora do ar na hora: o direito é desfazer ESTA contratação, não continuar
+  // exibindo até o fim do ciclo pago. Dias PAGOS de um contrato anterior
+  // (cancelou com cobertura e comprou de novo) não voltam com ela: a
+  // cobertura volta ao fim deles, no plano deles. Com benefício em vigor, o
+  // pago deste contrato espera na fila guardada: sai só ele da fila, e o
+  // benefício segue no ar (revisões Codex do PR #130).
+  if (anunciante.plano_cortesia) {
+    for (const aviso of await estornos.tirarContratoDaFila(pool, { anuncianteId: id, desde: primeira.confirmado_em })) {
+      await checkout
+        .registrarPendencia({ evento: 'desistencia', arrependimentoId: pedido.id }, aviso)
+        .catch((err) => console.error('pendência da desistência não registrada:', err.message));
+    }
+  } else {
+    const anterior = await estornos.coberturaAnterior(pool, {
+      anuncianteId: id,
+      desde: primeira.confirmado_em,
+      dataExpiracao: anunciante.data_expiracao,
+    });
+    await anunciantesRepo.atualizar(
+      id,
+      anterior
+        ? { plano_id: anterior.planoId, data_expiracao: anterior.fim }
+        : { suspenso: true, plano_id: null, data_expiracao: null },
+    );
+  }
+  // Reembolso integral: a obrigação de veiculação dos ciclos pagos DESTE
+  // contrato some; o que já tinha sido entregue vira saldo técnico negativo
+  // (interno — a próxima contratação desconta), nunca dívida mostrada ao
+  // cliente (migration 111). O pedido já vale: se o lançamento falhar aqui, a
+  // conciliação diária lança (`conferirReembolsos`) — o erro não desfaz o
+  // direito exercido.
+  await (async () => {
+    const ciclos = await estornos.ciclosDoContrato(pool, id, primeira.confirmado_em);
+    await obrigacaoDoCiclo.registrarReembolsoDaConta(pool, {
       anuncianteId: id,
       motivo: `arrependimento (reembolso integral, pedido ${pedido.id})`,
       ate: pedido.pedido_em,
-    })
-    .catch((err) => console.error(`reembolso do pedido ${pedido.id} não lançado agora: ${err.message}`));
+      ciclos: ciclos?.map((c) => c.id),
+    });
+  })().catch((err) => console.error(`reembolso do pedido ${pedido.id} não lançado agora: ${err.message}`));
 
   // E-mail que falha não pode desfazer um direito já exercido — o registro
   // no banco é o que vale. Pela fila: antes o erro era engolido em silêncio
@@ -179,10 +251,13 @@ router.get('/admin/arrependimentos', async (_req, res) => {
   res.json(await repo.listarArrependimentos());
 });
 
-router.post('/admin/arrependimentos/:id/estornado', async (req, res) => {
-  const pedido = await repo.marcarEstornado(req.params.id, req.body?.comprovante);
-  if (!pedido) return res.status(404).json({ erro: 'pedido não encontrado ou já estornado' });
-  res.json(pedido);
-});
+// "Registrar" à mão saiu (migration 120): marcava a devolução como feita sem
+// o PSP dizer nada. Agora a desistência fecha quando a Asaas confirma cada
+// devolução (webhook `cobranca_estornada`, src/financeiro/estornos.js).
+router.post('/admin/arrependimentos/:id/estornado', (_req, res) =>
+  res.status(410).json({
+    erro: 'a devolução se confirma sozinha pelo aviso da Asaas — execute o estorno na Asaas e acompanhe em Financeiro → Devoluções',
+  }),
+);
 
 module.exports = router;

@@ -446,6 +446,63 @@ log.
 | Trocar o dono de um ponto (não existe tela pra isso — só no banco) | Logo depois de mudar `pontos.anunciante_id`, sincronizar o Plano Básico daquele ponto no serviço: `node -e "require('./src/pontos/basico').sincronizar({ apenasPontos: [<id do ponto>] }).then(() => require('./src/db/pool').end())"`. Encerra o Básico do dono antigo na hora e ativa o do novo; sem isso o encerramento espera o job diário, e a rede de segurança do Saldo pode cobrar do dono antigo as horas sem sinal até lá (RN-43.5) |
 | Versão nova do app | instalação manual na TV (não há atualização remota). A ficha mostra a versão que a TV informa |
 
+## 6.3 Estorno de cobrança (migration 120, RN-73)
+
+**Estornar não é cancelar.** Estornar devolve o dinheiro de UMA cobrança e
+não para a recorrência; se ela também deve parar, cancele a assinatura à
+parte (Contas → a conta → Plano → Cancelar assinatura). Cancelar não devolve
+nada.
+
+| Passo | Onde | O que acontece |
+|---|---|---|
+| 1. Pedir | Admin → Financeiro → **Cobranças** → linha da cobrança → **Estornar pagamento** (só dentro de 7 dias da confirmação na Asaas). Fora disso: **Estorno excepcional…**, com categoria | modal com o aviso, motivo obrigatório e "Entendi"; nasce o pedido `Solicitado · aguardando a Asaas` com quem pediu, quando, valor, motivo e o chargeId |
+| 2. Devolver | painel da **Asaas** → Cobranças → buscar pelo **chargeId** mostrado na linha (ou no modal) → Estornar (total ou o valor pedido) | o dinheiro volta ao cliente pelo meio de pagamento. A Mostraí não move dinheiro: o `/estornar` da API do San Checkout só alcança pedido avulso |
+| 3. Confirmar | sozinho — a Asaas avisa o Checkout, que avisa a Mostraí (`cobranca_estornada`) | o pedido vira `Confirmado pela Asaas`; a cobrança, `Estornada` (ou "em parte"); total desfaz o ciclo daquela cobrança (horas e cobertura). A assinatura não muda |
+
+Se a confirmação não chegar em ~10 min depois de estornar na Asaas:
+1. Conferir no painel do San Checkout a fila de notificações: aviso
+   `abandonado` → **reenviar** (vai com o mesmo `eventoId`; reprocessar aqui
+   não estorna duas vezes — o valor devolvido só anda pra frente).
+2. Conferir na Mostraí a inbox (§6.2) — o evento pode estar `tentando_de_novo`
+   ou `morto`.
+3. Pedido que **não** vai ser executado na Asaas: linha → **Cancelar pedido**,
+   com motivo. Nunca marcar como devolvido sem o aviso da Asaas — não existe
+   botão pra isso, de propósito.
+
+Aviso de estorno ou chargeback de uma cobrança que **ainda não** está na
+Mostraí (o aviso do pagamento ficou atrás na fila, ou só entra pela
+conciliação) não vira pendência: fica `tentando_de_novo` na inbox até a
+cobrança entrar. Se morrer (`morto`, pendência "webhook não processado…"),
+recolocar na fila pelo §6.2 **depois** que a cobrança aparecer em Cobranças.
+
+**Chargeback com pedido aberto:** a linha mostra "Em espera · chargeback" e a
+fila do Admin recebe "NÃO devolver na Asaas". Não devolver: o banco do
+cliente já está devolvendo pela disputa, e as duas devoluções somariam. A
+disputa corre fora do Checkout e não avisa quando termina. Depois dela, o
+pedido ordinário se cancela com motivo (ou, se a disputa voltou a nosso
+favor e a devolução ainda é devida, devolve-se na Asaas, e a confirmação
+chega pelo aviso de sempre).
+
+Devolução feita direto na Asaas, sem pedido no Admin, também é registrada
+quando o aviso chega (tipo "Feito direto na Asaas") e vira pendência pra
+conferir o motivo. A desistência do art. 49 (Financeiro → **Devoluções**)
+segue os passos 2 e 3: o pedido nasce do cliente e não se cancela pelo
+painel.
+
+Diagnóstico (somente leitura):
+
+```sql
+SELECT id, cobranca_id, tipo, valor, status, solicitado_em, confirmado_em
+  FROM estornos WHERE status = 'solicitado' ORDER BY solicitado_em;
+SELECT id, status_financeiro, valor, valor_estornado, pago_em, pago_em_fonte
+  FROM cobrancas_confirmadas WHERE charge_id IS NULL;  -- sem estorno pelo painel
+```
+
+Cobrança sem `charge_id` que a conciliação diária reconhece (o primeiro ciclo
+que entrou antes de a Asaas revelar o id) ganha o id sozinha na próxima
+varredura. A que continua sem id depois disso é devolvida na Asaas e conferida
+à mão.
+
 ## 7. Incidente com dado pessoal
 
 O Mostraí guarda nome, CNPJ/CPF, e-mail, telefone e endereço de anunciantes,

@@ -28,6 +28,7 @@ async function exportarConta(anuncianteId) {
     criativos,
     assinaturas,
     cobrancas,
+    estornos,
     comissoesGanhas,
     comissoesGeradas,
     exibicoes,
@@ -53,8 +54,15 @@ async function exportarConta(anuncianteId) {
               editado_pelo_operador, status, duracao_segundos, created_at
          FROM criativos WHERE anunciante_id = $1 ORDER BY id`),
     q('SELECT * FROM assinaturas WHERE anunciante_id = $1 ORDER BY created_at'),
-    q(`SELECT id, plano_id, valor, criado_em, nota_fiscal_status, nota_fiscal_url
+    q(`SELECT id, plano_id, plano_anterior_id, valor, criado_em, nota_fiscal_status, nota_fiscal_url,
+              charge_id, pago_em, pago_em_fonte, status_financeiro, valor_estornado
          FROM cobrancas_confirmadas WHERE anunciante_id = $1 ORDER BY criado_em`),
+    // Estornos da conta (migration 120), com a trilha de cada um — menos quem
+    // operou: o usuário e o e-mail do Admin são dado de quem trabalha, não do
+    // titular.
+    q(`SELECT id, cobranca_id, tipo, categoria, valor, motivo, status, solicitado_em, valor_confirmado,
+              psp_charge_id, confirmado_em, cancelado_em, cancelado_motivo, arrependimento_id
+         FROM estornos WHERE anunciante_id = $1 ORDER BY id`),
     // Duas pontas da mesma tabela: o que esta conta GANHOU indicando alguém,
     // e o que a compra dela GEROU de comissão pra quem a indicou. As duas são
     // dado pessoal dela, por motivos diferentes.
@@ -129,6 +137,7 @@ async function exportarConta(anuncianteId) {
     criativos,
     assinaturas,
     cobrancas_confirmadas: cobrancas,
+    estornos,
     comissoes_ganhas_como_vendedor: comissoesGanhas,
     comissoes_geradas_pelas_minhas_compras: comissoesGeradas,
     exibicoes_por_hora: exibicoes,
@@ -234,25 +243,30 @@ async function definirComunicacoes(anuncianteId, aceita) {
 }
 
 // A primeira cobrança confirmada é quando a contratação se completou — é dela
-// que os 7 dias do art. 49 do CDC contam, não do cadastro.
+// que os 7 dias do art. 49 do CDC contam, não do cadastro. "Confirmada" =
+// a confirmação do pagamento no PSP (`pago_em`, migration 120; os Termos
+// dizem "contados da confirmação do pagamento"), não a hora em que a
+// Mostraí gravou.
+// "Primeira" = do CONTRATO ATUAL (revisão Codex do PR #130): a cobrança do
+// ciclo de COMPRA mais recente — cada assinatura nova grava o primeiro ciclo
+// como 'compra'; renovação e troca de plano seguem no mesmo contrato. Quem
+// cancelou e voltou (ou desistiu e voltou) tem contrato novo, com 7 dias
+// próprios. Conta sem ciclo registrado (histórico): a primeira da conta.
 async function primeiraCobranca(anuncianteId) {
   const { rows } = await pool.query(
     `
-    SELECT id, plano_id, valor, criado_em FROM cobrancas_confirmadas
-     WHERE anunciante_id = $1 ORDER BY criado_em LIMIT 1`,
+    SELECT * FROM (
+      (SELECT c.id, c.plano_id, c.valor, c.pago_em AS confirmado_em, 0 AS ordem
+         FROM ciclos_contratados cic JOIN cobrancas_confirmadas c ON c.id = cic.cobranca_confirmada_id
+        WHERE cic.anunciante_id = $1 AND cic.origem = 'compra'
+        ORDER BY c.pago_em DESC, c.id DESC LIMIT 1)
+      UNION ALL
+      (SELECT id, plano_id, valor, pago_em AS confirmado_em, 1 AS ordem FROM cobrancas_confirmadas
+        WHERE anunciante_id = $1 ORDER BY pago_em, id LIMIT 1)
+    ) t ORDER BY ordem LIMIT 1`,
     [anuncianteId],
   );
   return rows[0] || null;
-}
-
-// Soma do que a conta pagou. O art. 49 devolve TUDO o que foi pago, não um
-// pró-rata pelos dias em que o anúncio rodou — o direito não é proporcional.
-async function totalPago(anuncianteId) {
-  const { rows } = await pool.query(
-    'SELECT COALESCE(SUM(valor), 0) AS total FROM cobrancas_confirmadas WHERE anunciante_id = $1',
-    [anuncianteId],
-  );
-  return Number(rows[0].total);
 }
 
 async function arrependimentoAberto(anuncianteId) {
@@ -262,8 +276,19 @@ async function arrependimentoAberto(anuncianteId) {
   return rows[0] || null;
 }
 
-async function registrarArrependimento({ anuncianteId, assinaturaId, planoId, valor, contratadoEm }) {
+// A última desistência já atendida (devolução confirmada pelo PSP): o direito
+// sobre AQUELE contrato foi exercido. Uma compra nova depois dela é outro
+// contrato, com prazo próprio (ver `primeiraCobranca`).
+async function arrependimentoAtendido(anuncianteId) {
   const { rows } = await pool.query(
+    "SELECT * FROM arrependimentos WHERE anunciante_id = $1 AND status = 'estornado' ORDER BY id DESC LIMIT 1",
+    [anuncianteId],
+  );
+  return rows[0] || null;
+}
+
+async function registrarArrependimento({ anuncianteId, assinaturaId, planoId, valor, contratadoEm }, db = pool) {
+  const { rows } = await db.query(
     `
     INSERT INTO arrependimentos
       (anunciante_id, assinatura_id, plano_id, valor_a_estornar, contratado_em)
@@ -272,27 +297,27 @@ async function registrarArrependimento({ anuncianteId, assinaturaId, planoId, va
     RETURNING *`,
     [anuncianteId, assinaturaId, planoId, valor, contratadoEm],
   );
-  return rows[0] || arrependimentoAberto(anuncianteId);
+  return rows[0] || null;
 }
 
+// A fila do Admin: cada desistência com as devoluções dela (uma por
+// cobrança, migration 120) e o estado de cada uma — fecha sozinha quando o
+// PSP confirma a última. A situação da cobrança vai junto: devolução de
+// cobrança contestada (chargeback) fica em espera, não se executa.
 async function listarArrependimentos() {
   const { rows } = await pool.query(`
-    SELECT a.*, an.nome_empresa, an.cpf_cnpj, an.contato_email
+    SELECT a.*, an.nome_empresa, an.cpf_cnpj, an.contato_email,
+           COALESCE((SELECT json_agg(json_build_object(
+                       'id', e.id, 'cobranca_id', e.cobranca_id, 'valor', e.valor, 'status', e.status,
+                       'charge_id', e.psp_charge_id, 'confirmado_em', e.confirmado_em,
+                       'valor_confirmado', e.valor_confirmado,
+                       'status_financeiro', c.status_financeiro) ORDER BY e.id)
+                       FROM estornos e JOIN cobrancas_confirmadas c ON c.id = e.cobranca_id
+                      WHERE e.arrependimento_id = a.id), '[]') AS devolucoes
       FROM arrependimentos a
       JOIN anunciantes an ON an.id = a.anunciante_id
      ORDER BY (a.status = 'pendente') DESC, a.pedido_em DESC`);
   return rows;
-}
-
-async function marcarEstornado(id, comprovante) {
-  const { rows } = await pool.query(
-    `
-    UPDATE arrependimentos
-       SET status = 'estornado', estornado_em = now(), comprovante = $2
-     WHERE id = $1 AND status = 'pendente' RETURNING *`,
-    [id, comprovante || null],
-  );
-  return rows[0] || null;
 }
 
 module.exports = {
@@ -302,9 +327,8 @@ module.exports = {
   DIAS_ATE_ANONIMIZAR,
   definirComunicacoes,
   primeiraCobranca,
-  totalPago,
   arrependimentoAberto,
+  arrependimentoAtendido,
   registrarArrependimento,
   listarArrependimentos,
-  marcarEstornado,
 };
