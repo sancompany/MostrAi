@@ -222,6 +222,21 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
   tirar os dias à mão; nunca adivinha. limite: gravar a janela e a
   contribuição à fila por ciclo no caminho de pagamento resolve
   (`docs/PENDENCIAS.md`, PG5).
+- **Crédito de indicação nasce na hora do pagamento, não depois da janela de
+  estorno — LIMITE ASSUMIDO PELA AUDITORIA até a decisão do dono**
+  (12/10/2026, AUD-009; `docs/PENDENCIAS.md`, PG7). Não é decisão do dono. A
+  spec diz o contrário do que o código faz: o crédito só é do ponto depois da
+  janela de estorno (R1 nº 14: "daria o ponto somente após o periodo de
+  estorno"; R2 §7: "o ponto não recebe imediatamente"); consolidado, nunca é
+  estornado (R1 nº 15, R2 §7); saldo negativo por indicação não existe (R2
+  §7). A duração da janela é o que falta o dono decidir. Até lá, o paliativo
+  da auditoria: estorno total de uma devolução pedida nos 7 dias do
+  pagamento tira o crédito daquela cobrança, até o saldo do ponto e nunca
+  abaixo de zero; fora dos 7 dias o crédito fica. O que o ponto já gastou
+  dentro dos 7 dias não volta sozinho: vira pendência pro Admin, e o
+  benefício segue até alguém decidir. limite: crédito pendente até a janela
+  passar (concedido só depois de consolidar) fecha este limite —
+  `estornos.js#reverterCreditoDeIndicacao` é o lugar que sai.
 - **Negócio ou marca por criativo: limites da primeira versão** (10/10/2026,
   RN-74, migration 121).
   - A escolha de pontos e o sorteio automático continuam sem olhar categoria

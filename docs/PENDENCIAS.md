@@ -6186,3 +6186,17 @@ Ficou de fora, sem mexer:
       resposta `troca_pela_equipe` pelo caminho escolhido (`cotacao.js`,
       `financeiro/routes.js`, `confirmar-plano.page.js`). Enquanto isso, o
       que a equipe faz com o pedido no WhatsApp está no RUNBOOK §6.4.
+- PG7 [ ] **Janela de carência do crédito de indicação** (decisão do dono;
+      AUD-009, 12/10/2026). A spec diz que o ponto recebe o crédito "somente
+      após o período de estorno" (R1 nº 14, R2 §7) e que, consolidado, ele
+      nunca é estornado (R1 nº 15, R2 §7) — saldo negativo por indicação não
+      existe (R2 §7) — mas não diz a duração da janela (7 dias do
+      ordinário/art. 49? prazo de contestação do cartão?) nem como o crédito
+      pendente aparece pro ponto (visível como "a liberar"? invisível?). Hoje
+      ele nasce na hora do pagamento. Paliativo em vigor — **limite assumido
+      pela auditoria, não decisão do dono** (`CONSTRAINTS.md`, Limites
+      assumidos): devolução total pedida nos 7 dias do pagamento tira o
+      crédito, até o saldo do ponto, nunca abaixo de zero; o que ele já gastou
+      vira pendência pro Admin. Decidido, o crédito passa a nascer pendente e
+      a liberar sozinho depois da janela, e o paliativo sai
+      (`estornos.js#reverterCreditoDeIndicacao`).

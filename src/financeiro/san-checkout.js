@@ -894,6 +894,20 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
       sse.emitirParaConta(r.anuncianteId, 'payment.updated', {});
       sse.emitirParaAdmin('payment.updated', { anuncianteId: r.anuncianteId });
     }
+    // O crédito de indicação que essa cobrança gerou saiu (AUD-009): quem
+    // indicou fica sabendo — o saldo dele mudou sem ele fazer nada. Depois
+    // do COMMIT; falha aqui é aviso a menos, nunca motivo pra refazer.
+    if (r.creditoRevertido) {
+      const { contaId, quantidade } = r.creditoRevertido;
+      await notificacoesRepo
+        .registrar(contaId, {
+          tipo: 'credito_indicacao_devolvido',
+          titulo: quantidade === 1 ? '1 crédito de indicação saiu' : `${quantidade} créditos de indicação saíram`,
+          descricao: 'O pagamento que gerou o crédito foi devolvido dentro do prazo de estorno.',
+        })
+        .catch((err) => console.error('falha ao notificar o crédito de indicação devolvido', err));
+      sse.emitirParaConta(contaId, 'credits.updated', {});
+    }
     return;
   }
 

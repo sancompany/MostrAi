@@ -661,5 +661,6 @@ window.ROTULOS = {
     estorno_admin: 'Ajuste da Mostraí',
     resgate_beneficio: 'Resgate',
     estorno_resgate: 'Estorno de resgate',
+    estorno_indicacao: 'Indicação estornada',
   },
 };

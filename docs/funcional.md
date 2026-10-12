@@ -798,7 +798,18 @@ indicada — o primeiro e cada renovação — gera **+1 crédito** no ledger do
 indicador (`creditos_ledger`, tipos `indicacao_primeiro_pagamento` e
 `indicacao_renovacao`), na mesma transação do ciclo pago; acerto de troca de
 plano não conta. Idempotente pela cobrança (índice único): webhook duplicado
-ou conciliação reprocessando nunca soma duas vezes. **Nunca dinheiro** —
+ou conciliação reprocessando nunca soma duas vezes. **Pagamento devolvido
+inteiro no prazo, crédito devolvido** (AUD-009, 12/10/2026; a spec: crédito
+consolidado nunca é estornado e saldo negativo por indicação não existe — R1
+nº 15, R2 §7): o estorno TOTAL confirmado pela Asaas de uma devolução pedida nos 7
+dias do pagamento (sem pedido no Admin, conta a confirmação) grava, na mesma
+transação, `estorno_indicacao` no ledger do indicador — uma vez por cobrança
+(migration 122) e nunca mais do que o saldo dele; o que ele já gastou vira
+pendência pro Admin e o benefício resgatado não é encerrado sozinho. Fora dos
+7 dias o crédito fica. O crédito ainda nasce na hora do pagamento, e a spec
+pede que nasça só depois da janela de estorno (R1 nº 14, R2 §7): os 7 dias são
+limite assumido pela auditoria até o dono decidir a janela (`CONSTRAINTS.md`,
+PENDENCIAS PG7), não decisão do dono. **Nunca dinheiro** —
 crédito vira benefício temporário por resgate (RN-43.2). *Violada:* não há
 caminho — a trava é o índice único do ledger. *Quem vê:* o dono do ponto,
 no card "Indicações" do painel: o link, "Copiar link", WhatsApp, o **QR Code

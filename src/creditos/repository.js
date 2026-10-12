@@ -33,6 +33,30 @@ async function registrarCreditoIndicacao(pontoContaId, indicadoContaId, cobranca
   return rows[0] || null;
 }
 
+// O pagamento que gerou um crédito de indicação foi devolvido INTEIRO dentro
+// do prazo de estorno (estornos.js#reverterCreditoDeIndicacao, na transação
+// da confirmação do PSP, AUD-009): sai `quantidade` dele — quem chama decide
+// quanto (nunca abaixo do saldo do ponto); aqui só não passa do que a
+// cobrança gerou. Uma linha negativa `estorno_indicacao`, UMA por cobrança —
+// o índice único de `estorno_de_cobranca_id` (migration 122) é a
+// idempotência, igual ao do crédito. Devolve a linha nova, ou null (a
+// cobrança não gerou crédito, ou já foi revertida).
+async function reverterCreditoIndicacao(cobrancaConfirmadaId, quantidade, db = pool) {
+  const qtd = Math.trunc(Number(quantidade));
+  if (!Number.isFinite(qtd) || qtd <= 0) throw new Error('quantidade a reverter precisa ser um inteiro positivo');
+  const { rows } = await db.query(
+    `INSERT INTO creditos_ledger (anunciante_id, tipo, quantidade, origem_conta_id, estorno_de_cobranca_id, observacao)
+     SELECT anunciante_id, 'estorno_indicacao', -LEAST($2::int, quantidade), origem_conta_id, cobranca_confirmada_id,
+            'o pagamento que gerou este crédito foi devolvido no prazo de estorno'
+       FROM creditos_ledger
+      WHERE cobranca_confirmada_id = $1 AND tipo IN ('indicacao_primeiro_pagamento', 'indicacao_renovacao')
+     ON CONFLICT (estorno_de_cobranca_id) WHERE estorno_de_cobranca_id IS NOT NULL DO NOTHING
+     RETURNING *`,
+    [cobrancaConfirmadaId, qtd],
+  );
+  return rows[0] || null;
+}
+
 // Concessão do admin — substitui "Liberar plano" na Central de Contas
 // (pedido do dono). Créditos genéricos, sem tier/período escolhido ainda —
 // quem decide em que vira é o resgate, exatamente como créditos de
@@ -113,6 +137,7 @@ async function creditosDoResgate(ledgerId, db = pool) {
 module.exports = {
   creditosDoResgate,
   registrarCreditoIndicacao,
+  reverterCreditoIndicacao,
   concederAdmin,
   estornarAdmin,
   debitarResgate,

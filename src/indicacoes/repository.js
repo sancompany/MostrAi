@@ -124,7 +124,10 @@ function linkDeIndicacao(codigo) {
 //     (não gera crédito);
 //   · créditos: as linhas de indicação do ledger do INDICADOR ($2) com
 //     aquela conta como origem — idempotentes por cobrança (índice único da
-//     migration 079), então reprocessar um pagamento nunca soma duas vezes.
+//     migration 079), então reprocessar um pagamento nunca soma duas vezes —,
+//     menos o que voltou com um pagamento devolvido no prazo
+//     (`estorno_indicacao`, AUD-009, tipo 'devolvido' nas datas): o card
+//     soma o mesmo que o saldo.
 // Só o que o dono do ponto pode ver: nome comercial, dia do cadastro, plano
 // em vigor, pagamentos e créditos com as datas. Nunca e-mail, telefone,
 // documento, endereço, valor pago nem o id da conta. Conta excluída continua
@@ -147,11 +150,13 @@ async function historicoDeIndicados(codigo, indicadorContaId) {
          SELECT SUM(cl.quantidade) AS creditos,
                 json_agg(json_build_object(
                   'data', (cl.criado_em AT TIME ZONE 'America/Sao_Paulo')::date,
-                  'tipo', CASE cl.tipo WHEN 'indicacao_primeiro_pagamento' THEN 'primeiro_pagamento' ELSE 'renovacao' END
+                  'tipo', CASE cl.tipo WHEN 'indicacao_primeiro_pagamento' THEN 'primeiro_pagamento'
+                                       WHEN 'indicacao_renovacao' THEN 'renovacao' ELSE 'devolvido' END,
+                  'quantidade', cl.quantidade
                 ) ORDER BY cl.criado_em, cl.id) AS datas
            FROM creditos_ledger cl
           WHERE cl.anunciante_id = $2 AND cl.origem_conta_id = a.id
-            AND cl.tipo IN ('indicacao_primeiro_pagamento', 'indicacao_renovacao')
+            AND cl.tipo IN ('indicacao_primeiro_pagamento', 'indicacao_renovacao', 'estorno_indicacao')
        ) l ON true
       WHERE a.indicado_por_cupom = $1
       ORDER BY a.created_at DESC, a.id DESC`,
