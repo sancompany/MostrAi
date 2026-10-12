@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { exigirAparelho } = require('../lib/aparelho');
-const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas');
+const { limiteTentativas, descontarAcerto } = require('../lib/limite-tentativas');
 const execucoesRepo = require('../playlist/execucoes-repository');
 const dispositivosRepo = require('../dispositivos/repository');
 const sinal = require('./sinal');
@@ -58,7 +58,7 @@ router.post('/player/provisionar', limiteTentativas, corpoObjeto, async (req, re
   // Tela inexistente, código errado, expirado, cancelado ou usado: 401 igual
   // para todos (quem tenta adivinhar não aprende qual foi).
   if (!r) return res.status(401).json(INSTALACAO_INVALIDA);
-  await zerarTentativas(req);
+  await descontarAcerto(req, res);
   if (r.novo) {
     // Instalação é contato: o status do ponto passa a considerar a tela.
     await sincronizarStatusPonto(r.pontoId);

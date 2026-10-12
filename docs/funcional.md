@@ -2145,9 +2145,20 @@ na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.
 *Violada:* conta excluída não loga. *Quem vê:* quem excluiu.
 
 **RN-16 — Limite de 10 tentativas por 15 minutos, por IP e rota.** Vale para
-login, admin e redefinição. A contagem fica no banco (reinício não zera). A
-rota é a declarada, não a grafia pedida.
-*Violada:* "muitas tentativas, tente mais tarde". *Quem vê:* quem tentou.
+login, admin e redefinição. A contagem fica no banco (reinício não zera). Um
+acerto desconta só a própria tentativa: os erros continuam contando, para
+qualquer conta naquele IP. Rota é a declarada, não a grafia pedida.
+Nos dois logins vale também **10 erros por 15 minutos por conta**, venham de
+onde vierem (e-mail no anunciante, usuário no admin), e no esqueci-senha **10
+pedidos por e-mail**. O balde do IP vem primeiro: o pedido que ele barrou não
+conta contra a conta. O login certo zera o balde dessa conta e marca o
+navegador (cookie de aparelho conhecido, 90 dias): dali, os erros contam num
+balde do aparelho, não no da conta. Enquanto alguém mantiver 10 erros por
+janela contra uma conta — um IP basta —, o login dela de aparelho novo dá
+"muitas tentativas", até com a senha certa; do aparelho onde ela já entrou,
+entra; redefinir a senha zera o balde e marca o aparelho.
+*Violada:* "muitas tentativas — espere N minuto(s)"; no login, se o balde é o
+da conta, a tela sugere redefinir a senha. *Quem vê:* quem tentou.
 
 **RN-22 — A peça é feita fora do site e sobe direto na conta do cliente.** Não
 existe editor de anúncio no sistema. Quem não tem arte pede pelo WhatsApp, a
@@ -2345,7 +2356,8 @@ nominal do dono, em migration própria. Migration aplicada nunca é editada.
 | Troca de plano | Para trocar de plano, fale com a gente — evitamos cobrança duplicada. |
 | Player sem chave | Tela não autorizada — fale com o Mostraí. |
 | Playlist vazia | *(tela institucional do Mostraí, sem texto de erro)* |
-| Muitas tentativas | Muitas tentativas. Tente de novo em alguns minutos. |
+| Muitas tentativas | Muitas tentativas — espere N minuto(s) e tente de novo. No login, quando o balde é o da conta, acrescenta: Se a conta é sua, redefinir a senha em "Esqueci minha senha" libera a entrada. |
+| Muitos pedidos de link (esqueci a senha) | Já pedimos vários links para este e-mail nos últimos minutos. Se existir uma conta com ele, use o link mais recente (vale 1 hora) e confira também o spam. |
 | Erro genérico | Não conseguimos completar agora. Tente de novo em instantes. |
 | E-mail de pagamento | Assunto: **Pagamento confirmado — Mostraí**. Corpo: o plano, o ciclo e o valor cobrado, com o **comprovante de pagamento em PDF anexado** (25/09/2026). O comprovante nasce só da cobrança confirmada (`cobrancas_confirmadas`; número `MST-` + id, um por ciclo), traz data e hora da confirmação, valor, plano e ciclo, pagador (CPF mascarado; CNPJ inteiro) e recebedor, e termina com: "Este documento comprova o pagamento da contratação indicada e não substitui documento fiscal quando sua emissão for aplicável." Não é nota fiscal e nunca se apresenta como tal. Sem cobrança confirmada, o e-mail sai sem anexo. `email_confirmacao_enviado_em` registra que o e-mail do ciclo saiu. |
 | E-mail de anúncio aprovado | Assunto: **Seu anúncio foi aprovado — Mostraí**. Corpo: o anúncio foi aprovado e está liberado para entrar na programação; o painel mostra quando a primeira exibição for confirmada (aprovado ≠ no ar — "No ar" só com proof-of-play). Sem horário prometido. |

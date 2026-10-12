@@ -26,7 +26,7 @@ const {
   numeroConfirmado,
 } = require('../lib/endereco');
 const { sincronizarContaSemFalhar } = require('../pendencias/endereco');
-const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas');
+const { limiteTentativas, limiteTentativasPorAlvo, descontarAcerto } = require('../lib/limite-tentativas');
 const convitesRepo = require('../convites/repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
@@ -306,7 +306,13 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   });
 });
 
-router.post('/anunciantes/login', limiteTentativas, async (req, res) => {
+// Dois baldes (src/lib/limite-tentativas.js): o do IP e o da CONTA tentada —
+// o e-mail normalizado como `buscarPorEmailComSenha` compara. Sem o da conta,
+// quem tem muitos endereços (um /48 IPv6) chutava a senha da mesma vítima 10
+// vezes por endereço.
+const alvoDoLogin = (req) => repo.normalizarEmail(req.body?.email);
+
+router.post('/anunciantes/login', limiteTentativasPorAlvo(alvoDoLogin), async (req, res) => {
   const { email, senha } = req.body;
   const anunciante = await repo.buscarPorEmailComSenha(email);
   if (!anunciante || !(await repo.validarSenha(anunciante, senha))) {
@@ -323,7 +329,8 @@ router.post('/anunciantes/login', limiteTentativas, async (req, res) => {
   if (anunciante.suspenso) {
     return res.status(403).json({ erro: 'esta conta está suspensa — fale com a gente pra reativar o acesso' });
   }
-  zerarTentativas(req);
+  // Antes da sessão: o cookie de aparelho conhecido sai nesta resposta.
+  await descontarAcerto(req, res);
   // Sessão nova a cada login (fixação de sessão) — ver server.js.
   req.session.regenerate((err) => {
     if (err) return res.status(500).json({ erro: 'erro interno' });
@@ -528,7 +535,7 @@ router.post('/anunciantes/me/confirmar-email', exigirAnuncianteLogado, limiteTen
   if (repo.normalizarEmail(r.email) !== repo.normalizarEmail(conta.contato_email)) {
     return res.status(400).json({ erro: 'esse código era de outro endereço — peça um novo', motivo: 'expirado' });
   }
-  zerarTentativas(req);
+  descontarAcerto(req, res);
   await repo.atualizar(conta.id, { email_confirmado: true });
   // Boas-vindas só DEPOIS da confirmação, uma vez na vida da conta, e só pra
   // quem anuncia — o texto fala em escolher plano e colocar anúncio, o que
@@ -651,7 +658,7 @@ router.post('/anunciantes/me/confirmar-troca-email', exigirAnuncianteLogado, lim
   if (!conta) return res.status(401).json({ erro: 'não autenticado' });
   const r = await codigosEmail.conferir(conta.id, 'troca', req.body.codigo);
   if (!r.ok) return res.status(400).json({ erro: codigosEmail.MENSAGEM_DO_ERRO[r.motivo], motivo: r.motivo });
-  zerarTentativas(req);
+  descontarAcerto(req, res);
 
   const cliente = await pool.connect();
   let atualizada;
