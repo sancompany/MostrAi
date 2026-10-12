@@ -15,8 +15,8 @@ morto nem conexão perdida.
 
 **Correção.** A reserva vai DENTRO da transação do efeito, com o mesmo
 client (`aplicarCicloPago`, a lista `reservas`): `INSERT … ON CONFLICT DO
-NOTHING` depois do `FOR UPDATE`; conflito = já aplicado → `ROLLBACK` e
-volta `{ jaAplicada }`; falha = a reserva cai junto
+NOTHING` depois do `FOR UPDATE`; conflito = já aplicado → as reservas são
+desfeitas (savepoint) e volta `{ jaAplicada }`; falha = a reserva cai junto
 com o efeito. Decisão que não credita (conta excluída, intenção cancelada)
 devolve outro marcador, `{ pendenciaJaRegistrada }` — com o mesmo, uma
 `cobranca_confirmada` reentregue abria por cima a pendência "descartado pela

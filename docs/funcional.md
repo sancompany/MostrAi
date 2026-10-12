@@ -1012,8 +1012,22 @@ sem banco. O vínculo é avaliado ANTES do ciclo: assinatura encerrada não tem
 ciclo a creditar, por mais confirmada que esteja a última cobrança. Status
 desconhecido (o Checkout promete adicionar valores novos) conta como vínculo
 não-ativo e vira evento, mas **não** cancela o registro por conta própria.
-Resposta ausente (404) é "não sei", nunca "cancelada". *Violada:* não há
-caminho de usuário. *Quem vê:* o admin, na aba de Eventos.
+Resposta ausente (404) é "não sei", nunca "cancelada". O mesmo vale ao
+cancelar (AUD-006, 11/10/2026): consulta, cancelamento, troca e link de
+renovação vão com o documento com que o PAGADOR assinou
+(`assinaturas.documento_pagador`, gravado do `criada`; diferente do
+cadastro, vira pendência), e 404 ao cancelar uma assinatura com ciclo pago
+só fecha o registro se a consulta a acha encerrada — senão é erro pro
+cliente e pendência "assinatura não encontrada no Checkout" pro admin. Na
+desistência (art. 49) e na exclusão da conta não é erro: o pedido do
+titular é registrado na hora e só a pendência fica (12/10/2026). Pagador que
+digita OUTRO CPF/CNPJ na pop-up de renovação ganha uma 2ª recorrência do
+mesmo plano no Checkout, sem a 1ª ser cancelada: o ciclo novo com outro
+documento passa a ser o documento vigente (é o que cobra) e abre a pendência
+"pagamento com OUTRO CPF/CNPJ" — cancelar a antiga pelo Checkout; o
+`cancelada` de um documento que não é o vigente não fecha a assinatura daqui
+(12/10/2026). *Violada:* não há caminho de usuário. *Quem vê:* o admin, na
+aba de Eventos.
 
 **RN-51 — O link de renovação vai assinado, ou não vai.** *(Mudança
 incompatível do San Checkout, API.md 7.3, 16/09/2026.)* `&renovar=1` deixou de

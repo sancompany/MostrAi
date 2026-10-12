@@ -354,15 +354,19 @@ router.post('/anunciantes/me/excluir', exigirAnuncianteLogado, async (req, res) 
   // e a comissão do vendedor continuava sendo paga por ela. Cancela lá
   // primeiro — se falhar, nada muda aqui e a pessoa tenta de novo, que é a
   // mesma ordem do pedido de arrependimento (src/titular/routes.js).
+  // Exceção: 404 com ciclo pago (AUD-006) não segura a exclusão — a pendência
+  // "assinatura não encontrada no Checkout" já manda cancelar na Asaas à mão,
+  // e o pedido do titular (LGPD) não espera a equipe resolver o cadastro.
   const assinatura = conta ? await assinaturasRepo.buscarAtivaDoAnunciante(conta.id) : null;
   if (assinatura) {
     try {
-      await sanCheckout.cancelarAssinatura(assinatura.id, conta.cpf_cnpj);
-      await assinaturasRepo.marcarCancelada(assinatura.id);
-    } catch {
-      return res.status(502).json({
-        erro: 'não conseguimos cancelar a sua cobrança agora — tente de novo em alguns minutos',
-      });
+      await sanCheckout.cancelarAssinaturaAtiva(assinatura, conta);
+    } catch (err) {
+      if (!err.naoEncontrada) {
+        return res.status(502).json({
+          erro: 'não conseguimos cancelar a sua cobrança agora — tente de novo em alguns minutos',
+        });
+      }
     }
   }
   // Link gerado e não pago também morre: senão continuava pagável depois da

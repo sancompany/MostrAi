@@ -17,16 +17,18 @@ const sc = require('../src/financeiro/san-checkout');
 const assinaturasRepo = require('../src/financeiro/assinaturas-repository');
 const cicloContratado = require('../src/financeiro/ciclo-contratado');
 const { conciliarAssinaturas } = require('../src/financeiro/conciliacao');
+const eventos = require('../src/lib/eventos');
 
 // Rotas do financeiro montadas direto (a proteção do /admin é do server.js,
-// não do router) — só pra bater no botão "Aplicar este ciclo".
-async function subirAdmin() {
+// não do router) — pra bater no botão "Aplicar este ciclo" e, com
+// `{ anuncianteId }`, nas rotas da própria conta.
+async function subirAdmin(sessao = { adminUsuario: 'teste' }) {
   const express = require('express');
   require('express-async-errors');
   const app = express();
   app.use(express.json());
   app.use((req, _res, proximo) => {
-    req.session = { adminUsuario: 'teste' };
+    req.session = { ...sessao };
     proximo();
   });
   app.use(require('../src/financeiro/routes').router);
@@ -46,13 +48,18 @@ const PLANO = 'essencial-1m';
 // `soPara`: planoId (id da assinatura) que a resposta vale — qualquer outro
 // recebe 404, porque a conciliação varre TODAS as assinaturas do banco (as de
 // outros arquivos de teste, em paralelo, inclusive).
+// Chamada que não é pro Checkout (o app de teste local) passa direto;
+// `corpos` guarda o que foi mandado ao Checkout, rota a rota.
 function comCheckoutRespondendo(respostas, soPara = null) {
   const original = globalThis.fetch;
   const chamadas = [];
+  const corpos = [];
   globalThis.fetch = async (url, opcoes) => {
+    if (!String(url).includes('/api/checkout/')) return original(url, opcoes);
     const rota = String(url).split('/api/checkout/')[1];
     chamadas.push(rota);
     const corpoPedido = opcoes?.body ? JSON.parse(opcoes.body) : {};
+    corpos.push({ rota, ...corpoPedido });
     if (soPara && corpoPedido.planoId && corpoPedido.planoId !== soPara) {
       return { ok: false, status: 404, json: async () => ({}) };
     }
@@ -62,7 +69,7 @@ function comCheckoutRespondendo(respostas, soPara = null) {
     const corpo = r && r.corpo !== undefined ? r.corpo : (r ?? {});
     return { ok: http >= 200 && http < 300, status: http, json: async () => corpo };
   };
-  return { chamadas, restaurar: () => (globalThis.fetch = original) };
+  return { chamadas, corpos, restaurar: () => (globalThis.fetch = original) };
 }
 
 async function conta() {
@@ -590,6 +597,444 @@ test('AUD-005: `cobranca_confirmada` de conta excluída entregue duas vezes gera
     assert.equal(pend.length, 1, JSON.stringify(pend.map((p) => p.motivo)));
     assert.match(pend[0].motivo, /conta já excluída/);
   } finally {
+    await limparR3([rodada]);
+    await apagar(c.id, rodada);
+  }
+});
+
+// AUD-006 (auditoria técnica, 11/10/2026): o Checkout acha a assinatura pelo
+// par planoId + documento, e o documento é o que o PAGADOR confirmou na tela
+// dele (pode diferir do cadastro). A Mostraí mandava o cpf_cnpj da conta:
+// 404, e o 404 virava "cancelada com sucesso" com a Asaas seguindo a cobrar.
+const pendenciasCompletas = async (assinaturaId) =>
+  (
+    await pool.query(
+      "SELECT id, motivo, payload FROM eventos_assinatura_pendentes WHERE payload->>'planoId' = $1 AND NOT resolvido",
+      [assinaturaId],
+    )
+  ).rows;
+const cobrancasDe = async (contaId) =>
+  (await pool.query('SELECT count(*)::int AS n FROM cobrancas_confirmadas WHERE anunciante_id = $1', [contaId])).rows[0]
+    .n;
+
+test('AUD-006: documento do pagador diferente do cadastro é gravado no `criada`, vira pendência e é o que o cancelamento manda', async () => {
+  const c = await conta(); // cpf_cnpj da conta: 11144477735
+  const rodada = randomUUID().slice(0, 8);
+  const documentoDoPagador = '52998224725';
+  let mock;
+  try {
+    const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO });
+    await primeiroCicloV2(assinatura, documentoDoPagador, rodada);
+    const depois = await assinaturasRepo.buscarPorId(assinatura.id);
+    assert.equal(depois.status, 'ativa', 'o ciclo pago entra normalmente');
+    assert.equal(depois.documento_pagador, documentoDoPagador, 'o documento do pagador fica na assinatura');
+    const { rows: pend } = await pool.query(
+      "SELECT motivo, payload FROM eventos_assinatura_pendentes WHERE payload->>'planoId' = $1 AND NOT resolvido",
+      [assinatura.id],
+    );
+    assert.equal(pend.length, 1, 'uma pendência pro admin conferir o cadastro');
+    assert.match(pend[0].motivo, /documento do pagador no Checkout diverge do CPF\/CNPJ cadastrado/);
+    assert.doesNotMatch(pend[0].motivo, /\d{11}/, 'o número não vai no texto');
+
+    mock = comCheckoutRespondendo({ 'cancelar-assinatura': { assinaturaId: 'sub_x', status: 'cancelada' } });
+    const app = await subirAdmin({ anuncianteId: c.id });
+    try {
+      const r = await app.chamar('POST', '/anunciantes/me/cancelar-assinatura');
+      assert.equal(r.status, 200);
+    } finally {
+      await app.fechar();
+    }
+    const pedido = mock.corpos.find((x) => x.rota === 'cancelar-assinatura');
+    assert.equal(pedido.documento, documentoDoPagador, 'cancela com o documento que a Asaas conhece');
+    assert.equal((await assinaturasRepo.buscarPorId(assinatura.id)).status, 'cancelada');
+  } finally {
+    mock?.restaurar();
+    await limparChaves(rodada);
+    await apagar(c.id, rodada);
+  }
+});
+
+test('AUD-006: 404 ao cancelar assinatura com ciclo pago não marca cancelada — pendência e erro claro; já encerrada no Checkout fecha', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  let mock;
+  try {
+    const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO });
+    await primeiroCicloV2(assinatura, c.cpf_cnpj, rodada);
+    assert.equal((await assinaturasRepo.buscarPorId(assinatura.id)).status, 'ativa');
+
+    // O Checkout não acha nada com esse par (nem ativa, nem encerrada).
+    mock = comCheckoutRespondendo({
+      'cancelar-assinatura': { status: 404, corpo: { erro: 'nenhuma' } },
+      'consultar-assinatura': { status: 404, corpo: {} },
+    });
+    const app = await subirAdmin({ anuncianteId: c.id });
+    try {
+      for (let tentativa = 1; tentativa <= 2; tentativa++) {
+        const r = await app.chamar('POST', '/anunciantes/me/cancelar-assinatura');
+        assert.equal(r.status, 502, `tentativa ${tentativa}: não é sucesso`);
+        assert.match(r.corpo.erro, /não encontramos sua assinatura no Checkout/);
+      }
+      mock.restaurar();
+      assert.equal((await assinaturasRepo.buscarPorId(assinatura.id)).status, 'ativa', 'continua ativa aqui');
+      const { rows: pend } = await pool.query(
+        "SELECT motivo FROM eventos_assinatura_pendentes WHERE payload->>'planoId' = $1 AND NOT resolvido AND payload->>'evento' = 'cancelamento_nao_encontrado'",
+        [assinatura.id],
+      );
+      assert.equal(pend.length, 1, 'uma pendência, mesmo com duas tentativas');
+      assert.match(pend[0].motivo, /assinatura não encontrada no Checkout/);
+      const { rows: emails } = await pool.query(
+        "SELECT 1 FROM email_outbox WHERE anunciante_id = $1 AND tipo = 'assinatura_cancelada'",
+        [c.id],
+      );
+      assert.equal(emails.length, 0, 'nenhum e-mail de "assinatura cancelada"');
+      const admin = await subirAdmin();
+      try {
+        const lista = await admin.chamar('GET', '/admin/eventos-pendentes');
+        const item = lista.corpo.find(
+          (e) => e.payload?.evento === 'cancelamento_nao_encontrado' && e.payload.planoId === assinatura.id,
+        );
+        assert.equal(item?.aplicavel, false, 'não oferece "Aplicar este ciclo"');
+      } finally {
+        await admin.fechar();
+      }
+
+      // Já encerrada do lado de lá (cancelada na Asaas, ou resposta perdida):
+      // o 404 é "nada a cancelar" de verdade, e a consulta prova.
+      mock = comCheckoutRespondendo({
+        'cancelar-assinatura': { status: 404, corpo: { erro: 'nenhuma' } },
+        'consultar-assinatura': { status: 'cancelada', ultimaCobranca: null },
+      });
+      const r = await app.chamar('POST', '/anunciantes/me/cancelar-assinatura');
+      assert.equal(r.status, 200);
+      assert.equal((await assinaturasRepo.buscarPorId(assinatura.id)).status, 'cancelada');
+    } finally {
+      await app.fechar();
+    }
+  } finally {
+    mock?.restaurar();
+    await limparChaves(rodada);
+    await apagar(c.id, rodada);
+  }
+});
+
+// Revisão da 2ª rodada: a pendência de documento divergente nascia com o
+// payload do `criada` — `aplicavel: true` e o botão "Aplicar este ciclo". Num
+// `criada` que entrou sem chargeId (v1, chave `criada|<id>`), a consulta 5.3
+// depois devolve o id, a chave `chargeId|confirmado` não existe, e o clique
+// creditava um SEGUNDO ciclo pelo mesmo pagamento.
+test('AUD-006: pendência de documento divergente não é "aplicável" — o botão recusa sem creditar', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  let mock;
+  try {
+    const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO });
+    await primeiroCicloV2(assinatura, '52998224725', rodada);
+    const contarCobrancas = async () =>
+      (await pool.query('SELECT count(*)::int AS n FROM cobrancas_confirmadas WHERE anunciante_id = $1', [c.id]))
+        .rows[0].n;
+    assert.equal(await contarCobrancas(), 1);
+
+    // O Checkout passa a mostrar a cobrança com um chargeId que esta base não
+    // registrou (o caso do `criada` que entrou antes de a Asaas revelar o id).
+    mock = comCheckoutRespondendo(
+      {
+        'consultar-assinatura': {
+          status: 'ativa',
+          ultimaCobranca: { chargeId: `pay_revelado_${rodada}`, status: 'confirmado', valorCobrado: 99.9 },
+        },
+      },
+      assinatura.id,
+    );
+    const admin = await subirAdmin();
+    try {
+      const lista = await admin.chamar('GET', '/admin/eventos-pendentes');
+      const item = lista.corpo.find(
+        (e) => e.payload?.planoId === assinatura.id && /documento do pagador/.test(e.motivo),
+      );
+      assert.ok(item, 'a pendência de documento divergente está na fila');
+      assert.equal(item.payload.evento, 'documento_pagador_divergente');
+      assert.equal(item.aplicavel, false, 'sem "Aplicar este ciclo"');
+      const r = await admin.chamar('POST', `/admin/eventos-pendentes/${item.id}/aplicar`);
+      assert.equal(r.status, 409, JSON.stringify(r.corpo));
+    } finally {
+      await admin.fechar();
+    }
+    assert.equal(await contarCobrancas(), 1, 'nenhum ciclo a mais');
+  } finally {
+    mock?.restaurar();
+    await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [`pay_revelado_${rodada}|confirmado`]);
+    await limparChaves(rodada);
+    await apagar(c.id, rodada);
+  }
+});
+
+// Revisão da 2ª rodada: o documento do pagador valia numa porta só. A
+// conciliação apelidava o documento de `cpf_cnpj` e mandava pro aviso de
+// renovação a linha sem `documento_pagador` (token assinado com o da conta),
+// e o GET /plano — que a pop-up de renovação lê — pré-preenchia o da conta:
+// token e pop-up com documentos diferentes = o Checkout cria outra
+// assinatura sem cancelar a antiga.
+test('AUD-006: link de renovação da conciliação e GET /plano usam o documento do pagador', async () => {
+  const c = await conta(); // cpf_cnpj da conta: 11144477735
+  const rodada = randomUUID().slice(0, 8);
+  const documentoDoPagador = '52998224725';
+  const crypto = require('node:crypto');
+  const outbox = require('../src/email/outbox');
+  const enfileirarReal = outbox.enfileirar;
+  const enfileirados = [];
+  let mock;
+  try {
+    const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO });
+    await primeiroCicloV2(assinatura, documentoDoPagador, rodada);
+    assert.equal((await assinaturasRepo.buscarPorId(assinatura.id)).documento_pagador, documentoDoPagador);
+
+    // GET /plano: o que a pop-up de renovação pré-preenche.
+    assert.equal((await sc.montarRespostaPlano(assinatura.id)).pagador.documento, documentoDoPagador);
+
+    // Conciliação: a renovação foi recusada e o webhook `cobranca_falhou` se perdeu.
+    outbox.enfileirar = async (msg) => {
+      enfileirados.push(msg);
+      return { novo: true };
+    };
+    mock = comCheckoutRespondendo(
+      {
+        'consultar-assinatura': {
+          status: 'ativa',
+          ultimaCobranca: { chargeId: `pay_recusado_${rodada}`, status: 'recusado' },
+        },
+      },
+      assinatura.id,
+    );
+    await conciliarAssinaturas({ apenasContas: [c.id] });
+    const consulta = mock.corpos.find((x) => x.rota === 'consultar-assinatura' && x.planoId === assinatura.id);
+    assert.equal(consulta?.documento, documentoDoPagador, 'a conciliação consulta com o documento do pagador');
+    const aviso = enfileirados.find((m) => m.tipo === 'cobranca_falhou');
+    assert.ok(aviso?.segredo?.link, 'o aviso de renovação sai com link');
+    const [ts, assinado] = aviso.segredo.link.match(/[?&]renovar=([^&]+)/)[1].split('.');
+    const hmac = (documento) =>
+      crypto
+        .createHmac('sha256', process.env.SAN_CHECKOUT_KEY)
+        .update(`${ts}.${process.env.SAN_CHECKOUT_CONTRATANTE_ID}.${assinatura.id}.${documento}`)
+        .digest('hex');
+    assert.equal(assinado, hmac(documentoDoPagador), 'o token do link é o do documento do pagador');
+    assert.notEqual(assinado, hmac(c.cpf_cnpj));
+  } finally {
+    outbox.enfileirar = enfileirarReal;
+    mock?.restaurar();
+    await limparChaves(rodada);
+    await apagar(c.id, rodada);
+  }
+});
+
+// AUD-006, 3ª rodada: o pagador que digita OUTRO CPF/CNPJ na pop-up de
+// renovação ganha uma 2ª recorrência do mesmo plano no Checkout (o token não
+// confere e vira assinatura nova, API.md 7.3) — a 1ª segue viva. O documento
+// era gravado uma vez só: o webhook creditava a 2ª calado, e o cancelamento
+// matava a 1ª enquanto a 2ª seguia cobrando.
+test('AUD-006: pagamento com outro documento na mesma assinatura — pendência "documento_pagador_mudou", vale o mais recente, o cancelamento usa ele e o `cancelada` da recorrência antiga não fecha a daqui', async () => {
+  const c = await conta(); // cpf_cnpj da conta: 11144477735
+  const rodada = randomUUID().slice(0, 8);
+  const ids = [`${rodada}a`, `${rodada}b`, `${rodada}c`];
+  const outro = '52998224725';
+  let mock;
+  try {
+    const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO });
+    await eventoV2(assinatura, { id: ids[0], documento: c.cpf_cnpj }); // 1ª recorrência
+    assert.equal((await assinaturasRepo.buscarPorId(assinatura.id)).documento_pagador, c.cpf_cnpj);
+
+    await eventoV2(assinatura, { id: ids[1], documento: outro }); // 2ª recorrência, outro CPF/CNPJ
+    await eventoV2(assinatura, { id: ids[1], documento: outro }); // reentrega da mesma notificação
+    assert.equal(
+      (await assinaturasRepo.buscarPorId(assinatura.id)).documento_pagador,
+      outro,
+      'vale o documento da recorrência que acabou de cobrar',
+    );
+    assert.equal(await cobrancasDe(c.id), 2, 'o dinheiro das duas entrou');
+    const mudou = (await pendenciasCompletas(assinatura.id)).filter(
+      (p) => p.payload.evento === 'documento_pagador_mudou',
+    );
+    assert.equal(mudou.length, 1, 'uma pendência, mesmo com a reentrega');
+    assert.equal(mudou[0].payload.documentoAnterior, c.cpf_cnpj, 'o Admin sabe qual recorrência procurar');
+    assert.match(mudou[0].motivo, /DUAS recorrências/);
+    assert.doesNotMatch(mudou[0].motivo, /\d{11}/, 'o número não vai no texto');
+    const admin = await subirAdmin();
+    try {
+      const lista = await admin.chamar('GET', '/admin/eventos-pendentes');
+      assert.equal(lista.corpo.find((e) => e.id === mudou[0].id)?.aplicavel, false, 'sem "Aplicar este ciclo"');
+    } finally {
+      await admin.fechar();
+    }
+
+    // O Admin cancela a recorrência antiga no Checkout: o `cancelada` dela
+    // (documento anterior) não fecha a assinatura daqui — a nova segue ativa.
+    await eventoV2(assinatura, { id: ids[2], evento: 'cancelada', documento: c.cpf_cnpj });
+    assert.equal((await assinaturasRepo.buscarPorId(assinatura.id)).status, 'ativa');
+
+    // O cliente cancela: vai pro documento vigente, o da recorrência que cobra.
+    mock = comCheckoutRespondendo({ 'cancelar-assinatura': { assinaturaId: 'sub_r3', status: 'cancelada' } });
+    const app = await subirAdmin({ anuncianteId: c.id });
+    try {
+      assert.equal((await app.chamar('POST', '/anunciantes/me/cancelar-assinatura')).status, 200);
+    } finally {
+      await app.fechar();
+    }
+    assert.equal(mock.corpos.find((x) => x.rota === 'cancelar-assinatura')?.documento, outro);
+    assert.equal((await assinaturasRepo.buscarPorId(assinatura.id)).status, 'cancelada');
+  } finally {
+    mock?.restaurar();
+    await eventos.aguardarGravacoes();
+    await limparR3(ids);
+    await apagar(c.id, rodada);
+  }
+});
+
+// Guarda do RUNBOOK §6 (assinatura legada, sem documento gravado): cancelada
+// pelo Checkout com o documento do pagador, o `cancelada` dela fecha o
+// registro daqui — sem trocar o CPF/CNPJ da conta.
+test('AUD-006: assinatura sem documento do pagador (legada) — o `cancelada` com o documento do pagador fecha o registro', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  try {
+    const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO, status: 'ativa' });
+    assert.equal(assinatura.documento_pagador, null);
+    await eventoV2(assinatura, { id: rodada, evento: 'cancelada', documento: '52998224725' });
+    assert.equal((await assinaturasRepo.buscarPorId(assinatura.id)).status, 'cancelada');
+  } finally {
+    await limparR3([rodada]);
+    await apagar(c.id, rodada);
+  }
+});
+
+test('AUD-006: documento que chega num ciclo já creditado por outro caminho (conciliação/admin) é gravado, com o aviso de cadastro divergente', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  try {
+    const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO });
+    // A conciliação credita a cobrança antes do webhook — ela não traz documento.
+    await sc.aplicarCicloPago(assinatura, [`pay_r3_${rodada}|confirmado`], null, { chargeId: `pay_r3_${rodada}` });
+    assert.equal((await assinaturasRepo.buscarPorId(assinatura.id)).documento_pagador, null);
+    // O `criada` atrasado cai na dedupe da cobrança, mas o documento dele fica.
+    await eventoV2(assinatura, { id: rodada, documento: '52998224725' });
+    assert.equal((await assinaturasRepo.buscarPorId(assinatura.id)).documento_pagador, '52998224725');
+    const divergente = (await pendenciasCompletas(assinatura.id)).filter(
+      (p) => p.payload.evento === 'documento_pagador_divergente',
+    );
+    assert.equal(divergente.length, 1, 'o aviso de cadastro divergente sai');
+    assert.equal(await cobrancasDe(c.id), 1, 'nenhum ciclo a mais');
+  } finally {
+    await eventos.aguardarGravacoes();
+    await limparR3([rodada]);
+    await apagar(c.id, rodada);
+  }
+});
+
+// O processo morre logo depois do COMMIT do ciclo: o que ainda ia rodar em
+// autocommit (pendência gravada pelo `pool`) nunca acontece. O client da
+// transação do ciclo marca o COMMIT; depois dele, INSERT de pendência pelo
+// pool falha como num processo morto.
+function morrerLogoDepoisDoCommitDoCiclo() {
+  const connectOriginal = pool.connect;
+  const queryOriginal = pool.query;
+  const morte = { morreu: false };
+  pool.connect = function (...args) {
+    if (args.length) return connectOriginal.apply(this, args);
+    return connectOriginal.call(this).then((cliente) => {
+      const q = cliente.query.bind(cliente);
+      let dentroDoCiclo = false;
+      cliente.query = (sql, ...resto) => {
+        if (typeof sql === 'string' && sql.includes('FROM anunciantes WHERE id = $1 FOR UPDATE')) dentroDoCiclo = true;
+        const r = q(sql, ...resto);
+        if (!dentroDoCiclo || sql !== 'COMMIT') return r;
+        return r.then((x) => {
+          morte.morreu = true;
+          return x;
+        });
+      };
+      return cliente;
+    });
+  };
+  pool.query = function (sql, ...resto) {
+    if (morte.morreu && typeof sql === 'string' && sql.includes('INSERT INTO eventos_assinatura_pendentes')) {
+      return Promise.reject(new Error('processo morto depois do COMMIT (simulado)'));
+    }
+    return queryOriginal.call(this, sql, ...resto);
+  };
+  morte.restaurar = () => {
+    pool.connect = connectOriginal;
+    pool.query = queryOriginal;
+  };
+  return morte;
+}
+
+test('AUD-006: o aviso de documento divergente entra no COMMIT do ciclo — processo morto logo depois não o perde', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  try {
+    const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO });
+    const morte = morrerLogoDepoisDoCommitDoCiclo();
+    try {
+      await eventoV2(assinatura, { id: rodada, documento: '52998224725' });
+    } finally {
+      morte.restaurar();
+    }
+    assert.equal(morte.morreu, true, 'o ciclo foi gravado');
+    // A retomada da inbox entrega de novo: cai na dedupe (o ciclo já entrou).
+    await eventoV2(assinatura, { id: rodada, documento: '52998224725' });
+    const divergente = (await pendenciasCompletas(assinatura.id)).filter(
+      (p) => p.payload.evento === 'documento_pagador_divergente',
+    );
+    assert.equal(divergente.length, 1, 'o aviso entrou junto com o ciclo');
+    assert.equal(await cobrancasDe(c.id), 1);
+  } finally {
+    await limparR3([rodada]);
+    await apagar(c.id, rodada);
+  }
+});
+
+// Guarda da troca do documento vigente (3ª rodada): o botão "Aplicar este
+// ciclo" credita a cobrança que a CONSULTA achou, com o documento vigente — o
+// payload guardado na pendência pode ser de uma recorrência anterior e não
+// pode trocar o documento.
+test('AUD-006: "Aplicar este ciclo" usa o documento da consulta, não o do payload antigo da pendência', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  let mock;
+  try {
+    const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO });
+    await eventoV2(assinatura, { id: rodada, documento: c.cpf_cnpj });
+    const {
+      rows: [pendencia],
+    } = await pool.query(
+      `INSERT INTO eventos_assinatura_pendentes (payload, motivo) VALUES ($1, 'falha ao aplicar o ciclo pago: teste') RETURNING id`,
+      [JSON.stringify({ tipo: 'assinatura', evento: 'criada', planoId: assinatura.id, documento: '52998224725' })],
+    );
+    mock = comCheckoutRespondendo(
+      {
+        'consultar-assinatura': {
+          status: 'ativa',
+          ultimaCobranca: { chargeId: `pay_r3_${rodada}x`, status: 'confirmado', valorCobrado: 99.9 },
+        },
+      },
+      assinatura.id,
+    );
+    const admin = await subirAdmin();
+    try {
+      const r = await admin.chamar('POST', `/admin/eventos-pendentes/${pendencia.id}/aplicar`);
+      assert.equal(r.status, 200, JSON.stringify(r.corpo));
+    } finally {
+      await admin.fechar();
+    }
+    assert.equal(mock.corpos.find((x) => x.rota === 'consultar-assinatura')?.documento, c.cpf_cnpj);
+    assert.equal((await assinaturasRepo.buscarPorId(assinatura.id)).documento_pagador, c.cpf_cnpj);
+    const mudou = (await pendenciasCompletas(assinatura.id)).filter(
+      (p) => p.payload.evento === 'documento_pagador_mudou',
+    );
+    assert.equal(mudou.length, 0);
+    assert.equal(await cobrancasDe(c.id), 2);
+  } finally {
+    mock?.restaurar();
+    await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [`pay_r3_${rodada}x|confirmado`]);
     await limparR3([rodada]);
     await apagar(c.id, rodada);
   }

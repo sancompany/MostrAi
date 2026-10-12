@@ -124,22 +124,28 @@ router.post('/titular/arrependimento', exigirAnuncianteLogado, async (req, res) 
   }
 
   const { rows: assinaturas } = await pool.query(
-    "SELECT id FROM assinaturas WHERE anunciante_id = $1 AND status = 'ativa' ORDER BY created_at DESC LIMIT 1",
+    "SELECT * FROM assinaturas WHERE anunciante_id = $1 AND status = 'ativa' ORDER BY created_at DESC LIMIT 1",
     [id],
   );
   const assinatura = assinaturas[0] || null;
 
   // Cancela primeiro no Checkout: se falhar, nada aqui muda e a pessoa tenta
   // de novo. O contrário — marcar aqui e falhar lá — deixaria a cobrança
-  // recorrente viva com a conta já desligada.
+  // recorrente viva com a conta já desligada. Exceção: 404 com ciclo pago
+  // (AUD-006 — o Checkout não acha a assinatura com o documento que temos).
+  // Aí a pendência "assinatura não encontrada no Checkout" já foi aberta e
+  // manda cancelar na Asaas à mão; a desistência é direito exercido AGORA,
+  // dentro do prazo, e não espera a equipe resolver o cadastro — registra e
+  // segue (a assinatura continua `ativa` aqui até o Admin fechar).
   if (assinatura) {
     try {
-      await checkout.cancelarAssinatura(assinatura.id, anunciante.cpf_cnpj);
-      await pool.query("UPDATE assinaturas SET status = 'cancelada' WHERE id = $1", [assinatura.id]);
-    } catch {
-      return res.status(502).json({
-        erro: 'não conseguimos cancelar a cobrança agora — tente de novo em alguns minutos',
-      });
+      await checkout.cancelarAssinaturaAtiva(assinatura, anunciante);
+    } catch (err) {
+      if (!err.naoEncontrada) {
+        return res.status(502).json({
+          erro: 'não conseguimos cancelar a cobrança agora — tente de novo em alguns minutos',
+        });
+      }
     }
   }
 

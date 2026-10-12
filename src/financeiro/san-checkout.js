@@ -158,6 +158,17 @@ function linkRenovarAssinatura(assinaturaId, cpfCnpj) {
   return token ? `${linkCheckoutAssinatura(assinaturaId)}&renovar=${token}` : null;
 }
 
+// O documento que identifica ESTA assinatura no Checkout (API.md 4.3.4: o par
+// `planoId` + `documento` é a chave). É o que o pagador confirmou na tela do
+// Checkout, gravado do webhook `criada` (migration 122) — não o cadastro da
+// conta, que ele pode ter editado lá ou o admin corrigido depois. Mandar o da
+// conta dava 404 em cancelar/consultar/trocar e a Asaas seguia cobrando
+// (AUD-006, 11/10/2026). Assinatura antiga sem o campo: o cpf_cnpj da conta,
+// como sempre.
+function documentoDaAssinatura(assinatura, anunciante) {
+  return assinatura?.documento_pagador || anunciante?.cpf_cnpj;
+}
+
 // Toda rota de servidor do checkout vive sob /api/checkout (API.md seção 12).
 // O endereço nunca é montado à mão fora daqui — é a nota da seção 2.1, e foi
 // uma troca de endereço não propagada que quebrou a integração antes.
@@ -233,7 +244,11 @@ async function montarRespostaPlano(assinaturaId) {
     pagador: {
       nome: anunciante.nome_empresa,
       email: anunciante.contato_email,
-      documento: anunciante.cpf_cnpj,
+      // O do PAGADOR quando a assinatura já o tem (AUD-006): é o que a
+      // pop-up de renovação pré-preenche, e o token do link (`renovar=`) é
+      // conferido contra o que ela manda — com o da conta, o token não
+      // batia e o Checkout criava outra assinatura sem cancelar a antiga.
+      documento: documentoDaAssinatura(assinatura, anunciante),
       telefone: telefoneNacional(anunciante.contato_telefone),
     },
   };
@@ -511,7 +526,7 @@ async function avisarCobrancaFalhou(assinatura, anunciante, chargeId) {
   // `null` quando não dá pra assinar o token: o e-mail sai sem link, pedindo
   // contato. Link sem token válido cria uma SEGUNDA assinatura na Asaas sem
   // cancelar a primeira (API.md 7.3) — cobrança dobrada, calada.
-  const link = linkRenovarAssinatura(assinatura.id, anunciante.cpf_cnpj);
+  const link = linkRenovarAssinatura(assinatura.id, documentoDaAssinatura(assinatura, anunciante));
   const r = await outbox.enfileirar({
     tipo: 'cobranca_falhou',
     chave: chargeId
@@ -600,6 +615,25 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
   }
 
   if (payload.evento === 'cancelada') {
+    // O par planoId + documento é a chave do Checkout (API.md 4.3.4):
+    // `cancelada` com OUTRO documento que o do pagador vigente é de outra
+    // recorrência deste plano — a antiga, que o Admin cancelou depois do
+    // aviso 'documento_pagador_mudou', ou a pop-up de renovação aberta com
+    // outro CPF/CNPJ e fechada sem pagar (o token não confere, é assinatura
+    // NOVA pro Checkout, e a desistência dela manda `cancelada`, API.md
+    // 4.3.5). Fechar a daqui escondia a recorrência que segue cobrando
+    // (AUD-006, 3ª rodada). Sem documento gravado (assinatura de antes da
+    // migration 122) não há com o que comparar: fecha, como sempre — é o que
+    // o RUNBOOK §6 usa pra encerrar a legada cancelada no Checkout.
+    const documento = soDigitos(payload.documento);
+    if (documento && assinatura.documento_pagador && documento !== assinatura.documento_pagador) {
+      eventos.registrar(
+        'assinatura:cancelada_de_outro_documento',
+        { plano_id: assinatura.plano_id, assinatura_id: assinatura.id },
+        await anunciantesRepo.buscarPorId(assinatura.anunciante_id),
+      );
+      return;
+    }
     await assinaturasRepo.marcarCancelada(assinatura.id);
     sse.emitirParaConta(assinatura.anunciante_id, 'plan.updated', {});
     return; // cobertura já paga continua valendo até data_expiracao — não derruba na hora
@@ -912,6 +946,45 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
   return null;
 }
 
+// O documento com que o pagador pagou no Checkout (migration 122, AUD-006): é
+// por ele que cancelar/consultar/trocar/renovar acham a assinatura lá (API.md
+// 4.3.4: o par planoId + documento é a chave). Só dígitos, como o Checkout
+// manda. Roda dentro da transação do ciclo, com o client dela — documento e
+// aviso entram juntos, ou nenhum (antes o aviso ia depois do COMMIT, e um
+// processo morto entre os dois o perdia de vez; AUD-006, 3ª rodada). O
+// número nunca vai no texto do motivo (o payload da pendência o carrega; o
+// log não). Eventos próprios, sem "Aplicar este ciclo" (financeiro/routes.js,
+// EVENTOS_SEM_CICLO_A_APLICAR): o ciclo já entrou.
+//   · assinatura sem documento → grava; diferente do cadastro da conta →
+//     'documento_pagador_divergente' (uma vez por assinatura).
+//   · documento DIFERENTE do gravado num ciclo que acabou de entrar
+//     (`cicloNovo`) → passa a valer o deste ciclo (é a recorrência que está
+//     cobrando) e abre 'documento_pagador_mudou'. O Checkout cria uma 2ª
+//     recorrência do mesmo plano, sem cancelar a 1ª, quando o pagador digita
+//     outro CPF/CNPJ na pop-up de renovação (o token não confere, API.md
+//     7.3); até 12/10/2026 o documento era gravado uma vez só, o
+//     cancelamento ia pra recorrência velha e a nova seguia cobrando calada.
+//   · reentrega ou aviso de um ciclo que já tinha entrado (`cicloNovo:
+//     false`) nunca troca o vigente.
+async function registrarDocumentoDoPagador(cliente, assinatura, documento, anunciante, contexto, { cicloNovo }) {
+  const vigente = assinatura?.documento_pagador || null;
+  if (!documento || documento === vigente || (vigente && !cicloNovo)) return;
+  await cliente.query('UPDATE assinaturas SET documento_pagador = $2 WHERE id = $1', [assinatura.id, documento]);
+  if (vigente) {
+    await registrarPendencia(
+      { ...contexto, evento: 'documento_pagador_mudou', documentoAnterior: vigente },
+      'pagamento com OUTRO CPF/CNPJ nesta assinatura (o anterior está em documentoAnterior no payload) — a Asaas pode ter DUAS recorrências deste plano, uma por documento: pelo Checkout, cancelar a antiga (a do documento anterior) e, se as duas cobraram o mesmo período, devolver uma (RUNBOOK §6). Cancelar/consultar daqui passam a usar o documento deste pagamento',
+      cliente,
+    );
+  } else if (documento !== soDigitos(anunciante.cpf_cnpj)) {
+    await registrarPendencia(
+      { ...contexto, evento: 'documento_pagador_divergente' },
+      'documento do pagador no Checkout diverge do CPF/CNPJ cadastrado na conta — gravado em assinaturas.documento_pagador (cancelar/consultar usam o do pagador); conferir o cadastro',
+      cliente,
+    );
+  }
+}
+
 // Credita um ciclo pago na conta: estende a cobertura, registra a cobrança e
 // a comissão. Três caminhos chamam — o webhook, a conciliação diária e o
 // botão "Aplicar este ciclo" do admin — e os três passam pela mesma dedupe
@@ -931,13 +1004,14 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
 // da cobrança depois. São gravadas AQUI, dentro da transação do ciclo e com
 // o mesmo client — entram no COMMIT ou caem no ROLLBACK, nunca ficam sem o
 // ciclo. Chave já gravada = o ciclo já entrou (por este evento, pela
-// conciliação ou pelo admin): ROLLBACK e `{ jaAplicada: chave }`, sem
-// pendência — quem chama decide. Decisão que não credita (conta excluída,
-// intenção cancelada) devolve o que registrarPendenciaUmaVez devolve: `null`
-// ou `{ pendenciaJaRegistrada }`. Quem chama não reserva antes: a reserva
-// autocommit (webhook, conciliação e admin, até 11/10/2026) sobrevivia a um
-// processo morto antes do COMMIT, e a cobrança paga sumia como "já
-// processada".
+// conciliação ou pelo admin): as reservas são desfeitas e volta
+// `{ jaAplicada: chave }`, sem pendência — quem chama decide; o documento do
+// pagador que o evento traz ainda é gravado, se faltava. Decisão que não
+// credita (conta excluída, intenção cancelada) devolve o que
+// registrarPendenciaUmaVez devolve: `null` ou `{ pendenciaJaRegistrada }`.
+// Quem chama não reserva antes: a reserva autocommit (webhook, conciliação e
+// admin, até 11/10/2026) sobrevivia a um processo morto antes do COMMIT, e a
+// cobrança paga sumia como "já processada".
 async function aplicarCicloPago(
   assinatura,
   reservas,
@@ -1019,6 +1093,7 @@ async function aplicarCicloPago(
   let creditoIndicacao;
   let eventosDaFila = [];
   let contaSuspensa = false;
+  const documentoDoPagador = soDigitos(payload?.documento) || null;
   try {
     await cliente.query('BEGIN');
     // A expiração é estendida a cada ciclo pago; quem paga dois ciclos
@@ -1061,17 +1136,31 @@ async function aplicarCicloPago(
     // As reservas de dedupe, na MESMA transação do ciclo (AUD-005): chave já
     // gravada = o ciclo já entrou (por este evento, pela conciliação ou pelo
     // admin) — nada a creditar. Uma reserva de outra transação ainda aberta
-    // segura este INSERT até ela decidir, que é a ordem certa.
+    // segura este INSERT até ela decidir, que é a ordem certa. Conflito
+    // desfaz só as reservas (savepoint): o documento que esta notificação
+    // traz ainda entra, se a assinatura não tinha nenhum — com o ROLLBACK
+    // inteiro, um `criada` atrasado (o ciclo entrou antes pela conciliação ou
+    // pelo admin) perdia o documento e o aviso de cadastro divergente
+    // (AUD-006, 3ª rodada). Nunca TROCA o vigente: reentrega e aviso atrasado
+    // não dizem quem está cobrando agora.
+    await cliente.query('SAVEPOINT reservas');
     for (const reserva of reservas) {
       const { rowCount } = await cliente.query(
         'INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING',
         [reserva],
       );
       if (!rowCount) {
-        await cliente.query('ROLLBACK');
+        await cliente.query('ROLLBACK TO SAVEPOINT reservas');
+        await registrarDocumentoDoPagador(cliente, assinaturaTravada, documentoDoPagador, anunciante, contexto, {
+          cicloNovo: false,
+        });
+        await cliente.query('COMMIT');
         return { jaAplicada: reserva };
       }
     }
+    await registrarDocumentoDoPagador(cliente, assinaturaTravada, documentoDoPagador, anunciante, contexto, {
+      cicloNovo: true,
+    });
     // Renovação atrasada de uma assinatura que o cliente já trocou por outra
     // (cancelada com ciclo pago): os dias contam, a escolha nova fica.
     const substituida = ['cancelada', 'trocada'].includes(assinaturaTravada?.status);
@@ -1291,7 +1380,7 @@ async function aplicarTrocaDePlano(pedido, payload) {
     // A recorrência do plano antigo tem que parar — sem isso o cliente
     // pagaria o plano antigo de novo no próximo ciclo, por cima do novo.
     try {
-      await cancelarAssinatura(assinaturaAtiva.id, anunciante.cpf_cnpj);
+      await cancelarAssinatura(assinaturaAtiva.id, documentoDaAssinatura(assinaturaAtiva, anunciante));
       await assinaturasRepo.marcarCancelada(assinaturaAtiva.id);
     } catch (err) {
       // O dinheiro da troca já entrou — não dá pra travar a troca por isso,
@@ -1346,6 +1435,58 @@ async function cancelarAssinatura(assinaturaId, documento) {
   return r.json();
 }
 
+// Cancela no Checkout uma assinatura ATIVA desta conta e, só então, marca
+// cancelada aqui — o mesmo passo das seis portas de cancelamento (painel,
+// admin, plano administrativo, troca pelo /assinar, desistência, exclusão
+// da conta). Usa o documento do pagador (acima). 404 do Checkout numa
+// assinatura que já teve ciclo pago NÃO é "nada a cancelar" por si só
+// (AUD-006): com o documento errado, a recorrência continua viva na Asaas e
+// marcar cancelada aqui escondia isso. Só fecha o registro local quando a
+// consulta (API.md 5.3, o mesmo par plano + documento) acha a assinatura já
+// encerrada; senão vira pendência pro admin cancelar lá à mão, e quem chama
+// recebe erro. 404 numa que nunca pagou continua sendo só um link morto.
+// `err.naoEncontrada` distingue, pra resposta ao cliente, de falha de rede.
+async function cancelarAssinaturaAtiva(assinatura, anunciante) {
+  const documento = documentoDaAssinatura(assinatura, anunciante);
+  // Pelo `module.exports` (e não a função local): os testes das rotas trocam
+  // `cancelarAssinatura`/`consultarAssinatura` pra simular o Checkout.
+  const r = await module.exports.cancelarAssinatura(assinatura.id, documento);
+  if (
+    r?.inexistente &&
+    (await cicloContratado.jaTeveCicloPago(assinatura)) &&
+    (await module.exports.consultarAssinatura(assinatura.id, documento))?.status !== 'cancelada'
+  ) {
+    // Uma pendência por assinatura enquanto ninguém resolve: o cliente pode
+    // tentar de novo várias vezes.
+    const { rowCount: jaAvisada } = await pool.query(
+      `SELECT 1 FROM eventos_assinatura_pendentes
+        WHERE NOT resolvido AND payload->>'evento' = 'cancelamento_nao_encontrado' AND payload->>'planoId' = $1
+        LIMIT 1`,
+      [assinatura.id],
+    );
+    if (!jaAvisada) {
+      await registrarPendencia(
+        {
+          tipo: 'assinatura',
+          evento: 'cancelamento_nao_encontrado',
+          planoId: assinatura.id,
+          anuncianteId: assinatura.anunciante_id,
+          origem: 'cancelar-assinatura',
+        },
+        'assinatura não encontrada no Checkout ao cancelar (404), e ela tem ciclo pago — a recorrência pode seguir viva na Asaas: cancelar lá à mão (conferir com que documento ela existe); encerrada lá e com o documento certo na conta, o "Cancelar assinatura" do Admin fecha o registro daqui (RUNBOOK §6)',
+      );
+    }
+    throw Object.assign(
+      new Error(
+        'não encontramos sua assinatura no Checkout pra cancelar — já avisamos a equipe, que vai confirmar o cancelamento com você',
+      ),
+      { naoEncontrada: true },
+    );
+  }
+  await assinaturasRepo.marcarCancelada(assinatura.id);
+  return r;
+}
+
 // Troca de plano SEM pedido avulso (POST /trocar-plano, API.md do
 // Checkout, seção 5.6): altera a MESMA assinatura na Asaas, sem o
 // assinante digitar cartão de novo e sem janela sem cobertura.
@@ -1382,11 +1523,13 @@ module.exports = {
   registrarPendenciaUmaVez,
   linkCheckoutAssinatura,
   linkRenovarAssinatura,
+  documentoDaAssinatura,
   montarRespostaPlano,
   trocarPlano,
   processarWebhookAssinatura,
   processarWebhookPedido,
   cancelarAssinatura,
+  cancelarAssinaturaAtiva,
   consultarAssinatura,
   avisarCobrancaFalhou,
   chaveDoEvento,

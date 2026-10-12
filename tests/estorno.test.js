@@ -1034,6 +1034,61 @@ test('desistência: cliente só pede; vira pedido de estorno por cobrança; fech
   assert.equal(segunda.status, 409);
 });
 
+// AUD-006, 2ª rodada: o 404 do Checkout numa assinatura com ciclo pago (o
+// documento que temos não é o do pagador) devolvia 502 ANTES de registrar a
+// desistência — o prazo do art. 49 corria enquanto a equipe resolvia o
+// cadastro, e o cliente voltava fora do prazo. O mesmo travava a exclusão
+// da conta (LGPD). Agora o pedido fica registrado e a pendência manda
+// cancelar na Asaas à mão.
+async function comCheckoutSemAssinatura(fn) {
+  const { cancelarAssinatura, consultarAssinatura } = sc;
+  sc.cancelarAssinatura = async () => ({ cancelada: false, inexistente: true });
+  sc.consultarAssinatura = async () => null;
+  try {
+    return await fn();
+  } finally {
+    Object.assign(sc, { cancelarAssinatura, consultarAssinatura });
+  }
+}
+const pendenciasNaoEncontrada = (assinatura) =>
+  linhas(
+    "SELECT 1 FROM eventos_assinatura_pendentes WHERE NOT resolvido AND payload->>'evento' = 'cancelamento_nao_encontrado' AND payload->>'planoId' = $1",
+    [assinatura.id],
+  );
+
+test('desistência com a assinatura não encontrada no Checkout (404, ciclo pago): registra o pedido no prazo e abre a pendência', async () => {
+  const conta = await criarConta();
+  const { assinatura, cobranca } = await pagar(conta);
+  await entrar(conta);
+  const r = await comCheckoutSemAssinatura(() => conta.nav('POST', '/titular/arrependimento'));
+  assert.equal(r.status, 201, r.texto);
+  assert.equal(
+    (await linha('SELECT status FROM arrependimentos WHERE id = $1', [r.json.pedido.id])).status,
+    'pendente',
+    'a desistência fica registrada (com a data do pedido)',
+  );
+  assert.equal(
+    (await linha('SELECT tipo, status FROM estornos WHERE cobranca_id = $1', [cobranca.id])).tipo,
+    'desistencia',
+  );
+  assert.equal((await pendenciasNaoEncontrada(assinatura)).length, 1, 'o Admin cancela na Asaas à mão');
+  assert.equal(
+    (await linha('SELECT status FROM assinaturas WHERE id = $1', [assinatura.id])).status,
+    'ativa',
+    'nada marcado cancelado aqui sem o Checkout confirmar',
+  );
+});
+
+test('exclusão da conta com a assinatura não encontrada no Checkout (404, ciclo pago): exclui e abre a pendência', async () => {
+  const conta = await criarConta();
+  const { assinatura } = await pagar(conta);
+  await entrar(conta);
+  const r = await comCheckoutSemAssinatura(() => conta.nav('POST', '/anunciantes/me/excluir'));
+  assert.equal(r.status, 200, r.texto);
+  assert.ok((await linha('SELECT excluido_em FROM anunciantes WHERE id = $1', [conta.id])).excluido_em);
+  assert.equal((await pendenciasNaoEncontrada(assinatura)).length, 1);
+});
+
 test('desistência com cobrança sem chargeId: confirmar a outra NÃO fecha — ainda há dinheiro a voltar', async () => {
   const conta = await criarConta();
   const { assinatura, chargeId } = await pagar(conta);
