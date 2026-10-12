@@ -2145,7 +2145,8 @@ na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.
 *Violada:* conta excluída não loga. *Quem vê:* quem excluiu.
 
 **RN-16 — Limite de 10 tentativas por 15 minutos, por IP e rota.** Vale para
-login, admin e redefinição. Reinício do servidor zera (é em memória).
+login, admin e redefinição. A contagem fica no banco (reinício não zera). A
+rota é a declarada, não a grafia pedida.
 *Violada:* "muitas tentativas, tente mais tarde". *Quem vê:* quem tentou.
 
 **RN-22 — A peça é feita fora do site e sobe direto na conta do cliente.** Não

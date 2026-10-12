@@ -8,7 +8,7 @@ Autenticação, três tipos:
 - **Sessão de admin** (cookie PRÓPRIO desde 27/09/2026: `mostrai.admin`, `Path=/admin`, mesma tabela `session` — `src/lib/sessao.js`) — `POST /admin/login`. Tudo em `/admin/*` exige. Em produção a porta é o Cloudflare Access; a senha é segunda camada. Até 27/09/2026 admin e conta dividiam um cookie, e o login de um derrubava o outro (`docs/erros/2026-09-27-sessao-do-admin-derrubava-o-anunciante.md`); agora entrar/sair de um não mexe no outro. As duas sessões valem 7 dias a partir do login.
 - **Chave de aparelho** (Player) — header `X-Aparelho-Key`, só ele. Nunca por query string. O servidor guarda só o SHA-256; vazia, errada, revogada ou de outra tela → 401. `:dispositivoId` é o ID da tela (`M-0235`; `0235` e `235` também valem). Contrato oficial: `docs/player-mvp-contract.md`.
 
-Rate limit no banco (10 por 15 min por IP+rota, migration 051 — não é mais `Map` em memória) em: login, cadastro, candidatura, esqueci-senha, confirmação de e-mail, PIN da tela.
+Rate limit no banco (10 por 15 min por IP+rota, migration 051 — não é mais `Map` em memória) em: login, cadastro, candidatura, esqueci-senha, confirmação de e-mail, PIN da tela. A rota é a declarada: outra grafia do caminho (`/Anunciantes/login`, barra no fim) cai no mesmo balde (auditoria 11/10/2026, AUD-002).
 
 ## Público (sem login)
 

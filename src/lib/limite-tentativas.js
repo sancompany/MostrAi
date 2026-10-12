@@ -54,9 +54,25 @@ function decidir({ quantidade, desde, agora = Date.now() }) {
   return { bloquear: true, faltamMinutos: faltam };
 }
 
+// A chave do balde: IP + ROTA COMO FOI DECLARADA, nunca o caminho como o
+// cliente escreveu. Sem `case sensitive routing`/`strict routing` (padrão do
+// Express), `/Anunciantes/login`, `/anunciantes/login/` e `/ANUNCIANTES/LOGIN`
+// caem no MESMO handler que `/anunciantes/login` — e chavear por `req.path`
+// dava um balde novo de 10 a cada grafia, força bruta sem teto trocando uma
+// letra. `req.route.path` é o caminho registrado (`router.post('/x', …)`), o
+// Express o preenche antes dos middlewares da rota; por isso este limitador
+// só serve como middleware DE ROTA, nunca em `app.use`.
+function chaveDe(req) {
+  if (!req.route) throw new Error('limiteTentativas só funciona como middleware de rota (req.route vazio)');
+  return `${req.ip}:${req.route.path}`;
+}
+
 async function limiteTentativas(req, res, next) {
+  // Fora do try: rota sem `req.route` é erro de programação, não banco fora —
+  // tem que falhar fechado, não abrir a porta com um aviso no log.
+  const chave = chaveDe(req);
   try {
-    const { quantidade, desde } = await contar(`${req.ip}:${req.path}`);
+    const { quantidade, desde } = await contar(chave);
     limparDeVezEmQuando();
 
     const veredito = decidir({ quantidade, desde });
@@ -80,7 +96,9 @@ async function limiteTentativas(req, res, next) {
 // Chamado depois de um login que deu certo, pra não punir quem só errou a
 // senha uma vez antes de acertar.
 async function zerarTentativas(req) {
-  await pool.query('DELETE FROM tentativas_acesso WHERE chave = $1', [`${req.ip}:${req.path}`]).catch(() => {});
+  await pool
+    .query('DELETE FROM tentativas_acesso WHERE chave = $1', [chaveDe(req)])
+    .catch((err) => console.error('limite de tentativas: zerar depois do acerto falhou:', err.message));
 }
 
 module.exports = { limiteTentativas, zerarTentativas, decidir, MAX, JANELA_MS };
