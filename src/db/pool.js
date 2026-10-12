@@ -43,4 +43,16 @@ types.setTypeParser(1082, (valor) => valor);
 // pedia uma 2ª conexão com a linha travada). A causa foi corrigida na rota;
 // isto garante que um ciclo igual vire erro em 5 s, não uma instância parada
 // que o /health (que não toca o banco) continua chamando de saudável.
-module.exports = new Pool({ ...config, max: 5, connectionTimeoutMillis: 5000 });
+//
+// `keepAlive` (AUD-019): o SO sonda a conexão TCP parada, e uma que morreu em
+// silêncio (rede, NAT) acaba virando o mesmo 'error' tratado abaixo.
+const pool = new Pool({ ...config, max: 5, connectionTimeoutMillis: 5000, keepAlive: true });
+
+// Ouvinte de 'error' (AUD-019, auditoria V1): quando o Postgres ou o pooler
+// derruba uma conexão OCIOSA do pool (restart, failover, rede), o pg-pool já a
+// descartou e emite 'error' no Pool. Sem ouvinte, o Node trata como exceção
+// não capturada e o processo morre — nas 2 instâncias juntas, que sempre têm
+// cliente ocioso. Aqui só loga: a próxima consulta abre conexão nova.
+pool.on('error', (err) => console.error('pool: conexão ociosa caiu, o pool abre outra', err.message));
+
+module.exports = pool;
