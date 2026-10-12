@@ -55,4 +55,14 @@ const pool = new Pool({ ...config, max: 5, connectionTimeoutMillis: 5000, keepAl
 // cliente ocioso. Aqui só loga: a próxima consulta abre conexão nova.
 pool.on('error', (err) => console.error('pool: conexão ociosa caiu, o pool abre outra', err.message));
 
+// Ouvinte no CLIENTE (AUD-019, achado da revisão): o ouvinte de ocioso do
+// pg-pool sai do cliente enquanto ele está EMPRESTADO (`pool.connect()` — o
+// heartbeat em src/player/sinal.js, os jobs de 30 s, toda transação). Se a
+// conexão cai nesse intervalo, mesmo no meio de uma query, o pg emite 'error'
+// no Client e, sem ouvinte, o processo morre. Com este: a query em curso já
+// recebe o erro, a seguinte (o ROLLBACK de quem chamou) falha com "not
+// queryable", e o release() do finally tira o cliente morto do pool. Num
+// cliente ocioso, loga junto com o ouvinte de cima.
+pool.on('connect', (cliente) => cliente.on('error', (err) => console.error('pool: conexão caiu', err.message)));
+
 module.exports = pool;

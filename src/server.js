@@ -287,12 +287,12 @@ app.use((err, req, res, next) => {
 // rejeição fora do ciclo de uma request), loga em vez de deixar o processo
 // morrer sozinho.
 process.on('unhandledRejection', (err) => console.error('unhandledRejection', err));
-// Exceção não capturada (ex.: 'error' de um cliente EMPRESTADO do pool cuja
-// conexão caiu entre duas queries — o ouvinte de src/db/pool.js cobre só o
-// ocioso, AUD-019): o estado do processo é desconhecido, então loga com a
-// etiqueta e sai com 1 — o Northflank sobe outro e o Postgres desfaz o que
-// estava em voo. Só no processo principal: importado pelos testes, quem
-// relata a exceção é o node:test.
+// Exceção não capturada — só a última rede: a queda de conexão do banco,
+// ociosa ou emprestada, já tem ouvinte em src/db/pool.js (AUD-019) e não
+// chega aqui. O que chegar deixa o processo em estado desconhecido, então
+// loga com a etiqueta e sai com 1 — o Northflank sobe outro e o Postgres
+// desfaz o que estava em voo. Só no processo principal: importado pelos
+// testes, quem relata a exceção é o node:test.
 if (require.main === module) {
   process.on('uncaughtException', (err) => {
     console.error('uncaughtException', err);

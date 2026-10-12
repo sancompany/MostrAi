@@ -376,8 +376,8 @@ segredos, código, repositório do Player.
 | Webhook do Checkout recebendo 503 | a rota não conseguiu gravar o evento na inbox (banco fora) — o Checkout tenta de novo sozinho | conferir o banco; nada se perde enquanto o Checkout reentrega |
 | Migration abortou o deploy | SQL falhou no banco real | o container antigo segue no ar. Corrigir com migration nova, nunca editando a aplicada |
 | Log `timeout exceeded when trying to connect` (500 na rota) | o pool da instância (5 conexões) ficou 5 s sem conexão livre — carga, ou uma transação pedindo uma 2ª conexão ao pool (AUD-001) | ver qual rota falhou e se ela lê pelo `pool` entre o `pool.connect()` e o `COMMIT`; `/health` não toca o banco, então não acusa isto |
-| Log `pool: conexão ociosa caiu, o pool abre outra` | o Postgres/pooler derrubou uma conexão parada (restart, failover, rede); o processo segue e a próxima consulta abre outra (AUD-019) | nada, se for pontual; em rajada, conferir o status do Supabase |
-| Log `uncaughtException` seguido de restart | exceção fora de qualquer request (ex.: conexão de uma transação caiu no meio); o processo sai com 1 de propósito e o Northflank sobe outro | ler a pilha logada logo acima; o que estava em voo no banco o Postgres desfez |
+| Log `pool: conexão ociosa caiu, o pool abre outra` ou `pool: conexão caiu` | o Postgres/pooler derrubou uma conexão (restart, failover, rede), parada ou em uso por uma transação; o processo segue, só a request ou o job que usava aquela conexão falha, e a próxima consulta abre outra (AUD-019) | nada, se for pontual; em rajada, conferir o status do Supabase |
+| Log `uncaughtException` seguido de restart | exceção fora de qualquer request que não é queda de conexão do banco (essa tem ouvinte); o processo sai com 1 de propósito e o Northflank sobe outro | ler a pilha logada logo acima; o que estava em voo no banco o Postgres desfez |
 
 **[Estação 6]** Faltam: alerta externo de "caiu" que chega ao celular, monitor
 que avisa quando o job **não rodou**, e alerta de orçamento em cada conta paga.
