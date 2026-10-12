@@ -287,24 +287,22 @@ app.use((err, req, res, next) => {
 // rejeição fora do ciclo de uma request), loga em vez de deixar o processo
 // morrer sozinho.
 process.on('unhandledRejection', (err) => console.error('unhandledRejection', err));
-// Exceção não capturada — só a última rede: a queda de conexão do banco,
-// ociosa ou emprestada, já tem ouvinte em src/db/pool.js (AUD-019) e não
-// chega aqui. O que chegar deixa o processo em estado desconhecido, então
-// loga com a etiqueta e sai com 1 — o Northflank sobe outro e o Postgres
-// desfaz o que estava em voo. Só no processo principal: importado pelos
-// testes, quem relata a exceção é o node:test.
-if (require.main === module) {
-  process.on('uncaughtException', (err) => {
-    console.error('uncaughtException', err);
-    process.exit(1);
-  });
-}
 
 // Só abre a porta (e os processadores) quando é o processo principal — o
 // Dockerfile e o `npm start` rodam `node src/server.js`. Importado, entrega o
 // `app` montado: os testes de sessão (tests/sessao-anunciante.test.js)
 // exercitam as rotas de login reais, sem subir processador de fila nenhum.
 if (require.main === module) {
+  // Exceção não capturada — só a última rede: a queda de conexão do banco,
+  // ociosa ou emprestada, já tem ouvinte em src/db/pool.js (AUD-019) e não
+  // chega aqui. O que chegar deixa o processo em estado desconhecido, então
+  // loga com a etiqueta e sai com 1 — o Northflank sobe outro e o Postgres
+  // desfaz o que estava em voo. Aqui dentro porque, importado pelos testes,
+  // quem relata a exceção é o node:test.
+  process.on('uncaughtException', (err) => {
+    console.error('uncaughtException', err);
+    process.exit(1);
+  });
   app.listen(process.env.PORT, () => {
     console.log(`mostrai rodando na porta ${process.env.PORT}`);
     // Processador da inbox do webhook (migration 096): retoma o que ficou
