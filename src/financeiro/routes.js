@@ -925,27 +925,33 @@ router.post('/admin/eventos-pendentes/:id/aplicar', async (req, res) => {
   }
 
   // A chave é a mesma que o webhook e a conciliação usariam (chargeId|status):
-  // assim o mesmo pagamento não vira dois ciclos, venha por onde vier.
+  // assim o mesmo pagamento não vira dois ciclos, venha por onde vier. Ela é
+  // gravada na transação do ciclo (aplicarCicloPago), nunca antes: reservada
+  // em autocommit, sobrevivia a um processo morto e o botão passava a dizer
+  // "já creditada" de um ciclo que nunca entrou (AUD-005).
   const chave = `${ultima.chargeId}|${ultima.status}`;
-  const { rowCount } = await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING', [
-    chave,
-  ]);
-  if (!rowCount) {
-    await pool.query('UPDATE eventos_assinatura_pendentes SET resolvido = true WHERE id = $1', [evento.id]);
-    return res
-      .status(409)
-      .json({ erro: 'essa cobrança já tinha sido creditada — o evento foi marcado como resolvido' });
-  }
-
+  let resultado;
   try {
-    await sanCheckout.aplicarCicloPago(
+    resultado = await sanCheckout.aplicarCicloPago(
       assinatura,
-      chave,
+      [chave],
       { ...payload, origem: 'admin' },
       { chargeId: ultima.chargeId },
     );
   } catch (err) {
     return res.status(502).json({ erro: `não deu pra aplicar o ciclo: ${err.message}` });
+  }
+  if (resultado?.jaAplicada) {
+    await pool.query('UPDATE eventos_assinatura_pendentes SET resolvido = true WHERE id = $1', [evento.id]);
+    return res
+      .status(409)
+      .json({ erro: 'essa cobrança já tinha sido creditada — o evento foi marcado como resolvido' });
+  }
+  if (resultado?.pendenciaJaRegistrada) {
+    await pool.query('UPDATE eventos_assinatura_pendentes SET resolvido = true WHERE id = $1', [evento.id]);
+    return res.status(409).json({
+      erro: 'essa cobrança já tem pendência com a decisão (conta excluída ou intenção cancelada) — nada foi creditado; este evento foi marcado como resolvido, siga pela outra',
+    });
   }
   await pool.query('UPDATE eventos_assinatura_pendentes SET resolvido = true WHERE id = $1', [evento.id]);
   res.json({ ok: true });

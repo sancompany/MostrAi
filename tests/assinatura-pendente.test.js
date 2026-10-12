@@ -381,7 +381,7 @@ test('aplicarCicloPago relê a assinatura travada: cancelada no meio do caminho 
     const lida = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: 'destaque-1m' });
     assert.equal(lida.status, 'pendente_pagamento');
     await assinaturasRepo.cancelarPendentesDePagamento(c.id); // o link novo chegou antes do crédito
-    await sc.aplicarCicloPago(lida, `pay_corrida_${lida.id}|confirmado`);
+    await sc.aplicarCicloPago(lida, [`pay_corrida_${lida.id}|confirmado`]);
     const { rows: cob } = await pool.query('SELECT 1 FROM cobrancas_confirmadas WHERE anunciante_id = $1', [c.id]);
     assert.equal(cob.length, 0, 'nenhum ciclo creditado pela cópia velha');
     assert.equal((await pool.query('SELECT plano_id FROM anunciantes WHERE id = $1', [c.id])).rows[0].plano_id, null);
@@ -463,6 +463,135 @@ test('ciclo legado só conta pra assinatura em cuja janela foi cobrado (intenç�
     );
   } finally {
     await apagar(c.id);
+  }
+});
+
+// Primeiro ciclo pago (`criada`) no contrato v2 do Checkout, com ids
+// previsíveis por rodada.
+const primeiroCicloV2 = (assinatura, documento, rodada) =>
+  sc.processarWebhookAssinatura({
+    versao: 2,
+    tipo: 'assinatura',
+    eventoId: `evt_aud006_${rodada}`,
+    ocorridoEm: new Date().toISOString(),
+    evento: 'criada',
+    planoId: assinatura.id,
+    documento,
+    chargeId: `pay_aud006_${rodada}`,
+    statusFinanceiro: 'confirmado',
+    valor: 99.9,
+  });
+const limparChaves = (rodada) =>
+  pool.query('DELETE FROM webhooks_processados WHERE id IN ($1, $2)', [
+    `evt_aud006_${rodada}`,
+    `pay_aud006_${rodada}|confirmado`,
+  ]);
+
+// AUD-005, 2ª rodada: com a reserva movida pra dentro da transação do ciclo,
+// as decisões que NÃO creditam (intenção cancelada, conta excluída) deixaram
+// de gravar chave — cada reentrega abria outra pendência "devolva o valor"
+// pro mesmo pagamento. Agora a chave da notificação entra junto com a
+// pendência.
+const pendenciasDe = async (assinaturaId) =>
+  (
+    await pool.query(
+      "SELECT motivo FROM eventos_assinatura_pendentes WHERE payload->>'planoId' = $1 AND NOT resolvido",
+      [assinaturaId],
+    )
+  ).rows;
+
+test('AUD-005: `criada` de intenção já cancelada entregue duas vezes gera UMA pendência', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  try {
+    const velha = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: 'destaque-1m' });
+    await assinaturasRepo.cancelarPendentesDePagamento(c.id);
+    await primeiroCicloV2(velha, c.cpf_cnpj, rodada);
+    await primeiroCicloV2(velha, c.cpf_cnpj, rodada); // reentrega do Checkout
+    const pend = await pendenciasDe(velha.id);
+    assert.equal(pend.length, 1, 'uma pendência "devolva o valor", não duas');
+    assert.match(pend[0].motivo, /intenção de compra já cancelada/);
+  } finally {
+    await limparChaves(rodada);
+    await apagar(c.id, rodada);
+  }
+});
+
+test('AUD-005: ciclo de conta excluída entregue duas vezes gera UMA pendência', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  try {
+    const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO });
+    await pool.query('UPDATE anunciantes SET excluido_em = now() WHERE id = $1', [c.id]);
+    await primeiroCicloV2(assinatura, c.cpf_cnpj, rodada);
+    await primeiroCicloV2(assinatura, c.cpf_cnpj, rodada);
+    const pend = await pendenciasDe(assinatura.id);
+    assert.equal(pend.length, 1);
+    assert.match(pend[0].motivo, /conta já excluída/);
+    const { rows: cob } = await pool.query('SELECT 1 FROM cobrancas_confirmadas WHERE anunciante_id = $1', [c.id]);
+    assert.equal(cob.length, 0, 'nada creditado');
+  } finally {
+    await limparChaves(rodada);
+    await apagar(c.id, rodada);
+  }
+});
+
+test('AUD-005: intenção cancelada relida no FOR UPDATE — a 2ª tentativa (ou a varredura de amanhã) não abre outra pendência', async () => {
+  const c = await conta();
+  const chave = `pay_relida_${randomUUID().slice(0, 8)}|confirmado`;
+  try {
+    const lida = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: 'destaque-1m' });
+    await assinaturasRepo.cancelarPendentesDePagamento(c.id); // cancelada entre a leitura e o crédito
+    await sc.aplicarCicloPago(lida, [chave]);
+    const segunda = await sc.aplicarCicloPago(lida, [chave]);
+    assert.deepEqual(segunda, { pendenciaJaRegistrada: chave }, 'a decisão já estava na fila (não é ciclo creditado)');
+    assert.equal((await pendenciasDe(lida.id)).length, 1);
+    const { rows: guardada } = await pool.query('SELECT 1 FROM webhooks_processados WHERE id = $1', [chave]);
+    assert.equal(guardada.length, 1, 'a chave ficou junto com a pendência');
+  } finally {
+    await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]);
+    await apagar(c.id);
+  }
+});
+
+// Evento v2 do Checkout com ids previsíveis por rodada (3ª rodada da
+// auditoria): `cancelada` vem sem cobrança.
+const eventoV2 = (assinatura, { id, evento = 'criada', documento }) =>
+  sc.processarWebhookAssinatura({
+    versao: 2,
+    tipo: 'assinatura',
+    eventoId: `evt_r3_${id}`,
+    ocorridoEm: new Date().toISOString(),
+    evento,
+    planoId: assinatura.id,
+    documento,
+    chargeId: evento === 'cancelada' ? null : `pay_r3_${id}`,
+    statusFinanceiro: evento === 'cancelada' ? 'cancelado' : 'confirmado',
+    valor: evento === 'cancelada' ? null : 99.9,
+  });
+const limparR3 = (ids) =>
+  pool.query('DELETE FROM webhooks_processados WHERE id = ANY($1)', [
+    ids.flatMap((id) => [`evt_r3_${id}`, `pay_r3_${id}|confirmado`]),
+  ]);
+
+// AUD-005, 3ª rodada: a decisão que não credita devolvia `{ jaAplicada }`, o
+// mesmo marcador de "ciclo creditado". Numa `cobranca_confirmada` reentregue,
+// aplicarEventoAssinatura abria por cima a pendência "descartado pela
+// deduplicação" — aplicável, de um ciclo que nunca entrou.
+test('AUD-005: `cobranca_confirmada` de conta excluída entregue duas vezes gera UMA pendência, sem "descartado pela deduplicação"', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  try {
+    const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO, status: 'ativa' });
+    await pool.query('UPDATE anunciantes SET excluido_em = now() WHERE id = $1', [c.id]);
+    await eventoV2(assinatura, { id: rodada, evento: 'cobranca_confirmada', documento: c.cpf_cnpj });
+    await eventoV2(assinatura, { id: rodada, evento: 'cobranca_confirmada', documento: c.cpf_cnpj });
+    const pend = await pendenciasDe(assinatura.id);
+    assert.equal(pend.length, 1, JSON.stringify(pend.map((p) => p.motivo)));
+    assert.match(pend[0].motivo, /conta já excluída/);
+  } finally {
+    await limparR3([rodada]);
+    await apagar(c.id, rodada);
   }
 });
 

@@ -286,13 +286,52 @@ function valorMensalDaConta(anunciante, plano, assinatura) {
   return desconto ? arredondar(base - percentual(base, desconto)) : base;
 }
 
-async function registrarPendencia(payload, motivo) {
-  await pool.query(`INSERT INTO eventos_assinatura_pendentes (payload, motivo) VALUES ($1,$2)`, [
+// `db`: a conciliação passa o client da transação em que grava a chave de
+// dedupe junto com a pendência (AUD-005) — uma não existe sem a outra.
+async function registrarPendencia(payload, motivo, db = pool) {
+  await db.query(`INSERT INTO eventos_assinatura_pendentes (payload, motivo) VALUES ($1,$2)`, [
     JSON.stringify(payload),
     motivo,
   ]);
   // Fila "Eventos do Checkout" do admin muda de tamanho.
   sse.emitirParaAdmin('payment.updated', {});
+}
+
+// Decisão que NÃO credita (vira pendência) num evento que credita ciclo —
+// conta excluída, intenção cancelada, assinatura que não existe aqui: a
+// chave DESTA notificação e a pendência entram juntas, numa transação (AUD-005,
+// 2ª rodada). Reentrega da mesma notificação não abre outra pendência (era
+// assim com a reserva autocommit, antes do AUD-005), e processo morto entre
+// as duas não deixa uma sem a outra. Só essa chave: a da cobrança fica livre
+// pra outro caminho (conciliação, admin) creditar quando a causa for
+// resolvida — como antes. Chave já gravada = a decisão já está na fila:
+// `{ pendenciaJaRegistrada: chave }` — marcador próprio, NUNCA o
+// `{ jaAplicada }` do ciclo: aplicarEventoAssinatura lê `jaAplicada` como
+// "ciclo creditado" e, numa `cobranca_confirmada` reentregue, abria a
+// pendência "descartado pela deduplicação", aplicável, de um ciclo que nunca
+// entrou (AUD-005, 3ª rodada). `db`: o client de uma transação já aberta
+// (quem chama faz o COMMIT); sem ele, abre a própria.
+async function registrarPendenciaUmaVez(chave, payload, motivo, db = null) {
+  if (db) {
+    const { rowCount } = await db.query('INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING', [
+      chave,
+    ]);
+    if (!rowCount) return { pendenciaJaRegistrada: chave };
+    await registrarPendencia(payload, motivo, db);
+    return null;
+  }
+  const cliente = await pool.connect();
+  try {
+    await cliente.query('BEGIN');
+    const r = await registrarPendenciaUmaVez(chave, payload, motivo, cliente);
+    await cliente.query('COMMIT');
+    return r;
+  } catch (err) {
+    await cliente.query('ROLLBACK');
+    throw err;
+  } finally {
+    cliente.release();
+  }
 }
 
 // Estorno ou chargeback de uma cobrança (chargeId) que ainda não está aqui:
@@ -328,7 +367,7 @@ async function registrarCreditoIndicacaoSeHouver(anunciante, cobrancaConfirmadaI
   if (!anunciante.indicado_por_cupom) return;
   const cupom = String(anunciante.indicado_por_cupom).toUpperCase();
   if (!cupom.startsWith('PT-')) return; // cupom de vendedor — já tratado acima
-  const ponto = await indicacoesRepo.buscarPontoPorCupom(cupom);
+  const ponto = await indicacoesRepo.buscarPontoPorCupom(cupom, db);
   if (!ponto || ponto.conta_id === anunciante.id) return; // ninguém ganha crédito de si mesmo
 
   const credito = await creditosRepo.registrarCreditoIndicacao(ponto.conta_id, anunciante.id, cobrancaConfirmadaId, db);
@@ -517,28 +556,25 @@ async function processarWebhookAssinatura(payload) {
     return aplicarEventoAssinatura(payload, chave, ultima);
   }
 
-  // Reentrega do mesmo evento não pode estender cobertura, gravar outra
-  // cobrança nem pagar a comissão do vendedor de novo (migration 018).
+  // Evento que CREDITA ciclo ('criada'/'cobranca_confirmada'): a reserva de
+  // dedupe (esta chave e a `chargeId|status`) é gravada DENTRO da transação
+  // do ciclo, em aplicarCicloPago — reserva e efeito entram, ou caem, juntos.
+  // Até 11/10/2026 ela era autocommit aqui: processo morto (deploy, OOM) ou
+  // banco fora entre a reserva e o COMMIT deixava a chave gravada sem ciclo,
+  // e a retomada da inbox, a conciliação e o botão do admin descartavam o
+  // pagamento como "já processado" — cliente pagou, conta sem cobertura, sem
+  // rastro (AUD-005).
+  if (EVENTOS_QUE_CREDITAM.has(payload.evento)) {
+    return aplicarEventoAssinatura(payload, chave, ultima);
+  }
+
+  // Demais eventos (cancelada, falhou, contestada, plano_trocado, troca
+  // revertida por chargeback): reentrega do mesmo evento não pode suspender,
+  // cancelar nem registrar pendência de novo.
   const { rowCount } = await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING', [
     chave,
   ]);
-  if (!rowCount) {
-    // Reentrega do MESMO evento e normal e nao precisa de barulho. Mas quando
-    // o evento credita ciclo, o descarte pode nao ser reentrega: a consulta de
-    // conciliacao devolve a ultima cobranca, e numa renovacao a defasagem
-    // entre Asaas e Checkout faz a chave `chargeId|status` do ciclo novo
-    // colidir com a do anterior — o ciclo pago some, sem cobertura e sem
-    // rastro. Vira pendencia pra alguem olhar.
-    // 'criada' reentregue é limpo por construção (chave = a assinatura): só
-    // a renovação, chaveada por chargeId, pode esconder um ciclo novo.
-    if (payload.evento === 'cobranca_confirmada') {
-      await registrarPendencia(
-        payload,
-        `evento que credita ciclo descartado pela deduplicacao (chave ${chave}) — conferir se o ciclo entrou`,
-      );
-    }
-    return;
-  }
+  if (!rowCount) return;
 
   // Inbox do webhook (migration 096): se o efeito abaixo LANÇAR, a reserva
   // da chave sai — senão a nova tentativa da inbox cairia na dedupe acima e
@@ -555,7 +591,12 @@ async function processarWebhookAssinatura(payload) {
 async function aplicarEventoAssinatura(payload, chave, ultima) {
   const assinatura = await assinaturasRepo.buscarPorId(payload.planoId);
   if (!assinatura) {
-    return registrarPendencia(payload, `assinatura '${payload.planoId}' não encontrada`);
+    // Evento que credita não passou por reserva nenhuma (a dele é feita no
+    // ciclo): a chave vai junto com a pendência. Os outros já reservaram.
+    const motivo = `assinatura '${payload.planoId}' não encontrada`;
+    return EVENTOS_QUE_CREDITAM.has(payload.evento)
+      ? registrarPendenciaUmaVez(chave, payload, motivo)
+      : registrarPendencia(payload, motivo);
   }
 
   if (payload.evento === 'cancelada') {
@@ -573,7 +614,7 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
   // creditando o ciclo que a Asaas cobrou: o dinheiro entrou, a cobertura
   // vale.
   if (EVENTOS_QUE_CREDITAM.has(payload.evento) && (await intencaoCanceladaSemPagamento(assinatura))) {
-    return registrarPendencia(payload, MOTIVO_INTENCAO_CANCELADA);
+    return registrarPendenciaUmaVez(chave, payload, MOTIVO_INTENCAO_CANCELADA);
   }
 
   // plano_trocado: desde 21/09/2026 nem sempre é aviso redundante. Quando
@@ -830,49 +871,52 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
   // `eventoId` (v2) identifica a NOTIFICAÇÃO; a mesma cobrança pode chegar
   // por outro caminho — a conciliação diária (chaveada por `chargeId|status`),
   // o botão "Aplicar este ciclo" do admin, ou outro evento sobre ela (baixa
-  // desfeita e refeita, API.md 4.3.6). Por isso a chave da cobrança é
-  // RESERVADA antes de creditar: se já estava lá, o ciclo já entrou e esta
-  // notificação só confirma. Até 25/09/2026 ela era gravada DEPOIS, sem
-  // conferir — conciliação primeiro e webhook atrasado depois creditavam o
-  // ciclo duas vezes (revisão do commit 299f3e5, teste em
-  // webhook-v2-checkout.test.js).
+  // desfeita e refeita, API.md 4.3.6). Por isso a chave do evento E a da
+  // cobrança são RESERVADAS na mesma transação que credita (aplicarCicloPago):
+  // se uma já estava lá, o ciclo já entrou e esta notificação só confirma; se
+  // a transação cai, as reservas caem com ela e a próxima tentativa credita.
+  // Até 25/09/2026 a da cobrança era gravada DEPOIS, sem conferir —
+  // conciliação primeiro e webhook atrasado depois creditavam o ciclo duas
+  // vezes (revisão do commit 299f3e5, teste em webhook-v2-checkout.test.js);
+  // até 11/10/2026 as duas eram autocommit, fora da transação (AUD-005).
   const chaveDaCobranca = ultima?.chargeId ? `${ultima.chargeId}|${ultima.status}` : null;
-  const reservou = chaveDaCobranca && chaveDaCobranca !== chave;
-  if (reservou) {
-    const { rowCount: livre } = await pool.query(
-      'INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING',
-      [chaveDaCobranca],
+  const reservas = chaveDaCobranca && chaveDaCobranca !== chave ? [chave, chaveDaCobranca] : [chave];
+  const resultado = await aplicarCicloPago(assinatura, reservas, payload, {
+    valorCobrado: ultima?.valorCobrado,
+    chargeId: ultima?.chargeId,
+    pagoEm: pagoEmDoPayload(payload),
+  });
+  if (!resultado?.jaAplicada) return resultado;
+  if (resultado.jaAplicada !== chave) {
+    // A cobrança já tinha creditado por outro caminho (conciliação, admin).
+    eventos.registrar(
+      'pagamento:cobranca_ja_creditada',
+      { plano_id: assinatura.plano_id, evento: payload.evento },
+      await anunciantesRepo.buscarPorId(assinatura.anunciante_id),
     );
-    if (!livre) {
-      eventos.registrar(
-        'pagamento:cobranca_ja_creditada',
-        { plano_id: assinatura.plano_id, evento: payload.evento },
-        await anunciantesRepo.buscarPorId(assinatura.anunciante_id),
-      );
-      return null;
-    }
+    return null;
   }
-  let cobranca;
-  try {
-    cobranca = await aplicarCicloPago(assinatura, chave, payload, {
-      valorCobrado: ultima?.valorCobrado,
-      chargeId: ultima?.chargeId,
-      pagoEm: pagoEmDoPayload(payload),
-    });
-  } catch (err) {
-    if (reservou) await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chaveDaCobranca]);
-    throw err;
+  // Reentrega do MESMO evento é normal e não precisa de barulho. Mas quando
+  // o evento credita ciclo, o descarte pode não ser reentrega: no v1 a
+  // consulta de conciliação devolve a última cobrança, e numa renovação a
+  // defasagem entre Asaas e Checkout faz a chave `chargeId|status` do ciclo
+  // novo colidir com a do anterior — o ciclo pago sumiria sem rastro. Vira
+  // pendência pra alguém olhar. 'criada' reentregue é limpo por construção
+  // (chave = a assinatura): só a renovação pode esconder um ciclo novo.
+  if (payload.evento === 'cobranca_confirmada') {
+    await registrarPendencia(
+      payload,
+      `evento que credita ciclo descartado pela deduplicacao (chave ${chave}) — conferir se o ciclo entrou`,
+    );
   }
-  // Nada creditado (virou pendência): a reserva sai, senão a conciliação
-  // nunca mais aplicaria essa cobrança.
-  if (!cobranca && reservou) await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chaveDaCobranca]);
-  return cobranca;
+  return null;
 }
 
 // Credita um ciclo pago na conta: estende a cobertura, registra a cobrança e
-// a comissão. Chamado pelo webhook e pela conciliação diária — as duas rotas
-// passam pela mesma dedupe (`chave`), então um ciclo nunca entra duas vezes,
-// venha o aviso por webhook ou pela varredura.
+// a comissão. Três caminhos chamam — o webhook, a conciliação diária e o
+// botão "Aplicar este ciclo" do admin — e os três passam pela mesma dedupe
+// (`reservas`, abaixo), então um ciclo nunca entra duas vezes, venha por onde
+// vier.
 // `valorCobrado` (consolidação, 24/09/2026): o que a Asaas debitou de fato,
 // lido da consulta 5.3 (`ultimaCobranca.valorCobrado`). Quando vem, é ele
 // que entra na cobrança, no snapshot do ciclo e na receita — recalcular pelo
@@ -881,12 +925,30 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
 // `chargeId`/`pagoEm` (migration 120): quem é esta cobrança no PSP e quando
 // ele confirmou — é por eles que o estorno do Admin é confirmado e que os 7
 // dias do estorno ordinário contam. Sem `pagoEm`, vale o instante do registro.
+// Dedupe (webhooks_processados, AUD-005, 11/10/2026): `reservas` são as
+// chaves deste ciclo — a desta notificação primeiro (`chargeId|status` na
+// conciliação e no botão do admin; a do evento no webhook) e, no webhook, a
+// da cobrança depois. São gravadas AQUI, dentro da transação do ciclo e com
+// o mesmo client — entram no COMMIT ou caem no ROLLBACK, nunca ficam sem o
+// ciclo. Chave já gravada = o ciclo já entrou (por este evento, pela
+// conciliação ou pelo admin): ROLLBACK e `{ jaAplicada: chave }`, sem
+// pendência — quem chama decide. Decisão que não credita (conta excluída,
+// intenção cancelada) devolve o que registrarPendenciaUmaVez devolve: `null`
+// ou `{ pendenciaJaRegistrada }`. Quem chama não reserva antes: a reserva
+// autocommit (webhook, conciliação e admin, até 11/10/2026) sobrevivia a um
+// processo morto antes do COMMIT, e a cobrança paga sumia como "já
+// processada".
 async function aplicarCicloPago(
   assinatura,
-  chave,
+  reservas,
   payload = null,
   { valorCobrado = null, chargeId = null, pagoEm = null } = {},
 ) {
+  // Uma string aqui seria iterada letra a letra e cada letra viraria "chave
+  // já gravada": o ciclo pago sumiria calado. Lista, sempre.
+  if (!Array.isArray(reservas) || !reservas.length || !reservas.every((c) => typeof c === 'string' && c)) {
+    throw new TypeError('aplicarCicloPago: `reservas` é a lista (não vazia) das chaves de dedupe do ciclo');
+  }
   const contexto = payload || {
     tipo: 'assinatura',
     planoId: assinatura.id,
@@ -896,8 +958,9 @@ async function aplicarCicloPago(
 
   const plano = await planosRepo.buscarPorId(assinatura.plano_id);
   const anunciante = await anunciantesRepo.buscarPorId(assinatura.anunciante_id);
+  // Sem chave de propósito (era assim antes do AUD-005: a reserva saía
+  // aqui): corrigido o cadastro, a próxima entrega ou varredura credita.
   if (!plano || !anunciante) {
-    await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]);
     return registrarPendencia(contexto, 'plano ou anunciante não encontrado pra essa assinatura');
   }
 
@@ -907,7 +970,11 @@ async function aplicarCicloPago(
   // pagava comissão ao vendedor por um cliente que pediu pra sair. Vira
   // pendência pra alguém devolver o dinheiro à mão.
   if (anunciante.excluido_em) {
-    return registrarPendencia(contexto, 'cobrança de conta já excluída — verificar devolução no Checkout');
+    return registrarPendenciaUmaVez(
+      reservas[0],
+      contexto,
+      'cobrança de conta já excluída — verificar devolução no Checkout',
+    );
   }
 
   // O que a conta paga é o valor do plano, com os descontos que ela tem
@@ -980,12 +1047,30 @@ async function aplicarCicloPago(
     const {
       rows: [assinaturaTravada],
     } = await cliente.query('SELECT * FROM assinaturas WHERE id = $1 FOR UPDATE', [assinatura.id]);
+    // Intenção cancelada que nunca pagou não credita: a pendência e a chave
+    // desta notificação entram juntas, nesta transação (a 2ª entrega, ou a
+    // varredura de amanhã, não abre outra pendência).
     if (
       assinaturaTravada?.status === 'cancelada' &&
       !(await cicloContratado.jaTeveCicloPago(assinaturaTravada, cliente))
     ) {
-      await cliente.query('ROLLBACK');
-      return registrarPendencia(contexto, MOTIVO_INTENCAO_CANCELADA);
+      const r = await registrarPendenciaUmaVez(reservas[0], contexto, MOTIVO_INTENCAO_CANCELADA, cliente);
+      await cliente.query('COMMIT');
+      return r;
+    }
+    // As reservas de dedupe, na MESMA transação do ciclo (AUD-005): chave já
+    // gravada = o ciclo já entrou (por este evento, pela conciliação ou pelo
+    // admin) — nada a creditar. Uma reserva de outra transação ainda aberta
+    // segura este INSERT até ela decidir, que é a ordem certa.
+    for (const reserva of reservas) {
+      const { rowCount } = await cliente.query(
+        'INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING',
+        [reserva],
+      );
+      if (!rowCount) {
+        await cliente.query('ROLLBACK');
+        return { jaAplicada: reserva };
+      }
     }
     // Renovação atrasada de uma assinatura que o cliente já trocou por outra
     // (cancelada com ciclo pago): os dias contam, a escolha nova fica.
@@ -1021,10 +1106,9 @@ async function aplicarCicloPago(
     await cliente.query('COMMIT');
   } catch (err) {
     await cliente.query('ROLLBACK');
-    // Sem isso, o retry do San Checkout cairia na dedupe acima e o evento
-    // seria perdido de vez.
-    await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]);
-    // E sem isto, a falha só existia no console: o dinheiro entrou no
+    // As reservas de dedupe caíram com o ROLLBACK: a próxima tentativa (inbox,
+    // varredura, botão do admin) credita — nada a compensar.
+    // Sem isto, a falha só existia no console: o dinheiro entrou no
     // Checkout, a cobertura não entrou aqui, e nenhuma tela mostrava isso.
     // Agora cai na fila de "eventos pendentes" do admin, que é onde alguém
     // olha. Se o próprio registro da pendência falhar, o erro original é que
@@ -1295,6 +1379,7 @@ module.exports = {
   exigirChaveCheckout,
   webhookAutorizado,
   registrarPendencia,
+  registrarPendenciaUmaVez,
   linkCheckoutAssinatura,
   linkRenovarAssinatura,
   montarRespostaPlano,

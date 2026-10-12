@@ -165,7 +165,7 @@ async function pagarCiclo(contaId, assinaturaId = null) {
   const id =
     assinaturaId ||
     (await assinaturasRepo.criar({ anuncianteId: contaId, planoId: 'essencial-1m', status: 'ativa' })).id;
-  await sc.aplicarCicloPago(await assinaturasRepo.buscarPorId(id), `teste-indicacoes-painel-${randomUUID()}`);
+  await sc.aplicarCicloPago(await assinaturasRepo.buscarPorId(id), [`teste-indicacoes-painel-${randomUUID()}`]);
   return id;
 }
 

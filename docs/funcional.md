@@ -463,7 +463,13 @@ não conseguir gravar, responde 503 e o Checkout reentrega. O efeito é
 aplicado depois, por um processador com nova tentativa (até 6, espera
 crescente), trava entre instâncias (`SKIP LOCKED`) e retomada depois de
 restart. Na assinatura, falha no meio libera a reserva de deduplicação e a
-nova tentativa aplica o efeito uma vez; no pedido avulso (passos fora de uma
+nova tentativa aplica o efeito uma vez — no ciclo pago (webhook, conciliação
+e "Aplicar este ciclo") a reserva é gravada na própria transação do ciclo, e
+nem processo morto deixa reserva sem ciclo (AUD-005); a decisão que não
+credita (intenção cancelada, conta excluída, assinatura desconhecida) grava a
+chave da notificação junto com a pendência, e a reentrega não abre outra —
+nem a de "descartado pela deduplicação", que tratava a decisão como ciclo
+creditado (12/10/2026); no pedido avulso (passos fora de uma
 transação só), falha no meio vira pendência pra conferir à mão, sem repetir.
 Payload v1 (sem `eventoId`) ganha uma linha por entrega, e a dedupe dele
 continua na lógica financeira. *Violada:* depois de 6 falhas o evento

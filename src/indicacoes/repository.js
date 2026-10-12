@@ -67,8 +67,12 @@ async function garantirCupom(contaId, nome) {
   }
 }
 
-async function buscarPontoPorCupom(codigo) {
-  const { rows } = await pool.query(
+// `db`: o webhook chama de dentro da transação do ciclo pago, com a conta
+// travada (san-checkout.js#aplicarCicloPago) — ler pelo pool ali pede uma
+// segunda conexão enquanto a primeira segura a trava, e com o pool cheio as
+// duas esperam uma à outra pra sempre (AUD-001, 11/10/2026).
+async function buscarPontoPorCupom(codigo, db = pool) {
+  const { rows } = await db.query(
     `SELECT cp.*, a.nome_empresa AS nome FROM cupons_ponto cp JOIN anunciantes a ON a.id = cp.conta_id
      WHERE cp.codigo = $1 AND a.excluido_em IS NULL`,
     [codigo],

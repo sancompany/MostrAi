@@ -428,7 +428,7 @@ test('ciclo pago MAIOR por cima de benefício em vigor encerra o benefício (sup
       [c.id, somar(50)],
     );
     const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: 'destaque-1m', status: 'ativa' });
-    await sc.aplicarCicloPago(assinatura, `teste-ficha-${randomUUID()}`);
+    await sc.aplicarCicloPago(assinatura, [`teste-ficha-${randomUUID()}`]);
     const { rows } = await pool.query(
       'SELECT status, encerrado_motivo FROM planos_administrativos WHERE anunciante_id = $1',
       [c.id],
