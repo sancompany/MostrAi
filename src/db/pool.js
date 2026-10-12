@@ -36,4 +36,11 @@ types.setTypeParser(1082, (valor) => valor);
 // margem pro client dedicado do LISTEN (src/lib/sse.js, 1 por instância,
 // nunca devolvido) e pra conexão avulsa de scripts/conciliar.js (job
 // separado, roda fora das 2 instâncias do serviço).
-module.exports = new Pool({ ...config, max: 5 });
+//
+// `connectionTimeoutMillis` (AUD-001, auditoria V1): sem ele, quem pede
+// conexão a um pool cheio espera PARA SEMPRE — foi assim que cinco resgates
+// de crédito simultâneos penduraram a instância inteira (cada transação
+// pedia uma 2ª conexão com a linha travada). A causa foi corrigida na rota;
+// isto garante que um ciclo igual vire erro em 5 s, não uma instância parada
+// que o /health (que não toca o banco) continua chamando de saudável.
+module.exports = new Pool({ ...config, max: 5, connectionTimeoutMillis: 5000 });

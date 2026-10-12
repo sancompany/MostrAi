@@ -260,7 +260,9 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
       // Convite que nasceu de uma candidatura de ponto já traz o endereço: o
       // ponto é criado agora, ligado à conta nova, com a primeira tela.
       if (papeis.includes('ponto') && convite.candidatura_id) {
-        const cand = await candidaturasRepo.buscarPorId(convite.candidatura_id);
+        // Pelo `cliente`: uma 2ª conexão do pool dentro da transação pendura
+        // a instância quando o pool (5) está cheio (AUD-001).
+        const cand = await candidaturasRepo.buscarPorId(convite.candidatura_id, cliente);
         if (cand && cand.tipo === 'ponto') {
           await materializarPontoDaCandidatura(cand, anunciante, cliente);
         }

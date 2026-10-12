@@ -41,14 +41,16 @@ async function bloqueioDoResgate(conta, historico) {
 
 // O benefício por créditos em vigor que um resgate novo ENCERRARIA — com os
 // créditos que ele consumiu, que não voltam. `null` quando não há troca.
-async function substituicaoDoResgate(historico) {
+// `db` (e o de bloqueioPorNivel): o POST passa o cliente da transação — nada
+// entre o FOR UPDATE e o COMMIT vai ao pool (AUD-001).
+async function substituicaoDoResgate(historico, db = pool) {
   const ativo = historico.find((h) => h.status === 'ativo' && h.origem === 'indicacao');
   if (!ativo) return null;
   return {
     id: ativo.id,
     nome: `${NOME_TIER[ativo.tier] || ativo.tier} · ${nomeDoCiclo(ativo.compromisso_meses)}`,
     validoAte: ativo.valido_ate,
-    creditosGastos: await repo.creditosDoResgate(ativo.ledger_id),
+    creditosGastos: await repo.creditosDoResgate(ativo.ledger_id, db),
   };
 }
 
@@ -68,11 +70,11 @@ function exibicaoDosCreditos({ ehPonto, saldo, movimentacoes, historico }) {
 // Benefício de nível MENOR que o plano pago em dia não se resgata (regra 31
 // do pedido, ADR-016): o plano pago já dá mais, e o benefício nunca
 // entraria. Devolve a frase de recusa, ou null.
-async function bloqueioPorNivel(conta, tier) {
+async function bloqueioPorNivel(conta, tier, db = pool) {
   if (!pagandoEmDia(conta)) return null;
   const {
     rows: [pago],
-  } = await pool.query('SELECT tier, nome FROM planos WHERE id = $1', [conta.plano_id]);
+  } = await db.query('SELECT tier, nome FROM planos WHERE id = $1', [conta.plano_id]);
   if (!pago || planoAdministrativo.nivelDoTier(tier) >= planoAdministrativo.nivelDoTier(pago.tier)) return null;
   return `Seu plano ${pago.nome} já oferece mais recursos que o benefício ${NOME_TIER[tier] || tier}.`;
 }
@@ -213,8 +215,11 @@ router.post('/anunciantes/me/creditos/resgatar', exigirAnuncianteLogado, async (
     const { rows: travada } = await cliente.query('SELECT * FROM anunciantes WHERE id = $1 FOR UPDATE', [contaId]);
     const conta = travada[0];
     if (!conta) throw Object.assign(new Error('conta não encontrada'), { status: 404 });
-    const historico = await planoAdministrativo.historicoDaConta(contaId);
-    const bloqueio = (await bloqueioDoResgate(conta, historico)) || (await bloqueioPorNivel(conta, tier));
+    // Toda leitura daqui ao COMMIT vai pelo `cliente`: pedir outra conexão ao
+    // pool com a linha travada esgotava o pool (5) com cinco resgates juntos
+    // e pendurava a instância inteira (AUD-001).
+    const historico = await planoAdministrativo.historicoDaConta(contaId, cliente);
+    const bloqueio = (await bloqueioDoResgate(conta, historico)) || (await bloqueioPorNivel(conta, tier, cliente));
     if (bloqueio) throw Object.assign(new Error(bloqueio), { status: 409 });
     // Troca de benefício por créditos (crédito → crédito): só com a
     // confirmação explícita DAQUELE benefício (`substituirBeneficioId`). Sem
@@ -222,7 +227,7 @@ router.post('/anunciantes/me/creditos/resgatar', exigirAnuncianteLogado, async (
     // (e não um "sim" genérico) faz o duplo clique ser inofensivo: o segundo
     // pedido chega com o id do benefício que o primeiro já encerrou, e para
     // aqui em vez de trocar de novo e debitar outra vez.
-    substituido = await substituicaoDoResgate(historico);
+    substituido = await substituicaoDoResgate(historico, cliente);
     if (substituido && Number(req.body.substituirBeneficioId) !== substituido.id) {
       throw Object.assign(new Error('confirme a troca do seu benefício atual'), {
         status: 409,

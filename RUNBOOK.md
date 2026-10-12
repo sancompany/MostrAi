@@ -375,6 +375,7 @@ segredos, código, repositório do Player.
 | Pendência "webhook não processado depois de 6 tentativas" | um evento do Checkout foi gravado na inbox (`webhooks_recebidos`) mas a lógica falhou 6 vezes seguidas: estado `morto` | ver §6.2: ler `ultimo_erro`, corrigir a causa e recolocar na fila |
 | Webhook do Checkout recebendo 503 | a rota não conseguiu gravar o evento na inbox (banco fora) — o Checkout tenta de novo sozinho | conferir o banco; nada se perde enquanto o Checkout reentrega |
 | Migration abortou o deploy | SQL falhou no banco real | o container antigo segue no ar. Corrigir com migration nova, nunca editando a aplicada |
+| Log `timeout exceeded when trying to connect` (500 na rota) | o pool da instância (5 conexões) ficou 5 s sem conexão livre — carga, ou uma transação pedindo uma 2ª conexão ao pool (AUD-001) | ver qual rota falhou e se ela lê pelo `pool` entre o `pool.connect()` e o `COMMIT`; `/health` não toca o banco, então não acusa isto |
 
 **[Estação 6]** Faltam: alerta externo de "caiu" que chega ao celular, monitor
 que avisa quando o job **não rodou**, e alerta de orçamento em cada conta paga.

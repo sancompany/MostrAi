@@ -71,8 +71,9 @@ async function listar() {
   return rows;
 }
 
-async function buscarPorId(id) {
-  const { rows } = await pool.query('SELECT * FROM candidaturas WHERE id = $1', [id]);
+// `db`: dentro de transação, o cliente dela (aceite de convite, AUD-001).
+async function buscarPorId(id, db = pool) {
+  const { rows } = await db.query('SELECT * FROM candidaturas WHERE id = $1', [id]);
   return rows[0] || null;
 }
 

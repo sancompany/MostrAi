@@ -246,8 +246,11 @@ async function beneficioPorCreditosAberto(contaId, db = pool) {
   return rows[0] || null;
 }
 
-async function historicoDaConta(contaId) {
-  const { rows } = await pool.query(
+// `db`: quem lê dentro de uma transação passa o cliente dela — ir ao pool com
+// a linha da conta travada pedia uma 2ª conexão e, com o pool cheio, travava
+// a instância (AUD-001, resgate de créditos).
+async function historicoDaConta(contaId, db = pool) {
+  const { rows } = await db.query(
     `SELECT h.*, p.nome AS plano_nome, p.tier, p.compromisso_meses
        FROM planos_administrativos h JOIN planos p ON p.id = h.plano_id
       WHERE h.anunciante_id = $1
