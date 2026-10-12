@@ -166,7 +166,10 @@ exceção não tratada.
   (sintaxe + lint + formatação + testes) — o mesmo comando que roda local.
   Falha também se um `.env` real estiver versionado.
 - **Segurança semanal** (`.github/workflows/seguranca-semanal.yml`):
-  `npm audit --audit-level=high` toda segunda-feira.
+  `npm audit --audit-level=high` toda segunda-feira, e
+  `scripts/dependencias-deprecadas.js` — falha se uma dependência direta
+  de produção, na versão do lock, está deprecated no npm (o audit não via o
+  multer 1.x, AUD-018).
 - **Deploy**: push na `main` → Northflank constrói a imagem do `Dockerfile`
   e substitui o container. Não há comando de release separado — as
   migrations rodam no `CMD` do próprio container, antes de subir o
