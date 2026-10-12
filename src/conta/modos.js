@@ -335,7 +335,9 @@ router.post('/convites/:token/aceitar', exigirAnuncianteLogado, async (req, res)
     await emTransacao(async (cliente) => {
       const consumido = await convitesRepo.consumir(req.params.token, conta.id, cliente);
       if (!consumido) throw Object.assign(new Error('esse convite acabou de ser usado'), { status: 409 });
-      const cand = convite.candidatura_id ? await candidaturasRepo.buscarPorId(convite.candidatura_id) : null;
+      // Pelo `cliente`: uma 2ª conexão do pool com a linha do convite travada
+      // pendura a instância quando o pool (5) está cheio (AUD-001).
+      const cand = convite.candidatura_id ? await candidaturasRepo.buscarPorId(convite.candidatura_id, cliente) : null;
       for (const papel of novos) await liberarPapelNaConta(conta, papel, cand, cliente);
       // Convite de ponto sem candidatura: o endereço entra depois em "Meu ponto".
       if (cand) await cliente.query(`UPDATE candidaturas SET conta_id = $2 WHERE id = $1`, [cand.id, conta.id]);

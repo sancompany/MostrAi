@@ -30,7 +30,13 @@ async function subirApp() {
   app.set('trust proxy', 1); // como src/server.js: o limite de tentativas conta por IP
   app.use(express.json());
   app.use(session({ secret: 'teste-indicacao', resave: false, saveUninitialized: false }));
+  // Conta logada (aceite de convite por quem já tem conta): o teste diz qual.
+  app.use((req, _res, proximo) => {
+    if (req.headers['x-conta']) req.session.anuncianteId = Number(req.headers['x-conta']);
+    proximo();
+  });
   app.use(require('../src/anunciantes/routes').router);
+  app.use(require('../src/conta/modos').router);
   app.use(require('../src/indicacoes/routes'));
   app.use((err, _req, res, _next) => res.status(500).json({ erro: err.message }));
   const server = app.listen(0);
@@ -213,5 +219,67 @@ test('cadastro por convite de candidatura termina com uma conexão livre só no 
     await pool.query('DELETE FROM convites WHERE id = $1', [convite.id]);
     await pool.query('DELETE FROM candidaturas WHERE id = $1', [cand.id]);
     await pool.query('DELETE FROM tentativas_acesso WHERE chave LIKE $1', [`${ip}:%`]);
+  }
+});
+
+// AUD-001, o outro caminho do convite: a conta JÁ LOGADA que aceita um convite
+// de candidatura (POST /convites/:token/aceitar, src/conta/modos.js) também
+// lia a candidatura pelo POOL dentro da transação que consome o convite. Com
+// cinco abas aceitando juntas, a 1ª trava a linha do convite e pede uma 6ª
+// conexão; as outras quatro esperam a linha — o mesmo pool preso do resgate.
+// Com UMA conexão livre, o aceite termina e o ponto nasce ligado à conta.
+test('aceite de convite de candidatura por conta logada termina com uma conexão livre só no pool (AUD-001)', {
+  timeout: 15000,
+}, async () => {
+  const candidaturasRepo = require('../src/candidaturas/repository');
+  const convitesRepo = require('../src/convites/repository');
+  const conta = await anunciantesRepo.criar({
+    nome_empresa: `Conta Logada ${randomUUID().slice(0, 6)}`,
+    cpf_cnpj: cpfValido(),
+    endereco: 'Rua X, 1',
+    cidade: 'Matão',
+    uf: 'SP',
+    cep: '15990000',
+    contato_email: `logada-${randomUUID()}@example.com`,
+    contato_telefone: '16999990000',
+    senha: 'x',
+  });
+  criadas.push(conta.id);
+  const cand = await candidaturasRepo.criar({
+    tipo: 'ponto',
+    nome: 'Fulana Logada',
+    contato_telefone: '16988880000',
+    nome_comercio: `Bar Logado ${randomUUID().slice(0, 6)}`,
+    endereco: `Rua Logada, ${Math.floor(Math.random() * 9000) + 100}`,
+    cidade: 'Matão',
+    uf: 'SP',
+    cep: '15990000',
+    segmento: 'bar',
+  });
+  const convite = await convitesRepo.criar({ papeis: ['ponto'], candidaturaId: cand.id });
+  const app = await subirApp();
+  const presas = await Promise.all(Array.from({ length: pool.options.max - 1 }, () => pool.connect()));
+  try {
+    let tid;
+    const estouro = new Promise((_, rejeitar) => {
+      tid = setTimeout(() => rejeitar(new Error('sem resposta em 5000 ms — pool travado')), 5000);
+    });
+    const r = await Promise.race([
+      fetch(`${app.base}/convites/${convite.token}/aceitar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-conta': String(conta.id) },
+      }).then(async (resp) => ({ status: resp.status, corpo: await resp.json().catch(() => null) })),
+      estouro,
+    ]).finally(() => clearTimeout(tid));
+    assert.strictEqual(r.status, 200, JSON.stringify(r.corpo));
+    for (const presa of presas.splice(0)) presa.release();
+    const { rows } = await pool.query('SELECT anunciante_id FROM pontos WHERE candidatura_id = $1', [cand.id]);
+    assert.strictEqual(rows[0]?.anunciante_id, conta.id, 'o ponto da candidatura nasce ligado à conta logada');
+  } finally {
+    for (const presa of presas) presa.release();
+    await app.fechar();
+    await pool.query('DELETE FROM pontos WHERE candidatura_id = $1', [cand.id]);
+    await pool.query('DELETE FROM convites WHERE id = $1', [convite.id]);
+    await pool.query('DELETE FROM candidaturas WHERE id = $1', [cand.id]);
   }
 });

@@ -14,8 +14,11 @@ da conta e 4 `active | Lock` esperando a mesma linha. Saldo 0 bastava.
 em 5 (`src/db/pool.js`), cinco resgates juntos ocupam as cinco conexões: um
 segura a linha e espera uma 6ª conexão que nunca vem; quatro esperam a
 linha. O pool não tinha `connectionTimeoutMillis`, então a espera era
-infinita. O mesmo desenho existia no cadastro por convite de candidatura
-(`candidaturasRepo.buscarPorId` pelo pool dentro da transação).
+infinita. O mesmo desenho existia nos dois aceites de convite de candidatura
+— o cadastro por convite (`src/anunciantes/routes.js`) e a conta logada que
+aceita (`POST /convites/:token/aceitar`, `src/conta/modos.js`):
+`candidaturasRepo.buscarPorId` pelo pool dentro da transação. A 1ª rodada da
+correção pegou só o cadastro; a revisão achou o segundo.
 
 **Correção.** Toda leitura entre o `pool.connect()` e o `COMMIT` recebe o
 `cliente` da transação (`historicoDaConta(contaId, db)`,
@@ -25,8 +28,8 @@ infinita. O mesmo desenho existia no cadastro por convite de candidatura
 
 **Guarda.** `tests/creditos-resgate.test.js` (10 resgates simultâneos + `GET
 /planos` em < 5 s; resgate com UMA conexão livre no pool) e
-`tests/indicacao-cadastro.test.js` (cadastro por convite com uma conexão
-livre). Os três falham no código antigo.
+`tests/indicacao-cadastro.test.js` (cadastro por convite e aceite por conta
+logada, cada um com uma conexão livre). Os quatro falham no código antigo.
 
 **Como evitar na origem.** Dentro de `pool.connect()`…`COMMIT`, nenhuma
 chamada sem o cliente: toda função de repositório que pode rodar numa
