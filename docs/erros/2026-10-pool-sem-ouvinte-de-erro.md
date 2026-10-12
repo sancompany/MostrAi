@@ -25,10 +25,12 @@ inofensivo, e que sair derrubava as instâncias pelo mesmo caminho.
 conexão nova) e `pool.on('connect', c => c.on('error', …))`, ouvinte
 próprio em cada cliente, que também só loga: a query em curso recebe o
 erro, a seguinte (o `ROLLBACK` de quem chamou) falha com "not
-queryable", e o `release()` do `finally` tira o cliente morto do pool.
-`keepAlive: true` no Pool. Em `src/server.js`, `uncaughtException` loga
-com etiqueta e sai com 1 (só no processo principal) — última rede para o
-que não for queda de conexão.
+queryable", e o `release()` do `finally` tira o cliente morto do pool. Em
+`src/server.js`, `uncaughtException` loga com etiqueta e sai com 1 (só no
+processo principal) — última rede para o que não for queda de conexão.
+(`keepAlive: true` entrou e saiu na revisão: sem
+`keepAliveInitialDelayMillis` vale o padrão do SO, 2 h, e o pool fecha o
+cliente ocioso em 10 s — nunca sondava nada.)
 
 **Guarda.** `tests/db-pool-resiliencia.test.js`: `pg_terminate_backend` no
 backend ocioso do pool e no de um cliente emprestado em `BEGIN`; antes o
