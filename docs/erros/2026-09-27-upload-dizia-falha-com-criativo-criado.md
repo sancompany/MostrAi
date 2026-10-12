@@ -45,6 +45,15 @@ de 100 s com 0,5 vCPU. A tela não mente mais nesse caso, e não duplica — mas
 a garantia de "sempre abaixo do timeout" pede processamento fora da
 requisição (fila de mídia). Decisão do dono: `docs/PENDENCIAS.md`.
 
+**Recaída (12/10/2026, revisão do AUD-017).** A fila do FFmpeg (um por
+instância) pôs uma espera de minutos ENTRE as contagens de plano e a linha
+temporária: durante a espera o GET `/envios/:chave` dizia "não chegou" (o
+painel mostrava "nenhum criativo foi criado", falso) e um segundo envio
+passava pelas contagens — dois criativos num plano de uma vaga. A linha
+agora nasce antes de qualquer espera e toda recusa a apaga; a espera tem
+teto de 5 min (503) pra caber no descarte de órfãs de 30 min. Regra: entre
+conferir a cota e reservar não pode haver espera.
+
 **Guarda.** `tests/upload-criativo.test.js` (resposta perdida no meio do
 processamento, mesma chave concorrente, falhas reais sem linha residual),
 `tests/ffmpeg-normalizar.test.js` (saída H.264 Main 1080x1920 ≤ 30 fps com o

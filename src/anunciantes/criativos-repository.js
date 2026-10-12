@@ -75,10 +75,21 @@ async function buscarPorEnvio(anuncianteId, envioChave) {
   return rows[0] || null;
 }
 
+// O negócio escolhido no envio, gravado na linha temporária do upload depois
+// das recusas (a linha nasce antes da fila do FFmpeg com o principal — ver
+// src/anunciantes/routes.js#subirCriativo). Fora de CAMPOS_ATUALIZAVEIS de
+// propósito: o PATCH do Admin passa o corpo da requisição pra `atualizar`, e
+// o negócio de uma peça não muda por ali.
+async function definirNegocio(id, negocioId) {
+  await pool.query('UPDATE criativos SET negocio_id = $2 WHERE id = $1', [id, negocioId]);
+}
+
 // Linha temporária de um upload que nunca terminou: o processo reiniciou
 // (deploy) no meio do FFmpeg, e nem o sucesso nem a limpeza do erro rodaram.
 // Ficava "processando" pra sempre e ocupando a cota. Nenhum processamento
-// real dura 30 min (o maior medido em produção foi ~2 min).
+// real dura 30 min (o maior medido em produção foi ~2 min); com a fila do
+// FFmpeg (AUD-017), o pior caso é 26,5 min — a espera na fila tem teto pra
+// caber aqui (ESPERA_MAXIMA_NA_FILA_MS em src/lib/ffmpeg.js).
 // limite: janela fixa de 30 min; com fila assíncrona de mídia, vira estado
 // explícito (processando/falhou) em vez de idade.
 async function descartarProcessamentosOrfaos(anuncianteId) {
@@ -179,6 +190,7 @@ module.exports = {
   criar,
   buscarPorId,
   buscarPorEnvio,
+  definirNegocio,
   descartarProcessamentosOrfaos,
   listarPorAnunciante,
   listarPorStatus,

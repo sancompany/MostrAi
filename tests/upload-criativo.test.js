@@ -21,11 +21,27 @@ const ffmpeg = require('../src/lib/ffmpeg');
 // que o teste solta — é assim que o teste segura o servidor NO MEIO do
 // processamento, que é exatamente onde o 524 acontecia.
 
-let midiaFalsa = { width: 1080, height: 1920, duracao_segundos: 10, ehImagem: false };
+// Vídeo de 10 s a 30 fps: o ffprobe real conta os quadros (pacotes) e dá o
+// pix_fmt, que a recusa por custo lê (src/lib/ffmpeg.js#recusaPorCusto).
+let midiaFalsa = { width: 1080, height: 1920, duracao_segundos: 10, ehImagem: false, quadros: 300, pix_fmt: 'yuv420p' };
 let travaNormalizar = null;
 let falhaNormalizar = null;
-ffmpeg.probeMidia = async () => midiaFalsa;
+let chamadasNormalizar = 0;
+// A espera da vez do ffprobe (fila do FFmpeg, src/lib/ffmpeg.js): o teste
+// segura o probe como a fila seguraria, e solta quando quiser.
+let travaProbe = null;
+let falhaProbe = null;
+let chamadasProbe = 0;
+let temposDoProbe = null;
+ffmpeg.probeMidia = async (_caminho, tempos) => {
+  chamadasProbe += 1;
+  if (temposDoProbe && tempos) Object.assign(tempos, temposDoProbe);
+  if (travaProbe) await travaProbe.promessa;
+  if (falhaProbe) throw falhaProbe;
+  return midiaFalsa;
+};
 ffmpeg.normalizar = async (_caminho, criativoId) => {
+  chamadasNormalizar += 1;
   if (travaNormalizar) await travaNormalizar.promessa;
   if (falhaNormalizar) throw falhaNormalizar;
   return {
@@ -125,9 +141,22 @@ async function limpar(conta) {
 }
 
 function preparar() {
-  midiaFalsa = { width: 1080, height: 1920, duracao_segundos: 10, ehImagem: false };
+  midiaFalsa = { width: 1080, height: 1920, duracao_segundos: 10, ehImagem: false, quadros: 300, pix_fmt: 'yuv420p' };
   travaNormalizar = null;
   falhaNormalizar = null;
+  chamadasNormalizar = 0;
+  travaProbe = null;
+  falhaProbe = null;
+  chamadasProbe = 0;
+  temposDoProbe = null;
+}
+
+async function esperarProbe(n = 1) {
+  for (let i = 0; i < 100; i++) {
+    if (chamadasProbe >= n) return;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error('o envio não chegou ao ffprobe');
 }
 
 test('A/E. upload válido cria exatamente 1 criativo; repetir a mesma chave devolve o mesmo, sem criar outro', async () => {
@@ -281,11 +310,264 @@ test('F/H. arquivo ilegível e vídeo acima do plano: erro real, nenhuma linha, 
     assert.strictEqual(await contar(conta), 0);
     assert.strictEqual((await app.envio(conta, chave)).status, 404);
 
-    midiaFalsa = { width: 1080, height: 1920, duracao_segundos: 20, ehImagem: false };
+    midiaFalsa = { width: 1080, height: 1920, duracao_segundos: 20, ehImagem: false, quadros: 600, pix_fmt: 'yuv420p' };
     const longo = await app.enviar(conta, randomUUID());
     assert.strictEqual(longo.status, 400);
     assert.match(longo.corpo.erro, /seu plano aceita peça de até 15s/);
     assert.strictEqual(await contar(conta), 0, 'bloqueio de duração do plano continua valendo');
+  } finally {
+    await app.fechar();
+    await limpar(conta);
+  }
+});
+
+// AUD-017: o custo do FFmpeg cresce com os pixels — um PNG de 771 KB em
+// 16000x16000 levava 2-3 min e 5-6 GB de RAM numa instância de 1 GB. A
+// recusa vem do ffprobe, antes de criar linha e antes do FFmpeg.
+test('AUD-017. imagem de 16000x16000 é recusada (400) antes do FFmpeg: normalizar não roda, nenhuma linha', async () => {
+  preparar();
+  const conta = await criarConta();
+  const app = await subirApp();
+  try {
+    midiaFalsa = { width: 16000, height: 16000, duracao_segundos: 10, ehImagem: true };
+    const gigante = await app.enviar(conta, randomUUID());
+    assert.strictEqual(gigante.status, 400);
+    assert.match(gigante.corpo.erro, /imagem grande demais/);
+    assert.match(gigante.corpo.erro, /32 megapixels/);
+    assert.strictEqual(chamadasNormalizar, 0, 'o FFmpeg não pode nem começar');
+    assert.strictEqual(await contar(conta), 0);
+
+    // ffprobe com -max_pixels devolve 0x0 pra imagem acima do teto: também
+    // não chega ao FFmpeg.
+    midiaFalsa = { width: 0, height: 0, duracao_segundos: 10, ehImagem: true };
+    const semDimensao = await app.enviar(conta, randomUUID());
+    assert.strictEqual(semDimensao.status, 400);
+    assert.match(semDimensao.corpo.erro, /não foi possível ler esse arquivo/);
+    assert.strictEqual(chamadasNormalizar, 0);
+
+    // No teto (8000x4000 = 32 MP) ainda passa.
+    midiaFalsa = { width: 8000, height: 4000, duracao_segundos: 10, ehImagem: true };
+    assert.strictEqual((await app.enviar(conta, randomUUID())).status, 201);
+    assert.strictEqual(chamadasNormalizar, 1);
+  } finally {
+    await app.fechar();
+    await limpar(conta);
+  }
+});
+
+// Revisão do AUD-017: com um FFmpeg por vez, o envio espera a vez do ffprobe
+// (até o FFmpeg de outro cliente terminar). A linha temporária nascia DEPOIS
+// dessa espera: GET /envios/:chave dizia "não chegou" (o painel mostrava
+// "nenhum criativo foi criado", falso) e um segundo envio passava pelas
+// contagens — dois criativos num plano de uma vaga.
+test('AUD-017 (revisão). envio esperando a vez do ffprobe já tem linha: /envios diz processando e o segundo envio esbarra no limite', async () => {
+  preparar();
+  const conta = await criarConta('essencial-1m'); // limite 1
+  const app = await subirApp();
+  const chave = randomUUID();
+  let soltar = null;
+  try {
+    let liberar;
+    travaProbe = { promessa: new Promise((r) => (liberar = r)) };
+    soltar = () => {
+      travaProbe = null;
+      liberar();
+    };
+    // Sem catch, uma falha aqui viraria "fetch failed" e esconderia a asserção.
+    const resposta = (envio) => envio.catch((err) => ({ status: `falhou: ${err.message}` }));
+    const primeiro = resposta(app.enviar(conta, chave));
+    await esperarProbe(1);
+
+    const consulta = await app.envio(conta, chave);
+    assert.strictEqual(
+      consulta.status,
+      200,
+      `GET /envios respondeu ${consulta.status} enquanto o envio esperava a vez`,
+    );
+    assert.strictEqual(consulta.corpo.estado, 'processando');
+
+    const segundo = resposta(app.enviar(conta, randomUUID()));
+    // Em pé o primeiro: o segundo não pode chegar ao ffprobe.
+    await new Promise((r) => setTimeout(r, 200));
+    soltar();
+    soltar = null;
+    const [r1, r2] = await Promise.all([primeiro, segundo]);
+    assert.strictEqual(r1.status, 201);
+    assert.strictEqual(r2.status, 400, `o segundo envio respondeu ${r2.status}`);
+    assert.match(r2.corpo.erro, /seu plano permite até 1/);
+    assert.strictEqual(await contar(conta), 1, 'um plano de uma vaga ficou com dois criativos');
+  } finally {
+    soltar?.();
+    await app.fechar();
+    await limpar(conta);
+  }
+});
+
+// A espera na fila tem teto (ffmpeg.js): passou, 503 com a frase da fila —
+// não "arquivo inválido" —, a linha temporária sai e a chave fica livre.
+test('AUD-017 (revisão). fila cheia no ffprobe ou no FFmpeg: 503, nenhuma linha, e a chave volta a valer', async () => {
+  preparar();
+  const conta = await criarConta();
+  const app = await subirApp();
+  const erroFila = () =>
+    Object.assign(new Error('muitos envios sendo processados agora — tente de novo'), { status: 503, origem: 'fila' });
+  try {
+    const chave = randomUUID();
+    falhaProbe = erroFila();
+    const noProbe = await app.enviar(conta, chave);
+    assert.strictEqual(noProbe.status, 503);
+    assert.match(noProbe.corpo.erro, /muitos envios/);
+    assert.strictEqual(chamadasNormalizar, 0);
+    assert.strictEqual(await contar(conta), 0);
+    assert.strictEqual((await app.envio(conta, chave)).status, 404);
+
+    falhaProbe = null;
+    falhaNormalizar = erroFila();
+    const noFfmpeg = await app.enviar(conta, chave);
+    assert.strictEqual(noFfmpeg.status, 503);
+    assert.match(noFfmpeg.corpo.erro, /muitos envios/);
+    assert.strictEqual(await contar(conta), 0);
+
+    falhaNormalizar = null;
+    assert.strictEqual((await app.enviar(conta, chave)).status, 201);
+  } finally {
+    await app.fechar();
+    await limpar(conta);
+  }
+});
+
+// Revisão do AUD-017: a espera da vez do ffprobe entrava em `ffprobe_ms`, e
+// o sinal do RUNBOOK (`fila_ms`) não a mostrava — uma espera de 2 min parecia
+// um ffprobe de 2 min. O log traz as duas separadas.
+test('AUD-017 (revisão). o log do upload separa a espera da vez do ffprobe (fila_probe_ms) do ffprobe em si', async (t) => {
+  preparar();
+  temposDoProbe = { fila_probe_ms: 4321, ffprobe_ms: 12 };
+  const conta = await criarConta();
+  const app = await subirApp();
+  const log = t.mock.method(console, 'log', () => {});
+  try {
+    assert.strictEqual((await app.enviar(conta, randomUUID())).status, 201);
+    const linha = log.mock.calls.map((c) => c.arguments).find((a) => a[0] === 'upload de criativo');
+    assert.ok(linha, 'sem a linha "upload de criativo" no log');
+    const tempos = JSON.parse(linha[1]);
+    assert.strictEqual(tempos.fila_probe_ms, 4321, `log: ${linha[1]}`);
+    assert.strictEqual(tempos.ffprobe_ms, 12, `log: ${linha[1]}`);
+  } finally {
+    log.mock.restore();
+    await app.fechar();
+    await limpar(conta);
+  }
+});
+
+// Revisão 2 do AUD-017: foto com cabeçalho legível e corpo que não
+// decodifica (cortada, corrompida) — o FFmpeg recusa no único quadro que lê
+// (ffmpeg.js). O cliente recebe a frase, não o "não foi possível processar"
+// genérico, e o log diz o que foi.
+test('AUD-017 (revisão 2). imagem que não decodifica: 400 "não conseguimos ler esta imagem", nenhuma linha, log imagem_ilegivel', async (t) => {
+  preparar();
+  midiaFalsa = { width: 1080, height: 1920, duracao_segundos: 10, ehImagem: true };
+  falhaNormalizar = Object.assign(new Error('não conseguimos ler esta imagem — o arquivo parece corrompido'), {
+    status: 400,
+    origem: 'imagem',
+  });
+  const conta = await criarConta();
+  const app = await subirApp();
+  const log = t.mock.method(console, 'log', () => {});
+  t.mock.method(console, 'error', () => {});
+  try {
+    const chave = randomUUID();
+    const r = await app.enviar(conta, chave);
+    assert.strictEqual(r.status, 400);
+    assert.match(r.corpo.erro, /não conseguimos ler esta imagem/);
+    assert.strictEqual(await contar(conta), 0, 'a linha temporária saiu');
+    assert.strictEqual((await app.envio(conta, chave)).status, 404, 'a chave volta a valer');
+    const linha = log.mock.calls.map((c) => c.arguments).find((a) => a[0] === 'upload de criativo');
+    assert.strictEqual(JSON.parse(linha[1]).resultado, 'imagem_ilegivel', `log: ${linha[1]}`);
+  } finally {
+    await app.fechar();
+    await limpar(conta);
+  }
+});
+
+// Revisão 3 do AUD-017: o teto de pixels mede UM quadro, e o FFmpeg processa
+// todos — um MP4 de 5,6 MB com 3000 quadros de 7680x4096 (200 fps, 15 s, cabe
+// no Essencial) passava em tudo e segurava a única vaga do FFmpeg até o
+// SIGKILL dos 15 min; e o vídeo de 10 bits acima de 9 MP (drone 5.1K em HDR)
+// estourava o teto de memória DEPOIS de processar o arquivo. Os dois voltam
+// 400 com a frase, antes do FFmpeg.
+test('AUD-017 (revisão 3). vídeo de quadros demais, ou de 10 bits acima de 9 MP: 400 antes do FFmpeg, nenhuma linha', async () => {
+  preparar();
+  const conta = await criarConta('essencial-1m'); // até 15 s
+  const app = await subirApp();
+  try {
+    midiaFalsa = {
+      width: 7680,
+      height: 4096,
+      duracao_segundos: 15,
+      ehImagem: false,
+      quadros: 3000,
+      pix_fmt: 'yuv420p',
+    };
+    const lento = await app.enviar(conta, randomUUID());
+    assert.strictEqual(lento.status, 400);
+    assert.match(lento.corpo.erro, /vídeo pesado demais pra processar: 3000 quadros de 7680x4096/);
+
+    midiaFalsa = {
+      width: 5120,
+      height: 2700,
+      duracao_segundos: 10,
+      ehImagem: false,
+      quadros: 300,
+      pix_fmt: 'yuv420p10le',
+    };
+    const hdr = await app.enviar(conta, randomUUID());
+    assert.strictEqual(hdr.status, 400);
+    assert.match(hdr.corpo.erro, /vídeo de 10 bits \(HDR\) grande demais: 5120x2700/);
+    assert.strictEqual(chamadasNormalizar, 0, 'o FFmpeg não pode nem começar');
+    assert.strictEqual(await contar(conta), 0);
+
+    // 4K HDR de celular (10 bits, 30 fps, 15 s) passa.
+    midiaFalsa = {
+      width: 2160,
+      height: 3840,
+      duracao_segundos: 15,
+      ehImagem: false,
+      quadros: 450,
+      pix_fmt: 'yuv420p10le',
+    };
+    assert.strictEqual((await app.enviar(conta, randomUUID())).status, 201);
+    assert.strictEqual(chamadasNormalizar, 1);
+  } finally {
+    await app.fechar();
+    await limpar(conta);
+  }
+});
+
+// Revisão 3 do AUD-017: o FFmpeg que estoura o teto de memória do processo
+// (prlimit) não é "arquivo inválido" — antes o cliente lia "confira se é um
+// vídeo válido" e o log dizia falha_midia, sem pista do teto.
+test('AUD-017 (revisão 3). FFmpeg sem memória no teto: 400 com a frase dele, nenhuma linha, log teto_memoria', async (t) => {
+  preparar();
+  falhaNormalizar = Object.assign(
+    new Error('esse arquivo pede mais memória do que o servidor reserva pra processá-lo'),
+    {
+      status: 400,
+      origem: 'memoria',
+    },
+  );
+  const conta = await criarConta();
+  const app = await subirApp();
+  const log = t.mock.method(console, 'log', () => {});
+  t.mock.method(console, 'error', () => {});
+  try {
+    const chave = randomUUID();
+    const r = await app.enviar(conta, chave);
+    assert.strictEqual(r.status, 400);
+    assert.match(r.corpo.erro, /pede mais memória do que o servidor reserva/);
+    assert.strictEqual(await contar(conta), 0, 'a linha temporária saiu');
+    assert.strictEqual((await app.envio(conta, chave)).status, 404, 'a chave volta a valer');
+    const linha = log.mock.calls.map((c) => c.arguments).find((a) => a[0] === 'upload de criativo');
+    assert.strictEqual(JSON.parse(linha[1]).resultado, 'teto_memoria', `log: ${linha[1]}`);
   } finally {
     await app.fechar();
     await limpar(conta);

@@ -275,6 +275,103 @@ test('substituir arquivo (mesmo mecanismo de routes.js #substituir): preserva o 
   }
 });
 
+// AUD-017: a rota de upload da Mídia Mostraí (multer de verdade, FFmpeg
+// falso) recusa a imagem acima do teto de resolução antes de criar linha e
+// antes do FFmpeg — mesma regra do upload do anunciante.
+test('AUD-017. upload de mídia própria com imagem de 16000x16000: 400 claro, sem FFmpeg e sem criativo', async () => {
+  require('express-async-errors');
+  const express = require('express');
+  const ffmpeg = require('../src/lib/ffmpeg');
+  const originais = { probeMidia: ffmpeg.probeMidia, normalizar: ffmpeg.normalizar };
+  let chamadasNormalizar = 0;
+  ffmpeg.probeMidia = async () => ({ width: 16000, height: 16000, duracao_segundos: 10, ehImagem: true });
+  ffmpeg.normalizar = async () => {
+    chamadasNormalizar += 1;
+    throw new Error('o FFmpeg não podia ter sido chamado');
+  };
+  const app = express();
+  app.use(require('../src/midias/routes'));
+  const server = app.listen(0);
+  await new Promise((r) => server.once('listening', r));
+  const conta = await anunciantesRepo.ensureContaMostrai();
+  const contarCriativos = async () =>
+    (await pool.query('SELECT COUNT(*)::int AS n FROM criativos WHERE anunciante_id = $1', [conta.id])).rows[0].n;
+  const antes = await contarCriativos();
+  try {
+    const form = new FormData();
+    form.append('nome_interno', 'Foto gigante');
+    form.append('frequencia_hora', '1');
+    form.append('cobertura_tipo', 'rede');
+    form.append('arquivo', new Blob([Buffer.from('png-de-teste')], { type: 'image/png' }), 'gigante.png');
+    const r = await fetch(`http://127.0.0.1:${server.address().port}/admin/midias-proprias`, {
+      method: 'POST',
+      body: form,
+    });
+    assert.strictEqual(r.status, 400);
+    const corpo = await r.json();
+    assert.match(corpo.erro, /imagem grande demais/);
+    assert.strictEqual(chamadasNormalizar, 0);
+    assert.strictEqual(await contarCriativos(), antes, 'nenhum criativo temporário ficou pra trás');
+  } finally {
+    Object.assign(ffmpeg, originais);
+    server.closeAllConnections();
+    await new Promise((r) => server.close(r));
+  }
+});
+
+// Revisão 2 do AUD-017: a rota já fez o ffprobe; o normalizar recebe
+// esse resultado (`probado`) em vez de fazer outro ffprobe e outra espera na
+// fila pelo mesmo arquivo. E a recusa de imagem ilegível chega com a frase.
+test('AUD-017. upload de mídia própria: normalizar recebe o probe da rota; imagem ilegível volta 400 com a frase', async () => {
+  require('express-async-errors');
+  const express = require('express');
+  const ffmpeg = require('../src/lib/ffmpeg');
+  const originais = { probeMidia: ffmpeg.probeMidia, normalizar: ffmpeg.normalizar };
+  const midiaDoProbe = { width: 1080, height: 1920, duracao_segundos: 10, ehImagem: true };
+  let chamadasProbe = 0;
+  const argumentosNormalizar = [];
+  ffmpeg.probeMidia = async () => {
+    chamadasProbe += 1;
+    return midiaDoProbe;
+  };
+  ffmpeg.normalizar = async (...args) => {
+    argumentosNormalizar.push(args);
+    throw Object.assign(new Error('não conseguimos ler esta imagem — o arquivo parece corrompido'), {
+      status: 400,
+      origem: 'imagem',
+    });
+  };
+  const app = express();
+  app.use(require('../src/midias/routes'));
+  const server = app.listen(0);
+  await new Promise((r) => server.once('listening', r));
+  const conta = await anunciantesRepo.ensureContaMostrai();
+  const contarCriativos = async () =>
+    (await pool.query('SELECT COUNT(*)::int AS n FROM criativos WHERE anunciante_id = $1', [conta.id])).rows[0].n;
+  const antes = await contarCriativos();
+  try {
+    const form = new FormData();
+    form.append('nome_interno', 'Foto cortada');
+    form.append('frequencia_hora', '1');
+    form.append('cobertura_tipo', 'rede');
+    form.append('arquivo', new Blob([Buffer.from('png-de-teste')], { type: 'image/png' }), 'cortada.png');
+    const r = await fetch(`http://127.0.0.1:${server.address().port}/admin/midias-proprias`, {
+      method: 'POST',
+      body: form,
+    });
+    assert.strictEqual(r.status, 400);
+    assert.match((await r.json()).erro, /não conseguimos ler esta imagem/);
+    assert.strictEqual(chamadasProbe, 1);
+    assert.strictEqual(argumentosNormalizar.length, 1);
+    assert.strictEqual(argumentosNormalizar[0][3], midiaDoProbe, 'o normalizar recebe o probe da rota');
+    assert.strictEqual(await contarCriativos(), antes, 'nenhum criativo temporário ficou pra trás');
+  } finally {
+    Object.assign(ffmpeg, originais);
+    server.closeAllConnections();
+    await new Promise((r) => server.close(r));
+  }
+});
+
 test('período digitado no admin é horário de Matão, e salvar sem mexer não anda (D3, 24/09/2026)', async () => {
   // Antes o formulário relia o período em UTC e o navegador convertia de novo
   // na ida: cada "salvar" empurrava o período 3h pra frente.
