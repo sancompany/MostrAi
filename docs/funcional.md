@@ -2147,7 +2147,8 @@ na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.
 **RN-16 — Limite de 10 tentativas por 15 minutos, por IP e rota.** Vale para
 login, admin e redefinição. A contagem fica no banco (reinício não zera). Um
 acerto desconta só a própria tentativa: os erros continuam contando, para
-qualquer conta naquele IP. Rota é a declarada, não a grafia pedida.
+qualquer conta naquele IP. IP é o do cliente (`CF-Connecting-IP` vindo de
+borda da Cloudflare; IPv6 por /64); rota é a declarada, não a grafia pedida.
 Nos dois logins vale também **10 erros por 15 minutos por conta**, venham de
 onde vierem (e-mail no anunciante, usuário no admin), e no esqueci-senha **10
 pedidos por e-mail**. O balde do IP vem primeiro: o pedido que ele barrou não

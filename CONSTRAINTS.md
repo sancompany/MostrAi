@@ -104,15 +104,15 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
 - **Cache de playlist em memória do processo.** Uma instância só. Se um dia
   houver duas, mover para tabela.
 - **Limitador de tentativas no banco** (migration 051 — vale entre instâncias
-  e sobrevive ao restart). Teto de 10 por 15 min por IP e, nos dois logins e
-  no esqueci-senha, também por conta (e-mail ou usuário). Dois limites
-  assumidos, decisão do dono:
-  1. Quem tem muitos endereços (uma botnet, um prefixo IPv6) multiplica o
-     teto do IP no que mira MUITAS contas: credential stuffing no login,
-     varredura de e-mails pelo 409 do cadastro, links de redefinição pra
-     muitos e-mails. Cada conta segue com no máximo 10 erros por janela de
+  e sobrevive ao restart). Teto de 10 por 15 min por IP (IPv6 por /64) e, nos
+  dois logins e no esqueci-senha, também por conta (e-mail ou usuário). Dois
+  limites assumidos, decisão do dono:
+  1. Quem tem muitos endereços (um /48 IPv6 são 65.536 /64; uma botnet)
+     multiplica o teto do IP no que mira MUITAS contas: credential stuffing
+     no login, varredura de e-mails pelo 409 do cadastro, links de redefinição
+     pra muitos e-mails. Cada conta segue com no máximo 10 erros por janela de
      quem não tem o cookie do aparelho dela, e cada e-mail com 10 pedidos de
-     link. Fechar pede CAPTCHA.
+     link. Fechar pede CAPTCHA ou balde por /48.
   2. O balde da conta trava a dona: enquanto alguém mantiver 10 erros por
      janela contra a conta (um IP basta, repetindo a cada 15 min), o login
      dela de aparelho novo dá 429, até com a senha certa. Do aparelho onde já

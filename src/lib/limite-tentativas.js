@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const net = require('node:net');
 const pool = require('../db/pool');
 const cofre = require('./cofre');
 const { segredoConfere } = require('./segredo');
@@ -56,6 +57,78 @@ function decidir({ quantidade, desde, agora = Date.now() }) {
   if (quantidade <= MAX) return { bloquear: false };
   const faltam = Math.max(1, Math.ceil((JANELA_MS - (agora - new Date(desde).getTime())) / 60000));
   return { bloquear: true, faltamMinutos: faltam };
+}
+
+// Faixas publicadas da Cloudflare: https://www.cloudflare.com/ips-v4 e
+// /ips-v6 (as mesmas de api.cloudflare.com/client/v4/ips), conferidas em
+// 12/10/2026. Mudam raramente; se a Cloudflare publicar faixa nova e esta
+// lista ficar velha, quem chega pela faixa nova volta a contar pela borda
+// (lockout coletivo) — nunca abre a porta.
+const FAIXAS_CLOUDFLARE = [
+  '173.245.48.0/20',
+  '103.21.244.0/22',
+  '103.22.200.0/22',
+  '103.31.4.0/22',
+  '141.101.64.0/18',
+  '108.162.192.0/18',
+  '190.93.240.0/20',
+  '188.114.96.0/20',
+  '197.234.240.0/22',
+  '198.41.128.0/17',
+  '162.158.0.0/15',
+  '104.16.0.0/13',
+  '104.24.0.0/14',
+  '172.64.0.0/13',
+  '131.0.72.0/22',
+  '2400:cb00::/32',
+  '2606:4700::/32',
+  '2803:f800::/32',
+  '2405:b500::/32',
+  '2405:8100::/32',
+  '2a06:98c0::/29',
+  '2c0f:f248::/32',
+];
+const CLOUDFLARE = new net.BlockList();
+for (const faixa of FAIXAS_CLOUDFLARE) {
+  const [rede, bits] = faixa.split('/');
+  CLOUDFLARE.addSubnet(rede, Number(bits), net.isIPv6(rede) ? 'ipv6' : 'ipv4');
+}
+const daCloudflare = (ip) => net.isIP(ip) > 0 && CLOUDFLARE.check(ip, net.isIPv6(ip) ? 'ipv6' : 'ipv4');
+
+// O IP do CLIENTE, não o do último proxy. Em produção a cadeia é Cloudflare →
+// ingress do Northflank → app: o ingress acrescenta ao X-Forwarded-For o IP
+// de quem falou com ele, e com `trust proxy 1` o `req.ip` é esse salto — a
+// borda da Cloudflare. Contar por borda trancava todo mundo que saía por ela
+// depois de 10 erros de um só (lockout coletivo) e dava balde novo a cada
+// borda. A Cloudflare manda o IP real em CF-Connecting-IP, mas o cabeçalho
+// só vale quando quem o entregou FOI a Cloudflare (`req.ip` nas faixas dela):
+// quem fala direto com o ingress (`curl --resolve` no IP dele) escreve o
+// CF-Connecting-IP que quiser, e aceitá-lo dava um balde novo a cada chute.
+// Fora da Cloudflare (acesso direto, local, testes) vale o `req.ip`, que o
+// ingress preencheu com o IP real e o cliente não escolhe.
+function ipDoCliente(req) {
+  const cf = req.get('cf-connecting-ip');
+  return redeDoIp(daCloudflare(req.ip) && net.isIP(cf) > 0 ? cf : req.ip);
+}
+
+// IPv6 conta pelo /64, não pelo endereço: o domínio publica AAAA, e quem tem
+// um /64 (o mínimo que qualquer VPS entrega) troca de endereço a cada chute —
+// eram 2^64 baldes. Expande o `::` e fica com os 4 primeiros grupos, em hexa
+// canônico (`2001:DB8:0:1::5` e `2001:0db8:0:1:ab:cd:ef:1` caem no mesmo
+// `2001:db8:0:1::/64`). IPv4, e IPv4 escrito como IPv6 (`::ffff:a.b.c.d`, como
+// o Node mostra um socket IPv4), fica como está.
+function redeDoIp(ip) {
+  if (!net.isIPv6(ip)) return ip;
+  const v4 = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (v4) return v4[1];
+  const grupos = (s) => (s ? s.split(':') : []);
+  const tamanho = (gs) => gs.reduce((n, g) => n + (g.includes('.') ? 2 : 1), 0); // a.b.c.d no fim ocupa 2
+  const [esq, dir] = ip.split('::').map(grupos);
+  const todos = dir ? [...esq, ...Array(8 - tamanho(esq) - tamanho(dir)).fill('0'), ...dir] : esq;
+  return `${todos
+    .slice(0, 4)
+    .map((g) => Number.parseInt(g, 16).toString(16))
+    .join(':')}::/64`;
 }
 
 // A rota da chave: a ROTA COMO FOI DECLARADA, nunca o caminho como o cliente
@@ -118,7 +191,7 @@ async function limitar(req, res, next, alvo) {
   const cookie = alvo && LER_APARELHO.exec(req.get('cookie') || '');
   const aparelho = cookie && segredoConfere(cookie[2], assinarAparelho(alvo, rota, cookie[1])) ? cookie[2] : null;
   const baldes = {
-    ip: `${req.ip}:${rota}`,
+    ip: `${ipDoCliente(req)}:${rota}`,
     conta: alvo ? chaveDaConta(alvo, rota) : null,
     aparelho: aparelho ? `aparelho:${aparelho}:${rota}` : null,
     alvo,

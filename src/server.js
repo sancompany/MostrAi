@@ -29,9 +29,13 @@ const eventosRoutes = require('./creditos/eventos-routes');
 
 const app = express();
 
-// Atrás do proxy do Render, req.secure é falso sem isso e o express-session
-// simplesmente não emite o cookie com `secure: true` — login quebrado em
-// produção sem nenhuma mensagem de erro.
+// Atrás de proxy (hoje Cloudflare → ingress do Northflank), req.secure é falso
+// sem isso e o express-session simplesmente não emite o cookie com
+// `secure: true` — login quebrado em produção sem nenhuma mensagem de erro.
+// Confiar em 1 salto faz `req.ip` ser o último endereço do X-Forwarded-For: a
+// borda da Cloudflare, não o cliente. Quem precisa do IP do cliente lê
+// CF-Connecting-IP, e só quando esse salto é da Cloudflare
+// (src/lib/limite-tentativas.js).
 app.set('trust proxy', 1);
 
 // Content-Security-Policy. É o que sobrou de pé depois de zerar os 301

@@ -6,10 +6,11 @@ const { gerarHash } = require('../src/lib/senha');
 const { MAX } = require('../src/lib/limite-tentativas');
 
 // Limitador de tentativas na rota HTTP de verdade (auditoria Review-Master,
-// ciclo 1, grupo A-limitador — AUD-002 e AUD-003). O unit de `decidir()` em
-// tests/seguranca.test.js prova a regra; aqui são os BALDES que estão em
-// jogo, e eles só existem com o app real: a grafia do caminho que o Express
-// aceita, o acerto que o login desconta e a conta tentada.
+// ciclo 1, grupo A-limitador — AUD-002, AUD-003 e AUD-004). O unit de
+// `decidir()` em tests/seguranca.test.js prova a regra; aqui são os BALDES
+// que estão em jogo, e eles só existem com o app real: a grafia do caminho
+// que o Express aceita, o acerto que o login desconta, a conta tentada e o IP
+// que o proxy entrega.
 
 process.env.ADMIN_USER ||= 'admin';
 process.env.ADMIN_PASSWORD ||= 'Admin12@teste';
@@ -24,8 +25,16 @@ const cofre = require('../src/lib/cofre');
 // a limpeza deles no meio do laço daqui zerava o balde e o 429 não vinha.
 const REDE = `198.${18 + Math.floor(Math.random() * 2)}.${Math.floor(Math.random() * 250)}`;
 const ip = (n) => `${REDE}.${n}`;
-// "Um lugar novo" pro balde do IP: o endereço número n da rede do teste.
-const lugar = (n) => ({ 'x-forwarded-for': ip(n) });
+// Uma borda da Cloudflare de verdade (104.16.0.0/13, cloudflare.com/ips-v4),
+// sorteada por execução: o limitador só lê CF-Connecting-IP quando o salto
+// que o ingress viu (`req.ip`) é da Cloudflare.
+const BORDA = `104.${16 + Math.floor(Math.random() * 8)}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
+const viaBorda = (cliente) => ({ 'x-forwarded-for': `${cliente}, ${BORDA}`, 'cf-connecting-ip': cliente });
+// Um /48 de documentação (2001:db8::/32) por execução, pros testes de IPv6.
+const IPV6 = `2001:db8:${Math.floor(Math.random() * 0xfff0).toString(16)}`;
+// "Um lugar novo" pro balde do IP: o /64 número n dentro do MESMO /48, via
+// borda da Cloudflare — o atacante que tem um prefixo IPv6 grande.
+const lugar = (n) => viaBorda(`${IPV6}:${(0x100 + n).toString(16)}::1`);
 
 let srv;
 test.before(async () => {
@@ -57,7 +66,7 @@ test.after(async () => {
     await pool.query('DELETE FROM tokens_senha WHERE usuario_id = $1', [id]);
     await pool.query('DELETE FROM anunciantes WHERE id = $1', [id]);
   }
-  for (const padrao of [`${REDE}.%`]) {
+  for (const padrao of [`${REDE}.%`, `${BORDA}:%`, `${IPV6}:%`]) {
     await pool.query('DELETE FROM tentativas_acesso WHERE chave LIKE $1', [padrao]);
   }
   for (const [alvo, rota] of alvos) {
@@ -428,4 +437,68 @@ test('esqueci-senha: o mesmo e-mail pedido de vários endereços esbarra no bald
   }
   await new Promise((r) => setTimeout(r, 300));
   assert.deepStrictEqual(await contar(), { tokens: MAX, fila: MAX }, 'só os 10 que passaram viraram link e e-mail');
+});
+
+// AUD-004: em produção (Cloudflare → ingress do Northflank → app), com
+// `trust proxy 1` o `req.ip` é o último salto do X-Forwarded-For — a BORDA da
+// Cloudflare, não o cliente. Todo mundo que saía pela mesma borda dividia um
+// balde de 10 (lockout coletivo), e cada borda nova era um balde novo. O IP
+// do cliente vem em CF-Connecting-IP, que a Cloudflare sempre preenche.
+test('dois clientes atrás da mesma borda têm baldes separados', async () => {
+  const atacante = ip(7);
+  const vitima = ip(10);
+
+  for (let i = 1; i <= MAX; i++) {
+    assert.strictEqual(await post('/anunciantes/login', semConta(), viaBorda(atacante)), 401);
+  }
+  assert.strictEqual(
+    await post('/anunciantes/login', semConta(), viaBorda(atacante)),
+    429,
+    'o atacante estoura o dele',
+  );
+  assert.strictEqual(await post('/anunciantes/login', semConta(), viaBorda(vitima)), 401, 'a vítima tem balde próprio');
+
+  const { rows } = await pool.query(
+    'SELECT chave, quantidade FROM tentativas_acesso WHERE chave LIKE $1 OR chave LIKE $2',
+    [`${REDE}.%`, `${BORDA}:%`],
+  );
+  const doAtacante = rows.find((r) => r.chave.startsWith(`${atacante}:`));
+  assert.strictEqual(doAtacante?.quantidade, MAX + 1, 'o balde é do IP do cliente');
+  assert.ok(!rows.some((r) => r.chave.startsWith(`${BORDA}:`)), 'nenhum balde no IP da borda');
+});
+
+// Revisão da 1ª rodada: CF-Connecting-IP só vale se quem o entregou foi a
+// Cloudflare. Quem fala direto com o ingress (`curl --resolve` no IP dele)
+// manda o cabeçalho que quiser, e o ingress acrescenta o IP REAL dele ao
+// X-Forwarded-For — esse salto (`req.ip`, fora das faixas da Cloudflare) é o
+// que conta. Confiar no cabeçalho de qualquer um dava um balde novo a cada
+// chute com um CF-Connecting-IP diferente.
+test('CF-Connecting-IP de quem não veio pela Cloudflare não abre balde novo', async () => {
+  const direto = ip(9);
+  const forjado = (n) => ({ 'x-forwarded-for': `${ip(100 + n)}, ${direto}`, 'cf-connecting-ip': ip(100 + n) });
+
+  for (let i = 1; i <= MAX; i++) assert.strictEqual(await post('/anunciantes/login', semConta(), forjado(i)), 401);
+  assert.strictEqual(await post('/anunciantes/login', semConta(), forjado(MAX + 1)), 429, 'conta pelo salto real');
+});
+
+// Revisão da 1ª rodada: IPv6 conta pelo /64, não pelo endereço. O domínio
+// publica AAAA, e o cliente IPv6 chega com o /128 dele em CF-Connecting-IP;
+// quem tem um /64 (o mínimo que qualquer VPS entrega) trocava de endereço a
+// cada chute e ganhava 2^64 baldes.
+test('endereços IPv6 do mesmo /64 dividem o balde', async () => {
+  const rede64 = `${IPV6}:a`;
+
+  for (let i = 1; i <= MAX; i++) {
+    assert.strictEqual(await post('/anunciantes/login', semConta(), viaBorda(`${rede64}::${i.toString(16)}`)), 401);
+  }
+  assert.strictEqual(
+    await post('/anunciantes/login', semConta(), viaBorda(`${rede64}:AB:CD:EF:${MAX + 1}`)),
+    429,
+    'endereço novo, mesmo /64',
+  );
+  assert.strictEqual(
+    await post('/anunciantes/login', semConta(), viaBorda(`${IPV6}:b::1`)),
+    401,
+    'outro /64, balde próprio',
+  );
 });

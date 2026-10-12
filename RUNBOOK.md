@@ -27,6 +27,19 @@ espera inicial). A troca é rolante: uma instância nova só recebe tráfego
 depois do `/health`. A janela de 503 medida quando havia uma instância só
 não se aplica mais.
 
+Na frente do app a cadeia é **Cloudflare → ingress do Northflank → app**
+(`trust proxy 1`): o `req.ip` que o Express vê é o salto que o ingress
+acrescentou ao X-Forwarded-For — a borda da Cloudflare —, e o IP real do
+cliente chega em `CF-Connecting-IP`. O limitador de tentativas só usa esse
+cabeçalho quando o `req.ip` está nas faixas publicadas da Cloudflare (lista
+em `src/lib/limite-tentativas.js`, de cloudflare.com/ips); quem fala direto
+com o ingress, sem passar pela Cloudflare, conta pelo próprio IP e o
+cabeçalho é ignorado. Se a Cloudflare publicar faixa nova, atualize a lista:
+sem isso, quem chega por ela conta pela borda (lockout coletivo, não porta
+aberta). O Pseudo IPv4 da zona não pode estar em "Overwrite Headers": ele
+troca o CF-Connecting-IP de quem chega por IPv6 por um IPv4 classe E por
+endereço, e o agrupamento por /64 deixa de valer.
+
 **Como conferir que um deploy deu certo:** `curl https://mostrai.sancocore.com.br/health`
 deve devolver `{"ok":true}`; a aba Visão geral do admin mostra a última
 conciliação; e `SELECT count(*) FROM schema_migrations` tem que bater com o
