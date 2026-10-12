@@ -1367,6 +1367,12 @@ prova que um ciclo pago de quem veio por cupom antigo não cria linha em
 **RN-13 — Troca de plano de quem já paga é recusada.** O sistema manda falar
 com o administrador, para evitar cobrança dupla na Asaas. O caminho é cancelar
 e assinar de novo. *Violada:* mensagem na tela. *Quem vê:* o anunciante.
+*Desde 11/10/2026 (AUD-007):* vale também pra quem paga no cartão com a
+assinatura ativa — o Checkout recusa mudar o valor dela (RN-52 não alcança
+cartão, API.md dele 5.6). Cotação (`acao: 'troca_pela_equipe'`), `/assinar` e
+`/trocar-plano` dão a mesma resposta (`codigo: 'troca_de_plano_pela_equipe'`:
+a equipe troca, fale pelo WhatsApp), e a tela mostra o WhatsApp em vez de
+"Trocar agora". O caminho definitivo é decisão do dono (PENDENCIAS, PG6).
 
 **RN-14 — Parceiro é status de conta, marcado à mão pelo administrador**
 (migration 033, 15/09/2026; renomeado de "fundador" pra "parceiro" e

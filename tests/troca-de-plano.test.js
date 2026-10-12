@@ -390,3 +390,132 @@ test('webhook de cobranca_contestada suspende a conta (chargeback)', async () =>
     anunciantesRepo.atualizar = originalAtualizar;
   }
 });
+
+// AUD-007 (auditoria técnica, 11/10/2026): o Checkout recusa trocar o valor
+// de assinatura de CARTÃO já paga — 409 `troca_de_valor_nao_suportada` (API.md
+// dele, 5.6), e toda assinatura da Mostraí é de cartão. A Mostraí repassava o
+// texto cru do Checkout, e o /assinar e a cotação mandavam o cliente de volta
+// pro mesmo "Trocar de plano": beco sem saída. Agora as três portas devolvem
+// a MESMA resposta clara, com `codigo` estável, e nenhuma aponta pro 409.
+// O caminho de verdade (cancelar + assinar de novo × troca pelo Admin) é
+// decisão do dono — docs/PENDENCIAS.md, PG6.
+const TEXTO_CRU_DO_CHECKOUT =
+  'Esta assinatura é de cartão e já tem fatura paga: a Asaas não permite alterar o valor dela. A troca de plano não foi feita e nada foi cobrado.';
+
+async function contaPagaNoCartao(prefixo) {
+  const pool = require('../src/db/pool');
+  const assinaturasRepo = require('../src/financeiro/assinaturas-repository');
+  const { rows } = await pool.query(
+    `INSERT INTO anunciantes (nome_empresa, cpf_cnpj, contato_email, contato_telefone, senha_hash, aceitou_termos_em,
+                              papeis, plano_id, plano_cortesia, data_expiracao, endereco, cidade, uf, cep)
+     VALUES ($1, '11144477735', $2, '16999990000', 'x', now(), '{anunciante}', 'essencial-1m', false,
+             (now() + interval '20 days')::date, 'Rua Teste, 10', 'Matão', 'SP', '15990000')
+     RETURNING id`,
+    [prefixo, `${prefixo}-${randomUUID()}@example.com`],
+  );
+  const id = rows[0].id;
+  const assinatura = await assinaturasRepo.criar({ anuncianteId: id, planoId: 'essencial-1m', status: 'ativa' });
+  return { id, assinatura };
+}
+
+async function subirComConta(anuncianteId) {
+  const express = require('express');
+  require('express-async-errors');
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, proximo) => {
+    req.session = { anuncianteId };
+    proximo();
+  });
+  app.use(require('../src/financeiro/routes').router);
+  app.use((err, _req, res, _next) => res.status(500).json({ erro: err.message }));
+  const server = app.listen(0);
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const chamar = async (metodo, caminho, corpo) => {
+    const r = await fetch(`${base}${caminho}`, {
+      method: metodo,
+      headers: { 'Content-Type': 'application/json' },
+      body: corpo ? JSON.stringify(corpo) : undefined,
+    });
+    return { status: r.status, corpo: await r.json().catch(() => null) };
+  };
+  return { chamar, fechar: () => new Promise((r) => server.close(r)) };
+}
+
+// Checkout simulado: só as chamadas a /api/checkout/ (o app de teste local
+// passa direto). `responder` devolve { status, corpo }.
+function checkoutSimulado(responder) {
+  const original = globalThis.fetch;
+  const chamadas = [];
+  globalThis.fetch = async (url, opcoes) => {
+    if (!String(url).includes('/api/checkout/')) return original(url, opcoes);
+    chamadas.push(String(url).split('/api/checkout/')[1]);
+    const { status, corpo } = responder();
+    return { ok: status >= 200 && status < 300, status, json: async () => corpo };
+  };
+  return { chamadas, restaurar: () => (globalThis.fetch = original) };
+}
+
+test('AUD-007: trocar-plano no cartão — o 409 do Checkout vira resposta clara com `codigo` estável, não o texto cru', async () => {
+  comAmbiente();
+  const pool = require('../src/db/pool');
+  const assinaturasRepo = require('../src/financeiro/assinaturas-repository');
+  const { id, assinatura } = await contaPagaNoCartao('aud007-troca');
+  const app = await subirComConta(id);
+  const checkout = checkoutSimulado(() => ({
+    status: 409,
+    corpo: { codigo: 'troca_de_valor_nao_suportada', erro: TEXTO_CRU_DO_CHECKOUT },
+  }));
+  try {
+    const r = await app.chamar('POST', '/anunciantes/me/trocar-plano', { planoNovoId: 'destaque-1m' });
+    assert.deepStrictEqual(checkout.chamadas, ['trocar-plano']);
+    assert.strictEqual(r.status, 409);
+    assert.strictEqual(r.corpo.codigo, 'troca_de_plano_pela_equipe');
+    assert.notStrictEqual(r.corpo.erro, TEXTO_CRU_DO_CHECKOUT, 'não repassa o texto cru do Checkout');
+    assert.match(r.corpo.erro, /feita pela nossa equipe/);
+    assert.match(r.corpo.erro, /WhatsApp/);
+    assert.match(r.corpo.erro, /Nada foi cobrado nem alterado/);
+    assert.doesNotMatch(r.corpo.erro, /Trocar de plano/, 'não manda de volta pro mesmo botão');
+    const { rows } = await pool.query('SELECT status FROM assinaturas WHERE anunciante_id = $1', [id]);
+    assert.deepStrictEqual(
+      rows.map((x) => x.status),
+      ['ativa'],
+      'a linha pendente_troca sumiu; a ativa ficou',
+    );
+    assert.strictEqual((await assinaturasRepo.buscarPorId(assinatura.id)).status, 'ativa');
+  } finally {
+    checkout.restaurar();
+    await app.fechar();
+    await apagarConta(id);
+  }
+});
+
+test('AUD-007: /assinar de outro plano com cartão pago em vigor e a cotação não mandam mais pra "Trocar de plano"', async () => {
+  comAmbiente();
+  const { id } = await contaPagaNoCartao('aud007-assinar');
+  const app = await subirComConta(id);
+  const checkout = checkoutSimulado(() => ({ status: 500, corpo: {} }));
+  try {
+    for (const confirmarBeneficio of [false, true]) {
+      const r = await app.chamar('POST', `/anunciantes/${id}/assinar`, { planoId: 'destaque-1m', confirmarBeneficio });
+      assert.strictEqual(r.status, 409);
+      assert.strictEqual(r.corpo.codigo, 'troca_de_plano_pela_equipe');
+      assert.doesNotMatch(r.corpo.erro, /Trocar de plano/, 'sem laço de volta pro botão que dá 409');
+      assert.match(r.corpo.erro, /feita pela nossa equipe/);
+    }
+    const cotacao = await app.chamar('GET', '/anunciantes/me/cotacao/destaque-1m');
+    assert.strictEqual(cotacao.status, 200);
+    assert.notStrictEqual(cotacao.corpo.acao, 'trocar', 'a tela não oferece o "Trocar agora" que o Checkout recusa');
+    assert.strictEqual(cotacao.corpo.acao, 'troca_pela_equipe');
+    assert.strictEqual(cotacao.corpo.aviso.codigo, 'troca_de_plano_pela_equipe');
+    const mesmo = await app.chamar('GET', '/anunciantes/me/cotacao/essencial-1m');
+    assert.strictEqual(mesmo.corpo.acao, 'ja_tem', 'o mesmo plano continua "já tem"');
+    assert.strictEqual(mesmo.corpo.aviso, null);
+    assert.deepStrictEqual(checkout.chamadas, [], 'nada vai ao Checkout: nem cancela, nem cobra');
+  } finally {
+    checkout.restaurar();
+    await app.fechar();
+    await apagarConta(id);
+  }
+});

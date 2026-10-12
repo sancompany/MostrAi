@@ -174,84 +174,34 @@ async function montarConfirmacaoPedido(planoId) {
   });
 }
 
-// Troca de plano de quem já paga (POST /trocar-plano do Checkout). Sem
-// diferença a pagar (rebaixamento, ou diferença abaixo de R$ 5), troca na
-// hora, sem sair daqui. Com diferença a pagar, desde 21/09/2026 o Checkout
-// responde 202 e pede pra levar o pagador pra uma tela dele — o dono
-// decidiu que nenhuma cobrança acontece sem o pagador aprovar o valor
-// explicitamente (antes, cobrava direto no cartão salvo, sem ele ver
-// nada). Não dá pra saber ANTES de chamar qual dos dois vai acontecer (o
-// valor nunca vem do corpo da requisição, pra ninguém escolher quanto
-// paga), então o botão avisa os dois casos.
-async function montarConfirmacaoTroca(planoNovoId) {
+// Troca de plano de quem paga no cartão (AUD-007, 11/10/2026): o Checkout
+// não muda o valor de assinatura de cartão já paga, e o caminho pelo site
+// ainda é decisão do dono — hoje quem troca é a equipe. O servidor manda o
+// texto (`codigo: 'troca_de_plano_pela_equipe'`) na cotação, no /assinar e
+// no /trocar-plano; aqui só sai o link de contato de sempre (WhatsApp, o
+// mesmo do resto do site) no lugar do "Escolher outro plano", que levava a
+// pessoa de volta pro mesmo beco.
+const TROCA_PELA_EQUIPE = 'troca_de_plano_pela_equipe';
+function linkTrocaPelaEquipe(classe = '') {
+  const href = window.linkWhatsApp('Olá! Quero trocar o meu plano na Mostraí.');
+  return `<a${classe ? ` class="${classe}"` : ''} href="${esc(href)}" target="_blank" rel="noopener">Falar no WhatsApp</a>`;
+}
+function htmlDoErroDePlano(corpo, padrao) {
+  const texto = esc(corpo?.erro || padrao);
+  if (corpo?.codigo === TROCA_PELA_EQUIPE) return `${texto} ${linkTrocaPelaEquipe()}`;
+  return `${texto} <a href="/planos.html">Escolher outro plano</a>`;
+}
+function mostrarTrocaPelaEquipe(aviso) {
   const box = document.getElementById('confirmacaoPedido');
   box.innerHTML = `
     <p class="eyebrow">Confirmar pedido</p>
     <h3 class="u-m-0 u-mb-14">Trocar de plano</h3>
-    <p class="u-m-0 u-mb-12">Se houver diferença a pagar entre os planos, você vai aprovar o valor exato numa tela do Checkout antes de qualquer cobrança. Sem diferença, a troca já acontece agora.</p>
+    <p class="u-m-0 u-mb-12">${esc(aviso?.erro || 'A troca de plano é feita pela nossa equipe — fale com a gente.')}</p>
     <div class="field-row">
-      <button class="btn primary" id="btnConfirmarTroca">Trocar agora</button>
-      <a class="btn ghost" href="/planos.html">Escolher outro</a>
+      ${linkTrocaPelaEquipe('btn primary')}
+      <a class="btn ghost" href="/anunciante/painel.html">Voltar ao painel</a>
     </div>
-    <p class="form-msg" id="msgConfirmacaoPedido"></p>
   `;
-  document.getElementById('btnConfirmarTroca').addEventListener('click', async (e) => {
-    e.target.disabled = true;
-    e.target.textContent = 'Trocando...';
-    const msg = document.getElementById('msgConfirmacaoPedido');
-    let r;
-    try {
-      r = await fetch(`${API_BASE_URL}/anunciantes/me/trocar-plano`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planoNovoId }),
-      });
-    } catch (err) {
-      // Sem rede o botão voltava? Não: ficava em "Trocando..." pra sempre.
-      msg.textContent = window.frase(err.message);
-      msg.className = 'form-msg err';
-      e.target.disabled = false;
-      e.target.textContent = 'Trocar agora';
-      return;
-    }
-    const corpo = await r.json().catch(() => ({}));
-    if (r.status === 202) {
-      // approvalUrl ausente não deveria acontecer (contrato do Checkout
-      // garante os dois juntos no 202) — mas cair no sucesso abaixo sem
-      // ele diria "troca feita" pra uma troca que não aconteceu. Melhor
-      // erro claro do que mentira sobre dinheiro.
-      if (!corpo.approvalUrl) {
-        msg.textContent = 'Não conseguimos abrir a tela de aprovação do Checkout. Tente de novo em instantes.';
-        msg.className = 'form-msg err';
-        e.target.disabled = false;
-        e.target.textContent = 'Trocar agora';
-        return;
-      }
-      msg.textContent = 'Levando você pro Checkout pra aprovar o valor...';
-      msg.className = 'form-msg';
-      window.location.href = corpo.approvalUrl;
-      return;
-    }
-    if (!r.ok) {
-      msg.innerHTML = `${esc(corpo.erro || 'Não foi possível trocar de plano.')} <a href="/planos.html">Escolher outro plano</a>`;
-      msg.className = 'form-msg err';
-      e.target.disabled = false;
-      e.target.textContent = 'Trocar agora';
-      return;
-    }
-    e.target.remove();
-    document.querySelector('#confirmacaoPedido .btn.ghost')?.remove();
-    const texto = corpo.acerto?.cobrado
-      ? `Troca feita. Cobramos ${fmtBRL(corpo.acerto.valor)} de acerto no cartão salvo.`
-      : 'Troca feita. Como o plano novo é mais barato, nada foi cobrado agora. O valor novo vale a partir da próxima renovação.';
-    msg.textContent = texto;
-    msg.className = 'form-msg ok';
-    box.insertAdjacentHTML(
-      'beforeend',
-      '<a class="btn ghost" id="btnIrPainel" href="/anunciante/painel.html">Ir pro meu painel</a>',
-    );
-  });
 }
 
 // Assinatura de plano — a escolha em si acontece em /planos.html (mesma
@@ -289,7 +239,7 @@ async function assinar(anuncianteId, planoId, confirmarBeneficio = false) {
       document.getElementById('btnConfirmarPlano').disabled = false;
       return;
     }
-    msg.innerHTML = `${esc(corpo.erro || 'Não foi possível gerar a cobrança.')} <a href="/planos.html">Escolher outro plano</a>`;
+    msg.innerHTML = htmlDoErroDePlano(corpo, 'Não foi possível gerar a cobrança.');
     msg.className = 'form-msg err';
     document.getElementById('btnConfirmarPlano').disabled = false;
     return;
@@ -348,11 +298,12 @@ async function carregar() {
     // plano um dia antes do que o resto do sistema. Sem cotação (rede caiu),
     // trata como pedido novo — o POST /assinar é quem decide de verdade.
     let acao = 'assinar';
+    let aviso = null;
     try {
       const r = await fetch(`${API_BASE_URL}/anunciantes/me/cotacao/${encodeURIComponent(planoUrl)}`, {
         credentials: 'include',
       });
-      if (r.ok) acao = (await r.json()).acao || 'assinar';
+      if (r.ok) ({ acao = 'assinar', aviso = null } = await r.json());
     } catch {
       /* fica 'assinar' */
     }
@@ -361,13 +312,22 @@ async function carregar() {
       window.location.href = '/anunciante/painel.html';
       return;
     }
+    // Plano pago no cartão em vigor e outro plano pedido: quem troca é a
+    // equipe (AUD-007) — a tela diz isso em vez de oferecer um "Trocar
+    // agora" que o Checkout recusa.
+    if (acao === 'troca_pela_equipe') {
+      mostrarTrocaPelaEquipe(aviso);
+      return;
+    }
     // Sem plano, ou num benefício (cortesia — por créditos ou legado): o
     // pedido é uma assinatura nova. Como ela convive com o benefício quem
     // decide é o servidor (ADR-016): pago maior entra na hora e encerra o
     // benefício; igual ou menor começa depois dele — o /assinar devolve o
     // texto e o cliente confirma antes de pagar (confirmarTroca, abaixo).
-    if (acao === 'trocar') montarConfirmacaoTroca(planoUrl);
-    else montarConfirmacaoPedido(planoUrl);
+    // A tela de "Trocar agora" (POST /trocar-plano) saiu em 12/10/2026: o
+    // servidor não devolve mais `acao: 'trocar'` desde o AUD-007 — o caminho
+    // da troca no cartão é decisão do dono (PENDENCIAS, PG6).
+    montarConfirmacaoPedido(planoUrl);
   });
 }
 

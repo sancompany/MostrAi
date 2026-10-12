@@ -33,7 +33,7 @@ async function avisarCancelamento(anunciante, assinatura) {
 const planoAdministrativo = require('./plano-administrativo');
 const creditosRepo = require('../creditos/repository');
 const { nomeDoCiclo } = require('../lib/ciclos');
-const { cotarPlano } = require('./cotacao');
+const { cotarPlano, TROCA_PELA_EQUIPE } = require('./cotacao');
 const cicloContratado = require('./ciclo-contratado');
 const estornos = require('./estornos');
 const { multiplicar } = require('../lib/dinheiro');
@@ -360,10 +360,10 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
       conta.plano_id === assinatura.plano_id &&
       conta.data_expiracao &&
       vigencia.coberturaVigente(conta.data_expiracao);
-    if (pagou)
-      return res
-        .status(409)
-        .json({ erro: 'você já tem esse plano ativo — pra mudar de plano, use "Trocar de plano" no painel' });
+    // Até 11/10/2026 dizia "use Trocar de plano" — que, numa assinatura de
+    // cartão (todas), dá 409 no Checkout e devolvia o cliente pra cá: beco
+    // sem saída (AUD-007). Hoje a troca é pela equipe (PG6).
+    if (pagou) return res.status(409).json(TROCA_PELA_EQUIPE);
     // Achado real (revisão de 23/09/2026): `pagou` só olha o `plano_id`
     // ATUAL da conta — que a conciliação diária (encerrarCoberturaVencida)
     // agora pode limpar sozinha quando a cobrança recorrente falha e a
@@ -618,6 +618,12 @@ router.post('/anunciantes/me/trocar-plano', exigirAnuncianteLogado, async (req, 
     // Checkout registra o erro do lado dele (chargeId na resposta); aqui
     // só cabe não fingir que a troca aconteceu.
     await assinaturasRepo.excluir(assinaturaNova.id);
+    // Assinatura de cartão já paga (API.md do Checkout 5.6): o Checkout não
+    // muda o valor dela. O texto dele fala de Asaas e fatura e não diz o que
+    // fazer; a resposta daqui diz o caminho real (AUD-007, PG6).
+    if (status === 409 && corpo?.codigo === 'troca_de_valor_nao_suportada') {
+      return res.status(409).json(TROCA_PELA_EQUIPE);
+    }
     return res.status(status).json({ erro: corpo.erro || 'não foi possível trocar de plano', ...corpo });
   }
 

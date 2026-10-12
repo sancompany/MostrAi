@@ -18,17 +18,33 @@ const { valorMensalDaConta } = require('./san-checkout');
 const { multiplicar } = require('../lib/dinheiro');
 const vigencia = require('../lib/vigencia');
 
+// Troca de plano de quem paga no cartão (AUD-007, 11/10/2026): o Checkout
+// recusa mudar o valor de assinatura de cartão já paga (409
+// `troca_de_valor_nao_suportada`, API.md dele 5.6) — e toda assinatura da
+// Mostraí é de cartão (Pix Automático não está habilitado). O caminho pelo
+// site ainda é decisão do dono (docs/PENDENCIAS.md, PG6); hoje quem troca é a
+// equipe. A MESMA resposta sai da cotação, do POST /assinar e do POST
+// /trocar-plano, com um `codigo` estável pra tela — nunca o texto cru do
+// Checkout, nem um "use Trocar de plano" que volta pro mesmo 409.
+const TROCA_PELA_EQUIPE = Object.freeze({
+  codigo: 'troca_de_plano_pela_equipe',
+  erro: 'A troca de plano de quem paga no cartão é feita pela nossa equipe — fale com a gente pelo WhatsApp que a gente troca o seu plano. Nada foi cobrado nem alterado.',
+});
+
 // O que este pedido É pra esta conta — decidido aqui, não no navegador
 // (consolidação final, 24/09/2026: o frontend não calcula regra):
-//   'assinar' — sem plano pago vigente (sem plano, benefício/cortesia, ou
-//               pago vencido): o pedido é uma assinatura nova (quem decide
-//               como ela convive com benefício é o POST /assinar);
-//   'trocar'  — plano pago vigente e o pedido é OUTRO plano;
-//   'ja_tem'  — plano pago vigente e é o MESMO plano: nada a confirmar.
+//   'assinar'           — sem plano pago vigente (sem plano, benefício/
+//                         cortesia, ou pago vencido): o pedido é uma
+//                         assinatura nova (quem decide como ela convive com
+//                         benefício é o POST /assinar);
+//   'troca_pela_equipe' — plano pago vigente e o pedido é OUTRO plano: até
+//                         11/10/2026 era 'trocar', e levava ao 409 do
+//                         Checkout (acima);
+//   'ja_tem'            — plano pago vigente e é o MESMO plano.
 function acaoDoPedido(conta, plano) {
   const pagoVigente = !!conta.plano_id && !conta.plano_cortesia && vigencia.coberturaVigente(conta.data_expiracao);
   if (!pagoVigente) return 'assinar';
-  return plano.id === conta.plano_id ? 'ja_tem' : 'trocar';
+  return plano.id === conta.plano_id ? 'ja_tem' : 'troca_pela_equipe';
 }
 
 async function cotarPlano(conta, plano) {
@@ -44,9 +60,11 @@ async function cotarPlano(conta, plano) {
   const tabelaMensal = valorMensalDaConta({ papeis: [] }, plano, simulada);
   const valorMensal = valorMensalDaConta(conta, plano, simulada);
 
+  const acao = acaoDoPedido(conta, plano);
   return {
     planoId: plano.id,
-    acao: acaoDoPedido(conta, plano),
+    acao,
+    aviso: acao === 'troca_pela_equipe' ? TROCA_PELA_EQUIPE : null,
     meses,
     cheioMensal,
     tabelaMensal,
@@ -68,4 +86,4 @@ async function cotarPlano(conta, plano) {
   };
 }
 
-module.exports = { cotarPlano, acaoDoPedido };
+module.exports = { cotarPlano, acaoDoPedido, TROCA_PELA_EQUIPE };

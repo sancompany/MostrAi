@@ -522,6 +522,38 @@ que entrou antes de a Asaas revelar o id) ganha o id sozinha na próxima
 varredura. A que continua sem id depois disso é devolvida na Asaas e conferida
 à mão.
 
+## 6.4 Troca de plano de quem paga no cartão — procedimento interino (PG6)
+
+Até o dono decidir entre "cancelar + assinatura nova pelo site" e "troca
+manual pelo Admin" (`docs/PENDENCIAS.md`, PG6), o site responde a quem pede
+outro plano com a assinatura de cartão ativa: "a troca de plano de quem paga
+no cartão é feita pela nossa equipe — fale com a gente pelo WhatsApp"
+(`codigo: troca_de_plano_pela_equipe`). O Checkout não muda o valor de
+assinatura de cartão já paga (409 `troca_de_valor_nao_suportada`, API.md
+dele §5.6). O que a equipe faz hoje, com o que existe:
+
+1. **Conferir** (Contas → a conta → Plano): plano atual, assinatura ativa e
+   até quando a cobertura paga vale.
+2. **Troca no fim do ciclo pago** — o único caminho sem acerto de dinheiro a
+   decidir:
+   1. Contas → a conta → Plano → **Cancelar assinatura**. Para a renovação
+      do plano atual; a cobertura já paga continua até a data dela. Nada é
+      devolvido nem cobrado.
+   2. Combinar com o cliente: no dia seguinte ao fim da cobertura ele assina
+      o plano novo pelo site (`/planos.html` → confirmar → Checkout). Antes
+      disso o `/assinar` de outro plano responde 409 "Seu plano atual vale
+      até …" — esperado: o ciclo novo somaria em cima do antigo.
+3. **Cliente que precisa do plano novo antes do fim do ciclo:** não há
+   ferramenta pronta. Antecipar exige decidir o que acontece com os dias
+   pagos do plano atual (descartar, somar ou devolver a proporção) — é a
+   própria decisão do PG6. Levar ao dono, caso a caso. O
+   `POST /admin/anunciantes/:id/plano-administrativo` (ferramenta técnica,
+   sem tela) cancela a assinatura e dá o plano novo como cortesia, sem
+   cobrança nem devolução: só com a decisão do dono para aquele caso.
+4. **Nunca:** estornar o ciclo atual para "liberar" a troca (estorno não é
+   troca, §6.3), nem gerar link de assinatura nova com a de cartão ainda
+   ativa (cobrança dupla na Asaas).
+
 ## 7. Incidente com dado pessoal
 
 O Mostraí guarda nome, CNPJ/CPF, e-mail, telefone e endereço de anunciantes,

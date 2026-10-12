@@ -6159,3 +6159,30 @@ Ficou de fora, sem mexer:
       mantém os dias dela até o Admin tirar. Gravar, no caminho de pagamento,
       a cobertura de antes/depois e os dias postos na fila por cada ciclo
       fecha este item, o PG3 e os `limite:` de `estornos.js`.
+- PG6 [ ] **Troca de plano no cartão: cancelar + assinatura nova × troca
+      manual pelo Admin** (decisão do dono; AUD-007, 11/10/2026). O San
+      Checkout recusa mudar o valor de assinatura de cartão com fatura paga —
+      `POST /trocar-plano` responde 409 `troca_de_valor_nao_suportada` antes
+      de cobrar ou alterar nada (API.md dele §5.6, decisão do dono de lá em
+      26/09/2026; medido na Asaas, §7.5) — e toda assinatura da Mostraí é de
+      cartão (Pix Automático não está habilitado). O que o Checkout prescreve:
+      "Para mudar o preço de quem assina no cartão, o caminho hoje é cancelar
+      (§5.5) e o assinante assinar o plano novo" (§5.6); o §7.5 lista ainda
+      "cobrar a diferença como pedido avulso", o caminho que o dono escolheu
+      em 16/09/2026 e aposentou em 18/09. Os dois caminhos em aberto:
+      (a) **cancelar + nova pelo site** — o `/assinar` cancela a de cartão no
+      Checkout e gera o link do plano novo; falta decidir o que acontece com
+      os dias já pagos do plano antigo (somar, descartar ou acerto
+      proporcional) e aceitar a janela entre o cancelamento e o novo
+      pagamento; (b) **troca manual pelo Admin** — a equipe cancela e assina
+      de novo pelo cliente, ou concede o plano novo à mão. **Hoje (sem
+      decisão):** a cotação devolve `acao: 'troca_pela_equipe'`, e o
+      `/assinar` e o `/trocar-plano` respondem 409 com
+      `codigo: 'troca_de_plano_pela_equipe'` e o texto "a troca de plano de
+      quem paga no cartão é feita pela nossa equipe — fale com a gente pelo
+      WhatsApp"; a tela de confirmação mostra o link do WhatsApp em vez de
+      "Trocar agora"/"Escolher outro plano" (que levavam de volta ao mesmo
+      409). Nada é cancelado nem cobrado sozinho. Decidido, troca-se a
+      resposta `troca_pela_equipe` pelo caminho escolhido (`cotacao.js`,
+      `financeiro/routes.js`, `confirmar-plano.page.js`). Enquanto isso, o
+      que a equipe faz com o pedido no WhatsApp está no RUNBOOK §6.4.
