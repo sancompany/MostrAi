@@ -56,9 +56,13 @@ não no repositório. O que mudou e não se desfaz sem contexto:
 - Revisão Codex do PR #136 (P2, válido): devolução em parcelas — a parcial
   fecha o pedido aberto e, quando a total chega, `pedidoAbertoDa` não acha
   nada e o momento caía na hora da confirmação (fora do prazo → crédito
-  ficava). Agora `estornos.js#momentoDoPedidoDe` lê o pedido mais antigo não
-  cancelado da cobrança (`min(LEAST(solicitado_em, confirmado_em))`); teste
-  "AUD-009: devolução em parcelas" em `tests/estorno.test.js`.
+  ficava). Agora `estornos.js#momentoDoPedidoDe` acha o pedido em que a
+  SOMA pedida (não cancelada, em ordem) alcança o valor pago — não o mais
+  antigo: um parcial no 3º dia e o resto no 20º não devolveram no prazo
+  (4ª rodada do Codex); sem esse momento nos registros (a Asaas devolveu
+  mais do que foi pedido), vale a confirmação. Testes "AUD-009: devolução
+  em parcelas" e "parcial pedido no prazo + resto fora dele" em
+  `tests/estorno.test.js`.
 - Revisão Codex, 2ª rodada (P2, válido): pendência gravada DENTRO de uma
   transação (chave de dedupe, documento do pagador) avisava o admin pelo
   pool antes do COMMIT — o admin recarregava a fila (debounce de 800 ms)

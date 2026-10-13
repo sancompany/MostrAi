@@ -1647,6 +1647,48 @@ test('AUD-009: devolução em parcelas — o pedido no prazo vale mesmo com a pa
   }
 });
 
+// 2ª revisão Codex do PR #136: o pedido mais antigo não basta — um PARCIAL
+// pedido no 3º dia e o resto devolvido no 20º não devolveram o pagamento no
+// prazo. O momento é o do pedido em que a soma pedida alcança o valor pago;
+// sem ele nos registros, a hora da confirmação.
+test('AUD-009: parcial pedido no prazo + resto fora dele — o crédito já consolidou e fica', async () => {
+  const creditosRepo = require('../src/creditos/repository');
+  const par = await pontoQueIndicou();
+  const { ponto, indicado } = par;
+  try {
+    const { assinatura, chargeId, cobranca } = await pagar(indicado);
+    assert.equal(await creditosRepo.saldo(ponto.id), 1);
+    const parcial = await admin('POST', `/admin/cobrancas/${cobranca.id}/estornos`, {
+      tipo: 'ordinario',
+      valor: 30,
+      motivo: 'parcial no 3º dia',
+    });
+    assert.equal(parcial.status, 201, parcial.texto);
+    // Pago há 20 dias; o parcial foi pedido no 3º dia (há 17) e confirmado.
+    await pool.query("UPDATE cobrancas_confirmadas SET pago_em = now() - interval '20 days' WHERE id = $1", [
+      cobranca.id,
+    ]);
+    await pool.query("UPDATE estornos SET solicitado_em = now() - interval '17 days' WHERE cobranca_id = $1", [
+      cobranca.id,
+    ]);
+    await estornoDoPsp(assinatura, indicado, chargeId, {
+      statusFinanceiro: 'estornado_parcialmente',
+      valorEstornado: 30,
+      estornoParcial: true,
+      valor: 134.99,
+    });
+    assert.equal((await reversoesDo(ponto)).length, 0, 'parcial não mexe no crédito');
+
+    // O resto volta hoje (20º dia), direto na Asaas: o pagamento inteiro só
+    // foi devolvido fora do prazo.
+    await estornoDoPsp(assinatura, indicado, chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+    assert.equal((await reversoesDo(ponto)).length, 0, 'crédito consolidado não é estornado');
+    assert.equal(await creditosRepo.saldo(ponto.id), 1);
+  } finally {
+    await limparIndicacao(par);
+  }
+});
+
 test('AUD-009: o card de indicações e o aviso ao ponto acompanham o crédito que saiu', async () => {
   const indicacoesRepo = require('../src/indicacoes/repository');
   const creditosRepo = require('../src/creditos/repository');
