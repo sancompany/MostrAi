@@ -59,6 +59,14 @@ não no repositório. O que mudou e não se desfaz sem contexto:
   ficava). Agora `estornos.js#momentoDoPedidoDe` lê o pedido mais antigo não
   cancelado da cobrança (`min(LEAST(solicitado_em, confirmado_em))`); teste
   "AUD-009: devolução em parcelas" em `tests/estorno.test.js`.
+- Revisão Codex, 2ª rodada (P2, válido): pendência gravada DENTRO de uma
+  transação (chave de dedupe, documento do pagador) avisava o admin pelo
+  pool antes do COMMIT — o admin recarregava a fila (debounce de 800 ms)
+  ainda sem a linha. Agora `registrarPendencia` com client de transação
+  publica pelo próprio client (`sse.js#emitirParaAdminNoCommit`): o NOTIFY
+  do Postgres só sai no COMMIT e morre no ROLLBACK. Regra que fica: aviso
+  em tempo real de algo gravado numa transação vai pelo client dela, nunca
+  pelo pool. Teste: `tests/pendencia-aviso-no-commit.test.js`.
 - Ambiente dos e2e de navegador: `playwright` tem de resolver a partir de
   `node_modules` (aqui está instalado global em `/opt/node22`, e um
   `npm ci` apaga o link — recriar com `ln -s`); sem isso todo `.mjs` morre

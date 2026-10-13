@@ -308,8 +308,12 @@ async function registrarPendencia(payload, motivo, db = pool) {
     JSON.stringify(payload),
     motivo,
   ]);
-  // Fila "Eventos do Checkout" do admin muda de tamanho.
-  sse.emitirParaAdmin('payment.updated', {});
+  // Fila "Eventos do Checkout" do admin muda de tamanho. Pelo client de uma
+  // transação, o aviso só sai no COMMIT (NOTIFY é transacional): pelo pool
+  // saía antes, e o admin recarregava a fila ainda sem a linha (revisão
+  // Codex do PR #136).
+  if (db === pool) sse.emitirParaAdmin('payment.updated', {});
+  else await sse.emitirParaAdminNoCommit(db, 'payment.updated', {});
 }
 
 // Decisão que NÃO credita (vira pendência) num evento que credita ciclo —
