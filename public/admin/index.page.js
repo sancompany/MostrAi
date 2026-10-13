@@ -5989,6 +5989,7 @@ const TIPO_CREDITO = {
   resgate_beneficio: 'Resgate',
   estorno_resgate: 'Estorno de resgate',
   credito_mensal_ponto: 'Crédito mensal do ponto',
+  estorno_indicacao: 'Indicação estornada (pagamento devolvido)',
 };
 
 let EVENTOS_FICHA = null; // { contaId, fonte: EventSource, timer }

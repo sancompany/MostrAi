@@ -16,7 +16,9 @@ const pool = require('../db/pool');
 //                          ↘ tentando_de_novo (espera crescente) → … → morto
 // "processando" tem prazo (LEASE_MIN): a instância que pegou pode morrer no
 // meio (deploy, OOM) — passado o prazo, outra retoma. A lógica de negócio é
-// idempotente pra isso (dedupe `webhooks_processados`, liberada em erro).
+// idempotente pra isso: a dedupe (`webhooks_processados`) de um ciclo pago é
+// gravada na transação do próprio ciclo, e a dos outros eventos é liberada
+// em erro — um processo morto nunca deixa reserva sem efeito (AUD-005).
 
 const MAX_TENTATIVAS = 6;
 // Espera antes da tentativa 2, 3, 4, 5 e 6: 30 s, 2 min, 10 min, 30 min, 2 h.

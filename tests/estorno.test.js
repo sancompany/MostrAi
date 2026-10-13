@@ -1034,6 +1034,61 @@ test('desistência: cliente só pede; vira pedido de estorno por cobrança; fech
   assert.equal(segunda.status, 409);
 });
 
+// AUD-006, 2ª rodada: o 404 do Checkout numa assinatura com ciclo pago (o
+// documento que temos não é o do pagador) devolvia 502 ANTES de registrar a
+// desistência — o prazo do art. 49 corria enquanto a equipe resolvia o
+// cadastro, e o cliente voltava fora do prazo. O mesmo travava a exclusão
+// da conta (LGPD). Agora o pedido fica registrado e a pendência manda
+// cancelar na Asaas à mão.
+async function comCheckoutSemAssinatura(fn) {
+  const { cancelarAssinatura, consultarAssinatura } = sc;
+  sc.cancelarAssinatura = async () => ({ cancelada: false, inexistente: true });
+  sc.consultarAssinatura = async () => null;
+  try {
+    return await fn();
+  } finally {
+    Object.assign(sc, { cancelarAssinatura, consultarAssinatura });
+  }
+}
+const pendenciasNaoEncontrada = (assinatura) =>
+  linhas(
+    "SELECT 1 FROM eventos_assinatura_pendentes WHERE NOT resolvido AND payload->>'evento' = 'cancelamento_nao_encontrado' AND payload->>'planoId' = $1",
+    [assinatura.id],
+  );
+
+test('desistência com a assinatura não encontrada no Checkout (404, ciclo pago): registra o pedido no prazo e abre a pendência', async () => {
+  const conta = await criarConta();
+  const { assinatura, cobranca } = await pagar(conta);
+  await entrar(conta);
+  const r = await comCheckoutSemAssinatura(() => conta.nav('POST', '/titular/arrependimento'));
+  assert.equal(r.status, 201, r.texto);
+  assert.equal(
+    (await linha('SELECT status FROM arrependimentos WHERE id = $1', [r.json.pedido.id])).status,
+    'pendente',
+    'a desistência fica registrada (com a data do pedido)',
+  );
+  assert.equal(
+    (await linha('SELECT tipo, status FROM estornos WHERE cobranca_id = $1', [cobranca.id])).tipo,
+    'desistencia',
+  );
+  assert.equal((await pendenciasNaoEncontrada(assinatura)).length, 1, 'o Admin cancela na Asaas à mão');
+  assert.equal(
+    (await linha('SELECT status FROM assinaturas WHERE id = $1', [assinatura.id])).status,
+    'ativa',
+    'nada marcado cancelado aqui sem o Checkout confirmar',
+  );
+});
+
+test('exclusão da conta com a assinatura não encontrada no Checkout (404, ciclo pago): exclui e abre a pendência', async () => {
+  const conta = await criarConta();
+  const { assinatura } = await pagar(conta);
+  await entrar(conta);
+  const r = await comCheckoutSemAssinatura(() => conta.nav('POST', '/anunciantes/me/excluir'));
+  assert.equal(r.status, 200, r.texto);
+  assert.ok((await linha('SELECT excluido_em FROM anunciantes WHERE id = $1', [conta.id])).excluido_em);
+  assert.equal((await pendenciasNaoEncontrada(assinatura)).length, 1);
+});
+
 test('desistência com cobrança sem chargeId: confirmar a outra NÃO fecha — ainda há dinheiro a voltar', async () => {
   const conta = await criarConta();
   const { assinatura, chargeId } = await pagar(conta);
@@ -1411,6 +1466,259 @@ test('desistência quando tudo já foi estornado: nada a voltar, fecha na hora',
     (await linhas("SELECT 1 FROM estornos WHERE tipo = 'desistencia' AND anunciante_id = $1", [conta.id])).length,
     0,
   );
+});
+
+// ---------------------------------------------------------------------------
+// AUD-009 — crédito de indicação × estorno total
+// ---------------------------------------------------------------------------
+// O crédito de indicação nasce na transação do pagamento (a janela de
+// carência antes de conceder espera a decisão do dono, PENDENCIAS PG7). A
+// spec (R1 nº 14 e 15, R2 §7): crédito consolidado nunca é estornado e saldo
+// negativo por indicação não existe. O paliativo testado aqui é limite
+// assumido pela auditoria (CONSTRAINTS.md), não decisão do dono: devolução
+// pedida dentro dos 7 dias do pagamento tira o crédito — até o saldo que o
+// ponto tem; o que ele já gastou vira aviso pro Admin (o benefício continua);
+// fora dos 7 dias, o crédito fica.
+async function pontoQueIndicou() {
+  const indicacoesRepo = require('../src/indicacoes/repository');
+  const ponto = await criarConta();
+  const cupom = await indicacoesRepo.garantirCupom(ponto.id, ponto.nome_empresa);
+  const indicado = await criarConta();
+  await pool.query('UPDATE anunciantes SET indicado_por_cupom = $2 WHERE id = $1', [indicado.id, cupom.codigo]);
+  return { ponto, indicado };
+}
+async function limparIndicacao({ ponto, indicado }) {
+  await pool.query('DELETE FROM creditos_ledger WHERE anunciante_id = $1', [ponto.id]);
+  await pool.query('DELETE FROM planos_administrativos WHERE anunciante_id = $1', [ponto.id]);
+  await pool.query('UPDATE anunciantes SET indicado_por_cupom = NULL WHERE id = $1', [indicado.id]);
+  await pool.query('DELETE FROM cupons_ponto WHERE conta_id = $1', [ponto.id]);
+}
+const reversoesDo = (ponto) =>
+  linhas(
+    "SELECT quantidade, estorno_de_cobranca_id, origem_conta_id FROM creditos_ledger WHERE anunciante_id = $1 AND tipo = 'estorno_indicacao'",
+    [ponto.id],
+  );
+const avisosDeCredito = (assinatura) =>
+  linhas(
+    "SELECT motivo FROM eventos_assinatura_pendentes WHERE payload->>'planoId' = $1 AND motivo LIKE 'crédito de indicação%'",
+    [assinatura.id],
+  );
+
+test('AUD-009: devolução total no prazo de 7 dias tira o crédito de indicação da cobrança — uma vez', async () => {
+  const creditosRepo = require('../src/creditos/repository');
+  const par = await pontoQueIndicou();
+  const { ponto, indicado } = par;
+  try {
+    const { assinatura, chargeId, cobranca } = await pagar(indicado);
+    assert.equal(await creditosRepo.saldo(ponto.id), 1, 'o pagamento gerou 1 crédito pro ponto');
+
+    await estornoDoPsp(assinatura, indicado, chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+    assert.deepEqual(
+      (await reversoesDo(ponto)).map((r) => [r.quantidade, r.estorno_de_cobranca_id, r.origem_conta_id]),
+      [[-1, cobranca.id, indicado.id]],
+      'uma linha negativa, da cobrança devolvida',
+    );
+    assert.equal(await creditosRepo.saldo(ponto.id), 0, 'o crédito ainda não consolidado saiu');
+    assert.equal((await avisosDeCredito(assinatura)).length, 0, 'voltou inteiro: nada pro Admin');
+
+    // Aviso repetido do PSP (e a função chamada de novo): não reverte duas vezes.
+    await estornoDoPsp(assinatura, indicado, chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+    assert.equal(await creditosRepo.reverterCreditoIndicacao(cobranca.id, 1), null);
+    assert.equal(await creditosRepo.saldo(ponto.id), 0, 'idempotente por cobrança');
+  } finally {
+    await limparIndicacao(par);
+  }
+});
+
+test('AUD-009: crédito já gasto não deixa o saldo negativo — vira aviso pro Admin e o benefício continua', async () => {
+  const creditosRepo = require('../src/creditos/repository');
+  const par = await pontoQueIndicou();
+  const { ponto, indicado } = par;
+  try {
+    const { assinatura, chargeId } = await pagar(indicado);
+    // O ponto já gastou o crédito num benefício.
+    await creditosRepo.debitarResgate(ponto.id, 1, 'teste: benefício resgatado');
+    await pool.query(
+      `INSERT INTO planos_administrativos (anunciante_id, plano_id, valido_ate, status, origem, ativado_em)
+       VALUES ($1, $2, (now() + interval '30 days')::date, 'ativo', 'indicacao', now())`,
+      [ponto.id, PLANO],
+    );
+
+    await estornoDoPsp(assinatura, indicado, chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+    assert.equal((await reversoesDo(ponto)).length, 0, 'nenhuma linha negativa sem saldo pra tirar');
+    assert.equal(await creditosRepo.saldo(ponto.id), 0, 'saldo negativo por indicação não existe');
+    const avisos = await avisosDeCredito(assinatura);
+    assert.equal(avisos.length, 1, 'o que não voltou vira aviso pro Admin');
+    assert.match(avisos[0].motivo, /não voltou inteiro.*voltou 0 de 1/);
+    assert.equal(
+      (await linha('SELECT status FROM planos_administrativos WHERE anunciante_id = $1', [ponto.id])).status,
+      'ativo',
+      'o benefício já resgatado não é encerrado sozinho',
+    );
+  } finally {
+    await limparIndicacao(par);
+  }
+});
+
+test('AUD-009: devolução fora dos 7 dias não tira o crédito (consolidado); pedido feito dentro do prazo tira, mesmo confirmado depois', async () => {
+  const creditosRepo = require('../src/creditos/repository');
+  const par = await pontoQueIndicou();
+  const { ponto, indicado } = par;
+  try {
+    // Pago há 10 dias, devolvido agora direto na Asaas (sem pedido): fora do prazo.
+    const velho = await pagar(indicado, { ocorridoEm: new Date(Date.now() - 10 * DIA).toISOString() });
+    assert.equal(await creditosRepo.saldo(ponto.id), 1);
+    await estornoDoPsp(velho.assinatura, indicado, velho.chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+    assert.equal((await reversoesDo(ponto)).length, 0, 'crédito consolidado não é estornado');
+    assert.equal(await creditosRepo.saldo(ponto.id), 1);
+    assert.equal((await avisosDeCredito(velho.assinatura)).length, 0);
+
+    // Pedido no Admin no 6º dia, confirmado pela Asaas no 10º: o pedido é que conta.
+    const novo = await pagar(indicado);
+    assert.equal(await creditosRepo.saldo(ponto.id), 2);
+    const pedido = await admin('POST', `/admin/cobrancas/${novo.cobranca.id}/estornos`, {
+      tipo: 'ordinario',
+      motivo: 'pediu na semana',
+    });
+    assert.equal(pedido.status, 201, pedido.texto);
+    await pool.query("UPDATE cobrancas_confirmadas SET pago_em = now() - interval '10 days' WHERE id = $1", [
+      novo.cobranca.id,
+    ]);
+    await pool.query("UPDATE estornos SET solicitado_em = now() - interval '4 days' WHERE cobranca_id = $1", [
+      novo.cobranca.id,
+    ]);
+    await estornoDoPsp(novo.assinatura, indicado, novo.chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+    assert.deepEqual(
+      (await reversoesDo(ponto)).map((r) => [r.quantidade, r.estorno_de_cobranca_id]),
+      [[-1, novo.cobranca.id]],
+    );
+    assert.equal(await creditosRepo.saldo(ponto.id), 1, 'sai só o crédito da cobrança pedida no prazo');
+  } finally {
+    await limparIndicacao(par);
+  }
+});
+
+// Revisão Codex do PR #136: a Asaas pode devolver em parcelas. A primeira
+// (parcial) já fecha o pedido aberto; quando a total chega, não há mais
+// pedido 'solicitado' e o momento caía na hora da confirmação — fora do
+// prazo, o crédito ficava com o ponto mesmo com o pedido feito no 6º dia.
+test('AUD-009: devolução em parcelas — o pedido no prazo vale mesmo com a parcela total chegando fora dele', async () => {
+  const creditosRepo = require('../src/creditos/repository');
+  const par = await pontoQueIndicou();
+  const { ponto, indicado } = par;
+  try {
+    const { assinatura, chargeId, cobranca } = await pagar(indicado);
+    assert.equal(await creditosRepo.saldo(ponto.id), 1);
+    const pedido = await admin('POST', `/admin/cobrancas/${cobranca.id}/estornos`, {
+      tipo: 'ordinario',
+      motivo: 'pediu no 6º dia',
+    });
+    assert.equal(pedido.status, 201, pedido.texto);
+    // Pago há 10 dias, pedido há 4 (6º dia). A Asaas devolve em duas parcelas
+    // e a total só chega hoje, no 10º dia.
+    await pool.query("UPDATE cobrancas_confirmadas SET pago_em = now() - interval '10 days' WHERE id = $1", [
+      cobranca.id,
+    ]);
+    await pool.query("UPDATE estornos SET solicitado_em = now() - interval '4 days' WHERE cobranca_id = $1", [
+      cobranca.id,
+    ]);
+    await estornoDoPsp(assinatura, indicado, chargeId, {
+      statusFinanceiro: 'estornado_parcialmente',
+      valorEstornado: 30,
+      estornoParcial: true,
+      valor: 134.99,
+    });
+    assert.equal(
+      (await linha('SELECT status FROM estornos WHERE cobranca_id = $1', [cobranca.id])).status,
+      'confirmado',
+      'a parcial fechou o pedido aberto',
+    );
+    assert.equal((await reversoesDo(ponto)).length, 0, 'parcial não mexe no crédito');
+
+    await estornoDoPsp(assinatura, indicado, chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+    assert.deepEqual(
+      (await reversoesDo(ponto)).map((r) => [r.quantidade, r.estorno_de_cobranca_id]),
+      [[-1, cobranca.id]],
+      'o momento do pedido é que vale, não o da última parcela',
+    );
+    assert.equal(await creditosRepo.saldo(ponto.id), 0);
+  } finally {
+    await limparIndicacao(par);
+  }
+});
+
+// 2ª revisão Codex do PR #136: o pedido mais antigo não basta — um PARCIAL
+// pedido no 3º dia e o resto devolvido no 20º não devolveram o pagamento no
+// prazo. O momento é o do pedido em que a soma pedida alcança o valor pago;
+// sem ele nos registros, a hora da confirmação.
+test('AUD-009: parcial pedido no prazo + resto fora dele — o crédito já consolidou e fica', async () => {
+  const creditosRepo = require('../src/creditos/repository');
+  const par = await pontoQueIndicou();
+  const { ponto, indicado } = par;
+  try {
+    const { assinatura, chargeId, cobranca } = await pagar(indicado);
+    assert.equal(await creditosRepo.saldo(ponto.id), 1);
+    const parcial = await admin('POST', `/admin/cobrancas/${cobranca.id}/estornos`, {
+      tipo: 'ordinario',
+      valor: 30,
+      motivo: 'parcial no 3º dia',
+    });
+    assert.equal(parcial.status, 201, parcial.texto);
+    // Pago há 20 dias; o parcial foi pedido no 3º dia (há 17) e confirmado.
+    await pool.query("UPDATE cobrancas_confirmadas SET pago_em = now() - interval '20 days' WHERE id = $1", [
+      cobranca.id,
+    ]);
+    await pool.query("UPDATE estornos SET solicitado_em = now() - interval '17 days' WHERE cobranca_id = $1", [
+      cobranca.id,
+    ]);
+    await estornoDoPsp(assinatura, indicado, chargeId, {
+      statusFinanceiro: 'estornado_parcialmente',
+      valorEstornado: 30,
+      estornoParcial: true,
+      valor: 134.99,
+    });
+    assert.equal((await reversoesDo(ponto)).length, 0, 'parcial não mexe no crédito');
+
+    // O resto volta hoje (20º dia), direto na Asaas: o pagamento inteiro só
+    // foi devolvido fora do prazo.
+    await estornoDoPsp(assinatura, indicado, chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+    assert.equal((await reversoesDo(ponto)).length, 0, 'crédito consolidado não é estornado');
+    assert.equal(await creditosRepo.saldo(ponto.id), 1);
+  } finally {
+    await limparIndicacao(par);
+  }
+});
+
+test('AUD-009: o card de indicações e o aviso ao ponto acompanham o crédito que saiu', async () => {
+  const indicacoesRepo = require('../src/indicacoes/repository');
+  const creditosRepo = require('../src/creditos/repository');
+  const par = await pontoQueIndicou();
+  const { ponto, indicado } = par;
+  try {
+    const { assinatura, chargeId } = await pagar(indicado);
+    await estornoDoPsp(assinatura, indicado, chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+    assert.equal(await creditosRepo.saldo(ponto.id), 0);
+
+    const { codigo } = await linha('SELECT codigo FROM cupons_ponto WHERE conta_id = $1', [ponto.id]);
+    const [noCard] = await indicacoesRepo.historicoDeIndicados(codigo, ponto.id);
+    assert.equal(noCard.creditos, 0, 'o card soma o mesmo que o saldo');
+    assert.deepEqual(
+      noCard.creditosEm.map((c) => [c.tipo, c.quantidade]),
+      [
+        ['primeiro_pagamento', 1],
+        ['devolvido', -1],
+      ],
+    );
+    const avisos = await linhas('SELECT tipo FROM notificacoes WHERE anunciante_id = $1 ORDER BY id', [ponto.id]);
+    assert.deepEqual(
+      avisos.map((n) => n.tipo),
+      ['credito_indicacao', 'credito_indicacao_devolvido'],
+      'quem indicou fica sabendo que o crédito saiu',
+    );
+  } finally {
+    await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [ponto.id]);
+    await limparIndicacao(par);
+  }
 });
 
 // ---------------------------------------------------------------------------

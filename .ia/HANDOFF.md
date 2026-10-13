@@ -1,6 +1,102 @@
 # Current Handoff
 
 ## Updated
+2026-10-13 — **Review-Master, Ciclo 1, lote 1: 1 CRÍTICO + 10 ALTOS + 1
+MÉDIO corrigidos** (migration 122, aditiva; branch
+`claude/busy-noether-hheir2`, 15 commits sobre `48d6030`; PR do lote 1 a
+partir desta branch). Cada AUD foi confirmado por verificação adversarial
+(refutador + reprodução em banco isolado) antes da correção, e cada
+correção traz teste que falha em `48d6030`. A matriz AUD-nnn e as provas
+vivem no artifact "Checkpoint Review-Master" (memória global do agente),
+não no repositório. O que mudou e não se desfaz sem contexto:
+- Pool e transações (AUD-001/019): leitura DENTRO de transação usa o
+  cliente da transação (`creditos/routes.js`,
+  `financeiro/plano-administrativo.js#historicoDaConta(contaId, db)`,
+  `candidaturas/repository.js#buscarPorId(id, cliente)`, `conta/modos.js`);
+  `db/pool.js` com `connectionTimeoutMillis` 5 s, ouvinte de `error` no
+  pool e em cada cliente emprestado, sem keepAlive; `uncaughtException`
+  loga e sai 1 só como última rede (`server.js`).
+- Limitador (AUD-002/003/004): `src/lib/limite-tentativas.js` chaveia pela
+  rota declarada; dois baldes independentes (IP/64 + rota; conta + rota —
+  10 erros por 15 min cada, IP avaliado antes); `descontarAcerto` desconta
+  só a própria tentativa; redefinir a senha libera a conta (`liberarConta`);
+  cookie de aparelho conhecido `mostrai.aparelho` (HMAC, sem estado no
+  banco, 90 dias, `Path` = rota do login); `CF-Connecting-IP` só quando
+  `req.ip` está nas faixas publicadas da Cloudflare. Limites assumidos em
+  `CONSTRAINTS.md`; destravar conta em RUNBOOK §6.
+- Financeiro (AUD-005/006/007/009): reservas de dedupe gravadas DENTRO da
+  transação de `aplicarCicloPago` (webhook, conciliação, admin);
+  `assinaturas.documento_pagador` (122) com pendências
+  `documento_pagador_divergente` e `documento_pagador_mudou`; 404 do
+  Checkout com ciclo pago vira pendência, nunca "cancelado"; desistência e
+  exclusão registram o pedido mesmo no 404; troca de plano no cartão → 409
+  `codigo: 'troca_de_plano_pela_equipe'` e `/assinar` não manda mais pra
+  troca (PG6); estorno total confirmado nos 7 dias reverte o crédito de
+  indicação até o saldo do ponto, nunca negativo, resto vira pendência
+  (paliativo, PG7; `estornos.js#reverterCreditoDeIndicacao`, ledger
+  `estorno_indicacao` + CHECK da 122).
+- Upload (AUD-017/018): todo ffmpeg/ffprobe sob `prlimit --as/--cpu` +
+  `MALLOC_ARENA_MAX=1` (avisa uma vez se faltar prlimit); teto de custo
+  (quadros × pixels; 10 bits; 32 MP); um processo por vez, fila de 5 min →
+  503; imagem decodificada uma vez num BMP saneado; timeouts por tipo; a
+  linha "processando" nasce ANTES da fila. multer 2.4.0 + passo semanal que
+  falha com dependência de produção deprecated
+  (`scripts/dependencias-deprecadas.js`). PG8: teto de envios por conta.
+- Fora, de propósito: AUD-014 (ocupação 80 % cega ao sorteio) espera a
+  decisão 13 do dono — corrigir cria laço com o gerador; os MÉDIOS vão pro
+  lote 2. Testes: `npm run check` 1089/1089 em banco recriado; 122 aplicada
+  também sobre banco com dado; e2e 01, 02, 03, 11, 13, 14, 23, 25, 36, 46
+  e 48 verdes. Revisão de integração do diff inteiro (os grupos foram
+  revisados isolados): dois ciclos sem CRÍTICO/ALTO/MÉDIO; quatro BAIXOS
+  corrigidos — `await` no `descontarAcerto` dos códigos de e-mail (com o
+  `uncaughtException` novo, rejeição solta derrubaria o processo), filtro
+  `::1` morto no teste de e-mail, `DELETE FROM webhooks_recebidos` sem
+  WHERE no teste do inbox (zerava no meio as entregas do teste de estorno),
+  `|` sem escape em tabelas de `docs/api.md`/`docs/funcional.md`.
+- Revisão Codex do PR #136 (P2, válido): devolução em parcelas — a parcial
+  fecha o pedido aberto e, quando a total chega, `pedidoAbertoDa` não acha
+  nada e o momento caía na hora da confirmação (fora do prazo → crédito
+  ficava). Agora `estornos.js#momentoDoPedidoDe` acha o pedido em que a
+  SOMA pedida (não cancelada, em ordem) alcança o valor pago — não o mais
+  antigo: um parcial no 3º dia e o resto no 20º não devolveram no prazo
+  (4ª rodada do Codex); sem esse momento nos registros (a Asaas devolveu
+  mais do que foi pedido), vale a confirmação. Testes "AUD-009: devolução
+  em parcelas" e "parcial pedido no prazo + resto fora dele" em
+  `tests/estorno.test.js`.
+- Revisão Codex, 2ª rodada (P2, válido): pendência gravada DENTRO de uma
+  transação (chave de dedupe, documento do pagador) avisava o admin pelo
+  pool antes do COMMIT — o admin recarregava a fila (debounce de 800 ms)
+  ainda sem a linha. Agora `registrarPendencia` com client de transação
+  publica pelo próprio client (`sse.js#emitirParaAdminNoCommit`): o NOTIFY
+  do Postgres só sai no COMMIT e morre no ROLLBACK. Regra que fica: aviso
+  em tempo real de algo gravado numa transação vai pelo client dela, nunca
+  pelo pool. Teste: `tests/pendencia-aviso-no-commit.test.js`.
+- Revisão Codex, 3ª rodada (P2, segurança): o cookie de aparelho não levava
+  emissão, então o servidor aceitava um cookie copiado para sempre (o
+  `Max-Age` é só do navegador). Agora `<emissão>.<sorteio>.<HMAC(rota, alvo,
+  sorteio, emissão)>` e o limitador recusa o que passou de 90 dias (teste
+  "vence no servidor em 90 dias"). A outra metade do achado — trocar a
+  senha não revoga os aparelhos dos OUTROS navegadores — ficou como limite
+  assumido nº 3 do limitador em `CONSTRAINTS.md` (decisão do dono: estado
+  por conta × assinatura amarrada à versão da senha); a thread do Codex
+  fica aberta até ele decidir.
+- Revisão Codex, 5ª rodada (P1, válido): ciclos pagos fora de ordem — a
+  inbox reenvia com espera e a conciliação aplica atrasados, então o
+  pagamento antigo (documento A) podia entrar DEPOIS do novo (B) e
+  `registrarDocumentoDoPagador` devolvia o vigente pra A; cancelar daí ia
+  pra recorrência errada de novo. Agora o vigente só troca quando o
+  pagamento é mais novo que o mais novo já creditado na assinatura
+  (`pagoAntesDoMaisNovo`, pelo `pago_em` do PSP); o atrasado só abre a
+  pendência 'documento_pagador_mudou' com `documentoAtrasado`/
+  `documentoMantido`. Sem `pago_em` (ciclo à mão) vale a ordem de chegada.
+  Teste "pagamento antigo com outro documento que entra depois do novo não
+  devolve o vigente" em `tests/assinatura-pendente.test.js`.
+- Ambiente dos e2e de navegador: `playwright` tem de resolver a partir de
+  `node_modules` (aqui está instalado global em `/opt/node22`, e um
+  `npm ci` apaga o link — recriar com `ln -s`); sem isso todo `.mjs` morre
+  em `ERR_MODULE_NOT_FOUND` antes do primeiro teste, e o roteiro "passa"
+  com 0 ok se o chamador não olhar o código de saída.
+
 2026-10-10 — **Composer "Novo criativo" refinado** (só tela; sem servidor,
 banco ou regra). Área de soltar com o cartão do arquivo (prévia: vídeo por
 `blob:`, que a CSP aceita em `media-src`; imagem por `data:`, porque

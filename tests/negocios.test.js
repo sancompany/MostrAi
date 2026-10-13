@@ -24,7 +24,14 @@ const { instalarPlayer, tirarDoSorteio } = require('./apoio-player');
 // FFmpeg falso, como em upload-criativo.test.js: o CI não tem FFmpeg, e o
 // que se testa aqui é a regra, não o vídeo.
 
-ffmpeg.probeMidia = async () => ({ width: 1080, height: 1920, duracao_segundos: 10, ehImagem: false });
+ffmpeg.probeMidia = async () => ({
+  width: 1080,
+  height: 1920,
+  duracao_segundos: 10,
+  ehImagem: false,
+  quadros: 300,
+  pix_fmt: 'yuv420p',
+});
 ffmpeg.normalizar = async (_caminho, criativoId) => ({
   arquivo_normalizado_url: `https://storage.teste/${criativoId}.mp4`,
   thumbnail_url: `https://storage.teste/${criativoId}-thumb.jpg`,

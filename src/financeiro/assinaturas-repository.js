@@ -11,12 +11,23 @@ const pool = require('../db/pool');
 // Nasce 'pendente_pagamento' (migration 089, consolidação 24/09/2026): o
 // link foi gerado, ninguém pagou ainda. Vira 'ativa' com o primeiro ciclo
 // pago (aplicarCicloPago) — nunca pelo navegador voltar do Checkout.
-async function criar({ anuncianteId, planoId, status, promocaoId, promocaoDescontoPercentual }) {
+//
+// `documentoPagador` (migration 122): só a troca de plano passa — a linha
+// nova é a MESMA assinatura na Asaas (API.md 5.6), com o mesmo documento.
+async function criar({ anuncianteId, planoId, status, promocaoId, promocaoDescontoPercentual, documentoPagador }) {
   const id = randomUUID();
   const { rows } = await pool.query(
-    `INSERT INTO assinaturas (id, anunciante_id, plano_id, status, promocao_id, promocao_desconto_percentual)
-     VALUES ($1,$2,$3, COALESCE($4, 'pendente_pagamento'), $5, $6) RETURNING *`,
-    [id, anuncianteId, planoId, status || null, promocaoId || null, promocaoDescontoPercentual || null],
+    `INSERT INTO assinaturas (id, anunciante_id, plano_id, status, promocao_id, promocao_desconto_percentual, documento_pagador)
+     VALUES ($1,$2,$3, COALESCE($4, 'pendente_pagamento'), $5, $6, $7) RETURNING *`,
+    [
+      id,
+      anuncianteId,
+      planoId,
+      status || null,
+      promocaoId || null,
+      promocaoDescontoPercentual || null,
+      documentoPagador || null,
+    ],
   );
   return rows[0];
 }

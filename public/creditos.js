@@ -132,9 +132,10 @@
             : '<span class="badge badge-neutro">Cadastrou pelo seu link</span>';
         const detalhes = i.creditosEm.length
           ? `<details class="indicacao-detalhes"><summary>Ver créditos</summary><ul>${i.creditosEm
-              .map(
-                (c) =>
-                  `<li>${data(c.data)} · +1 crédito · ${c.tipo === 'renovacao' ? 'renovação' : 'primeiro pagamento'}</li>`,
+              .map((c) =>
+                c.tipo === 'devolvido'
+                  ? `<li>${data(c.data)} · −${Math.abs(c.quantidade)} crédito · pagamento devolvido</li>`
+                  : `<li>${data(c.data)} · +1 crédito · ${c.tipo === 'renovacao' ? 'renovação' : 'primeiro pagamento'}</li>`,
               )
               .join('')}</ul></details>`
           : '';

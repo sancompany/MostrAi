@@ -42,7 +42,7 @@ async function subirApp() {
     const r = await fetch(`${base}${caminho}`, { method: metodo, headers: { 'x-admin': '1' } });
     return { status: r.status, corpo: await r.json().catch(() => null) };
   };
-  return { chamar, fechar: () => new Promise((r) => server.close(r)) };
+  return { base, chamar, fechar: () => new Promise((r) => server.close(r)) };
 }
 
 test('GET /admin/video-institucional: null enquanto nunca configurado', async () => {
@@ -93,6 +93,97 @@ test('POST /admin/video-institucional: sem arquivo é 400', async () => {
     const r = await app.chamar('POST', '/admin/video-institucional');
     assert.strictEqual(r.status, 400);
     assert.match(r.corpo.erro, /arquivo obrigatório/);
+  } finally {
+    await app.fechar();
+  }
+});
+
+// Revisão 2 do AUD-017, FFmpeg falso: a rota confere a resolução logo depois
+// do ffprobe (antes a recusa vinha de dentro do normalizar e caía no "não foi
+// possível processar") e passa o probe ao normalizar (sem ele, outro ffprobe e
+// outra espera na fila pelo mesmo arquivo). `falha`: o erro que o normalizar
+// lança.
+async function enviarInstitucional(app, midiaDoProbe, falha = null) {
+  const ffmpeg = require('../src/lib/ffmpeg');
+  const originais = { probeMidia: ffmpeg.probeMidia, normalizar: ffmpeg.normalizar };
+  const chamadas = { probe: 0, normalizar: [] };
+  ffmpeg.probeMidia = async () => {
+    chamadas.probe += 1;
+    return midiaDoProbe;
+  };
+  ffmpeg.normalizar = async (...args) => {
+    chamadas.normalizar.push(args);
+    if (falha) throw falha;
+    return {
+      arquivo_normalizado_url: 'https://storage.teste/institucional.mp4',
+      thumbnail_url: 'https://storage.teste/institucional-thumb.jpg',
+      duracao_segundos: midiaDoProbe.duracao_segundos,
+      conteudo_sha256: 'b'.repeat(64),
+      conteudo_bytes: 4321,
+      tempos: {},
+    };
+  };
+  try {
+    const form = new FormData();
+    form.append('arquivo', new Blob([Buffer.from('video-de-teste')], { type: 'video/mp4' }), 'institucional.mp4');
+    const r = await fetch(`${app.base}/admin/video-institucional`, {
+      method: 'POST',
+      headers: { 'x-admin': '1' },
+      body: form,
+    });
+    return { status: r.status, corpo: await r.json(), chamadas };
+  } finally {
+    Object.assign(ffmpeg, originais);
+  }
+}
+
+test('POST /admin/video-institucional: vídeo acima de 32 MP → 400 com a frase de resolução, sem FFmpeg', async () => {
+  const app = await subirApp();
+  try {
+    const r = await enviarInstitucional(app, { width: 7680, height: 4320, duracao_segundos: 10, ehImagem: false });
+    assert.strictEqual(r.status, 400);
+    assert.match(r.corpo.erro, /vídeo grande demais: 7680x4320/);
+    assert.strictEqual(r.chamadas.normalizar.length, 0);
+  } finally {
+    await app.fechar();
+  }
+});
+
+test('POST /admin/video-institucional: o normalizar recebe o probe da rota (um ffprobe só)', async () => {
+  const app = await subirApp();
+  const midia = { width: 1080, height: 1920, duracao_segundos: 12, ehImagem: false, quadros: 360, pix_fmt: 'yuv420p' };
+  try {
+    const r = await enviarInstitucional(app, midia);
+    assert.strictEqual(r.status, 200, JSON.stringify(r.corpo));
+    assert.strictEqual(r.chamadas.probe, 1);
+    assert.strictEqual(r.chamadas.normalizar.length, 1);
+    const [, id, duracaoMaxima, probado] = r.chamadas.normalizar[0];
+    assert.deepStrictEqual([id, duracaoMaxima], ['institucional', null]);
+    assert.strictEqual(probado, midia, 'o normalizar recebe o probe da rota');
+    assert.strictEqual(r.corpo.duracaoSegundos, 12);
+  } finally {
+    await repo.definirConfiguracao('video_institucional', null);
+    await app.fechar();
+  }
+});
+
+// Revisão 3 do AUD-017: o FFmpeg que estoura o teto de memória (prlimit) volta
+// com a frase dele — antes caía no "não foi possível processar" genérico.
+test('POST /admin/video-institucional: FFmpeg sem memória no teto → 400 com a frase do teto', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const app = await subirApp();
+  const midia = { width: 3840, height: 2160, duracao_segundos: 20, ehImagem: false, quadros: 600, pix_fmt: 'yuv420p' };
+  const semMemoria = Object.assign(
+    new Error('esse arquivo pede mais memória do que o servidor reserva pra processá-lo'),
+    {
+      status: 400,
+      origem: 'memoria',
+    },
+  );
+  try {
+    const r = await enviarInstitucional(app, midia, semMemoria);
+    assert.strictEqual(r.status, 400);
+    assert.match(r.corpo.erro, /pede mais memória do que o servidor reserva/);
   } finally {
     await app.fechar();
   }

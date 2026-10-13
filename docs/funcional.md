@@ -463,7 +463,13 @@ não conseguir gravar, responde 503 e o Checkout reentrega. O efeito é
 aplicado depois, por um processador com nova tentativa (até 6, espera
 crescente), trava entre instâncias (`SKIP LOCKED`) e retomada depois de
 restart. Na assinatura, falha no meio libera a reserva de deduplicação e a
-nova tentativa aplica o efeito uma vez; no pedido avulso (passos fora de uma
+nova tentativa aplica o efeito uma vez — no ciclo pago (webhook, conciliação
+e "Aplicar este ciclo") a reserva é gravada na própria transação do ciclo, e
+nem processo morto deixa reserva sem ciclo (AUD-005); a decisão que não
+credita (intenção cancelada, conta excluída, assinatura desconhecida) grava a
+chave da notificação junto com a pendência, e a reentrega não abre outra —
+nem a de "descartado pela deduplicação", que tratava a decisão como ciclo
+creditado (12/10/2026); no pedido avulso (passos fora de uma
 transação só), falha no meio vira pendência pra conferir à mão, sem repetir.
 Payload v1 (sem `eventoId`) ganha uma linha por entrega, e a dedupe dele
 continua na lógica financeira. *Violada:* depois de 6 falhas o evento
@@ -792,7 +798,18 @@ indicada — o primeiro e cada renovação — gera **+1 crédito** no ledger do
 indicador (`creditos_ledger`, tipos `indicacao_primeiro_pagamento` e
 `indicacao_renovacao`), na mesma transação do ciclo pago; acerto de troca de
 plano não conta. Idempotente pela cobrança (índice único): webhook duplicado
-ou conciliação reprocessando nunca soma duas vezes. **Nunca dinheiro** —
+ou conciliação reprocessando nunca soma duas vezes. **Pagamento devolvido
+inteiro no prazo, crédito devolvido** (AUD-009, 12/10/2026; a spec: crédito
+consolidado nunca é estornado e saldo negativo por indicação não existe — R1
+nº 15, R2 §7): o estorno TOTAL confirmado pela Asaas de uma devolução pedida nos 7
+dias do pagamento (sem pedido no Admin, conta a confirmação) grava, na mesma
+transação, `estorno_indicacao` no ledger do indicador — uma vez por cobrança
+(migration 122) e nunca mais do que o saldo dele; o que ele já gastou vira
+pendência pro Admin e o benefício resgatado não é encerrado sozinho. Fora dos
+7 dias o crédito fica. O crédito ainda nasce na hora do pagamento, e a spec
+pede que nasça só depois da janela de estorno (R1 nº 14, R2 §7): os 7 dias são
+limite assumido pela auditoria até o dono decidir a janela (`CONSTRAINTS.md`,
+PENDENCIAS PG7), não decisão do dono. **Nunca dinheiro** —
 crédito vira benefício temporário por resgate (RN-43.2). *Violada:* não há
 caminho — a trava é o índice único do ledger. *Quem vê:* o dono do ponto,
 no card "Indicações" do painel: o link, "Copiar link", WhatsApp, o **QR Code
@@ -1006,8 +1023,22 @@ sem banco. O vínculo é avaliado ANTES do ciclo: assinatura encerrada não tem
 ciclo a creditar, por mais confirmada que esteja a última cobrança. Status
 desconhecido (o Checkout promete adicionar valores novos) conta como vínculo
 não-ativo e vira evento, mas **não** cancela o registro por conta própria.
-Resposta ausente (404) é "não sei", nunca "cancelada". *Violada:* não há
-caminho de usuário. *Quem vê:* o admin, na aba de Eventos.
+Resposta ausente (404) é "não sei", nunca "cancelada". O mesmo vale ao
+cancelar (AUD-006, 11/10/2026): consulta, cancelamento, troca e link de
+renovação vão com o documento com que o PAGADOR assinou
+(`assinaturas.documento_pagador`, gravado do `criada`; diferente do
+cadastro, vira pendência), e 404 ao cancelar uma assinatura com ciclo pago
+só fecha o registro se a consulta a acha encerrada — senão é erro pro
+cliente e pendência "assinatura não encontrada no Checkout" pro admin. Na
+desistência (art. 49) e na exclusão da conta não é erro: o pedido do
+titular é registrado na hora e só a pendência fica (12/10/2026). Pagador que
+digita OUTRO CPF/CNPJ na pop-up de renovação ganha uma 2ª recorrência do
+mesmo plano no Checkout, sem a 1ª ser cancelada: o ciclo novo com outro
+documento passa a ser o documento vigente (é o que cobra) e abre a pendência
+"pagamento com OUTRO CPF/CNPJ" — cancelar a antiga pelo Checkout; o
+`cancelada` de um documento que não é o vigente não fecha a assinatura daqui
+(12/10/2026). *Violada:* não há caminho de usuário. *Quem vê:* o admin, na
+aba de Eventos.
 
 **RN-51 — O link de renovação vai assinado, ou não vai.** *(Mudança
 incompatível do San Checkout, API.md 7.3, 16/09/2026.)* `&renovar=1` deixou de
@@ -1347,6 +1378,12 @@ prova que um ciclo pago de quem veio por cupom antigo não cria linha em
 **RN-13 — Troca de plano de quem já paga é recusada.** O sistema manda falar
 com o administrador, para evitar cobrança dupla na Asaas. O caminho é cancelar
 e assinar de novo. *Violada:* mensagem na tela. *Quem vê:* o anunciante.
+*Desde 11/10/2026 (AUD-007):* vale também pra quem paga no cartão com a
+assinatura ativa — o Checkout recusa mudar o valor dela (RN-52 não alcança
+cartão, API.md dele 5.6). Cotação (`acao: 'troca_pela_equipe'`), `/assinar` e
+`/trocar-plano` dão a mesma resposta (`codigo: 'troca_de_plano_pela_equipe'`:
+a equipe troca, fale pelo WhatsApp), e a tela mostra o WhatsApp em vez de
+"Trocar agora". O caminho definitivo é decisão do dono (PENDENCIAS, PG6).
 
 **RN-14 — Parceiro é status de conta, marcado à mão pelo administrador**
 (migration 033, 15/09/2026; renomeado de "fundador" pra "parceiro" e
@@ -2145,8 +2182,21 @@ na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.
 *Violada:* conta excluída não loga. *Quem vê:* quem excluiu.
 
 **RN-16 — Limite de 10 tentativas por 15 minutos, por IP e rota.** Vale para
-login, admin e redefinição. Reinício do servidor zera (é em memória).
-*Violada:* "muitas tentativas, tente mais tarde". *Quem vê:* quem tentou.
+login, admin e redefinição. A contagem fica no banco (reinício não zera). Um
+acerto desconta só a própria tentativa: os erros continuam contando, para
+qualquer conta naquele IP. IP é o do cliente (`CF-Connecting-IP` vindo de
+borda da Cloudflare; IPv6 por /64); rota é a declarada, não a grafia pedida.
+Nos dois logins vale também **10 erros por 15 minutos por conta**, venham de
+onde vierem (e-mail no anunciante, usuário no admin), e no esqueci-senha **10
+pedidos por e-mail**. O balde do IP vem primeiro: o pedido que ele barrou não
+conta contra a conta. O login certo zera o balde dessa conta e marca o
+navegador (cookie de aparelho conhecido, 90 dias): dali, os erros contam num
+balde do aparelho, não no da conta. Enquanto alguém mantiver 10 erros por
+janela contra uma conta — um IP basta —, o login dela de aparelho novo dá
+"muitas tentativas", até com a senha certa; do aparelho onde ela já entrou,
+entra; redefinir a senha zera o balde e marca o aparelho.
+*Violada:* "muitas tentativas — espere N minuto(s)"; no login, se o balde é o
+da conta, a tela sugere redefinir a senha. *Quem vê:* quem tentou.
 
 **RN-22 — A peça é feita fora do site e sobe direto na conta do cliente.** Não
 existe editor de anúncio no sistema. Quem não tem arte pede pelo WhatsApp, a
@@ -2344,7 +2394,8 @@ nominal do dono, em migration própria. Migration aplicada nunca é editada.
 | Troca de plano | Para trocar de plano, fale com a gente — evitamos cobrança duplicada. |
 | Player sem chave | Tela não autorizada — fale com o Mostraí. |
 | Playlist vazia | *(tela institucional do Mostraí, sem texto de erro)* |
-| Muitas tentativas | Muitas tentativas. Tente de novo em alguns minutos. |
+| Muitas tentativas | Muitas tentativas — espere N minuto(s) e tente de novo. No login, quando o balde é o da conta, acrescenta: Se a conta é sua, redefinir a senha em "Esqueci minha senha" libera a entrada. |
+| Muitos pedidos de link (esqueci a senha) | Já pedimos vários links para este e-mail nos últimos minutos. Se existir uma conta com ele, use o link mais recente (vale 1 hora) e confira também o spam. |
 | Erro genérico | Não conseguimos completar agora. Tente de novo em instantes. |
 | E-mail de pagamento | Assunto: **Pagamento confirmado — Mostraí**. Corpo: o plano, o ciclo e o valor cobrado, com o **comprovante de pagamento em PDF anexado** (25/09/2026). O comprovante nasce só da cobrança confirmada (`cobrancas_confirmadas`; número `MST-` + id, um por ciclo), traz data e hora da confirmação, valor, plano e ciclo, pagador (CPF mascarado; CNPJ inteiro) e recebedor, e termina com: "Este documento comprova o pagamento da contratação indicada e não substitui documento fiscal quando sua emissão for aplicável." Não é nota fiscal e nunca se apresenta como tal. Sem cobrança confirmada, o e-mail sai sem anexo. `email_confirmacao_enviado_em` registra que o e-mail do ciclo saiu. |
 | E-mail de anúncio aprovado | Assunto: **Seu anúncio foi aprovado — Mostraí**. Corpo: o anúncio foi aprovado e está liberado para entrar na programação; o painel mostra quando a primeira exibição for confirmada (aprovado ≠ no ar — "No ar" só com proof-of-play). Sem horário prometido. |
@@ -2369,13 +2420,19 @@ nunca envia e-mail por nós: todo SMTP é do Mostraí.
 | Webhook não chega | a conciliação diária encontra a cobrança e credita | nada — a conta ativa sozinha em até 24h |
 | Webhook não chega e o cliente gerou outro link antes da conciliação | a conciliação também olha o link antigo (cancelado há até 30 dias, nunca pago): achou pagamento, vira a MESMA pendência do webhook — cancelar a assinatura e devolver no Checkout; nada é creditado (25/09/2026) | administrador vê na fila de eventos pendentes |
 | Cobertura de troca de plano perto do fim | a conciliação diária manda o aviso 7 dias antes (RN-36) | e-mail convidando a contratar de novo |
-| Webhook chega duas vezes | dedupe por `chargeId|status`; o segundo não faz nada | nada |
+| Webhook chega duas vezes | dedupe por `chargeId\|status`; o segundo não faz nada | nada |
 | SMTP fora do ar / recusando | a mensagem fica na fila e é tentada de novo (30 s → 2 h, 6 vezes); depois, "abandonado" no admin. A operação que gerou o e-mail já valeu (RN-62) | o e-mail chega atrasado; código vencido não é enviado (a pessoa pede outro) |
 | Pessoa digitou o e-mail errado no cadastro | "Corrigir e-mail" no próprio aviso, com a senha; código novo pro endereço certo (RN-62) | o aviso volta com o endereço novo e o prazo do código novo |
 | Webhook sem `chargeId` consultável | vira pendência, **não credita no escuro** | administrador vê na fila |
 | Rede cai no meio do upload | o criativo não é criado; nada meio-gravado; o painel confere pela chave do envio antes de dizer qualquer coisa | "O envio não foi concluído" + [Tentar de novo] (mesma chave — não duplica) |
 | Resposta do upload se perde depois de o servidor concluir (524 do proxy, conexão caiu — 27/09/2026) | o criativo existe; o painel pergunta `GET /anunciantes/me/criativos/envios/:chave` | "Criativo enviado!" (ou "ainda processando", e o card atualiza sozinho) — nunca "falhou" |
 | ffmpeg falha ao normalizar | a linha temporária sai (não ocupa cota), o card "processando" some pelo SSE | "não foi possível processar esse arquivo…" |
+| Foto ou vídeo acima de 32 megapixels (AUD-017, 12/10/2026) | recusa no ffprobe, antes do FFmpeg (a linha temporária sai; o custo dele cresce com os pixels; 256 MP derrubava a instância) — upload do anunciante e da Mídia Mostraí; o FFmpeg também decodifica com esse teto e só o stream medido (um segundo stream ou quadro gigante no meio do arquivo não passa) | "imagem grande demais: LxA (N megapixels) — o limite é 32 megapixels…"; imagem estreita e altíssima: "imagem estreita demais pra altura…" |
+| Foto com cabeçalho legível e corpo que não decodifica — cortada (download interrompido) ou corrompida (revisão 2 do AUD-017, 12/10/2026) | a imagem é decodificada uma vez só, num quadro: falha em décimos de segundo, a linha temporária sai; antes o FFmpeg relia a foto a cada quadro e passava de 1 GB (ou segurava a fila 15 min) | "não conseguimos ler esta imagem — o arquivo parece corrompido ou incompleto…" |
+| Vídeo pesado demais: quadros × pixels acima do que a instância processa no tempo — 4K a 60 fps por mais de 40 s, 8K de muitos quadros, quadro miúdo a centenas de fps (revisão 3 do AUD-017, 13/10/2026) | recusa no ffprobe (conta os quadros sem decodificar), antes do FFmpeg; a linha temporária sai. Antes, 5 MB de quadros estáticos de 31 MP seguravam a única vaga do FFmpeg por 15 min | "vídeo pesado demais pra processar: N quadros de LxA — o limite equivale a 60 s de 4K a 30 quadros por segundo (ou 40 s a 60)…" |
+| Vídeo de 10 bits (HDR de celular, drone em D-Log/HLG) acima de 9 megapixels (revisão 3 do AUD-017) | recusa no ffprobe, antes do FFmpeg; 4K de 10 bits passa. Antes, o 5.1K de drone morria por falta de memória depois de processar o arquivo, com a frase de arquivo inválido | "vídeo de 10 bits (HDR) grande demais… exporte em 4K ou em 8 bits (SDR)" |
+| FFmpeg estoura o teto de memória do processo (revisão 3 do AUD-017) | o processo morre, a instância segue, a linha temporária sai; log `teto_memoria` | "esse arquivo pede mais memória do que o servidor reserva pra processá-lo — exporte em resolução menor (até 4K) e em 8 bits (SDR)…" |
+| Muitos envios ao mesmo tempo (fila do FFmpeg, um por instância — revisão do AUD-017, 12/10/2026) | o envio já tem linha "processando" enquanto espera a vez (o painel não diz "não concluído", e outro envio esbarra no limite do plano); esperou mais de 5 min → a linha sai e a origem responde 503 | no ar, a Cloudflare corta a resposta em 100 s (524) antes do 503: o painel confere pela chave, mostra "processando" e, quando a linha sai, "O envio não foi concluído. Nenhum criativo foi criado." + [Tentar de novo] (mesma chave). A frase do 503 ("muitos envios sendo processados agora…") só chega a quem fala direto com a origem |
 | Servidor reinicia no meio do FFmpeg (deploy) | a linha temporária sem arquivo há mais de 30 min é descartada no próximo upload/listagem | o card "processando" some; reenviar |
 | Duplo clique em assinar | a segunda chamada encontra assinatura aberta e devolve o mesmo link | mesma tela de pagamento |
 | Volta no navegador depois de pagar | a página de status consulta o Checkout | o estado real |

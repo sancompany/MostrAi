@@ -42,7 +42,10 @@ test.before(async () => {
   servidor = app.listen(0);
   await new Promise((r) => servidor.once('listening', r));
   base = `http://127.0.0.1:${servidor.address().port}`;
-  await pool.query('DELETE FROM webhooks_recebidos');
+  // Só as linhas DESTE arquivo (sobras de rodada interrompida): os testes
+  // rodam em paralelo no mesmo banco, e apagar a tabela inteira zerava no
+  // meio as entregas que tests/estorno.test.js grava pro backfill da 120.
+  await pool.query("DELETE FROM webhooks_recebidos WHERE chave LIKE 'evento:evt_inbox_%'");
 });
 
 test.afterEach(() => Object.assign(inbox.processadores, processadoresOriginais));
@@ -55,6 +58,11 @@ test.after(async () => {
       "DELETE FROM eventos_assinatura_pendentes WHERE payload->>'planoId' IN (SELECT id FROM assinaturas WHERE anunciante_id = $1)",
       [id],
     );
+    // As entregas v1 (`entrega:<uuid>`) só se acham pela assinatura.
+    await pool.query(
+      "DELETE FROM webhooks_recebidos WHERE payload->>'planoId' IN (SELECT id FROM assinaturas WHERE anunciante_id = $1)",
+      [id],
+    );
     await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [id]);
     await pool.query('DELETE FROM ciclos_contratados WHERE anunciante_id = $1', [id]);
     await pool.query('DELETE FROM cobrancas_confirmadas WHERE anunciante_id = $1', [id]);
@@ -62,7 +70,7 @@ test.after(async () => {
     await pool.query('DELETE FROM eventos WHERE anunciante_id = $1', [id]);
     await pool.query('DELETE FROM anunciantes WHERE id = $1', [id]);
   }
-  await pool.query('DELETE FROM webhooks_recebidos');
+  await pool.query("DELETE FROM webhooks_recebidos WHERE chave LIKE 'evento:evt_inbox_%'");
   await pool.end();
 });
 
@@ -342,6 +350,149 @@ test('11b. cobranca_confirmada que falha no meio: nova tentativa credita (a rese
     ev.eventoId,
     `pay_falha_${rodada}|confirmado`,
   ]);
+});
+
+// AUD-005 (auditoria técnica, 11/10/2026): as reservas de dedupe eram
+// autocommit, fora da transação do ciclo. Processo morto (deploy, OOM) ou
+// banco fora entre a reserva e o COMMIT deixava as chaves gravadas sem ciclo;
+// a retomada da inbox, a conciliação e o botão do admin caíam na dedupe —
+// cliente pagou, conta sem cobertura, zero rastro. Agora reserva e ciclo
+// entram juntos.
+//
+// "A instância morre no COMMIT do ciclo": o client da transação do ciclo dá
+// ROLLBACK e lança no lugar do COMMIT (o Postgres desfaz a transação quando a
+// conexão cai). Num processo morto a compensação em memória não roda — todo
+// `DELETE FROM webhooks_processados` é ignorado enquanto isto vale.
+function morrerNoCommitDoCiclo() {
+  const connectOriginal = pool.connect;
+  const queryOriginal = pool.query;
+  const morte = { morreu: false };
+  pool.connect = function (...args) {
+    // pool.query usa connect(cb) por dentro: passa; só `await pool.connect()`
+    // (a transação do ciclo) é instrumentado.
+    if (args.length || morte.morreu) return connectOriginal.apply(this, args);
+    return connectOriginal.call(this).then((cliente) => {
+      const q = cliente.query.bind(cliente);
+      let dentroDoCiclo = false;
+      cliente.query = (sql, ...resto) => {
+        if (typeof sql === 'string' && sql.includes('FROM anunciantes WHERE id = $1 FOR UPDATE')) dentroDoCiclo = true;
+        if (dentroDoCiclo && sql === 'COMMIT' && !morte.morreu) {
+          morte.morreu = true;
+          return q('ROLLBACK').then(() => {
+            throw new Error('processo morto no COMMIT (simulado)');
+          });
+        }
+        return q(sql, ...resto);
+      };
+      return cliente;
+    });
+  };
+  pool.query = function (sql, ...resto) {
+    if (typeof sql === 'string' && sql.startsWith('DELETE FROM webhooks_processados')) {
+      return Promise.resolve({ rowCount: 0, rows: [] });
+    }
+    return queryOriginal.call(this, sql, ...resto);
+  };
+  morte.restaurar = () => {
+    pool.connect = connectOriginal;
+    pool.query = queryOriginal;
+  };
+  return morte;
+}
+
+test('11c. ciclo pago: processo morre entre a reserva e o COMMIT — a retomada da inbox credita o ciclo', async () => {
+  const { conta, assinatura } = await contaComAssinatura();
+  const rodada = crypto.randomUUID().slice(0, 8);
+  const ev = evento(assinatura, conta, { evento: 'criada', chargeId: `pay_crash_${rodada}`, valor: 90 });
+  const morte = morrerNoCommitDoCiclo();
+  try {
+    assert.equal(await entregar(ev), 200);
+    await esperarProcessador();
+  } finally {
+    morte.restaurar();
+  }
+  assert.equal(morte.morreu, true, 'a transação do ciclo caiu no COMMIT');
+  assert.equal((await linha(ev.eventoId)).status, 'tentando_de_novo', 'a inbox guarda o evento pra retomar');
+  const { rows: semCiclo } = await pool.query(
+    'SELECT count(*)::int n FROM cobrancas_confirmadas WHERE anunciante_id = $1',
+    [conta.id],
+  );
+  assert.equal(semCiclo[0].n, 0, 'nada creditado: o Postgres desfez a transação');
+  const { rows: sobras } = await pool.query('SELECT id FROM webhooks_processados WHERE id IN ($1, $2)', [
+    ev.eventoId,
+    `pay_crash_${rodada}|confirmado`,
+  ]);
+  assert.deepEqual(sobras, [], 'nenhuma reserva sobrevive sem o ciclo');
+  // "Instância B" retoma depois da espera.
+  await vencerEspera(ev.eventoId);
+  await inbox.processarPendentes();
+  assert.equal((await linha(ev.eventoId)).status, 'processado');
+  const { rows } = await pool.query('SELECT count(*)::int n FROM cobrancas_confirmadas WHERE anunciante_id = $1', [
+    conta.id,
+  ]);
+  assert.equal(rows[0].n, 1, 'a retomada credita o ciclo');
+  assert.equal((await assinaturasRepo.buscarPorId(assinatura.id)).status, 'ativa');
+  await pool.query('DELETE FROM webhooks_processados WHERE id IN ($1, $2)', [
+    ev.eventoId,
+    `pay_crash_${rodada}|confirmado`,
+  ]);
+});
+
+// Mesma causa no outro caminho que credita sozinho: a conciliação diária
+// gravava a chave `chargeId|status` em autocommit antes do ciclo (AUD-005).
+test('11d. conciliação: processo morre entre a reserva e o COMMIT — a próxima varredura aplica o ciclo', async () => {
+  const { conciliarAssinaturas } = require('../src/financeiro/conciliacao');
+  const { conta, assinatura } = await contaComAssinatura();
+  const chargeId = `pay_conc_${crypto.randomUUID().slice(0, 8)}`;
+  const chave = `${chargeId}|confirmado`;
+  const guarda = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).endsWith('/api/checkout/consultar-assinatura')) return guarda(url, init);
+    const ultimaCobranca = { chargeId, status: 'confirmado', valorCobrado: 90, criadoEm: new Date().toISOString() };
+    return new Response(JSON.stringify({ status: 'ativa', ultimaCobranca }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+  try {
+    const morte = morrerNoCommitDoCiclo();
+    let primeira;
+    try {
+      primeira = await conciliarAssinaturas({ apenasContas: [conta.id] });
+    } finally {
+      morte.restaurar();
+    }
+    assert.equal(morte.morreu, true, 'a transação do ciclo caiu no COMMIT');
+    assert.equal(primeira.aplicadas, 0);
+    assert.equal(primeira.falhas.length, 1, 'a varredura registra a falha');
+    const { rows: sobra } = await pool.query('SELECT 1 FROM webhooks_processados WHERE id = $1', [chave]);
+    assert.deepEqual(sobra, [], 'a chave não sobrevive sem o ciclo');
+    const segunda = await conciliarAssinaturas({ apenasContas: [conta.id] });
+    assert.equal(segunda.jaProcessadas, 0, 'não é "já processada": o ciclo nunca entrou');
+    assert.equal(segunda.aplicadas, 1, 'a próxima varredura aplica');
+    const { rows } = await pool.query('SELECT count(*)::int n FROM cobrancas_confirmadas WHERE anunciante_id = $1', [
+      conta.id,
+    ]);
+    assert.equal(rows[0].n, 1);
+    assert.equal((await assinaturasRepo.buscarPorId(assinatura.id)).status, 'ativa');
+  } finally {
+    globalThis.fetch = guarda;
+    await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]);
+  }
+});
+
+// Revisão da 2ª rodada: `chave` (posicional) e `reservas` (opção) faziam a
+// mesma coisa. Agora é um parâmetro só, a lista — e uma string nele seria
+// iterada letra a letra (cada letra uma "chave já gravada": ciclo pago
+// sumindo calado), então é recusada antes de tocar no banco.
+test('11e. aplicarCicloPago recebe a LISTA das chaves de dedupe — string ou lista vazia é recusada', async () => {
+  const { conta, assinatura } = await contaComAssinatura();
+  await assert.rejects(sc.aplicarCicloPago(assinatura, `pay_lista_${conta.id}|confirmado`), TypeError);
+  await assert.rejects(sc.aplicarCicloPago(assinatura, []), TypeError);
+  const { rows } = await pool.query('SELECT count(*)::int n FROM cobrancas_confirmadas WHERE anunciante_id = $1', [
+    conta.id,
+  ]);
+  assert.equal(rows[0].n, 0, 'nada creditado');
 });
 
 test('12. cobranca_falhou entregue duas vezes: uma pendência', async () => {

@@ -33,7 +33,7 @@ async function avisarCancelamento(anunciante, assinatura) {
 const planoAdministrativo = require('./plano-administrativo');
 const creditosRepo = require('../creditos/repository');
 const { nomeDoCiclo } = require('../lib/ciclos');
-const { cotarPlano } = require('./cotacao');
+const { cotarPlano, TROCA_PELA_EQUIPE } = require('./cotacao');
 const cicloContratado = require('./ciclo-contratado');
 const estornos = require('./estornos');
 const { multiplicar } = require('../lib/dinheiro');
@@ -360,10 +360,10 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
       conta.plano_id === assinatura.plano_id &&
       conta.data_expiracao &&
       vigencia.coberturaVigente(conta.data_expiracao);
-    if (pagou)
-      return res
-        .status(409)
-        .json({ erro: 'você já tem esse plano ativo — pra mudar de plano, use "Trocar de plano" no painel' });
+    // Até 11/10/2026 dizia "use Trocar de plano" — que, numa assinatura de
+    // cartão (todas), dá 409 no Checkout e devolvia o cliente pra cá: beco
+    // sem saída (AUD-007). Hoje a troca é pela equipe (PG6).
+    if (pagou) return res.status(409).json(TROCA_PELA_EQUIPE);
     // Achado real (revisão de 23/09/2026): `pagou` só olha o `plano_id`
     // ATUAL da conta — que a conciliação diária (encerrarCoberturaVencida)
     // agora pode limpar sozinha quando a cobrança recorrente falha e a
@@ -380,14 +380,17 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
     );
     if (jaFoiCobrada.length) {
       try {
-        await sanCheckout.cancelarAssinatura(assinatura.id, conta.cpf_cnpj);
-      } catch {
-        return res
-          .status(502)
-          .json({ erro: 'não deu pra cancelar sua assinatura anterior no San Checkout — tente de novo em instantes' });
+        await sanCheckout.cancelarAssinaturaAtiva(assinatura, conta);
+      } catch (err) {
+        return res.status(502).json({
+          erro: err.naoEncontrada
+            ? err.message
+            : 'não deu pra cancelar sua assinatura anterior no San Checkout — tente de novo em instantes',
+        });
       }
+    } else {
+      await assinaturasRepo.marcarCancelada(assinatura.id);
     }
-    await assinaturasRepo.marcarCancelada(assinatura.id);
     assinatura = null;
   }
   // Cobertura PAGA de outro plano ainda valendo, sem assinatura ativa
@@ -525,16 +528,17 @@ router.post('/anunciantes/me/cancelar-assinatura', exigirAnuncianteLogado, async
   if (!assinatura) return res.status(400).json({ erro: 'você não tem assinatura ativa pra cancelar' });
 
   try {
-    await sanCheckout.cancelarAssinatura(assinatura.id, anunciante.cpf_cnpj);
-    await assinaturasRepo.marcarCancelada(assinatura.id);
+    await sanCheckout.cancelarAssinaturaAtiva(assinatura, anunciante);
     res.json({ ok: true });
     // Outras abas e o painel: a assinatura deixou de renovar (sem F5).
     sse.emitirParaConta(anunciante.id, 'plan.updated', {});
     // E-mail que falha não desfaz o cancelamento (pedido do dono,
     // 18/09/2026): vai pela fila, uma vez por assinatura.
     await avisarCancelamento(anunciante, assinatura);
-  } catch {
-    res.status(502).json({ erro: 'falha ao cancelar no San Checkout. Tente de novo em alguns minutos.' });
+  } catch (err) {
+    res.status(502).json({
+      erro: err.naoEncontrada ? err.message : 'falha ao cancelar no San Checkout. Tente de novo em alguns minutos.',
+    });
   }
 });
 
@@ -583,9 +587,14 @@ router.post('/anunciantes/me/trocar-plano', exigirAnuncianteLogado, async (req, 
     anuncianteId: conta.id,
     planoId: planoNovo.id,
     status: 'pendente_troca',
+    documentoPagador: assinaturaAtiva.documento_pagador,
   });
 
-  const { status, corpo } = await sanCheckout.trocarPlano(assinaturaAtiva.id, assinaturaNova.id, conta.cpf_cnpj);
+  const { status, corpo } = await sanCheckout.trocarPlano(
+    assinaturaAtiva.id,
+    assinaturaNova.id,
+    sanCheckout.documentoDaAssinatura(assinaturaAtiva, conta),
+  );
 
   if (status === 202) {
     // Nada foi cobrado nem alterado ainda — a linha 'pendente_troca' fica
@@ -609,6 +618,12 @@ router.post('/anunciantes/me/trocar-plano', exigirAnuncianteLogado, async (req, 
     // Checkout registra o erro do lado dele (chargeId na resposta); aqui
     // só cabe não fingir que a troca aconteceu.
     await assinaturasRepo.excluir(assinaturaNova.id);
+    // Assinatura de cartão já paga (API.md do Checkout 5.6): o Checkout não
+    // muda o valor dela. O texto dele fala de Asaas e fatura e não diz o que
+    // fazer; a resposta daqui diz o caminho real (AUD-007, PG6).
+    if (status === 409 && corpo?.codigo === 'troca_de_valor_nao_suportada') {
+      return res.status(409).json(TROCA_PELA_EQUIPE);
+    }
     return res.status(status).json({ erro: corpo.erro || 'não foi possível trocar de plano', ...corpo });
   }
 
@@ -720,16 +735,19 @@ router.post('/admin/anunciantes/:id/cancelar-assinatura', async (req, res) => {
   if (!assinatura) return res.status(400).json({ erro: 'anunciante sem assinatura ativa' });
 
   try {
-    await sanCheckout.cancelarAssinatura(assinatura.id, anunciante.cpf_cnpj);
-    await assinaturasRepo.marcarCancelada(assinatura.id);
+    await sanCheckout.cancelarAssinaturaAtiva(assinatura, anunciante);
     res.json({ ok: true });
     // Outras abas e o painel: a assinatura deixou de renovar (sem F5).
     sse.emitirParaConta(anunciante.id, 'plan.updated', {});
     // Mesmo aviso do cancelamento pedido pelo próprio anunciante — quem
     // cancelou não muda o que o cliente precisa saber.
     await avisarCancelamento(anunciante, assinatura);
-  } catch {
-    res.status(502).json({ erro: 'falha ao cancelar no San Checkout' });
+  } catch (err) {
+    res.status(502).json({
+      erro: err.naoEncontrada
+        ? 'o Checkout não encontrou essa assinatura (404) e ela tem ciclo pago — nada foi marcado; a pendência "assinatura não encontrada" pede cancelar na Asaas à mão'
+        : 'falha ao cancelar no San Checkout',
+    });
   }
 });
 
@@ -803,12 +821,13 @@ router.post('/admin/anunciantes/:id/plano-administrativo', async (req, res) => {
   const assinatura = await assinaturasRepo.buscarAtivaDoAnunciante(conta.id);
   if (assinatura) {
     try {
-      await sanCheckout.cancelarAssinatura(assinatura.id, conta.cpf_cnpj);
-      await assinaturasRepo.marcarCancelada(assinatura.id);
-    } catch {
-      return res
-        .status(502)
-        .json({ erro: 'não deu pra cancelar a assinatura paga no San Checkout — nada foi alterado, tente de novo' });
+      await sanCheckout.cancelarAssinaturaAtiva(assinatura, conta);
+    } catch (err) {
+      return res.status(502).json({
+        erro: err.naoEncontrada
+          ? 'o Checkout não encontrou a assinatura paga (404) — nada foi alterado; resolva a pendência "assinatura não encontrada" antes de conceder'
+          : 'não deu pra cancelar a assinatura paga no San Checkout — nada foi alterado, tente de novo',
+      });
     }
   }
   const { conta: atualizada } = await planoAdministrativo.conceder({
@@ -846,6 +865,15 @@ const EVENTOS_SEM_CICLO_A_APLICAR = new Set([
   'cobranca_contestada',
   'troca_revertida',
   'cancelada',
+  // 404 do Checkout ao cancelar assinatura com ciclo pago (AUD-006): é pra
+  // cancelar na Asaas à mão, não pra creditar nada.
+  'cancelamento_nao_encontrado',
+  // Aviso de cadastro (AUD-006): o ciclo já entrou; "aplicar" creditaria de
+  // novo quando a 1ª cobrança entrou sem chargeId.
+  'documento_pagador_divergente',
+  // Aviso de 2ª recorrência (AUD-006, 3ª rodada): o ciclo já entrou; o que
+  // falta é cancelar a recorrência antiga no Checkout.
+  'documento_pagador_mudou',
 ]);
 
 // Fila de reconciliação manual (webhooks que não deram pra correlacionar
@@ -881,7 +909,9 @@ router.post('/admin/eventos-pendentes/:id/aplicar', async (req, res) => {
 
   const payload = evento.payload || {};
   if (EVENTOS_SEM_CICLO_A_APLICAR.has(payload.evento)) {
-    return res.status(409).json({ erro: 'este evento não credita ciclo (estorno, contestação ou cancelamento)' });
+    return res
+      .status(409)
+      .json({ erro: 'este evento não credita ciclo (estorno, contestação, cancelamento ou aviso)' });
   }
   const assinatura = payload.planoId ? await assinaturasRepo.buscarPorId(payload.planoId) : null;
   if (!assinatura) {
@@ -907,8 +937,9 @@ router.post('/admin/eventos-pendentes/:id/aplicar', async (req, res) => {
   // por dinheiro que não entrou. Quem decide se houve pagamento é o motor de
   // pagamento, nunca a fila de revisão.
   let ultima;
+  const documento = sanCheckout.documentoDaAssinatura(assinatura, anunciante);
   try {
-    const estado = await sanCheckout.consultarAssinatura(assinatura.id, anunciante.cpf_cnpj);
+    const estado = await sanCheckout.consultarAssinatura(assinatura.id, documento);
     ultima = estado?.ultimaCobranca;
   } catch (err) {
     // Mensagem do erro vai pro log, não pra tela: ela carrega a URL da API do
@@ -925,27 +956,37 @@ router.post('/admin/eventos-pendentes/:id/aplicar', async (req, res) => {
   }
 
   // A chave é a mesma que o webhook e a conciliação usariam (chargeId|status):
-  // assim o mesmo pagamento não vira dois ciclos, venha por onde vier.
+  // assim o mesmo pagamento não vira dois ciclos, venha por onde vier. Ela é
+  // gravada na transação do ciclo (aplicarCicloPago), nunca antes: reservada
+  // em autocommit, sobrevivia a um processo morto e o botão passava a dizer
+  // "já creditada" de um ciclo que nunca entrou (AUD-005).
   const chave = `${ultima.chargeId}|${ultima.status}`;
-  const { rowCount } = await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING', [
-    chave,
-  ]);
-  if (!rowCount) {
+  let resultado;
+  try {
+    // O documento é o da CONSULTA acima — o da recorrência dona da cobrança
+    // que vai entrar —, nunca o do payload guardado na pendência: ele pode ser
+    // de uma recorrência anterior e trocaria o documento vigente pelo velho
+    // (AUD-006, 3ª rodada).
+    resultado = await sanCheckout.aplicarCicloPago(
+      assinatura,
+      [chave],
+      { ...payload, documento, origem: 'admin' },
+      { chargeId: ultima.chargeId },
+    );
+  } catch (err) {
+    return res.status(502).json({ erro: `não deu pra aplicar o ciclo: ${err.message}` });
+  }
+  if (resultado?.jaAplicada) {
     await pool.query('UPDATE eventos_assinatura_pendentes SET resolvido = true WHERE id = $1', [evento.id]);
     return res
       .status(409)
       .json({ erro: 'essa cobrança já tinha sido creditada — o evento foi marcado como resolvido' });
   }
-
-  try {
-    await sanCheckout.aplicarCicloPago(
-      assinatura,
-      chave,
-      { ...payload, origem: 'admin' },
-      { chargeId: ultima.chargeId },
-    );
-  } catch (err) {
-    return res.status(502).json({ erro: `não deu pra aplicar o ciclo: ${err.message}` });
+  if (resultado?.pendenciaJaRegistrada) {
+    await pool.query('UPDATE eventos_assinatura_pendentes SET resolvido = true WHERE id = $1', [evento.id]);
+    return res.status(409).json({
+      erro: 'essa cobrança já tem pendência com a decisão (conta excluída ou intenção cancelada) — nada foi creditado; este evento foi marcado como resolvido, siga pela outra',
+    });
   }
   await pool.query('UPDATE eventos_assinatura_pendentes SET resolvido = true WHERE id = $1', [evento.id]);
   res.json({ ok: true });

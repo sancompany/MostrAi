@@ -22,6 +22,7 @@ const pool = require('../db/pool');
 const vigencia = require('../lib/vigencia');
 const obrigacaoDoCiclo = require('../bancohoras/obrigacao-do-ciclo');
 const planoAdministrativo = require('./plano-administrativo');
+const creditosRepo = require('../creditos/repository');
 
 // Janela do estorno ORDINÁRIO: 7 dias corridos da confirmação do pagamento
 // no PSP (`pago_em`), por cobrança — renovação inclusive (decisão do dono,
@@ -121,6 +122,30 @@ async function pedidoAbertoDa(db, cobrancaId) {
     [cobrancaId],
   );
   return rows[0] || null;
+}
+
+// Quando a devolução INTEIRA desta cobrança foi PEDIDA — o momento que decide
+// se o crédito de indicação ainda não tinha consolidado
+// (reverterCreditoDeIndicacao). Não é o pedido aberto: a Asaas pode devolver
+// em parcelas, e a primeira (parcial) já fecha o pedido 'solicitado' — quando
+// a total chega, só existe o pedido confirmado e a linha 'externo' da própria
+// parcela (revisão Codex do PR #136). E não é o pedido mais antigo: um
+// parcial pedido no 3º dia e o resto pedido no 20º não devolveram o pagamento
+// no prazo (2ª revisão). É o pedido em que a soma do que foi pedido (não
+// cancelado, em ordem) alcança o valor pago; numa devolução feita direto na
+// Asaas, a hora que o PSP informou (`confirmado_em`), não a de processar o
+// aviso aqui. Sem esse momento nos registros (a Asaas devolveu mais do que
+// foi pedido), devolve null e quem chama usa a hora da confirmação.
+async function momentoDoPedidoDe(db, cobranca) {
+  const { rows } = await db.query(
+    `SELECT em FROM (
+       SELECT LEAST(solicitado_em, confirmado_em) AS em,
+              sum(valor) OVER (ORDER BY LEAST(solicitado_em, confirmado_em), id) AS pedido_acumulado
+         FROM estornos WHERE cobranca_id = $1 AND status <> 'cancelado'
+     ) s WHERE pedido_acumulado >= $2::numeric ORDER BY em LIMIT 1`,
+    [cobranca.id, cobranca.valor],
+  );
+  return rows[0]?.em ?? null;
 }
 
 // Admin pede o estorno de uma cobrança. Tudo é conferido aqui, de novo, com a
@@ -229,6 +254,45 @@ async function tirarDaFila(db, anuncianteId, dias) {
   );
 }
 
+// Crédito de indicação de uma cobrança devolvida INTEIRA (AUD-009). A regra é
+// da spec (R1 nº 14 e 15, R2 §7): o crédito só é do ponto DEPOIS da janela
+// de estorno; consolidado, nunca é estornado, e saldo negativo por indicação
+// não existe. Hoje o crédito nasce na hora do pagamento — a janela de
+// carência (crédito pendente até consolidar) espera a decisão do dono,
+// PENDENCIAS PG7 —, então, até lá, o paliativo é LIMITE ASSUMIDO PELA
+// AUDITORIA, não decisão do dono (CONSTRAINTS.md, Limites assumidos):
+// devolução pedida DENTRO da janela ordinária de 7 dias do pagamento
+// (`momento`: quando o pedido nasceu; sem pedido no Admin, quando a Asaas
+// confirmou) = crédito ainda não consolidado, e ele sai — até o saldo que o
+// ponto tem, nunca abaixo de zero. O que ele já gastou não
+// volta: aviso pro Admin, e o benefício resgatado segue (quem decide é
+// pessoa). Fora da janela o crédito já era do ponto: fica. A conta de quem
+// indicou é travada como o resgate a trava (FOR NO KEY UPDATE espera um
+// resgate em curso), então o saldo lido aqui é o de verdade.
+// Devolve `{ avisos, revertido: {contaId, quantidade} | null }`.
+async function reverterCreditoDeIndicacao(db, cobranca, momento) {
+  const {
+    rows: [credito],
+  } = await db.query(
+    `SELECT anunciante_id, quantidade FROM creditos_ledger
+      WHERE cobranca_confirmada_id = $1 AND tipo IN ('indicacao_primeiro_pagamento', 'indicacao_renovacao')`,
+    [cobranca.id],
+  );
+  if (!credito || !janelaOrdinaria(cobranca, momento).dentro) return { avisos: [], revertido: null };
+  await db.query('SELECT 1 FROM anunciantes WHERE id = $1 FOR NO KEY UPDATE', [credito.anunciante_id]);
+  const disponivel = Math.max(0, await creditosRepo.saldo(credito.anunciante_id, db));
+  const quantidade = Math.min(credito.quantidade, disponivel);
+  const linha = quantidade > 0 ? await creditosRepo.reverterCreditoIndicacao(cobranca.id, quantidade, db) : null;
+  const revertido = linha ? -linha.quantidade : 0;
+  const avisos =
+    revertido < credito.quantidade
+      ? [
+          `crédito de indicação da cobrança ${cobranca.id} não voltou inteiro: o pagamento foi devolvido no prazo de estorno, mas a conta ${credito.anunciante_id} (quem indicou) já tinha usado o crédito — voltou ${revertido} de ${credito.quantidade} (o saldo nunca fica negativo); o benefício já resgatado continua: decidir à mão`,
+        ]
+      : [];
+  return { avisos, revertido: linha ? { contaId: credito.anunciante_id, quantidade: revertido } : null };
+}
+
 // Efeito do estorno TOTAL confirmado (decisão do dono, 09/10/2026): o ciclo
 // pago por esta cobrança é desfeito — o lote de horas sai (reembolso, a
 // regra que já existia) e a cobertura daquele ciclo sai. Não cancela a
@@ -327,7 +391,8 @@ async function aplicarEstornoTotal(db, cobranca, motivo, { coberturaJaDesfeita =
 // frente (aviso repetido ou fora de ordem não muda nada).
 // Devolve { semCobranca } quando o chargeId não é de nenhuma cobrança daqui
 // (ainda — quem chama decide se tenta de novo), ou { avisos, confirmado }
-// para quem chama registrar na fila do Admin.
+// para quem chama registrar na fila do Admin (e `creditoRevertido`, o crédito
+// de indicação que saiu, pra quem chama avisar o ponto depois do COMMIT).
 async function registrarEstornoDoPsp(payload) {
   const chargeId = String(payload.chargeId || '');
   const status = payload.statusFinanceiro;
@@ -416,8 +481,19 @@ async function registrarEstornoDoPsp(payload) {
       );
     }
 
+    let creditoRevertido = null;
     if (novoStatus === 'estornado') {
+      // O crédito de indicação que esta cobrança gerou (AUD-009) — antes de
+      // qualquer saída de aplicarEstornoTotal (acerto, desistência). O pedido
+      // ou a linha 'externo' desta confirmação já estão gravados acima.
+      const credito = await reverterCreditoDeIndicacao(
+        cliente,
+        cobranca,
+        (await momentoDoPedidoDe(cliente, cobranca)) ?? confirmadoEm,
+      );
+      creditoRevertido = credito.revertido;
       avisos.push(
+        ...credito.avisos,
         ...(await aplicarEstornoTotal(cliente, cobranca, `estorno total da cobrança ${cobranca.id}`, {
           coberturaJaDesfeita: await deContratoDesistido(cliente, cobranca.id),
         })),
@@ -426,7 +502,7 @@ async function registrarEstornoDoPsp(payload) {
 
     await fecharDesistenciaAtendida(cliente, cobranca.anunciante_id);
     await cliente.query('COMMIT');
-    return { avisos, confirmado: estorno, anuncianteId: cobranca.anunciante_id };
+    return { avisos, confirmado: estorno, anuncianteId: cobranca.anunciante_id, creditoRevertido };
   } catch (err) {
     await cliente.query('ROLLBACK').catch(() => {});
     throw err;

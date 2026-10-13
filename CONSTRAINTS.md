@@ -103,7 +103,30 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
   na v2. Se ainda assim doer: mover os vídeos para Cloudflare R2 (egress zero).
 - **Cache de playlist em memória do processo.** Uma instância só. Se um dia
   houver duas, mover para tabela.
-- **Limitador de tentativas em memória do processo.** Mesma ressalva.
+- **Limitador de tentativas no banco** (migration 051 — vale entre instâncias
+  e sobrevive ao restart). Teto de 10 por 15 min por IP (IPv6 por /64) e, nos
+  dois logins e no esqueci-senha, também por conta (e-mail ou usuário). Dois
+  limites assumidos, decisão do dono:
+  1. Quem tem muitos endereços (um /48 IPv6 são 65.536 /64; uma botnet)
+     multiplica o teto do IP no que mira MUITAS contas: credential stuffing
+     no login, varredura de e-mails pelo 409 do cadastro, links de redefinição
+     pra muitos e-mails. Cada conta segue com no máximo 10 erros por janela de
+     quem não tem o cookie do aparelho dela, e cada e-mail com 10 pedidos de
+     link. Fechar pede CAPTCHA ou balde por /48.
+  2. O balde da conta trava a dona: enquanto alguém mantiver 10 erros por
+     janela contra a conta (um IP basta, repetindo a cada 15 min), o login
+     dela de aparelho novo dá 429, até com a senha certa. Do aparelho onde já
+     entrou (cookie `mostrai.aparelho`, 90 dias) não trava; redefinir a senha
+     zera o balde e marca o aparelho (RUNBOOK §6). Teto da conta acima do do
+     IP (ex.: 3×) faria um IP só não bastar, ao preço de 3× mais chutes.
+  3. Trocar a senha não revoga os aparelhos conhecidos dos OUTROS navegadores
+     (apontado pelo Codex no PR #136). O cookie é assinado e sem estado —
+     vence 90 dias depois da emissão, contados no servidor —, e quem o tem
+     (alguém que já entrou naquele navegador, ou o roubou de lá) fica só com
+     o mesmo teto de 10 erros por janela, no balde do aparelho em vez do da
+     conta: não entra sem a senha. Revogar pede estado por conta (lista de
+     aparelhos) ou amarrar a assinatura à versão da senha (o limitador
+     passaria a ler a conta antes do login). Decisão do dono.
 - **Supabase no plano gratuito não tem backup automático.** Enquanto o
   projeto estiver no gratuito, a Lei 6 (backup do que não pode ser perdido)
   está em **exceção registrada**. Sai da exceção no dia em que o primeiro
@@ -207,6 +230,21 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
   tirar os dias à mão; nunca adivinha. limite: gravar a janela e a
   contribuição à fila por ciclo no caminho de pagamento resolve
   (`docs/PENDENCIAS.md`, PG5).
+- **Crédito de indicação nasce na hora do pagamento, não depois da janela de
+  estorno — LIMITE ASSUMIDO PELA AUDITORIA até a decisão do dono**
+  (12/10/2026, AUD-009; `docs/PENDENCIAS.md`, PG7). Não é decisão do dono. A
+  spec diz o contrário do que o código faz: o crédito só é do ponto depois da
+  janela de estorno (R1 nº 14: "daria o ponto somente após o periodo de
+  estorno"; R2 §7: "o ponto não recebe imediatamente"); consolidado, nunca é
+  estornado (R1 nº 15, R2 §7); saldo negativo por indicação não existe (R2
+  §7). A duração da janela é o que falta o dono decidir. Até lá, o paliativo
+  da auditoria: estorno total de uma devolução pedida nos 7 dias do
+  pagamento tira o crédito daquela cobrança, até o saldo do ponto e nunca
+  abaixo de zero; fora dos 7 dias o crédito fica. O que o ponto já gastou
+  dentro dos 7 dias não volta sozinho: vira pendência pro Admin, e o
+  benefício segue até alguém decidir. limite: crédito pendente até a janela
+  passar (concedido só depois de consolidar) fecha este limite —
+  `estornos.js#reverterCreditoDeIndicacao` é o lugar que sai.
 - **Negócio ou marca por criativo: limites da primeira versão** (10/10/2026,
   RN-74, migration 121).
   - A escolha de pontos e o sorteio automático continuam sem olhar categoria

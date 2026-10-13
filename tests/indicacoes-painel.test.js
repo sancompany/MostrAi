@@ -165,7 +165,7 @@ async function pagarCiclo(contaId, assinaturaId = null) {
   const id =
     assinaturaId ||
     (await assinaturasRepo.criar({ anuncianteId: contaId, planoId: 'essencial-1m', status: 'ativa' })).id;
-  await sc.aplicarCicloPago(await assinaturasRepo.buscarPorId(id), `teste-indicacoes-painel-${randomUUID()}`);
+  await sc.aplicarCicloPago(await assinaturasRepo.buscarPorId(id), [`teste-indicacoes-painel-${randomUUID()}`]);
   return id;
 }
 
@@ -267,7 +267,7 @@ test('F, G e H: primeiro pagamento +1; renovação +1, uma vez; reprocessar a me
     assert.strictEqual(h.indicados[0].plano, 'Essencial · Mensal');
     assert.strictEqual(h.indicados[0].pagamentos, 1);
     assert.strictEqual(h.indicados[0].creditos, 1);
-    assert.deepStrictEqual(h.indicados[0].creditosEm, [{ data: hoje(), tipo: 'primeiro_pagamento' }]);
+    assert.deepStrictEqual(h.indicados[0].creditosEm, [{ data: hoje(), tipo: 'primeiro_pagamento', quantidade: 1 }]);
     assert.deepStrictEqual(h.resumo, { contas: 1, contrataram: 1, creditos: 1 });
 
     // G: renovação paga → +1, como renovação — o total vai a 2, não a 3.

@@ -102,6 +102,20 @@ function emitirParaAdmin(evento, dado = {}) {
     .catch((err) => console.error('sse: não deu pra publicar no canal do admin', err.message));
 }
 
+// Mesmo aviso, de DENTRO de uma transação: publica pelo client dela (`db`), e
+// o Postgres só entrega o NOTIFY no COMMIT — no ROLLBACK, descarta. É o jeito
+// nativo de avisar "depois de gravar": pelo pool, o aviso saía antes do
+// COMMIT, o admin recarregava a fila ainda sem a linha e ninguém avisava de
+// novo (revisão Codex do PR #136). Sem a entrega local imediata, de
+// propósito — chegaria antes da linha existir; quem está nesta instância
+// recebe pelo LISTEN dela, como as outras. Não lança: se a query falhar, a
+// transação já está perdida e quem chama vê isso no COMMIT.
+async function emitirParaAdminNoCommit(db, evento, dado = {}) {
+  await db
+    .query('SELECT pg_notify($1, $2)', [CANAL, JSON.stringify({ admin: true, evento, dado })])
+    .catch((err) => console.error('sse: não deu pra publicar no canal do admin (na transação)', err.message));
+}
+
 function contaTemClientes(contaId) {
   return clientesPorConta.has(contaId);
 }
@@ -162,4 +176,5 @@ module.exports = {
   registrarAdmin,
   removerAdmin,
   emitirParaAdmin,
+  emitirParaAdminNoCommit,
 };

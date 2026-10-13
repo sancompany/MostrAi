@@ -27,6 +27,19 @@ espera inicial). A troca é rolante: uma instância nova só recebe tráfego
 depois do `/health`. A janela de 503 medida quando havia uma instância só
 não se aplica mais.
 
+Na frente do app a cadeia é **Cloudflare → ingress do Northflank → app**
+(`trust proxy 1`): o `req.ip` que o Express vê é o salto que o ingress
+acrescentou ao X-Forwarded-For — a borda da Cloudflare —, e o IP real do
+cliente chega em `CF-Connecting-IP`. O limitador de tentativas só usa esse
+cabeçalho quando o `req.ip` está nas faixas publicadas da Cloudflare (lista
+em `src/lib/limite-tentativas.js`, de cloudflare.com/ips); quem fala direto
+com o ingress, sem passar pela Cloudflare, conta pelo próprio IP e o
+cabeçalho é ignorado. Se a Cloudflare publicar faixa nova, atualize a lista:
+sem isso, quem chega por ela conta pela borda (lockout coletivo, não porta
+aberta). O Pseudo IPv4 da zona não pode estar em "Overwrite Headers": ele
+troca o CF-Connecting-IP de quem chega por IPv6 por um IPv4 classe E por
+endereço, e o agrupamento por /64 deixa de valer.
+
 **Como conferir que um deploy deu certo:** `curl https://mostrai.sancocore.com.br/health`
 deve devolver `{"ok":true}`; a aba Visão geral do admin mostra a última
 conciliação; e `SELECT count(*) FROM schema_migrations` tem que bater com o
@@ -62,7 +75,7 @@ Nenhum segredo mora no repositório. Eles vivem em **Northflank → serviço
 |---|---|
 | Senha do Postgres | Supabase → Settings → Database → Reset database password |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API |
-| `SESSION_SECRET` | `openssl rand -base64 48`. Trocar derruba todas as sessões — é o efeito desejado. **Também é a raiz do cofre** (`src/lib/cofre.js`): depois de trocar, redefinir o **PIN de saída do Player** em Rede (o antigo não decifra mais e a config passa a mandar `pinSaida: null`) e gerar de novo os códigos de instalação pendentes. As credenciais das TVs não mudam (são hash, não cifra) |
+| `SESSION_SECRET` | `openssl rand -base64 48`. Trocar derruba todas as sessões — é o efeito desejado. **Também é a raiz do cofre** (`src/lib/cofre.js`): depois de trocar, redefinir o **PIN de saída do Player** em Rede (o antigo não decifra mais e a config passa a mandar `pinSaida: null`) e gerar de novo os códigos de instalação pendentes. As credenciais das TVs não mudam (são hash, não cifra). Os cookies de aparelho conhecido (`mostrai.aparelho`, assinados com chave derivada dele) deixam de valer: cada navegador volta a ser "aparelho novo" até o próximo login certo |
 | `ADMIN_PASSWORD` | escolha do dono. Comparado em tempo constante (`src/lib/segredo.js`) |
 | `SAN_CHECKOUT_KEY` | painel do San Checkout, no cadastro do contratante. **É também o segredo que assina os webhooks** — trocar sem avisar o Checkout derruba a cobrança |
 | `SMTP_PASS` | Google Account → Segurança → Senhas de app |
@@ -373,8 +386,19 @@ segredos, código, repositório do Player.
 | Webhook do Checkout dando 401 | assinatura HMAC não fecha | a `SAN_CHECKOUT_KEY` dos dois lados divergiu. Comparar com o painel do Checkout |
 | Fila `eventos_assinatura_pendentes` crescendo | eventos chegando e não sendo aplicados | admin → a fila mostra o motivo de cada um |
 | Pendência "webhook não processado depois de 6 tentativas" | um evento do Checkout foi gravado na inbox (`webhooks_recebidos`) mas a lógica falhou 6 vezes seguidas: estado `morto` | ver §6.2: ler `ultimo_erro`, corrigir a causa e recolocar na fila |
+| Pendência "assinatura não encontrada no Checkout ao cancelar" | alguém tentou cancelar (cliente, Admin, exclusão, desistência) uma assinatura com ciclo pago e o Checkout não achou nada com aquele plano + documento: a recorrência pode seguir viva na Asaas; a assinatura continua `ativa` aqui (AUD-006). Desistência e exclusão da conta NÃO esperam: o pedido do cliente já foi registrado — só falta parar a cobrança | no Checkout, achar a assinatura pelo id (`planoId` da pendência) e ver com que documento ela existe; cancelar **pelo Checkout** (`POST /api/checkout/cancelar-assinatura`, `planoId` + esse documento), não direto no painel da Asaas — só o Checkout avisa `cancelada`. Assinatura sem documento gravado (anterior à migration 122, o caso comum desta pendência): esse `cancelada` fecha o registro daqui sozinho, sem mexer no cadastro. Conferir: Contas → a conta → Plano sem assinatura ativa (ou `SELECT status FROM assinaturas WHERE id = '<planoId>'` → `cancelada`). Só se não fechar (cancelada direto na Asaas): trocar o CPF/CNPJ da conta pelo do pagador, "Cancelar assinatura" no Admin e **restaurar o CPF/CNPJ original logo em seguida** — conferir na ficha da conta que voltou (comprovante e pré-preenchimento do Checkout usam o da conta). Depois, marcar resolvido |
+| Pendência "pagamento com OUTRO CPF/CNPJ nesta assinatura" | a assinatura cobrou com um documento diferente do gravado — em geral o pagador digitou outro CPF/CNPJ na pop-up de renovação e o Checkout criou uma 2ª recorrência do mesmo plano sem cancelar a 1ª: as duas podem cobrar (AUD-006). Daqui pra frente cancelar, consultar e renovar usam o documento novo; o anterior está em `documentoAnterior` no payload | cancelar a **antiga** pelo Checkout (`POST /api/checkout/cancelar-assinatura`, `planoId` + `documentoAnterior`): o `cancelada` dela não fecha a assinatura daqui. Nunca a nova — o `cancelada` dela fecharia o registro daqui com a antiga ainda cobrando. Se as duas cobraram o mesmo período, devolver uma (Cobranças → estorno, §6.3). Depois, marcar resolvido |
+| Pendência "crédito de indicação da cobrança C não voltou inteiro … conta N … voltou X de Y" | o pagamento de um indicado foi devolvido inteiro dentro dos 7 dias, mas a conta N (quem indicou) já tinha gasto o crédito que ele gerou num benefício. O sistema tirou só o que havia de saldo — saldo negativo por indicação não existe (spec R2 §7). Os 7 dias são limite assumido pela auditoria até o dono decidir a janela (AUD-009, `CONSTRAINTS.md`, PG7) | ver a ficha da conta N (Créditos e benefícios) e decidir à mão: o benefício segue, ou o Admin encerra/estorna créditos pela ficha. Nada é encerrado sozinho |
 | Webhook do Checkout recebendo 503 | a rota não conseguiu gravar o evento na inbox (banco fora) — o Checkout tenta de novo sozinho | conferir o banco; nada se perde enquanto o Checkout reentrega |
 | Migration abortou o deploy | SQL falhou no banco real | o container antigo segue no ar. Corrigir com migration nova, nunca editando a aplicada |
+| Log `timeout exceeded when trying to connect` (500 na rota) | o pool da instância (5 conexões) ficou 5 s sem conexão livre — carga, ou uma transação pedindo uma 2ª conexão ao pool (AUD-001) | ver qual rota falhou e se ela lê pelo `pool` entre o `pool.connect()` e o `COMMIT`; `/health` não toca o banco, então não acusa isto |
+| Log `pool: conexão ociosa caiu, o pool abre outra` ou `pool: conexão caiu` | o Postgres/pooler derrubou uma conexão (restart, failover, rede), parada ou em uso por uma transação; o processo segue, só a request ou o job que usava aquela conexão falha, e a próxima consulta abre outra (AUD-019) | nada, se for pontual; em rajada, conferir o status do Supabase |
+| Log `uncaughtException` seguido de restart | exceção fora de qualquer request que não é queda de conexão do banco (essa tem ouvinte); o processo sai com 1 de propósito e o Northflank sobe outro | ler a pilha logada logo acima; o que estava em voo no banco o Postgres desfez |
+| Cliente recebe "muitas tentativas" no login com a senha certa | alguém está errando a senha DESSA conta: 10 erros na janela de 15 min travam o login dela de aparelho novo (balde da conta, RN-16), e uma origem só, repetindo a cada 15 min, mantém a trava. Esperar só resolve se pararem | orientar o cliente a usar "Esqueci minha senha": a redefinição zera o balde da conta e marca o navegador (cookie `mostrai.aparelho`), e o login seguinte entra; do aparelho onde ele já tinha entrado, nem trava. Destravar à mão só ganha tempo (quem trava volta na próxima janela): a chave é `alvo:<HMAC do e-mail>:/anunciantes/login`, e só o serviço sabe calcular (usa o `SESSION_SECRET`): no serviço, `node -e "console.log('alvo:' + require('./src/lib/cofre').assinar('<e-mail em minúsculas>', 'limite-tentativas') + ':/anunciantes/login')"`, e então `DELETE FROM tentativas_acesso WHERE chave = '<essa chave>'`. O admin é o mesmo com o usuário e `:/admin/login`. Muitas contas travadas ao mesmo tempo, ou a mesma conta travando toda janela = ataque: ler os logs antes de destravar |
+| Upload demorando, `fila_probe_ms` ou `fila_ms` alto na linha `upload de criativo` | o FFmpeg/ffprobe roda **um por vez** por instância (AUD-017): o envio esperou outro terminar — `fila_probe_ms` antes do ffprobe, `fila_ms` antes do FFmpeg (`ffprobe_ms` e `ffmpeg_ms` são só o processo) | normal em pico; se for sempre, a instância é pequena pro volume. Processo que passa de 15 min (vídeo) ou de 60 s/4 min (imagem: decodificar/codificar) é morto (SIGKILL) e o envio volta com erro — o cliente reenvia. Quem espera mais de 5 min pela vez volta com 503 (`resultado: fila_cheia` no log) |
+| `resultado: imagem_ilegivel` na linha `upload de criativo` | foto com cabeçalho legível e corpo que não decodifica (cortada, corrompida): o FFmpeg lê UM quadro e recusa (AUD-017, revisão 2) — o cliente recebe 400 "não conseguimos ler esta imagem" | nada a fazer; o `console.error` logo acima traz a causa (`cause`). Se aparecer pra foto boa, conferir se não é o teto de memória (sinal SIGSEGV/SIGKILL ou "Cannot allocate memory" na causa) |
+| `resultado: teto_memoria` na linha `upload de criativo` | o FFmpeg estourou o teto de memória do processo (`prlimit --as`, 850 MB): "Cannot allocate memory", "malloc of size … failed" ou SIGSEGV na causa (AUD-017, revisão 3) — o cliente recebe 400 pedindo resolução menor/8 bits | se for arquivo comum (4K, 8 bits), o teto está curto pra build do FFmpeg da imagem: medir no contêiner o menor `--as` com que o comando do normalizar termina (`MALLOC_ARENA_MAX=1 prlimit --as=<bytes> -- ffmpeg …`, como em `docs/erros/2026-10-ffmpeg-sem-teto-de-pixels.md`) antes de subir o `TETO_MEMORIA_FFMPEG` (`src/lib/ffmpeg.js`); nunca acima do que cabe com o Node em 1 GB |
+| Log `ffmpeg: prlimit indisponível (…)` (uma vez por processo) | FFmpeg/ffprobe rodando SEM o teto de memória e CPU do sistema — sem `prlimit` no PATH, ou o teto não deixa nem o ffprobe carregar | na imagem de produção (Debian bookworm) o `prlimit` vem no `util-linux`, pacote essencial: conferir `prlimit --version` e `MALLOC_ARENA_MAX=1 prlimit --as=536870912 -- ffprobe -version` (o teto do ffprobe, 512 MB) no contêiner. Enquanto isso o upload segue só com o timeout |
 
 **[Estação 6]** Faltam: alerta externo de "caiu" que chega ao celular, monitor
 que avisa quando o job **não rodou**, e alerta de orçamento em cada conta paga.
@@ -502,6 +526,38 @@ Cobrança sem `charge_id` que a conciliação diária reconhece (o primeiro cicl
 que entrou antes de a Asaas revelar o id) ganha o id sozinha na próxima
 varredura. A que continua sem id depois disso é devolvida na Asaas e conferida
 à mão.
+
+## 6.4 Troca de plano de quem paga no cartão — procedimento interino (PG6)
+
+Até o dono decidir entre "cancelar + assinatura nova pelo site" e "troca
+manual pelo Admin" (`docs/PENDENCIAS.md`, PG6), o site responde a quem pede
+outro plano com a assinatura de cartão ativa: "a troca de plano de quem paga
+no cartão é feita pela nossa equipe — fale com a gente pelo WhatsApp"
+(`codigo: troca_de_plano_pela_equipe`). O Checkout não muda o valor de
+assinatura de cartão já paga (409 `troca_de_valor_nao_suportada`, API.md
+dele §5.6). O que a equipe faz hoje, com o que existe:
+
+1. **Conferir** (Contas → a conta → Plano): plano atual, assinatura ativa e
+   até quando a cobertura paga vale.
+2. **Troca no fim do ciclo pago** — o único caminho sem acerto de dinheiro a
+   decidir:
+   1. Contas → a conta → Plano → **Cancelar assinatura**. Para a renovação
+      do plano atual; a cobertura já paga continua até a data dela. Nada é
+      devolvido nem cobrado.
+   2. Combinar com o cliente: no dia seguinte ao fim da cobertura ele assina
+      o plano novo pelo site (`/planos.html` → confirmar → Checkout). Antes
+      disso o `/assinar` de outro plano responde 409 "Seu plano atual vale
+      até …" — esperado: o ciclo novo somaria em cima do antigo.
+3. **Cliente que precisa do plano novo antes do fim do ciclo:** não há
+   ferramenta pronta. Antecipar exige decidir o que acontece com os dias
+   pagos do plano atual (descartar, somar ou devolver a proporção) — é a
+   própria decisão do PG6. Levar ao dono, caso a caso. O
+   `POST /admin/anunciantes/:id/plano-administrativo` (ferramenta técnica,
+   sem tela) cancela a assinatura e dá o plano novo como cortesia, sem
+   cobrança nem devolução: só com a decisão do dono para aquele caso.
+4. **Nunca:** estornar o ciclo atual para "liberar" a troca (estorno não é
+   troca, §6.3), nem gerar link de assinatura nova com a de cartão ainda
+   ativa (cobrança dupla na Asaas).
 
 ## 7. Incidente com dado pessoal
 

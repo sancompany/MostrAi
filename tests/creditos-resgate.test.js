@@ -15,7 +15,7 @@ const planoAdministrativo = require('../src/financeiro/plano-administrativo');
 // jogando fora dias/créditos, dois resgates simultâneos passando do saldo, e
 // o cupom de indicação existindo só pra quem tinha ponto.
 
-async function subirApp() {
+async function subirApp(...outrasRotas) {
   const app = express();
   app.use(express.json());
   app.use(session({ secret: 'teste-resgate', resave: false, saveUninitialized: false }));
@@ -24,6 +24,7 @@ async function subirApp() {
     proximo();
   });
   app.use(require('../src/creditos/routes'));
+  for (const rotas of outrasRotas) app.use(rotas);
   app.use((err, _req, res, _next) => res.status(500).json({ erro: err.message }));
   const server = app.listen(0);
   await new Promise((r) => server.once('listening', r));
@@ -64,6 +65,22 @@ async function apagar(id) {
   await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM cupons_ponto WHERE conta_id = $1', [id]);
   await pool.query('DELETE FROM anunciantes WHERE id = $1', [id]);
+}
+
+// Prazo único para um bloco de chamadas: com o pool travado, o teste falha com
+// uma frase clara em vez de esperar para sempre (AUD-001).
+function comPrazo(ms) {
+  const fim = Date.now() + ms;
+  return (promessa) => {
+    let tid;
+    const estouro = new Promise((_, rejeitar) => {
+      tid = setTimeout(
+        () => rejeitar(new Error(`sem resposta em ${ms} ms — pool travado`)),
+        Math.max(0, fim - Date.now()),
+      );
+    });
+    return Promise.race([promessa, estouro]).finally(() => clearTimeout(tid));
+  };
 }
 
 // Dia de Matão (RN-32-B), não UTC: entre 21:00 e 00:00 UTC os dois divergem.
@@ -236,6 +253,70 @@ test('saldo insuficiente e período inválido são recusados', async () => {
       meses: 2,
     });
     assert.equal(invalido.status, 400);
+  } finally {
+    await app.fechar();
+    await apagar(c.id);
+  }
+});
+
+// AUD-001 (auditoria V1, ciclo 1): a transação do resgate trava a linha da
+// conta (FOR UPDATE) e ia ao POOL buscar o histórico, o plano pago e os
+// créditos do benefício trocado — uma 2ª conexão com a trava na mão. Com o
+// pool em 5, cinco resgates juntos penduravam a instância inteira.
+//
+// O resgate inteiro (leituras, débito, benefício) cabe numa conexão só: com o
+// pool reduzido a UMA conexão livre, ele termina. Conta pagando em dia passa
+// por bloqueioPorNivel (lê `planos`), que o teste seguinte não toca.
+test('resgate termina com uma conexão livre só no pool (AUD-001)', { timeout: 15000 }, async () => {
+  const c = await conta({ plano_id: 'destaque-1m', plano_cortesia: false, data_expiracao: somar(hoje(), 40) });
+  await repo.concederAdmin(c.id, 7, { motivo: 'teste' });
+  const app = await subirApp();
+  const presas = await Promise.all(Array.from({ length: pool.options.max - 1 }, () => pool.connect()));
+  try {
+    const aTempo = comPrazo(5000);
+    const menor = await aTempo(
+      app.chamar('POST', '/anunciantes/me/creditos/resgatar', c.id, { tier: 'essencial', meses: 1 }),
+    );
+    assert.equal(menor.status, 409);
+    assert.match(menor.corpo.erro, /já oferece mais recursos/);
+    const r = await aTempo(
+      app.chamar('POST', '/anunciantes/me/creditos/resgatar', c.id, { tier: 'destaque', meses: 1 }),
+    );
+    assert.equal(r.status, 200, JSON.stringify(r.corpo));
+    assert.equal(r.corpo.status, 'agendado');
+  } finally {
+    for (const presa of presas) presa.release();
+    await app.fechar();
+    await apagar(c.id);
+  }
+});
+
+// Duplo clique / várias abas: dez resgates juntos da mesma conta. Antes, um
+// ficava esperando conexão com a linha travada, quatro esperando a linha, e
+// nenhuma rota que toca o banco respondia mais (GET /planos incluído).
+test('10 resgates simultâneos da mesma conta respondem, e o pool segue servindo (AUD-001)', {
+  timeout: 15000,
+}, async () => {
+  const c = await conta();
+  const app = await subirApp(require('../src/financeiro/routes').router);
+  try {
+    await repo.concederAdmin(c.id, 3, { motivo: 'teste' });
+    const aTempo = comPrazo(5000);
+    const rs = await aTempo(
+      Promise.all(
+        Array.from({ length: 10 }, () =>
+          app.chamar('POST', '/anunciantes/me/creditos/resgatar', c.id, { tier: 'essencial', meses: 1 }),
+        ),
+      ),
+    );
+    // Um ativa; os outros nove param na confirmação da troca (que lê os
+    // créditos do benefício recém-criado) — nenhum débito a mais.
+    const ok = rs.filter((r) => r.status === 200);
+    const troca = rs.filter((r) => r.status === 409 && /confirme a troca/.test(r.corpo?.erro));
+    assert.equal(ok.length, 1, JSON.stringify(rs.map((r) => r.corpo)));
+    assert.equal(troca.length, 9, JSON.stringify(rs.map((r) => r.corpo)));
+    assert.equal((await aTempo(app.chamar('GET', '/planos', c.id))).status, 200);
+    assert.equal(await repo.saldo(c.id), 0);
   } finally {
     await app.fechar();
     await apagar(c.id);

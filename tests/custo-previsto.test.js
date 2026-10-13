@@ -64,7 +64,7 @@ async function pagar(c, plano, promo = null) {
     );
   }
   const atual = await assinaturasRepo.buscarPorId(assinatura.id);
-  await sc.aplicarCicloPago(atual, `teste-custo-${randomUUID()}`);
+  await sc.aplicarCicloPago(atual, [`teste-custo-${randomUUID()}`]);
   return atual;
 }
 
@@ -163,7 +163,7 @@ test('renovação grava um ciclo novo com a condição daquele ciclo; histórico
   try {
     const assinatura = await pagar(c, plano);
     await pool.query('UPDATE planos SET valor_mensal = 50 WHERE id = $1', [plano.id]);
-    await sc.aplicarCicloPago(assinatura, `teste-custo-${randomUUID()}`);
+    await sc.aplicarCicloPago(assinatura, [`teste-custo-${randomUUID()}`]);
     const { rows } = await pool.query(
       'SELECT origem, valor_ciclo FROM ciclos_contratados WHERE anunciante_id = $1 ORDER BY id',
       [c.id],

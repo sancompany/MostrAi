@@ -48,7 +48,7 @@ test('ciclo pago tira a marca de cortesia de quem vinha do comodato', async () =
     // Básico é legado sem nível (ADR-016): não conta como benefício na fila,
     // então o ciclo pago entra na hora por cima dele.
     const assinatura = await assinaturasRepo.criar({ anuncianteId: contaId, planoId: 'destaque-1m', status: 'ativa' });
-    await sc.aplicarCicloPago(assinatura, `teste-integridade-${randomUUID()}`);
+    await sc.aplicarCicloPago(assinatura, [`teste-integridade-${randomUUID()}`]);
 
     const { rows: depois } = await pool.query(
       'SELECT plano_id, plano_cortesia, cortesia_motivo FROM anunciantes WHERE id = $1',

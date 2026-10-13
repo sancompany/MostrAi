@@ -19,8 +19,11 @@ npm run apurar-banco-horas    # apuração mensal do banco de horas (job AINDA N
 Precisa de Node 22+ e um Postgres (local ou o projeto Supabase do Mostraí). `ffmpeg` no PATH pra normalizar criativos.
 
 Detalhes de teste que costumam faltar: o admin exige sessão (`POST /admin/login`
-com `ADMIN_USER`/`ADMIN_PASSWORD`); o limitador de tentativas é em memória
-(10 por 15 min, por IP e rota — reiniciar o servidor zera); e o roteiro ponta a
+com `ADMIN_USER`/`ADMIN_PASSWORD`); o limitador de tentativas fica no banco
+(`tentativas_acesso`: 10 por 15 min por IP e rota e, nos dois logins e no
+esqueci-senha, 10 por conta — reiniciar o servidor NÃO zera; apagar as linhas
+zera; o navegador que já entrou na conta tem balde próprio, cookie
+`mostrai.aparelho`); e o roteiro ponta a
 ponta está em `tests/e2e/README.md` e na seção de verificação de
 `docs/specs/2026-09-12-mostrai.md`.
 

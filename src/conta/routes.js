@@ -3,7 +3,7 @@ const crypto = require('node:crypto');
 const router = express.Router();
 const { conferirSenha, gerarHash } = require('../lib/senha');
 const { normalizarEmail } = require('../anunciantes/repository');
-const { limiteTentativas } = require('../lib/limite-tentativas');
+const { limiteTentativas, limiteTentativasPorAlvo, liberarConta } = require('../lib/limite-tentativas');
 const pool = require('../db/pool');
 const outbox = require('../email/outbox');
 
@@ -100,7 +100,15 @@ router.get('/redefinir-senha/conta', limiteTentativas, async (req, res) => {
   res.json({ email: rows[0].email });
 });
 
-router.post('/anunciantes/esqueci-senha', limiteTentativas, (req, res) => pedirRedefinicao(req, res, 'anunciante'));
+// Dois baldes (src/lib/limite-tentativas.js): o do IP e o do E-MAIL pedido,
+// normalizado como a busca da conta. Só o do IP deixava quem tem muitos
+// endereços (um /48 IPv6 são 65.536 /64) mandar links de redefinição sem teto
+// pra mesma pessoa — inundando a caixa dela e a cota do SMTP. O balde existe
+// pra qualquer e-mail, com conta ou sem: o 429 não revela cadastro.
+const alvoDoPedido = (req) => normalizarEmail(req.body?.email);
+router.post('/anunciantes/esqueci-senha', limiteTentativasPorAlvo(alvoDoPedido), (req, res) =>
+  pedirRedefinicao(req, res, 'anunciante'),
+);
 // Afiliado (programa de vendedor) aposentado: link antigo recebe o caminho
 // atual. O tipo 'afiliado' em TIPOS fica só pra token de redefinição já
 // emitido (1h de validade) não quebrar no deploy.
@@ -138,8 +146,15 @@ router.post('/redefinir-senha', limiteTentativas, async (req, res) => {
   await outbox
     .descartarPendentes(registro.usuario_id, ['redefinir_senha'], 'senha já foi trocada')
     .catch((err) => console.error('fila: descartar links de senha pendentes falhou', outbox.sanitizar(err)));
-  // Aviso de segurança: se não foi a pessoa, é por aqui que ela descobre.
   if (conta) {
+    // Quem redefiniu provou ter o e-mail da conta: o balde da conta no login
+    // zera e este navegador vira aparelho conhecido (src/lib/limite-tentativas.js).
+    // Sem isso, quem mantinha a conta travada (10 erros por janela, um IP
+    // basta) travava também a volta da dona com a senha nova.
+    await liberarConta(res, normalizarEmail(conta.email), '/anunciantes/login').catch((err) =>
+      console.error('limite de tentativas: liberar a conta depois da redefinição falhou:', err.message),
+    );
+    // Aviso de segurança: se não foi a pessoa, é por aqui que ela descobre.
     await outbox.enfileirarSemFalhar({
       tipo: 'senha_alterada',
       chave: `senha_alterada:${conta.id}:${crypto.randomUUID()}`,

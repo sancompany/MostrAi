@@ -459,11 +459,19 @@ router.post('/admin/video-institucional', uploadVideo.single('arquivo'), async (
   if (!req.file) return res.status(400).json({ erro: 'arquivo obrigatório' });
   try {
     const ffmpeg = require('../lib/ffmpeg');
-    const midia = await ffmpeg.probeMidia(req.file.path).catch(() => null);
+    // Fila cheia (503, ffmpeg.js) não é arquivo ruim: cai no catch abaixo.
+    const midia = await ffmpeg.probeMidia(req.file.path).catch((err) => {
+      if (err.origem === 'fila') throw err;
+      return null;
+    });
     if (!midia) {
       return res.status(400).json({ erro: 'não foi possível ler esse arquivo — confira se é um vídeo válido' });
     }
     if (midia.ehImagem) return res.status(400).json({ erro: 'vídeo institucional precisa ser um vídeo, não uma foto' });
+    // Mesmo teto de custo do upload de criativo (AUD-017, ffmpeg.js), com a
+    // frase — dentro do normalizar ela caía no "não foi possível processar".
+    const recusaCusto = ffmpeg.recusaPorCusto(midia);
+    if (recusaCusto) return res.status(400).json({ erro: recusaCusto });
     // Mesma faixa de src/midias/routes.js — teto que já vale pra qualquer
     // vídeo que preenche tempo de tela, institucional ou não.
     if (midia.duracao_segundos > 60 || midia.duracao_segundos < 3) {
@@ -472,8 +480,9 @@ router.post('/admin/video-institucional', uploadVideo.single('arquivo'), async (
         .json({ erro: `esse vídeo tem ${midia.duracao_segundos}s — o institucional aceita de 3 a 60 segundos` });
     }
     // `'institucional'` como id: chave de storage fixa (upsert sobrescreve),
-    // nunca colide com um criativoId de verdade (serial numérico).
-    const normalizado = await ffmpeg.normalizar(req.file.path, 'institucional');
+    // nunca colide com um criativoId de verdade (serial numérico). `midia`: o
+    // probe acima — sem ele, outro ffprobe e outra espera na fila.
+    const normalizado = await ffmpeg.normalizar(req.file.path, 'institucional', null, midia);
     // `?v=` cache-busting na URL salva, mesmo padrão da foto-exemplo acima —
     // o Player V2 confere pelo `contentHash`, mas a URL sozinha (CDN,
     // pré-visualização no admin) também não pode ficar presa no arquivo
@@ -490,6 +499,9 @@ router.post('/admin/video-institucional', uploadVideo.single('arquivo'), async (
     res.json(configuracao);
   } catch (err) {
     console.error('falha ao processar vídeo institucional', err);
+    if (err.origem === 'fila') return res.status(503).json({ erro: err.message });
+    // Teto de memória do FFmpeg (ffmpeg.js): a frase diz o que exportar.
+    if (err.origem === 'memoria') return res.status(400).json({ erro: err.message });
     res.status(400).json({ erro: 'não foi possível processar esse arquivo — confira se é um vídeo válido' });
   } finally {
     fs.unlink(req.file.path, () => {});

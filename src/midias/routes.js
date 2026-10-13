@@ -25,12 +25,19 @@ const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 95 * 1024 * 1024 
 async function processarArquivo(req, contaId, duracaoMaxima = null) {
   if (!req.file) throw Object.assign(new Error('arquivo obrigatório'), { status: 400 });
   try {
-    const midia = await ffmpeg.probeMidia(req.file.path).catch(() => null);
+    // Fila cheia (503, ffmpeg.js) segue com a frase dela: o arquivo está ok.
+    const midia = await ffmpeg.probeMidia(req.file.path).catch((err) => {
+      if (err.origem === 'fila') throw err;
+      return null;
+    });
     if (!midia) {
       throw Object.assign(new Error('não foi possível ler esse arquivo — confira se é um vídeo ou imagem válido'), {
         status: 400,
       });
     }
+    // Mesmo teto de custo do upload do anunciante (AUD-017, ffmpeg.js).
+    const recusaCusto = ffmpeg.recusaPorCusto(midia);
+    if (recusaCusto) throw Object.assign(new Error(recusaCusto), { status: 400 });
     if (!midia.ehImagem && (midia.duracao_segundos > 60 || midia.duracao_segundos < 3)) {
       throw Object.assign(new Error(`esse vídeo tem ${midia.duracao_segundos}s — a tela aceita de 3 a 60 segundos`), {
         status: 400,
@@ -55,7 +62,9 @@ async function processarArquivo(req, contaId, duracaoMaxima = null) {
       duracao_segundos: null,
     });
     try {
-      const normalizado = await ffmpeg.normalizar(req.file.path, criativoTemp.id, duracaoMaxima);
+      // `midia`: o probe acima — sem ele o normalizar fazia outro ffprobe e
+      // outra espera na fila pelo mesmo arquivo.
+      const normalizado = await ffmpeg.normalizar(req.file.path, criativoTemp.id, duracaoMaxima, midia);
       return await criativosRepo.atualizar(criativoTemp.id, {
         ...normalizado,
         editado_pelo_operador: true,

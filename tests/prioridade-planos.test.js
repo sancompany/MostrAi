@@ -58,7 +58,7 @@ async function contaComBeneficio(tierBeneficio, extra = {}) {
 
 async function pagar(conta, tier) {
   const assinatura = await assinaturasRepo.criar({ anuncianteId: conta.id, planoId: PLANO[tier], status: 'ativa' });
-  await sc.aplicarCicloPago(assinatura, `teste-fila-${randomUUID()}`);
+  await sc.aplicarCicloPago(assinatura, [`teste-fila-${randomUUID()}`]);
 }
 
 async function estado(contaId) {

@@ -18,8 +18,9 @@ const {
   consultarAssinatura,
   aplicarCicloPago,
   avisarCobrancaFalhou,
-  registrarPendencia,
+  registrarPendenciaUmaVez,
   intencaoCanceladaSemPagamento,
+  documentoDaAssinatura,
   MOTIVO_INTENCAO_CANCELADA,
 } = require('./san-checkout');
 const planoAdministrativo = require('./plano-administrativo');
@@ -140,8 +141,13 @@ async function conciliarAssinaturas({ apenasContas = null } = {}) {
   // com o webhook perdido, ninguém mais olharia pra ele — dinheiro dentro,
   // nenhum ciclo e nenhuma pendência (revisão do PR #55, 25/09/2026). Só a
   // intenção que nunca teve ciclo pago interessa (filtrada no laço).
+  // O documento é o do PAGADOR quando a assinatura o gravou (migration 122,
+  // AUD-006) — consultar pelo cpf_cnpj da conta dava 404 e 'sem_resposta'. A
+  // linha leva os dois campos com o nome de sempre (`documentoDaAssinatura`
+  // escolhe): o aviso de renovação recebe a MESMA linha e assina o token com
+  // o mesmo documento que o webhook e o GET /plano usam.
   const { rows: assinaturas } = await pool.query(
-    `SELECT s.id, s.anunciante_id, s.plano_id, s.status, s.created_at, a.cpf_cnpj
+    `SELECT s.id, s.anunciante_id, s.plano_id, s.status, s.created_at, s.documento_pagador, a.cpf_cnpj
        FROM assinaturas s
        JOIN anunciantes a ON a.id = s.anunciante_id
       WHERE a.excluido_em IS NULL
@@ -169,7 +175,9 @@ async function conciliarAssinaturas({ apenasContas = null } = {}) {
       const intencaoCancelada = assinatura.status === 'cancelada';
       if (intencaoCancelada && !(await intencaoCanceladaSemPagamento(assinatura))) continue;
       relato.verificadas += 1;
-      const decisao = decidirPorEstado(await consultarAssinatura(assinatura.id, assinatura.cpf_cnpj));
+      const decisao = decidirPorEstado(
+        await consultarAssinatura(assinatura.id, documentoDaAssinatura(assinatura, assinatura)),
+      );
 
       if (intencaoCancelada) {
         // Pagamento de intenção já cancelada: a MESMA pendência do webhook
@@ -178,32 +186,24 @@ async function conciliarAssinaturas({ apenasContas = null } = {}) {
         // "cancelada fora do fluxo" pra um link que já está morto aqui.
         if (decisao.acao === 'aplicar_ciclo') {
           const { ultima } = decisao;
-          const chave = `${ultima.chargeId}|${ultima.status}`;
-          const { rowCount } = await pool.query(
-            'INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING',
-            [chave],
+          // Chave e pendência na MESMA transação (AUD-005): reserva
+          // autocommit sobrevivia a um processo morto antes da pendência, e a
+          // próxima varredura via "já processada" — ninguém devolvia o valor.
+          const r = await registrarPendenciaUmaVez(
+            `${ultima.chargeId}|${ultima.status}`,
+            {
+              evento: 'pagamento_achado_pela_conciliacao',
+              origem: 'conciliacao',
+              planoId: assinatura.id,
+              chargeId: ultima.chargeId,
+              status: ultima.status,
+            },
+            MOTIVO_INTENCAO_CANCELADA,
           );
-          if (rowCount) {
-            try {
-              await registrarPendencia(
-                {
-                  evento: 'pagamento_achado_pela_conciliacao',
-                  origem: 'conciliacao',
-                  planoId: assinatura.id,
-                  chargeId: ultima.chargeId,
-                  status: ultima.status,
-                },
-                MOTIVO_INTENCAO_CANCELADA,
-              );
-            } catch (err) {
-              // Sem soltar a chave, a próxima varredura veria "já processada"
-              // e a pendência nunca nasceria.
-              await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]);
-              throw err;
-            }
-            relato.intencoesCanceladasPagas += 1;
-          } else {
+          if (r?.pendenciaJaRegistrada) {
             relato.jaProcessadas += 1;
+          } else {
+            relato.intencoesCanceladasPagas += 1;
           }
         } else {
           relato.semCobranca += 1;
@@ -237,39 +237,38 @@ async function conciliarAssinaturas({ apenasContas = null } = {}) {
       const ultima = decisao.ultima;
 
       // A chave é a mesma que o webhook usaria. Se já está gravada, o webhook
-      // chegou e fez o trabalho — não há nada a fazer.
+      // chegou e fez o trabalho — não há nada a fazer. Aqui só se LÊ: quem
+      // grava a chave é a transação do ciclo (aplicarCicloPago). Reservada
+      // antes, em autocommit, ela sobrevivia a um processo morto antes do
+      // COMMIT e a próxima varredura dava o ciclo por aplicado (AUD-005).
       const chave = `${ultima.chargeId}|${ultima.status}`;
-      const { rowCount } = await pool.query(
-        'INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING',
-        [chave],
-      );
-      if (!rowCount) {
+      const { rowCount: jaVista } = await pool.query('SELECT 1 FROM webhooks_processados WHERE id = $1', [chave]);
+      if (jaVista) {
         relato.jaProcessadas += 1;
         continue;
       }
       // Primeiro ciclo que entrou pelo webhook 'criada' antes de a Asaas
       // revelar o chargeId (chave `criada|assinatura`): a cobrança já está
       // registrada, minutos depois da hora em que a Asaas a criou. Creditar
-      // de novo seria cobertura em dobro por um pagamento só.
-      let jaRegistrada;
-      try {
-        jaRegistrada = await cobrancaJaRegistrada(assinatura, ultima);
-        if (jaRegistrada.length) await anotarChargeId(jaRegistrada, ultima.chargeId);
-      } catch (err) {
-        // A chave já está gravada: se a conferência falha (banco fora por um
-        // instante), a próxima varredura cairia em `jaProcessadas` e o ciclo
-        // nunca entraria. Solta a chave antes de subir o erro — mesmo cuidado
-        // que aplicarCicloPago tem com o próprio ROLLBACK.
-        await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]);
-        throw err;
-      }
+      // de novo seria cobertura em dobro por um pagamento só. A chave grava
+      // agora só pra poupar a conferência de amanhã: o ciclo já está aqui.
+      const jaRegistrada = await cobrancaJaRegistrada(assinatura, ultima);
       if (jaRegistrada.length) {
+        await anotarChargeId(jaRegistrada, ultima.chargeId);
+        await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING', [chave]);
         relato.jaProcessadas += 1;
         continue;
       }
 
-      await aplicarCicloPago(assinatura, chave, null, { valorCobrado: ultima.valorCobrado, chargeId: ultima.chargeId });
-      relato.aplicadas += 1;
+      const r = await aplicarCicloPago(assinatura, [chave], null, {
+        valorCobrado: ultima.valorCobrado,
+        chargeId: ultima.chargeId,
+      });
+      // Outro caminho (webhook, admin) creditou esta cobrança entre a leitura
+      // acima e a transação: a chave já estava lá. Ou a decisão que não
+      // credita (conta excluída, intenção cancelada) já estava na fila.
+      if (r?.jaAplicada || r?.pendenciaJaRegistrada) relato.jaProcessadas += 1;
+      else relato.aplicadas += 1;
     } catch (err) {
       relato.falhas.push({ assinaturaId: assinatura.id, erro: err.message });
     }

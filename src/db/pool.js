@@ -36,4 +36,30 @@ types.setTypeParser(1082, (valor) => valor);
 // margem pro client dedicado do LISTEN (src/lib/sse.js, 1 por instância,
 // nunca devolvido) e pra conexão avulsa de scripts/conciliar.js (job
 // separado, roda fora das 2 instâncias do serviço).
-module.exports = new Pool({ ...config, max: 5 });
+//
+// `connectionTimeoutMillis` (AUD-001, auditoria V1): sem ele, quem pede
+// conexão a um pool cheio espera PARA SEMPRE — foi assim que cinco resgates
+// de crédito simultâneos penduraram a instância inteira (cada transação
+// pedia uma 2ª conexão com a linha travada). A causa foi corrigida na rota;
+// isto garante que um ciclo igual vire erro em 5 s, não uma instância parada
+// que o /health (que não toca o banco) continua chamando de saudável.
+const pool = new Pool({ ...config, max: 5, connectionTimeoutMillis: 5000 });
+
+// Ouvinte de 'error' (AUD-019, auditoria V1): quando o Postgres ou o pooler
+// derruba uma conexão OCIOSA do pool (restart, failover, rede), o pg-pool já a
+// descartou e emite 'error' no Pool. Sem ouvinte, o Node trata como exceção
+// não capturada e o processo morre — nas 2 instâncias juntas, que sempre têm
+// cliente ocioso. Aqui só loga: a próxima consulta abre conexão nova.
+pool.on('error', (err) => console.error('pool: conexão ociosa caiu, o pool abre outra', err.message));
+
+// Ouvinte no CLIENTE (AUD-019, achado da revisão): o ouvinte de ocioso do
+// pg-pool sai do cliente enquanto ele está EMPRESTADO (`pool.connect()` — o
+// heartbeat em src/player/sinal.js, os jobs de 30 s, toda transação). Se a
+// conexão cai nesse intervalo, mesmo no meio de uma query, o pg emite 'error'
+// no Client e, sem ouvinte, o processo morre. Com este: a query em curso já
+// recebe o erro, a seguinte (o ROLLBACK de quem chamou) falha com "not
+// queryable", e o release() do finally tira o cliente morto do pool. Num
+// cliente ocioso, loga junto com o ouvinte de cima.
+pool.on('connect', (cliente) => cliente.on('error', (err) => console.error('pool: conexão caiu', err.message)));
+
+module.exports = pool;

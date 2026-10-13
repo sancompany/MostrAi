@@ -558,7 +558,7 @@ test('ciclo pago de quem veio por cupom de vendedor não gera comissão nova', a
       planoId: 'essencial-1m',
       status: 'ativa',
     });
-    await sanCheckout.aplicarCicloPago(assinatura, `teste-vendedor-${randomUUID()}`);
+    await sanCheckout.aplicarCicloPago(assinatura, [`teste-vendedor-${randomUUID()}`]);
     const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM comissoes WHERE anunciante_id = $1', [
       cliente.id,
     ]);

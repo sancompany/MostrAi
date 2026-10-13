@@ -122,7 +122,7 @@ const daqui = (dias) => vigencia.somarDias(vigencia.hojeComercial(), dias);
 // Um ciclo pago pelo mesmo caminho do webhook/conciliação.
 async function pagar(contaId, planoId, { status = 'ativa' } = {}) {
   const assinatura = await assinaturasRepo.criar({ anuncianteId: contaId, planoId, status });
-  await sc.aplicarCicloPago(await assinaturasRepo.buscarPorId(assinatura.id), `final-${randomUUID()}`);
+  await sc.aplicarCicloPago(await assinaturasRepo.buscarPorId(assinatura.id), [`final-${randomUUID()}`]);
   return assinatura;
 }
 

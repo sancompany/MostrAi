@@ -6,7 +6,7 @@ const express = require('express');
 const cors = require('cors');
 const pool = require('./db/pool');
 const { montarSessoes } = require('./lib/sessao');
-const { limiteTentativas } = require('./lib/limite-tentativas');
+const { limiteTentativasPorAlvo, descontarAcerto } = require('./lib/limite-tentativas');
 const { segredoConfere } = require('./lib/segredo');
 const { comSemTransformacao, setHeadersEstaticos } = require('./lib/html-sem-transformacao');
 
@@ -29,9 +29,13 @@ const eventosRoutes = require('./creditos/eventos-routes');
 
 const app = express();
 
-// Atrás do proxy do Render, req.secure é falso sem isso e o express-session
-// simplesmente não emite o cookie com `secure: true` — login quebrado em
-// produção sem nenhuma mensagem de erro.
+// Atrás de proxy (hoje Cloudflare → ingress do Northflank), req.secure é falso
+// sem isso e o express-session simplesmente não emite o cookie com
+// `secure: true` — login quebrado em produção sem nenhuma mensagem de erro.
+// Confiar em 1 salto faz `req.ip` ser o último endereço do X-Forwarded-For: a
+// borda da Cloudflare, não o cliente. Quem precisa do IP do cliente lê
+// CF-Connecting-IP, e só quando esse salto é da Cloudflare
+// (src/lib/limite-tentativas.js).
 app.set('trust proxy', 1);
 
 // Content-Security-Policy. É o que sobrou de pé depois de zerar os 301
@@ -170,13 +174,18 @@ app.use(express.static(path.join(__dirname, '..', 'public'), { setHeaders: setHe
 // Login do admin por usuário/senha (env ADMIN_USER/ADMIN_PASSWORD) + sessão
 // cookie — mesmo padrão já usado por anunciantes/afiliados. Registrado antes
 // do requireAdminSession abaixo pra não cair na exigência de estar logado.
-app.post('/admin/login', limiteTentativas, (req, res) => {
+// Dois baldes, como o login do anunciante: o do IP e o do USUÁRIO digitado
+// (comparado exato, como segredoConfere). O Cloudflare Access é a porta; a
+// senha é a segunda camada, e tem que segurar sozinha se o Access cair.
+const alvoDoAdmin = (req) => String(req.body?.usuario ?? '');
+app.post('/admin/login', limiteTentativasPorAlvo(alvoDoAdmin), async (req, res) => {
   const { usuario, senha } = req.body;
   // Tempo constante nos dois campos: o `===` de antes devolvia mais rápido
   // quanto mais cedo os bytes divergiam, o que entrega usuário e senha prefixo
   // a prefixo pra quem mede. Mesma regra que o webhook do Checkout já segue.
   const ok = segredoConfere(usuario, process.env.ADMIN_USER) && segredoConfere(senha, process.env.ADMIN_PASSWORD);
   if (!ok) return res.status(401).json({ erro: 'usuário ou senha inválidos' });
+  await descontarAcerto(req, res);
   // Sessão nova a cada login: sem isso, quem conseguisse plantar um cookie de
   // sessão na vítima ficava com uma sessão de admin válida assim que ela logasse.
   // É a sessão do cookie do admin (src/lib/sessao.js): regenerar aqui não
@@ -293,6 +302,16 @@ process.on('unhandledRejection', (err) => console.error('unhandledRejection', er
 // `app` montado: os testes de sessão (tests/sessao-anunciante.test.js)
 // exercitam as rotas de login reais, sem subir processador de fila nenhum.
 if (require.main === module) {
+  // Exceção não capturada — só a última rede: a queda de conexão do banco,
+  // ociosa ou emprestada, já tem ouvinte em src/db/pool.js (AUD-019) e não
+  // chega aqui. O que chegar deixa o processo em estado desconhecido, então
+  // loga com a etiqueta e sai com 1 — o Northflank sobe outro e o Postgres
+  // desfaz o que estava em voo. Aqui dentro porque, importado pelos testes,
+  // quem relata a exceção é o node:test.
+  process.on('uncaughtException', (err) => {
+    console.error('uncaughtException', err);
+    process.exit(1);
+  });
   app.listen(process.env.PORT, () => {
     console.log(`mostrai rodando na porta ${process.env.PORT}`);
     // Processador da inbox do webhook (migration 096): retoma o que ficou

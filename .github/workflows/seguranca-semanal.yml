@@ -14,5 +14,11 @@ jobs:
       - run: npm ci
       - name: dependências com vulnerabilidade conhecida
         run: npm audit --audit-level=high
+      # O audit não enxerga versão pré-lançamento (o multer 1.4.5-lts.2 ficou
+      # invisível, AUD-018); o aviso de deprecated do mantenedor, sim. Roda
+      # mesmo se o audit falhar, pra um vermelho não esconder o outro.
+      - name: dependências de produção marcadas como deprecated
+        if: ${{ !cancelled() }}
+        run: node scripts/dependencias-deprecadas.js
       - name: dependências desatualizadas (só informa)
         run: npm outdated || true

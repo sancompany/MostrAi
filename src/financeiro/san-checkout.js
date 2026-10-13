@@ -158,6 +158,17 @@ function linkRenovarAssinatura(assinaturaId, cpfCnpj) {
   return token ? `${linkCheckoutAssinatura(assinaturaId)}&renovar=${token}` : null;
 }
 
+// O documento que identifica ESTA assinatura no Checkout (API.md 4.3.4: o par
+// `planoId` + `documento` é a chave). É o que o pagador confirmou na tela do
+// Checkout, gravado do webhook `criada` (migration 122) — não o cadastro da
+// conta, que ele pode ter editado lá ou o admin corrigido depois. Mandar o da
+// conta dava 404 em cancelar/consultar/trocar e a Asaas seguia cobrando
+// (AUD-006, 11/10/2026). Assinatura antiga sem o campo: o cpf_cnpj da conta,
+// como sempre.
+function documentoDaAssinatura(assinatura, anunciante) {
+  return assinatura?.documento_pagador || anunciante?.cpf_cnpj;
+}
+
 // Toda rota de servidor do checkout vive sob /api/checkout (API.md seção 12).
 // O endereço nunca é montado à mão fora daqui — é a nota da seção 2.1, e foi
 // uma troca de endereço não propagada que quebrou a integração antes.
@@ -233,7 +244,11 @@ async function montarRespostaPlano(assinaturaId) {
     pagador: {
       nome: anunciante.nome_empresa,
       email: anunciante.contato_email,
-      documento: anunciante.cpf_cnpj,
+      // O do PAGADOR quando a assinatura já o tem (AUD-006): é o que a
+      // pop-up de renovação pré-preenche, e o token do link (`renovar=`) é
+      // conferido contra o que ela manda — com o da conta, o token não
+      // batia e o Checkout criava outra assinatura sem cancelar a antiga.
+      documento: documentoDaAssinatura(assinatura, anunciante),
       telefone: telefoneNacional(anunciante.contato_telefone),
     },
   };
@@ -286,13 +301,56 @@ function valorMensalDaConta(anunciante, plano, assinatura) {
   return desconto ? arredondar(base - percentual(base, desconto)) : base;
 }
 
-async function registrarPendencia(payload, motivo) {
-  await pool.query(`INSERT INTO eventos_assinatura_pendentes (payload, motivo) VALUES ($1,$2)`, [
+// `db`: a conciliação passa o client da transação em que grava a chave de
+// dedupe junto com a pendência (AUD-005) — uma não existe sem a outra.
+async function registrarPendencia(payload, motivo, db = pool) {
+  await db.query(`INSERT INTO eventos_assinatura_pendentes (payload, motivo) VALUES ($1,$2)`, [
     JSON.stringify(payload),
     motivo,
   ]);
-  // Fila "Eventos do Checkout" do admin muda de tamanho.
-  sse.emitirParaAdmin('payment.updated', {});
+  // Fila "Eventos do Checkout" do admin muda de tamanho. Pelo client de uma
+  // transação, o aviso só sai no COMMIT (NOTIFY é transacional): pelo pool
+  // saía antes, e o admin recarregava a fila ainda sem a linha (revisão
+  // Codex do PR #136).
+  if (db === pool) sse.emitirParaAdmin('payment.updated', {});
+  else await sse.emitirParaAdminNoCommit(db, 'payment.updated', {});
+}
+
+// Decisão que NÃO credita (vira pendência) num evento que credita ciclo —
+// conta excluída, intenção cancelada, assinatura que não existe aqui: a
+// chave DESTA notificação e a pendência entram juntas, numa transação (AUD-005,
+// 2ª rodada). Reentrega da mesma notificação não abre outra pendência (era
+// assim com a reserva autocommit, antes do AUD-005), e processo morto entre
+// as duas não deixa uma sem a outra. Só essa chave: a da cobrança fica livre
+// pra outro caminho (conciliação, admin) creditar quando a causa for
+// resolvida — como antes. Chave já gravada = a decisão já está na fila:
+// `{ pendenciaJaRegistrada: chave }` — marcador próprio, NUNCA o
+// `{ jaAplicada }` do ciclo: aplicarEventoAssinatura lê `jaAplicada` como
+// "ciclo creditado" e, numa `cobranca_confirmada` reentregue, abria a
+// pendência "descartado pela deduplicação", aplicável, de um ciclo que nunca
+// entrou (AUD-005, 3ª rodada). `db`: o client de uma transação já aberta
+// (quem chama faz o COMMIT); sem ele, abre a própria.
+async function registrarPendenciaUmaVez(chave, payload, motivo, db = null) {
+  if (db) {
+    const { rowCount } = await db.query('INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING', [
+      chave,
+    ]);
+    if (!rowCount) return { pendenciaJaRegistrada: chave };
+    await registrarPendencia(payload, motivo, db);
+    return null;
+  }
+  const cliente = await pool.connect();
+  try {
+    await cliente.query('BEGIN');
+    const r = await registrarPendenciaUmaVez(chave, payload, motivo, cliente);
+    await cliente.query('COMMIT');
+    return r;
+  } catch (err) {
+    await cliente.query('ROLLBACK');
+    throw err;
+  } finally {
+    cliente.release();
+  }
 }
 
 // Estorno ou chargeback de uma cobrança (chargeId) que ainda não está aqui:
@@ -328,7 +386,7 @@ async function registrarCreditoIndicacaoSeHouver(anunciante, cobrancaConfirmadaI
   if (!anunciante.indicado_por_cupom) return;
   const cupom = String(anunciante.indicado_por_cupom).toUpperCase();
   if (!cupom.startsWith('PT-')) return; // cupom de vendedor — já tratado acima
-  const ponto = await indicacoesRepo.buscarPontoPorCupom(cupom);
+  const ponto = await indicacoesRepo.buscarPontoPorCupom(cupom, db);
   if (!ponto || ponto.conta_id === anunciante.id) return; // ninguém ganha crédito de si mesmo
 
   const credito = await creditosRepo.registrarCreditoIndicacao(ponto.conta_id, anunciante.id, cobrancaConfirmadaId, db);
@@ -472,7 +530,7 @@ async function avisarCobrancaFalhou(assinatura, anunciante, chargeId) {
   // `null` quando não dá pra assinar o token: o e-mail sai sem link, pedindo
   // contato. Link sem token válido cria uma SEGUNDA assinatura na Asaas sem
   // cancelar a primeira (API.md 7.3) — cobrança dobrada, calada.
-  const link = linkRenovarAssinatura(assinatura.id, anunciante.cpf_cnpj);
+  const link = linkRenovarAssinatura(assinatura.id, documentoDaAssinatura(assinatura, anunciante));
   const r = await outbox.enfileirar({
     tipo: 'cobranca_falhou',
     chave: chargeId
@@ -517,28 +575,25 @@ async function processarWebhookAssinatura(payload) {
     return aplicarEventoAssinatura(payload, chave, ultima);
   }
 
-  // Reentrega do mesmo evento não pode estender cobertura, gravar outra
-  // cobrança nem pagar a comissão do vendedor de novo (migration 018).
+  // Evento que CREDITA ciclo ('criada'/'cobranca_confirmada'): a reserva de
+  // dedupe (esta chave e a `chargeId|status`) é gravada DENTRO da transação
+  // do ciclo, em aplicarCicloPago — reserva e efeito entram, ou caem, juntos.
+  // Até 11/10/2026 ela era autocommit aqui: processo morto (deploy, OOM) ou
+  // banco fora entre a reserva e o COMMIT deixava a chave gravada sem ciclo,
+  // e a retomada da inbox, a conciliação e o botão do admin descartavam o
+  // pagamento como "já processado" — cliente pagou, conta sem cobertura, sem
+  // rastro (AUD-005).
+  if (EVENTOS_QUE_CREDITAM.has(payload.evento)) {
+    return aplicarEventoAssinatura(payload, chave, ultima);
+  }
+
+  // Demais eventos (cancelada, falhou, contestada, plano_trocado, troca
+  // revertida por chargeback): reentrega do mesmo evento não pode suspender,
+  // cancelar nem registrar pendência de novo.
   const { rowCount } = await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING', [
     chave,
   ]);
-  if (!rowCount) {
-    // Reentrega do MESMO evento e normal e nao precisa de barulho. Mas quando
-    // o evento credita ciclo, o descarte pode nao ser reentrega: a consulta de
-    // conciliacao devolve a ultima cobranca, e numa renovacao a defasagem
-    // entre Asaas e Checkout faz a chave `chargeId|status` do ciclo novo
-    // colidir com a do anterior — o ciclo pago some, sem cobertura e sem
-    // rastro. Vira pendencia pra alguem olhar.
-    // 'criada' reentregue é limpo por construção (chave = a assinatura): só
-    // a renovação, chaveada por chargeId, pode esconder um ciclo novo.
-    if (payload.evento === 'cobranca_confirmada') {
-      await registrarPendencia(
-        payload,
-        `evento que credita ciclo descartado pela deduplicacao (chave ${chave}) — conferir se o ciclo entrou`,
-      );
-    }
-    return;
-  }
+  if (!rowCount) return;
 
   // Inbox do webhook (migration 096): se o efeito abaixo LANÇAR, a reserva
   // da chave sai — senão a nova tentativa da inbox cairia na dedupe acima e
@@ -555,10 +610,34 @@ async function processarWebhookAssinatura(payload) {
 async function aplicarEventoAssinatura(payload, chave, ultima) {
   const assinatura = await assinaturasRepo.buscarPorId(payload.planoId);
   if (!assinatura) {
-    return registrarPendencia(payload, `assinatura '${payload.planoId}' não encontrada`);
+    // Evento que credita não passou por reserva nenhuma (a dele é feita no
+    // ciclo): a chave vai junto com a pendência. Os outros já reservaram.
+    const motivo = `assinatura '${payload.planoId}' não encontrada`;
+    return EVENTOS_QUE_CREDITAM.has(payload.evento)
+      ? registrarPendenciaUmaVez(chave, payload, motivo)
+      : registrarPendencia(payload, motivo);
   }
 
   if (payload.evento === 'cancelada') {
+    // O par planoId + documento é a chave do Checkout (API.md 4.3.4):
+    // `cancelada` com OUTRO documento que o do pagador vigente é de outra
+    // recorrência deste plano — a antiga, que o Admin cancelou depois do
+    // aviso 'documento_pagador_mudou', ou a pop-up de renovação aberta com
+    // outro CPF/CNPJ e fechada sem pagar (o token não confere, é assinatura
+    // NOVA pro Checkout, e a desistência dela manda `cancelada`, API.md
+    // 4.3.5). Fechar a daqui escondia a recorrência que segue cobrando
+    // (AUD-006, 3ª rodada). Sem documento gravado (assinatura de antes da
+    // migration 122) não há com o que comparar: fecha, como sempre — é o que
+    // o RUNBOOK §6 usa pra encerrar a legada cancelada no Checkout.
+    const documento = soDigitos(payload.documento);
+    if (documento && assinatura.documento_pagador && documento !== assinatura.documento_pagador) {
+      eventos.registrar(
+        'assinatura:cancelada_de_outro_documento',
+        { plano_id: assinatura.plano_id, assinatura_id: assinatura.id },
+        await anunciantesRepo.buscarPorId(assinatura.anunciante_id),
+      );
+      return;
+    }
     await assinaturasRepo.marcarCancelada(assinatura.id);
     sse.emitirParaConta(assinatura.anunciante_id, 'plan.updated', {});
     return; // cobertura já paga continua valendo até data_expiracao — não derruba na hora
@@ -573,7 +652,7 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
   // creditando o ciclo que a Asaas cobrou: o dinheiro entrou, a cobertura
   // vale.
   if (EVENTOS_QUE_CREDITAM.has(payload.evento) && (await intencaoCanceladaSemPagamento(assinatura))) {
-    return registrarPendencia(payload, MOTIVO_INTENCAO_CANCELADA);
+    return registrarPendenciaUmaVez(chave, payload, MOTIVO_INTENCAO_CANCELADA);
   }
 
   // plano_trocado: desde 21/09/2026 nem sempre é aviso redundante. Quando
@@ -819,6 +898,20 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
       sse.emitirParaConta(r.anuncianteId, 'payment.updated', {});
       sse.emitirParaAdmin('payment.updated', { anuncianteId: r.anuncianteId });
     }
+    // O crédito de indicação que essa cobrança gerou saiu (AUD-009): quem
+    // indicou fica sabendo — o saldo dele mudou sem ele fazer nada. Depois
+    // do COMMIT; falha aqui é aviso a menos, nunca motivo pra refazer.
+    if (r.creditoRevertido) {
+      const { contaId, quantidade } = r.creditoRevertido;
+      await notificacoesRepo
+        .registrar(contaId, {
+          tipo: 'credito_indicacao_devolvido',
+          titulo: quantidade === 1 ? '1 crédito de indicação saiu' : `${quantidade} créditos de indicação saíram`,
+          descricao: 'O pagamento que gerou o crédito foi devolvido dentro do prazo de estorno.',
+        })
+        .catch((err) => console.error('falha ao notificar o crédito de indicação devolvido', err));
+      sse.emitirParaConta(contaId, 'credits.updated', {});
+    }
     return;
   }
 
@@ -830,49 +923,127 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
   // `eventoId` (v2) identifica a NOTIFICAÇÃO; a mesma cobrança pode chegar
   // por outro caminho — a conciliação diária (chaveada por `chargeId|status`),
   // o botão "Aplicar este ciclo" do admin, ou outro evento sobre ela (baixa
-  // desfeita e refeita, API.md 4.3.6). Por isso a chave da cobrança é
-  // RESERVADA antes de creditar: se já estava lá, o ciclo já entrou e esta
-  // notificação só confirma. Até 25/09/2026 ela era gravada DEPOIS, sem
-  // conferir — conciliação primeiro e webhook atrasado depois creditavam o
-  // ciclo duas vezes (revisão do commit 299f3e5, teste em
-  // webhook-v2-checkout.test.js).
+  // desfeita e refeita, API.md 4.3.6). Por isso a chave do evento E a da
+  // cobrança são RESERVADAS na mesma transação que credita (aplicarCicloPago):
+  // se uma já estava lá, o ciclo já entrou e esta notificação só confirma; se
+  // a transação cai, as reservas caem com ela e a próxima tentativa credita.
+  // Até 25/09/2026 a da cobrança era gravada DEPOIS, sem conferir —
+  // conciliação primeiro e webhook atrasado depois creditavam o ciclo duas
+  // vezes (revisão do commit 299f3e5, teste em webhook-v2-checkout.test.js);
+  // até 11/10/2026 as duas eram autocommit, fora da transação (AUD-005).
   const chaveDaCobranca = ultima?.chargeId ? `${ultima.chargeId}|${ultima.status}` : null;
-  const reservou = chaveDaCobranca && chaveDaCobranca !== chave;
-  if (reservou) {
-    const { rowCount: livre } = await pool.query(
-      'INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING',
-      [chaveDaCobranca],
+  const reservas = chaveDaCobranca && chaveDaCobranca !== chave ? [chave, chaveDaCobranca] : [chave];
+  const resultado = await aplicarCicloPago(assinatura, reservas, payload, {
+    valorCobrado: ultima?.valorCobrado,
+    chargeId: ultima?.chargeId,
+    pagoEm: pagoEmDoPayload(payload),
+  });
+  if (!resultado?.jaAplicada) return resultado;
+  if (resultado.jaAplicada !== chave) {
+    // A cobrança já tinha creditado por outro caminho (conciliação, admin).
+    eventos.registrar(
+      'pagamento:cobranca_ja_creditada',
+      { plano_id: assinatura.plano_id, evento: payload.evento },
+      await anunciantesRepo.buscarPorId(assinatura.anunciante_id),
     );
-    if (!livre) {
-      eventos.registrar(
-        'pagamento:cobranca_ja_creditada',
-        { plano_id: assinatura.plano_id, evento: payload.evento },
-        await anunciantesRepo.buscarPorId(assinatura.anunciante_id),
-      );
-      return null;
-    }
+    return null;
   }
-  let cobranca;
-  try {
-    cobranca = await aplicarCicloPago(assinatura, chave, payload, {
-      valorCobrado: ultima?.valorCobrado,
-      chargeId: ultima?.chargeId,
-      pagoEm: pagoEmDoPayload(payload),
-    });
-  } catch (err) {
-    if (reservou) await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chaveDaCobranca]);
-    throw err;
+  // Reentrega do MESMO evento é normal e não precisa de barulho. Mas quando
+  // o evento credita ciclo, o descarte pode não ser reentrega: no v1 a
+  // consulta de conciliação devolve a última cobrança, e numa renovação a
+  // defasagem entre Asaas e Checkout faz a chave `chargeId|status` do ciclo
+  // novo colidir com a do anterior — o ciclo pago sumiria sem rastro. Vira
+  // pendência pra alguém olhar. 'criada' reentregue é limpo por construção
+  // (chave = a assinatura): só a renovação pode esconder um ciclo novo.
+  if (payload.evento === 'cobranca_confirmada') {
+    await registrarPendencia(
+      payload,
+      `evento que credita ciclo descartado pela deduplicacao (chave ${chave}) — conferir se o ciclo entrou`,
+    );
   }
-  // Nada creditado (virou pendência): a reserva sai, senão a conciliação
-  // nunca mais aplicaria essa cobrança.
-  if (!cobranca && reservou) await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chaveDaCobranca]);
-  return cobranca;
+  return null;
+}
+
+// O documento com que o pagador pagou no Checkout (migration 122, AUD-006): é
+// por ele que cancelar/consultar/trocar/renovar acham a assinatura lá (API.md
+// 4.3.4: o par planoId + documento é a chave). Só dígitos, como o Checkout
+// manda. Roda dentro da transação do ciclo, com o client dela — documento e
+// aviso entram juntos, ou nenhum (antes o aviso ia depois do COMMIT, e um
+// processo morto entre os dois o perdia de vez; AUD-006, 3ª rodada). O
+// número nunca vai no texto do motivo (o payload da pendência o carrega; o
+// log não). Eventos próprios, sem "Aplicar este ciclo" (financeiro/routes.js,
+// EVENTOS_SEM_CICLO_A_APLICAR): o ciclo já entrou.
+//   · assinatura sem documento → grava; diferente do cadastro da conta →
+//     'documento_pagador_divergente' (uma vez por assinatura).
+//   · documento DIFERENTE do gravado num ciclo que acabou de entrar
+//     (`cicloNovo`) → passa a valer o deste ciclo (é a recorrência que está
+//     cobrando) e abre 'documento_pagador_mudou'. O Checkout cria uma 2ª
+//     recorrência do mesmo plano, sem cancelar a 1ª, quando o pagador digita
+//     outro CPF/CNPJ na pop-up de renovação (o token não confere, API.md
+//     7.3); até 12/10/2026 o documento era gravado uma vez só, o
+//     cancelamento ia pra recorrência velha e a nova seguia cobrando calada.
+//   · reentrega ou aviso de um ciclo que já tinha entrado (`cicloNovo:
+//     false`) nunca troca o vigente.
+//   · ciclo novo aqui mas PAGO ANTES do ciclo mais novo já aplicado nesta
+//     assinatura (`pagoEm`) — a inbox reenvia com espera e a conciliação
+//     aplica atrasados, então o antigo (documento A) pode entrar depois do
+//     novo (B) — não troca o vigente: só o pagamento mais novo diz quem está
+//     cobrando (5ª revisão Codex do PR #136). A pendência avisa do mesmo jeito.
+async function registrarDocumentoDoPagador(
+  cliente,
+  assinatura,
+  documento,
+  anunciante,
+  contexto,
+  { cicloNovo, pagoEm },
+) {
+  const vigente = assinatura?.documento_pagador || null;
+  if (!documento || documento === vigente || (vigente && !cicloNovo)) return;
+  if (vigente && (await pagoAntesDoMaisNovo(cliente, assinatura.id, pagoEm))) {
+    await registrarPendencia(
+      { ...contexto, evento: 'documento_pagador_mudou', documentoAtrasado: documento, documentoMantido: vigente },
+      'pagamento ATRASADO com OUTRO CPF/CNPJ nesta assinatura (o dele está em documentoAtrasado no payload; o vigente, de um pagamento mais novo, foi mantido) — a Asaas pode ter DUAS recorrências deste plano, uma por documento: pelo Checkout, cancelar a antiga (a do documento atrasado) e, se as duas cobraram o mesmo período, devolver uma (RUNBOOK §6)',
+      cliente,
+    );
+    return;
+  }
+  await cliente.query('UPDATE assinaturas SET documento_pagador = $2 WHERE id = $1', [assinatura.id, documento]);
+  if (vigente) {
+    await registrarPendencia(
+      { ...contexto, evento: 'documento_pagador_mudou', documentoAnterior: vigente },
+      'pagamento com OUTRO CPF/CNPJ nesta assinatura (o anterior está em documentoAnterior no payload) — a Asaas pode ter DUAS recorrências deste plano, uma por documento: pelo Checkout, cancelar a antiga (a do documento anterior) e, se as duas cobraram o mesmo período, devolver uma (RUNBOOK §6). Cancelar/consultar daqui passam a usar o documento deste pagamento',
+      cliente,
+    );
+  } else if (documento !== soDigitos(anunciante.cpf_cnpj)) {
+    await registrarPendencia(
+      { ...contexto, evento: 'documento_pagador_divergente' },
+      'documento do pagador no Checkout diverge do CPF/CNPJ cadastrado na conta — gravado em assinaturas.documento_pagador (cancelar/consultar usam o do pagador); conferir o cadastro',
+      cliente,
+    );
+  }
+}
+
+// Este pagamento (`pagoEm`, do PSP) é mais antigo que o pagamento mais novo
+// já creditado nesta assinatura? Sem `pagoEm` (ciclo registrado à mão) não dá
+// pra saber, e vale a ordem de chegada, como antes.
+async function pagoAntesDoMaisNovo(cliente, assinaturaId, pagoEm) {
+  if (!pagoEm) return false;
+  const {
+    rows: [{ maisNovo }],
+  } = await cliente.query(
+    `SELECT max(c.pago_em) AS "maisNovo" FROM ciclos_contratados ci
+       JOIN cobrancas_confirmadas c ON c.id = ci.cobranca_confirmada_id
+      WHERE ci.assinatura_id = $1`,
+    [assinaturaId],
+  );
+  return Boolean(maisNovo) && new Date(pagoEm) < new Date(maisNovo);
 }
 
 // Credita um ciclo pago na conta: estende a cobertura, registra a cobrança e
-// a comissão. Chamado pelo webhook e pela conciliação diária — as duas rotas
-// passam pela mesma dedupe (`chave`), então um ciclo nunca entra duas vezes,
-// venha o aviso por webhook ou pela varredura.
+// a comissão. Três caminhos chamam — o webhook, a conciliação diária e o
+// botão "Aplicar este ciclo" do admin — e os três passam pela mesma dedupe
+// (`reservas`, abaixo), então um ciclo nunca entra duas vezes, venha por onde
+// vier.
 // `valorCobrado` (consolidação, 24/09/2026): o que a Asaas debitou de fato,
 // lido da consulta 5.3 (`ultimaCobranca.valorCobrado`). Quando vem, é ele
 // que entra na cobrança, no snapshot do ciclo e na receita — recalcular pelo
@@ -881,12 +1052,31 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
 // `chargeId`/`pagoEm` (migration 120): quem é esta cobrança no PSP e quando
 // ele confirmou — é por eles que o estorno do Admin é confirmado e que os 7
 // dias do estorno ordinário contam. Sem `pagoEm`, vale o instante do registro.
+// Dedupe (webhooks_processados, AUD-005, 11/10/2026): `reservas` são as
+// chaves deste ciclo — a desta notificação primeiro (`chargeId|status` na
+// conciliação e no botão do admin; a do evento no webhook) e, no webhook, a
+// da cobrança depois. São gravadas AQUI, dentro da transação do ciclo e com
+// o mesmo client — entram no COMMIT ou caem no ROLLBACK, nunca ficam sem o
+// ciclo. Chave já gravada = o ciclo já entrou (por este evento, pela
+// conciliação ou pelo admin): as reservas são desfeitas e volta
+// `{ jaAplicada: chave }`, sem pendência — quem chama decide; o documento do
+// pagador que o evento traz ainda é gravado, se faltava. Decisão que não
+// credita (conta excluída, intenção cancelada) devolve o que
+// registrarPendenciaUmaVez devolve: `null` ou `{ pendenciaJaRegistrada }`.
+// Quem chama não reserva antes: a reserva autocommit (webhook, conciliação e
+// admin, até 11/10/2026) sobrevivia a um processo morto antes do COMMIT, e a
+// cobrança paga sumia como "já processada".
 async function aplicarCicloPago(
   assinatura,
-  chave,
+  reservas,
   payload = null,
   { valorCobrado = null, chargeId = null, pagoEm = null } = {},
 ) {
+  // Uma string aqui seria iterada letra a letra e cada letra viraria "chave
+  // já gravada": o ciclo pago sumiria calado. Lista, sempre.
+  if (!Array.isArray(reservas) || !reservas.length || !reservas.every((c) => typeof c === 'string' && c)) {
+    throw new TypeError('aplicarCicloPago: `reservas` é a lista (não vazia) das chaves de dedupe do ciclo');
+  }
   const contexto = payload || {
     tipo: 'assinatura',
     planoId: assinatura.id,
@@ -896,8 +1086,9 @@ async function aplicarCicloPago(
 
   const plano = await planosRepo.buscarPorId(assinatura.plano_id);
   const anunciante = await anunciantesRepo.buscarPorId(assinatura.anunciante_id);
+  // Sem chave de propósito (era assim antes do AUD-005: a reserva saía
+  // aqui): corrigido o cadastro, a próxima entrega ou varredura credita.
   if (!plano || !anunciante) {
-    await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]);
     return registrarPendencia(contexto, 'plano ou anunciante não encontrado pra essa assinatura');
   }
 
@@ -907,7 +1098,11 @@ async function aplicarCicloPago(
   // pagava comissão ao vendedor por um cliente que pediu pra sair. Vira
   // pendência pra alguém devolver o dinheiro à mão.
   if (anunciante.excluido_em) {
-    return registrarPendencia(contexto, 'cobrança de conta já excluída — verificar devolução no Checkout');
+    return registrarPendenciaUmaVez(
+      reservas[0],
+      contexto,
+      'cobrança de conta já excluída — verificar devolução no Checkout',
+    );
   }
 
   // O que a conta paga é o valor do plano, com os descontos que ela tem
@@ -952,6 +1147,7 @@ async function aplicarCicloPago(
   let creditoIndicacao;
   let eventosDaFila = [];
   let contaSuspensa = false;
+  const documentoDoPagador = soDigitos(payload?.documento) || null;
   try {
     await cliente.query('BEGIN');
     // A expiração é estendida a cada ciclo pago; quem paga dois ciclos
@@ -980,13 +1176,46 @@ async function aplicarCicloPago(
     const {
       rows: [assinaturaTravada],
     } = await cliente.query('SELECT * FROM assinaturas WHERE id = $1 FOR UPDATE', [assinatura.id]);
+    // Intenção cancelada que nunca pagou não credita: a pendência e a chave
+    // desta notificação entram juntas, nesta transação (a 2ª entrega, ou a
+    // varredura de amanhã, não abre outra pendência).
     if (
       assinaturaTravada?.status === 'cancelada' &&
       !(await cicloContratado.jaTeveCicloPago(assinaturaTravada, cliente))
     ) {
-      await cliente.query('ROLLBACK');
-      return registrarPendencia(contexto, MOTIVO_INTENCAO_CANCELADA);
+      const r = await registrarPendenciaUmaVez(reservas[0], contexto, MOTIVO_INTENCAO_CANCELADA, cliente);
+      await cliente.query('COMMIT');
+      return r;
     }
+    // As reservas de dedupe, na MESMA transação do ciclo (AUD-005): chave já
+    // gravada = o ciclo já entrou (por este evento, pela conciliação ou pelo
+    // admin) — nada a creditar. Uma reserva de outra transação ainda aberta
+    // segura este INSERT até ela decidir, que é a ordem certa. Conflito
+    // desfaz só as reservas (savepoint): o documento que esta notificação
+    // traz ainda entra, se a assinatura não tinha nenhum — com o ROLLBACK
+    // inteiro, um `criada` atrasado (o ciclo entrou antes pela conciliação ou
+    // pelo admin) perdia o documento e o aviso de cadastro divergente
+    // (AUD-006, 3ª rodada). Nunca TROCA o vigente: reentrega e aviso atrasado
+    // não dizem quem está cobrando agora.
+    await cliente.query('SAVEPOINT reservas');
+    for (const reserva of reservas) {
+      const { rowCount } = await cliente.query(
+        'INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING',
+        [reserva],
+      );
+      if (!rowCount) {
+        await cliente.query('ROLLBACK TO SAVEPOINT reservas');
+        await registrarDocumentoDoPagador(cliente, assinaturaTravada, documentoDoPagador, anunciante, contexto, {
+          cicloNovo: false,
+        });
+        await cliente.query('COMMIT');
+        return { jaAplicada: reserva };
+      }
+    }
+    await registrarDocumentoDoPagador(cliente, assinaturaTravada, documentoDoPagador, anunciante, contexto, {
+      cicloNovo: true,
+      pagoEm,
+    });
     // Renovação atrasada de uma assinatura que o cliente já trocou por outra
     // (cancelada com ciclo pago): os dias contam, a escolha nova fica.
     const substituida = ['cancelada', 'trocada'].includes(assinaturaTravada?.status);
@@ -1021,10 +1250,9 @@ async function aplicarCicloPago(
     await cliente.query('COMMIT');
   } catch (err) {
     await cliente.query('ROLLBACK');
-    // Sem isso, o retry do San Checkout cairia na dedupe acima e o evento
-    // seria perdido de vez.
-    await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]);
-    // E sem isto, a falha só existia no console: o dinheiro entrou no
+    // As reservas de dedupe caíram com o ROLLBACK: a próxima tentativa (inbox,
+    // varredura, botão do admin) credita — nada a compensar.
+    // Sem isto, a falha só existia no console: o dinheiro entrou no
     // Checkout, a cobertura não entrou aqui, e nenhuma tela mostrava isso.
     // Agora cai na fila de "eventos pendentes" do admin, que é onde alguém
     // olha. Se o próprio registro da pendência falhar, o erro original é que
@@ -1207,7 +1435,7 @@ async function aplicarTrocaDePlano(pedido, payload) {
     // A recorrência do plano antigo tem que parar — sem isso o cliente
     // pagaria o plano antigo de novo no próximo ciclo, por cima do novo.
     try {
-      await cancelarAssinatura(assinaturaAtiva.id, anunciante.cpf_cnpj);
+      await cancelarAssinatura(assinaturaAtiva.id, documentoDaAssinatura(assinaturaAtiva, anunciante));
       await assinaturasRepo.marcarCancelada(assinaturaAtiva.id);
     } catch (err) {
       // O dinheiro da troca já entrou — não dá pra travar a troca por isso,
@@ -1262,6 +1490,58 @@ async function cancelarAssinatura(assinaturaId, documento) {
   return r.json();
 }
 
+// Cancela no Checkout uma assinatura ATIVA desta conta e, só então, marca
+// cancelada aqui — o mesmo passo das seis portas de cancelamento (painel,
+// admin, plano administrativo, troca pelo /assinar, desistência, exclusão
+// da conta). Usa o documento do pagador (acima). 404 do Checkout numa
+// assinatura que já teve ciclo pago NÃO é "nada a cancelar" por si só
+// (AUD-006): com o documento errado, a recorrência continua viva na Asaas e
+// marcar cancelada aqui escondia isso. Só fecha o registro local quando a
+// consulta (API.md 5.3, o mesmo par plano + documento) acha a assinatura já
+// encerrada; senão vira pendência pro admin cancelar lá à mão, e quem chama
+// recebe erro. 404 numa que nunca pagou continua sendo só um link morto.
+// `err.naoEncontrada` distingue, pra resposta ao cliente, de falha de rede.
+async function cancelarAssinaturaAtiva(assinatura, anunciante) {
+  const documento = documentoDaAssinatura(assinatura, anunciante);
+  // Pelo `module.exports` (e não a função local): os testes das rotas trocam
+  // `cancelarAssinatura`/`consultarAssinatura` pra simular o Checkout.
+  const r = await module.exports.cancelarAssinatura(assinatura.id, documento);
+  if (
+    r?.inexistente &&
+    (await cicloContratado.jaTeveCicloPago(assinatura)) &&
+    (await module.exports.consultarAssinatura(assinatura.id, documento))?.status !== 'cancelada'
+  ) {
+    // Uma pendência por assinatura enquanto ninguém resolve: o cliente pode
+    // tentar de novo várias vezes.
+    const { rowCount: jaAvisada } = await pool.query(
+      `SELECT 1 FROM eventos_assinatura_pendentes
+        WHERE NOT resolvido AND payload->>'evento' = 'cancelamento_nao_encontrado' AND payload->>'planoId' = $1
+        LIMIT 1`,
+      [assinatura.id],
+    );
+    if (!jaAvisada) {
+      await registrarPendencia(
+        {
+          tipo: 'assinatura',
+          evento: 'cancelamento_nao_encontrado',
+          planoId: assinatura.id,
+          anuncianteId: assinatura.anunciante_id,
+          origem: 'cancelar-assinatura',
+        },
+        'assinatura não encontrada no Checkout ao cancelar (404), e ela tem ciclo pago — a recorrência pode seguir viva na Asaas: cancelar lá à mão (conferir com que documento ela existe); encerrada lá e com o documento certo na conta, o "Cancelar assinatura" do Admin fecha o registro daqui (RUNBOOK §6)',
+      );
+    }
+    throw Object.assign(
+      new Error(
+        'não encontramos sua assinatura no Checkout pra cancelar — já avisamos a equipe, que vai confirmar o cancelamento com você',
+      ),
+      { naoEncontrada: true },
+    );
+  }
+  await assinaturasRepo.marcarCancelada(assinatura.id);
+  return r;
+}
+
 // Troca de plano SEM pedido avulso (POST /trocar-plano, API.md do
 // Checkout, seção 5.6): altera a MESMA assinatura na Asaas, sem o
 // assinante digitar cartão de novo e sem janela sem cobertura.
@@ -1295,13 +1575,16 @@ module.exports = {
   exigirChaveCheckout,
   webhookAutorizado,
   registrarPendencia,
+  registrarPendenciaUmaVez,
   linkCheckoutAssinatura,
   linkRenovarAssinatura,
+  documentoDaAssinatura,
   montarRespostaPlano,
   trocarPlano,
   processarWebhookAssinatura,
   processarWebhookPedido,
   cancelarAssinatura,
+  cancelarAssinaturaAtiva,
   consultarAssinatura,
   avisarCobrancaFalhou,
   chaveDoEvento,

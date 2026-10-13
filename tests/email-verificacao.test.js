@@ -92,7 +92,7 @@ test.before(async () => {
   servidor = app.listen(0);
   await new Promise((r) => servidor.once('listening', r));
   base = `http://127.0.0.1:${servidor.address().port}`;
-  await pool.query("DELETE FROM tentativas_acesso WHERE chave LIKE '%127.0.0.1%' OR chave LIKE '%::1%'");
+  await pool.query("DELETE FROM tentativas_acesso WHERE chave LIKE '%127.0.0.1%'");
 });
 
 const criadas = [];
@@ -111,8 +111,13 @@ test.after(async () => {
 });
 
 async function chamar(metodo, caminho, { conta, corpo, admin } = {}) {
-  // Cada chamada com IP "novo" pro limite por IP não interferir entre testes.
-  await pool.query('DELETE FROM tentativas_acesso');
+  // Cada chamada com o balde zerado, pro limite por IP não interferir entre
+  // os testes daqui. Só as chaves DESTE app (sem proxy na frente, tudo chega
+  // de 127.0.0.1 — o mesmo filtro do before): o banco de teste é
+  // compartilhado e `npm test` roda os arquivos em paralelo, e apagar a
+  // tabela inteira zerava no meio do laço o balde que outro arquivo
+  // (tests/limite-login.test.js) espera ver estourar.
+  await pool.query("DELETE FROM tentativas_acesso WHERE chave LIKE '%127.0.0.1%'");
   const r = await fetch(`${base}${caminho}`, {
     method: metodo,
     headers: {

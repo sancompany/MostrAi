@@ -26,7 +26,7 @@ const {
   numeroConfirmado,
 } = require('../lib/endereco');
 const { sincronizarContaSemFalhar } = require('../pendencias/endereco');
-const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas');
+const { limiteTentativas, limiteTentativasPorAlvo, descontarAcerto } = require('../lib/limite-tentativas');
 const convitesRepo = require('../convites/repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
@@ -260,7 +260,9 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
       // Convite que nasceu de uma candidatura de ponto já traz o endereço: o
       // ponto é criado agora, ligado à conta nova, com a primeira tela.
       if (papeis.includes('ponto') && convite.candidatura_id) {
-        const cand = await candidaturasRepo.buscarPorId(convite.candidatura_id);
+        // Pelo `cliente`: uma 2ª conexão do pool dentro da transação pendura
+        // a instância quando o pool (5) está cheio (AUD-001).
+        const cand = await candidaturasRepo.buscarPorId(convite.candidatura_id, cliente);
         if (cand && cand.tipo === 'ponto') {
           await materializarPontoDaCandidatura(cand, anunciante, cliente);
         }
@@ -304,7 +306,13 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   });
 });
 
-router.post('/anunciantes/login', limiteTentativas, async (req, res) => {
+// Dois baldes (src/lib/limite-tentativas.js): o do IP e o da CONTA tentada —
+// o e-mail normalizado como `buscarPorEmailComSenha` compara. Sem o da conta,
+// quem tem muitos endereços (um /48 IPv6) chutava a senha da mesma vítima 10
+// vezes por endereço.
+const alvoDoLogin = (req) => repo.normalizarEmail(req.body?.email);
+
+router.post('/anunciantes/login', limiteTentativasPorAlvo(alvoDoLogin), async (req, res) => {
   const { email, senha } = req.body;
   const anunciante = await repo.buscarPorEmailComSenha(email);
   if (!anunciante || !(await repo.validarSenha(anunciante, senha))) {
@@ -321,7 +329,8 @@ router.post('/anunciantes/login', limiteTentativas, async (req, res) => {
   if (anunciante.suspenso) {
     return res.status(403).json({ erro: 'esta conta está suspensa — fale com a gente pra reativar o acesso' });
   }
-  zerarTentativas(req);
+  // Antes da sessão: o cookie de aparelho conhecido sai nesta resposta.
+  await descontarAcerto(req, res);
   // Sessão nova a cada login (fixação de sessão) — ver server.js.
   req.session.regenerate((err) => {
     if (err) return res.status(500).json({ erro: 'erro interno' });
@@ -345,15 +354,19 @@ router.post('/anunciantes/me/excluir', exigirAnuncianteLogado, async (req, res) 
   // e a comissão do vendedor continuava sendo paga por ela. Cancela lá
   // primeiro — se falhar, nada muda aqui e a pessoa tenta de novo, que é a
   // mesma ordem do pedido de arrependimento (src/titular/routes.js).
+  // Exceção: 404 com ciclo pago (AUD-006) não segura a exclusão — a pendência
+  // "assinatura não encontrada no Checkout" já manda cancelar na Asaas à mão,
+  // e o pedido do titular (LGPD) não espera a equipe resolver o cadastro.
   const assinatura = conta ? await assinaturasRepo.buscarAtivaDoAnunciante(conta.id) : null;
   if (assinatura) {
     try {
-      await sanCheckout.cancelarAssinatura(assinatura.id, conta.cpf_cnpj);
-      await assinaturasRepo.marcarCancelada(assinatura.id);
-    } catch {
-      return res.status(502).json({
-        erro: 'não conseguimos cancelar a sua cobrança agora — tente de novo em alguns minutos',
-      });
+      await sanCheckout.cancelarAssinaturaAtiva(assinatura, conta);
+    } catch (err) {
+      if (!err.naoEncontrada) {
+        return res.status(502).json({
+          erro: 'não conseguimos cancelar a sua cobrança agora — tente de novo em alguns minutos',
+        });
+      }
     }
   }
   // Link gerado e não pago também morre: senão continuava pagável depois da
@@ -526,7 +539,7 @@ router.post('/anunciantes/me/confirmar-email', exigirAnuncianteLogado, limiteTen
   if (repo.normalizarEmail(r.email) !== repo.normalizarEmail(conta.contato_email)) {
     return res.status(400).json({ erro: 'esse código era de outro endereço — peça um novo', motivo: 'expirado' });
   }
-  zerarTentativas(req);
+  await descontarAcerto(req, res);
   await repo.atualizar(conta.id, { email_confirmado: true });
   // Boas-vindas só DEPOIS da confirmação, uma vez na vida da conta, e só pra
   // quem anuncia — o texto fala em escolher plano e colocar anúncio, o que
@@ -649,7 +662,7 @@ router.post('/anunciantes/me/confirmar-troca-email', exigirAnuncianteLogado, lim
   if (!conta) return res.status(401).json({ erro: 'não autenticado' });
   const r = await codigosEmail.conferir(conta.id, 'troca', req.body.codigo);
   if (!r.ok) return res.status(400).json({ erro: codigosEmail.MENSAGEM_DO_ERRO[r.motivo], motivo: r.motivo });
-  zerarTentativas(req);
+  await descontarAcerto(req, res);
 
   const cliente = await pool.connect();
   let atualizada;
@@ -1109,6 +1122,49 @@ async function subirCriativo(
       }
     }
 
+    // A linha temporária nasce logo depois das contagens, ANTES de esperar a
+    // vez do ffprobe (revisão do AUD-017): com um FFmpeg por vez a espera
+    // passa de minutos, e sem a linha um segundo envio passava pelas
+    // contagens (dois criativos acima do plano) e GET /envios/:chave dizia
+    // "não chegou". Nasce com o negócio da peça substituída ou o principal; o
+    // escolhido entra depois das recusas, pra um envio recusado não deixar
+    // negócio novo pra trás. Daqui em diante toda recusa apaga a linha.
+    let criativoTemp;
+    try {
+      criativoTemp = await medir('db_criar_ms', () =>
+        criativosRepo.criar({
+          anunciante_id: contaId,
+          arquivo_original_url: req.file.originalname,
+          arquivo_normalizado_url: null,
+          thumbnail_url: null,
+          duracao_segundos: null,
+          substitui_criativo_id: substitui ? substitui.id : null,
+          envio_chave: envioChave,
+          negocio_id: substitui ? substitui.negocio_id : null,
+        }),
+      );
+    } catch (err) {
+      // Duas requisições com a mesma chave ao mesmo tempo (o navegador repetiu
+      // enquanto a primeira ainda rodava): o índice único deixa uma só criar.
+      if (envioChave && err.code === '23505') {
+        const existente = await criativosRepo.buscarPorEnvio(contaId, envioChave);
+        if (existente) return responderEnvioExistente(res, existente);
+      }
+      throw err;
+    }
+    avisar?.();
+    // A linha sai, a obrigação do ciclo deixa de contá-la "em análise" e o
+    // card "processando" some sem F5 — na recusa e na falha.
+    const descartarLinha = async () => {
+      await criativosRepo.deletar(criativoTemp.id);
+      await obrigacaoDoCiclo.avaliarDisponibilidadeSemFalhar(contaId);
+      avisar?.();
+    };
+    const recusar = async (status, erro) => {
+      await descartarLinha();
+      return res.status(status).json({ erro });
+    };
+
     // Duração: nada nunca conferiu, e um vídeo de três minutos entrava inteiro
     // e tomava, sozinho, o lugar de seis anúncios no rodízio.
     //
@@ -1122,60 +1178,51 @@ async function subirCriativo(
     // vídeo (19/09/2026, pedido do dono: antes ficava sempre em 10s fixos,
     // mesmo quem pagava plano de 30s recebia menos do que comprou; ver
     // ffmpeg.normalizar). Sem plano (conta própria/admin), cai no padrão.
-    const midia = await medir('ffprobe_ms', () => ffmpeg.probeMidia(req.file.path).catch(() => null));
-    if (!midia) {
-      return res
-        .status(400)
-        .json({ erro: 'não foi possível ler esse arquivo — confira se é um vídeo ou imagem válido' });
+    let midia = null;
+    try {
+      // Grava fila_probe_ms (a espera da vez) e ffprobe_ms em `tempos`.
+      midia = await ffmpeg.probeMidia(req.file.path, tempos);
+    } catch (err) {
+      // Fila cheia (ffmpeg.js) não é arquivo ruim; o resto é o ffprobe que
+      // não leu o arquivo, e cai na frase abaixo.
+      if (err.origem === 'fila') {
+        registrar(criativoTemp.id, 'fila_cheia');
+        return recusar(503, err.message);
+      }
     }
+    if (!midia) return recusar(400, 'não foi possível ler esse arquivo — confira se é um vídeo ou imagem válido');
+    // Custo antes do FFmpeg (AUD-017): pixels por quadro, 10 bits e quadros —
+    // uma foto de 256 MP em 771 KB derrubava a instância, e um vídeo de 5 MB
+    // com 3000 quadros de 31 MP segurava a fila 15 min (ffmpeg.js).
+    const recusaCusto = ffmpeg.recusaPorCusto(midia);
+    if (recusaCusto) return recusar(400, recusaCusto);
     if (!midia.ehImagem && (midia.duracao_segundos > 60 || midia.duracao_segundos < 3)) {
-      return res.status(400).json({
-        erro: `esse vídeo tem ${midia.duracao_segundos}s — a tela aceita de 3 a 60 segundos`,
-      });
+      return recusar(400, `esse vídeo tem ${midia.duracao_segundos}s — a tela aceita de 3 a 60 segundos`);
     }
     if (!midia.ehImagem && duracaoMaxima && midia.duracao_segundos > duracaoMaxima) {
-      return res.status(400).json({
-        erro: `esse vídeo tem ${midia.duracao_segundos}s e o seu plano aceita peça de até ${duracaoMaxima}s — corte a peça ou mude de plano`,
-      });
+      return recusar(
+        400,
+        `esse vídeo tem ${midia.duracao_segundos}s e o seu plano aceita peça de até ${duracaoMaxima}s — corte a peça ou mude de plano`,
+      );
     }
 
     // O negócio que a peça divulga (migration 121) — depois das recusas
     // baratas, pra um envio recusado não deixar negócio novo pra trás. A
-    // substituta divulga o mesmo negócio da peça que ela troca.
-    let negocioId = substitui ? substitui.negocio_id : null;
+    // substituta divulga o mesmo negócio da peça que ela troca (a linha já
+    // nasceu com ele).
     if (!substitui && negocio) {
       try {
-        negocioId = await negocio();
+        const negocioId = await negocio();
+        if (negocioId !== criativoTemp.negocio_id) {
+          await criativosRepo.definirNegocio(criativoTemp.id, negocioId);
+          criativoTemp = { ...criativoTemp, negocio_id: negocioId };
+        }
       } catch (err) {
-        if (err instanceof negocios.ErroNegocio) return res.status(err.status).json({ erro: err.message });
+        if (err instanceof negocios.ErroNegocio) return recusar(err.status, err.message);
+        await descartarLinha();
         throw err;
       }
     }
-
-    let criativoTemp;
-    try {
-      criativoTemp = await medir('db_criar_ms', () =>
-        criativosRepo.criar({
-          anunciante_id: contaId,
-          arquivo_original_url: req.file.originalname,
-          arquivo_normalizado_url: null,
-          thumbnail_url: null,
-          duracao_segundos: null,
-          substitui_criativo_id: substitui ? substitui.id : null,
-          envio_chave: envioChave,
-          negocio_id: negocioId,
-        }),
-      );
-    } catch (err) {
-      // Duas requisições com a mesma chave ao mesmo tempo (o navegador repetiu
-      // enquanto a primeira ainda rodava): o índice único deixa uma só criar.
-      if (envioChave && err.code === '23505') {
-        const existente = await criativosRepo.buscarPorEnvio(contaId, envioChave);
-        if (existente) return responderEnvioExistente(res, existente);
-      }
-      throw err;
-    }
-    avisar?.();
 
     try {
       const { tempos: temposMidia, ...normalizado } = await ffmpeg.normalizar(
@@ -1239,11 +1286,20 @@ async function subirCriativo(
       // dava pra saber qual dos dois era sem reproduzir na mão.
       console.error('falha ao processar criativo', err);
       Object.assign(tempos, err?.tempos);
-      registrar(criativoTemp.id, err?.origem === 'storage' ? 'falha_storage' : 'falha_midia');
-      await criativosRepo.deletar(criativoTemp.id);
-      await obrigacaoDoCiclo.avaliarDisponibilidadeSemFalhar(contaId);
-      // O card "processando" some sem F5.
-      avisar?.();
+      registrar(
+        criativoTemp.id,
+        { storage: 'falha_storage', fila: 'fila_cheia', imagem: 'imagem_ilegivel', memoria: 'teto_memoria' }[
+          err?.origem
+        ] || 'falha_midia',
+      );
+      await descartarLinha();
+      // Esperou demais pela vez do FFmpeg (ffmpeg.js): o arquivo está ok.
+      if (err?.origem === 'fila') return res.status(503).json({ erro: err.message });
+      // Foto com cabeçalho legível e corpo que não decodifica (cortada,
+      // corrompida): o FFmpeg recusa no único quadro que lê; ou o FFmpeg
+      // estourou o teto de memória do processo (ffmpeg.js) — cada um com a
+      // sua frase, não o "confira se é válido" genérico.
+      if (err?.origem === 'imagem' || err?.origem === 'memoria') return res.status(400).json({ erro: err.message });
       if (err && err.origem === 'storage') {
         return res.status(502).json({
           erro: 'o problema foi nosso: o armazenamento não respondeu agora. Tente de novo em alguns minutos — o seu arquivo está ok',

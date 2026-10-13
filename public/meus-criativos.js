@@ -774,8 +774,8 @@
   // novo: dois criativos. Regras daqui:
   //   - cada arquivo escolhido ganha UMA chave (`Idempotency-Key`); repetir a
   //     tentativa manda a mesma chave, e o servidor devolve o que já existe;
-  //   - "falhou" só quando o SERVIDOR disse por quê (4xx com `erro`, ou o 502
-  //     do nosso armazenamento) — nada foi criado;
+  //   - "falhou" só quando o SERVIDOR disse por quê (4xx com `erro`, o 502
+  //     do nosso armazenamento ou o 503 da fila cheia) — nada foi criado;
   //   - qualquer outro desfecho (rede caiu, 524/504 do proxy, 500 sem corpo)
   //     é RESULTADO INCERTO: o painel pergunta ao servidor o que aconteceu com
   //     aquela chave antes de dizer qualquer coisa;
@@ -849,6 +849,9 @@
     // temporária de um processamento que falhou já saiu antes da resposta).
     if (status >= 400 && status < 500 && corpo?.erro) return 'erro';
     if (status === 502 && corpo?.erro) return 'erro';
+    // 503 com `erro` é a fila do FFmpeg cheia (esperou demais pela vez): a
+    // linha saiu antes da resposta, e a frase diz pra tentar de novo depois.
+    if (status === 503 && corpo?.erro) return 'erro';
     return 'incerto';
   }
 

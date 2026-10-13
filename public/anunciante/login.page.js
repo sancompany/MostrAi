@@ -37,8 +37,16 @@ form.addEventListener('submit', async (e) => {
       // A mensagem do 403 só sai DEPOIS de a senha conferir (routes.js:167),
       // então mostrá-la não entrega a existência de conta nenhuma.
       const corpo = await r.json().catch(() => ({}));
-      if (r.status === 429) msg.textContent = 'Muitas tentativas seguidas. Espere um minuto e tente de novo.';
-      else if (r.status === 403 && corpo.erro) msg.textContent = window.frase(corpo.erro);
+      // 429: o servidor diz quanto falta. `motivo: 'conta'` é o balde da
+      // CONTA (src/lib/limite-tentativas.js): alguém errou a senha dela 10
+      // vezes, e esperar pode não bastar se continuar errando. Redefinir a
+      // senha zera esse balde e marca este navegador.
+      if (r.status === 429) {
+        msg.textContent = window.frase(corpo.erro || 'muitas tentativas seguidas — espere e tente de novo');
+        if (corpo.motivo === 'conta') {
+          msg.textContent += ' Se a conta é sua, redefinir a senha em "Esqueci minha senha" libera a entrada.';
+        }
+      } else if (r.status === 403 && corpo.erro) msg.textContent = window.frase(corpo.erro);
       else msg.textContent = 'E-mail ou senha inválidos.';
       msg.className = 'form-msg err';
       botaoEntrar.disabled = false;
