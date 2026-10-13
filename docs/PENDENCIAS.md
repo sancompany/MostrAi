@@ -6200,3 +6200,17 @@ Ficou de fora, sem mexer:
       vira pendência pro Admin. Decidido, o crédito passa a nascer pendente e
       a liberar sozinho depois da janela, e o paliativo sai
       (`estornos.js#reverterCreditoDeIndicacao`).
+- PG8 [ ] **Teto de envios de criativo por conta, por janela** (prontidão —
+      Estação 6; residual do AUD-017, 12/10/2026). O FFmpeg roda um processo
+      por vez, com fila de até 5 min (depois 503, e a linha "processando" do
+      envio é apagada) e teto de custo por arquivo (`src/lib/ffmpeg.js`). O
+      que não existe é teto de QUANTOS envios a mesma conta faz por hora: o
+      teto de cadastro (3 peças, retirados contam) só conta o que fica, e
+      envio recusado ou que caiu da fila não ocupa vaga — uma conta logada
+      pode repetir envios caros no limite do custo e manter a fila ocupada,
+      enquanto as outras contas esperam e levam 503. A conta é autenticada e
+      aparece no log, por isso é limite de prontidão, não finding. Fecha com
+      um balde por conta na rota de upload do cliente (`POST
+      /anunciantes/:id/criativos`; `src/lib/limite-tentativas.js` já tem o
+      balde por alvo) — ex.: 10 envios por hora; o upload do operador (conta
+      própria) fica fora.

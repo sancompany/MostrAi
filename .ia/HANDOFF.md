@@ -1,6 +1,58 @@
 # Current Handoff
 
 ## Updated
+2026-10-13 — **Review-Master, Ciclo 1, lote 1: 1 CRÍTICO + 10 ALTOS + 1
+MÉDIO corrigidos** (migration 122, aditiva; branch
+`claude/busy-noether-hheir2`, 15 commits sobre `48d6030`; PR do lote 1 a
+partir desta branch). Cada AUD foi confirmado por verificação adversarial
+(refutador + reprodução em banco isolado) antes da correção, e cada
+correção traz teste que falha em `48d6030`. A matriz AUD-nnn e as provas
+vivem no artifact "Checkpoint Review-Master" (memória global do agente),
+não no repositório. O que mudou e não se desfaz sem contexto:
+- Pool e transações (AUD-001/019): leitura DENTRO de transação usa o
+  cliente da transação (`creditos/routes.js`,
+  `financeiro/plano-administrativo.js#historicoDaConta(contaId, db)`,
+  `candidaturas/repository.js#buscarPorId(id, cliente)`, `conta/modos.js`);
+  `db/pool.js` com `connectionTimeoutMillis` 5 s, ouvinte de `error` no
+  pool e em cada cliente emprestado, sem keepAlive; `uncaughtException`
+  loga e sai 1 só como última rede (`server.js`).
+- Limitador (AUD-002/003/004): `src/lib/limite-tentativas.js` chaveia pela
+  rota declarada; dois baldes independentes (IP/64 + rota; conta + rota —
+  10 erros por 15 min cada, IP avaliado antes); `descontarAcerto` desconta
+  só a própria tentativa; redefinir a senha libera a conta (`liberarConta`);
+  cookie de aparelho conhecido `mostrai.aparelho` (HMAC, sem estado no
+  banco, 90 dias, `Path` = rota do login); `CF-Connecting-IP` só quando
+  `req.ip` está nas faixas publicadas da Cloudflare. Limites assumidos em
+  `CONSTRAINTS.md`; destravar conta em RUNBOOK §6.
+- Financeiro (AUD-005/006/007/009): reservas de dedupe gravadas DENTRO da
+  transação de `aplicarCicloPago` (webhook, conciliação, admin);
+  `assinaturas.documento_pagador` (122) com pendências
+  `documento_pagador_divergente` e `documento_pagador_mudou`; 404 do
+  Checkout com ciclo pago vira pendência, nunca "cancelado"; desistência e
+  exclusão registram o pedido mesmo no 404; troca de plano no cartão → 409
+  `codigo: 'troca_de_plano_pela_equipe'` e `/assinar` não manda mais pra
+  troca (PG6); estorno total confirmado nos 7 dias reverte o crédito de
+  indicação até o saldo do ponto, nunca negativo, resto vira pendência
+  (paliativo, PG7; `estornos.js#reverterCreditoDeIndicacao`, ledger
+  `estorno_indicacao` + CHECK da 122).
+- Upload (AUD-017/018): todo ffmpeg/ffprobe sob `prlimit --as/--cpu` +
+  `MALLOC_ARENA_MAX=1` (avisa uma vez se faltar prlimit); teto de custo
+  (quadros × pixels; 10 bits; 32 MP); um processo por vez, fila de 5 min →
+  503; imagem decodificada uma vez num BMP saneado; timeouts por tipo; a
+  linha "processando" nasce ANTES da fila. multer 2.4.0 + passo semanal que
+  falha com dependência de produção deprecated
+  (`scripts/dependencias-deprecadas.js`). PG8: teto de envios por conta.
+- Fora, de propósito: AUD-014 (ocupação 80 % cega ao sorteio) espera a
+  decisão 13 do dono — corrigir cria laço com o gerador; os MÉDIOS vão pro
+  lote 2. Testes: `npm run check` 1089/1089 em banco recriado; 122 aplicada
+  também sobre banco com dado; e2e 01, 02, 03, 11, 13, 14, 23, 25, 36, 46
+  e 48 verdes.
+- Ambiente dos e2e de navegador: `playwright` tem de resolver a partir de
+  `node_modules` (aqui está instalado global em `/opt/node22`, e um
+  `npm ci` apaga o link — recriar com `ln -s`); sem isso todo `.mjs` morre
+  em `ERR_MODULE_NOT_FOUND` antes do primeiro teste, e o roteiro "passa"
+  com 0 ok se o chamador não olhar o código de saída.
+
 2026-10-10 — **Composer "Novo criativo" refinado** (só tela; sem servidor,
 banco ou regra). Área de soltar com o cartão do arquivo (prévia: vídeo por
 `blob:`, que a CSP aceita em `media-src`; imagem por `data:`, porque
