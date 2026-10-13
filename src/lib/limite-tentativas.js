@@ -173,23 +173,34 @@ function rotaDe(req) {
 // a redefinição zera o balde da conta e marca o aparelho (liberarConta).
 const BALDES = Symbol('baldes do limitador');
 const COOKIE_APARELHO = 'mostrai.aparelho';
-const LER_APARELHO = /(?:^|;\s*)mostrai\.aparelho=([0-9a-f]{32})\.([0-9a-f]{64})(?:;|$)/;
+const LER_APARELHO = /(?:^|;\s*)mostrai\.aparelho=([0-9a-f]{1,12})\.([0-9a-f]{32})\.([0-9a-f]{64})(?:;|$)/;
 const VALIDADE_APARELHO_MS = 90 * 24 * 3600 * 1000; // renovado a cada login certo
 
 const chaveDaConta = (alvo, rota) => `alvo:${cofre.assinar(alvo, 'limite-tentativas')}:${rota}`;
 
-// O cookie é `<sorteio>.<HMAC(rota, alvo, sorteio)>`, com a chave do
-// servidor: vale só pra conta e a rota em que nasceu (o cookie da conta do
-// atacante não abre o balde da vítima), não se forja sem a chave e não leva
-// nada legível — nem o e-mail. Sem estado no banco: a assinatura confere.
-const assinarAparelho = (alvo, rota, sorteio) => cofre.assinar(`${rota}\n${alvo}\n${sorteio}`, 'aparelho-conhecido');
+// O cookie é `<emissão>.<sorteio>.<HMAC(rota, alvo, sorteio, emissão)>`, com
+// a chave do servidor: vale só pra conta e a rota em que nasceu (o cookie da
+// conta do atacante não abre o balde da vítima), não se forja sem a chave e
+// não leva nada legível — nem o e-mail. A emissão (segundos, hex) vai
+// assinada e é conferida AQUI: o Max-Age sozinho é instrução pro navegador, e
+// um cookie copiado valeria pra sempre (revisão Codex do PR #136). Sem estado
+// no banco: a assinatura confere. O que isso não faz: trocar a senha não
+// revoga o cookie dos OUTROS aparelhos — quem o tem fica com o mesmo teto de
+// 10 por janela, como quem o roubou (limite assumido, CONSTRAINTS.md).
+const assinarAparelho = (alvo, rota, sorteio, emissao) =>
+  cofre.assinar(`${rota}\n${alvo}\n${sorteio}\n${emissao}`, 'aparelho-conhecido');
+const emissaoAgora = () => Math.floor(Date.now() / 1000).toString(16);
+const noPrazo = (emissao) => Date.now() - Number.parseInt(emissao, 16) * 1000 <= VALIDADE_APARELHO_MS;
 
 async function limitar(req, res, next, alvo) {
   // Fora do try: rota sem `req.route` é erro de programação, não banco fora —
   // tem que falhar fechado, não abrir a porta com um aviso no log.
   const rota = rotaDe(req);
   const cookie = alvo && LER_APARELHO.exec(req.get('cookie') || '');
-  const aparelho = cookie && segredoConfere(cookie[2], assinarAparelho(alvo, rota, cookie[1])) ? cookie[2] : null;
+  const aparelho =
+    cookie && noPrazo(cookie[1]) && segredoConfere(cookie[3], assinarAparelho(alvo, rota, cookie[2], cookie[1]))
+      ? cookie[3]
+      : null;
   const baldes = {
     ip: `${ipDoCliente(req)}:${rota}`,
     conta: alvo ? chaveDaConta(alvo, rota) : null,
@@ -251,7 +262,8 @@ function limiteTentativasPorAlvo(alvoDe) {
 // nova.
 async function liberarConta(res, alvo, rota) {
   const sorteio = crypto.randomBytes(16).toString('hex');
-  res.cookie(COOKIE_APARELHO, `${sorteio}.${assinarAparelho(alvo, rota, sorteio)}`, {
+  const emissao = emissaoAgora();
+  res.cookie(COOKIE_APARELHO, `${emissao}.${sorteio}.${assinarAparelho(alvo, rota, sorteio, emissao)}`, {
     httpOnly: true,
     sameSite: 'strict',
     secure: process.env.NODE_ENV === 'production',

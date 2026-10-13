@@ -35,7 +35,8 @@ limitador só limita o que a chave distingue e o que ninguém apaga.
   acertou —, apaga o balde da conta que acertou e marca o navegador. Os erros
   contra outra conta ficam.
 - Aparelho conhecido (OWASP, "device cookies"): o login certo emite
-  `mostrai.aparelho` (sorteio + HMAC de rota, alvo e sorteio; 90 dias). O
+  `mostrai.aparelho` (emissão + sorteio + HMAC de rota, alvo, sorteio e
+  emissão; 90 dias contados no servidor, não só no `Max-Age`). O
   pedido que o traz conta num balde do aparelho, não no da conta. A
   redefinição de senha zera o balde da conta e também marca o navegador
   (`liberarConta`).

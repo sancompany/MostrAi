@@ -363,6 +363,39 @@ test('o aparelho onde a conta já entrou não fica preso no balde da conta', asy
   assert.strictEqual((await entrar(dona, lugar(167))).status, 200, 'o balde da conta ficou de fora');
 });
 
+// Revisão Codex do PR #136 (3ª rodada): o Max-Age é instrução pro navegador —
+// um cookie copiado valia pra sempre. A emissão vai assinada e o servidor
+// recusa o que passou de 90 dias: cai no balde da conta, como aparelho novo.
+test('o cookie de aparelho conhecido vence no servidor em 90 dias', async () => {
+  const dona = await criarConta();
+  const rota = '/anunciantes/login';
+  const DIA = 24 * 3600 * 1000;
+  // O mesmo formato que liberarConta emite (src/lib/limite-tentativas.js),
+  // com a emissão escolhida aqui.
+  const emitidoHa = (ms) => {
+    const emissao = Math.floor((Date.now() - ms) / 1000).toString(16);
+    const sorteio = randomBytes(16).toString('hex');
+    const assinatura = cofre.assinar(`${rota}\n${dona.contato_email}\n${sorteio}\n${emissao}`, 'aparelho-conhecido');
+    aparelhos.push(assinatura);
+    return `mostrai.aparelho=${emissao}.${sorteio}.${assinatura}`;
+  };
+  const chute = { email: dona.contato_email, senha: 'Errada12@' };
+  for (let i = 1; i <= MAX; i++) assert.strictEqual(await post(rota, chute, lugar(240 + i)), 401);
+  const certa = { email: dona.contato_email, senha: dona.senha };
+  assert.strictEqual(await post(rota, certa, lugar(251)), 429, 'o balde da conta está estourado');
+  const vencido = await postCompleto(rota, certa, { ...lugar(252), cookie: emitidoHa(91 * DIA) });
+  assert.deepStrictEqual(
+    [vencido.status, vencido.corpo?.motivo],
+    [429, 'conta'],
+    'cookie emitido há 91 dias não abre o balde do aparelho',
+  );
+  assert.strictEqual(
+    await post(rota, certa, { ...lugar(253), cookie: emitidoHa(89 * DIA) }),
+    200,
+    'o mesmo formato, emitido há 89 dias, vale — a assinatura replicada é a real',
+  );
+});
+
 // Revisão da rodada 3: redefinir a senha não destravava — /redefinir-senha
 // não tocava o balde da conta, e a dona, com a senha NOVA, seguia com 429.
 // Quem redefiniu provou ter o e-mail: o balde da conta no login zera e o

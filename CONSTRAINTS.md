@@ -119,6 +119,14 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
      entrou (cookie `mostrai.aparelho`, 90 dias) não trava; redefinir a senha
      zera o balde e marca o aparelho (RUNBOOK §6). Teto da conta acima do do
      IP (ex.: 3×) faria um IP só não bastar, ao preço de 3× mais chutes.
+  3. Trocar a senha não revoga os aparelhos conhecidos dos OUTROS navegadores
+     (apontado pelo Codex no PR #136). O cookie é assinado e sem estado —
+     vence 90 dias depois da emissão, contados no servidor —, e quem o tem
+     (alguém que já entrou naquele navegador, ou o roubou de lá) fica só com
+     o mesmo teto de 10 erros por janela, no balde do aparelho em vez do da
+     conta: não entra sem a senha. Revogar pede estado por conta (lista de
+     aparelhos) ou amarrar a assinatura à versão da senha (o limitador
+     passaria a ler a conta antes do login). Decisão do dono.
 - **Supabase no plano gratuito não tem backup automático.** Enquanto o
   projeto estiver no gratuito, a Lei 6 (backup do que não pode ser perdido)
   está em **exceção registrada**. Sai da exceção no dia em que o primeiro

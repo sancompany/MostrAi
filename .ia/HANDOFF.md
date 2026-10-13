@@ -67,6 +67,15 @@ não no repositório. O que mudou e não se desfaz sem contexto:
   do Postgres só sai no COMMIT e morre no ROLLBACK. Regra que fica: aviso
   em tempo real de algo gravado numa transação vai pelo client dela, nunca
   pelo pool. Teste: `tests/pendencia-aviso-no-commit.test.js`.
+- Revisão Codex, 3ª rodada (P2, segurança): o cookie de aparelho não levava
+  emissão, então o servidor aceitava um cookie copiado para sempre (o
+  `Max-Age` é só do navegador). Agora `<emissão>.<sorteio>.<HMAC(rota, alvo,
+  sorteio, emissão)>` e o limitador recusa o que passou de 90 dias (teste
+  "vence no servidor em 90 dias"). A outra metade do achado — trocar a
+  senha não revoga os aparelhos dos OUTROS navegadores — ficou como limite
+  assumido nº 3 do limitador em `CONSTRAINTS.md` (decisão do dono: estado
+  por conta × assinatura amarrada à versão da senha); a thread do Codex
+  fica aberta até ele decidir.
 - Ambiente dos e2e de navegador: `playwright` tem de resolver a partir de
   `node_modules` (aqui está instalado global em `/opt/node22`, e um
   `npm ci` apaga o link — recriar com `ln -s`); sem isso todo `.mjs` morre
