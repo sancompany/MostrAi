@@ -46,7 +46,13 @@ não no repositório. O que mudou e não se desfaz sem contexto:
   decisão 13 do dono — corrigir cria laço com o gerador; os MÉDIOS vão pro
   lote 2. Testes: `npm run check` 1089/1089 em banco recriado; 122 aplicada
   também sobre banco com dado; e2e 01, 02, 03, 11, 13, 14, 23, 25, 36, 46
-  e 48 verdes.
+  e 48 verdes. Revisão de integração do diff inteiro (os grupos foram
+  revisados isolados): dois ciclos sem CRÍTICO/ALTO/MÉDIO; quatro BAIXOS
+  corrigidos — `await` no `descontarAcerto` dos códigos de e-mail (com o
+  `uncaughtException` novo, rejeição solta derrubaria o processo), filtro
+  `::1` morto no teste de e-mail, `DELETE FROM webhooks_recebidos` sem
+  WHERE no teste do inbox (zerava no meio as entregas do teste de estorno),
+  `|` sem escape em tabelas de `docs/api.md`/`docs/funcional.md`.
 - Ambiente dos e2e de navegador: `playwright` tem de resolver a partir de
   `node_modules` (aqui está instalado global em `/opt/node22`, e um
   `npm ci` apaga o link — recriar com `ln -s`); sem isso todo `.mjs` morre

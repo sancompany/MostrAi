@@ -92,7 +92,7 @@ test.before(async () => {
   servidor = app.listen(0);
   await new Promise((r) => servidor.once('listening', r));
   base = `http://127.0.0.1:${servidor.address().port}`;
-  await pool.query("DELETE FROM tentativas_acesso WHERE chave LIKE '%127.0.0.1%' OR chave LIKE '%::1%'");
+  await pool.query("DELETE FROM tentativas_acesso WHERE chave LIKE '%127.0.0.1%'");
 });
 
 const criadas = [];
@@ -117,7 +117,7 @@ async function chamar(metodo, caminho, { conta, corpo, admin } = {}) {
   // compartilhado e `npm test` roda os arquivos em paralelo, e apagar a
   // tabela inteira zerava no meio do laço o balde que outro arquivo
   // (tests/limite-login.test.js) espera ver estourar.
-  await pool.query("DELETE FROM tentativas_acesso WHERE chave LIKE '%127.0.0.1%' OR chave LIKE '%::1%'");
+  await pool.query("DELETE FROM tentativas_acesso WHERE chave LIKE '%127.0.0.1%'");
   const r = await fetch(`${base}${caminho}`, {
     method: metodo,
     headers: {

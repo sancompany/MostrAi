@@ -539,7 +539,7 @@ router.post('/anunciantes/me/confirmar-email', exigirAnuncianteLogado, limiteTen
   if (repo.normalizarEmail(r.email) !== repo.normalizarEmail(conta.contato_email)) {
     return res.status(400).json({ erro: 'esse código era de outro endereço — peça um novo', motivo: 'expirado' });
   }
-  descontarAcerto(req, res);
+  await descontarAcerto(req, res);
   await repo.atualizar(conta.id, { email_confirmado: true });
   // Boas-vindas só DEPOIS da confirmação, uma vez na vida da conta, e só pra
   // quem anuncia — o texto fala em escolher plano e colocar anúncio, o que
@@ -662,7 +662,7 @@ router.post('/anunciantes/me/confirmar-troca-email', exigirAnuncianteLogado, lim
   if (!conta) return res.status(401).json({ erro: 'não autenticado' });
   const r = await codigosEmail.conferir(conta.id, 'troca', req.body.codigo);
   if (!r.ok) return res.status(400).json({ erro: codigosEmail.MENSAGEM_DO_ERRO[r.motivo], motivo: r.motivo });
-  descontarAcerto(req, res);
+  await descontarAcerto(req, res);
 
   const cliente = await pool.connect();
   let atualizada;

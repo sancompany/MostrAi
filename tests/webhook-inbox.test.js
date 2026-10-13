@@ -42,7 +42,10 @@ test.before(async () => {
   servidor = app.listen(0);
   await new Promise((r) => servidor.once('listening', r));
   base = `http://127.0.0.1:${servidor.address().port}`;
-  await pool.query('DELETE FROM webhooks_recebidos');
+  // Só as linhas DESTE arquivo (sobras de rodada interrompida): os testes
+  // rodam em paralelo no mesmo banco, e apagar a tabela inteira zerava no
+  // meio as entregas que tests/estorno.test.js grava pro backfill da 120.
+  await pool.query("DELETE FROM webhooks_recebidos WHERE chave LIKE 'evento:evt_inbox_%'");
 });
 
 test.afterEach(() => Object.assign(inbox.processadores, processadoresOriginais));
@@ -55,6 +58,11 @@ test.after(async () => {
       "DELETE FROM eventos_assinatura_pendentes WHERE payload->>'planoId' IN (SELECT id FROM assinaturas WHERE anunciante_id = $1)",
       [id],
     );
+    // As entregas v1 (`entrega:<uuid>`) só se acham pela assinatura.
+    await pool.query(
+      "DELETE FROM webhooks_recebidos WHERE payload->>'planoId' IN (SELECT id FROM assinaturas WHERE anunciante_id = $1)",
+      [id],
+    );
     await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [id]);
     await pool.query('DELETE FROM ciclos_contratados WHERE anunciante_id = $1', [id]);
     await pool.query('DELETE FROM cobrancas_confirmadas WHERE anunciante_id = $1', [id]);
@@ -62,7 +70,7 @@ test.after(async () => {
     await pool.query('DELETE FROM eventos WHERE anunciante_id = $1', [id]);
     await pool.query('DELETE FROM anunciantes WHERE id = $1', [id]);
   }
-  await pool.query('DELETE FROM webhooks_recebidos');
+  await pool.query("DELETE FROM webhooks_recebidos WHERE chave LIKE 'evento:evt_inbox_%'");
   await pool.end();
 });
 

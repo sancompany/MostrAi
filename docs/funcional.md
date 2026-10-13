@@ -2420,7 +2420,7 @@ nunca envia e-mail por nós: todo SMTP é do Mostraí.
 | Webhook não chega | a conciliação diária encontra a cobrança e credita | nada — a conta ativa sozinha em até 24h |
 | Webhook não chega e o cliente gerou outro link antes da conciliação | a conciliação também olha o link antigo (cancelado há até 30 dias, nunca pago): achou pagamento, vira a MESMA pendência do webhook — cancelar a assinatura e devolver no Checkout; nada é creditado (25/09/2026) | administrador vê na fila de eventos pendentes |
 | Cobertura de troca de plano perto do fim | a conciliação diária manda o aviso 7 dias antes (RN-36) | e-mail convidando a contratar de novo |
-| Webhook chega duas vezes | dedupe por `chargeId|status`; o segundo não faz nada | nada |
+| Webhook chega duas vezes | dedupe por `chargeId\|status`; o segundo não faz nada | nada |
 | SMTP fora do ar / recusando | a mensagem fica na fila e é tentada de novo (30 s → 2 h, 6 vezes); depois, "abandonado" no admin. A operação que gerou o e-mail já valeu (RN-62) | o e-mail chega atrasado; código vencido não é enviado (a pessoa pede outro) |
 | Pessoa digitou o e-mail errado no cadastro | "Corrigir e-mail" no próprio aviso, com a senha; código novo pro endereço certo (RN-62) | o aviso volta com o endereço novo e o prazo do código novo |
 | Webhook sem `chargeId` consultável | vira pendência, **não credita no escuro** | administrador vê na fila |
