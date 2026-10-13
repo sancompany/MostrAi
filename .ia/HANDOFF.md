@@ -80,6 +80,17 @@ não no repositório. O que mudou e não se desfaz sem contexto:
   assumido nº 3 do limitador em `CONSTRAINTS.md` (decisão do dono: estado
   por conta × assinatura amarrada à versão da senha); a thread do Codex
   fica aberta até ele decidir.
+- Revisão Codex, 5ª rodada (P1, válido): ciclos pagos fora de ordem — a
+  inbox reenvia com espera e a conciliação aplica atrasados, então o
+  pagamento antigo (documento A) podia entrar DEPOIS do novo (B) e
+  `registrarDocumentoDoPagador` devolvia o vigente pra A; cancelar daí ia
+  pra recorrência errada de novo. Agora o vigente só troca quando o
+  pagamento é mais novo que o mais novo já creditado na assinatura
+  (`pagoAntesDoMaisNovo`, pelo `pago_em` do PSP); o atrasado só abre a
+  pendência 'documento_pagador_mudou' com `documentoAtrasado`/
+  `documentoMantido`. Sem `pago_em` (ciclo à mão) vale a ordem de chegada.
+  Teste "pagamento antigo com outro documento que entra depois do novo não
+  devolve o vigente" em `tests/assinatura-pendente.test.js`.
 - Ambiente dos e2e de navegador: `playwright` tem de resolver a partir de
   `node_modules` (aqui está instalado global em `/opt/node22`, e um
   `npm ci` apaga o link — recriar com `ln -s`); sem isso todo `.mjs` morre

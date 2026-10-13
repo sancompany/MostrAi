@@ -563,12 +563,12 @@ test('AUD-005: intenção cancelada relida no FOR UPDATE — a 2ª tentativa (ou
 
 // Evento v2 do Checkout com ids previsíveis por rodada (3ª rodada da
 // auditoria): `cancelada` vem sem cobrança.
-const eventoV2 = (assinatura, { id, evento = 'criada', documento }) =>
+const eventoV2 = (assinatura, { id, evento = 'criada', documento, ocorridoEm = new Date().toISOString() }) =>
   sc.processarWebhookAssinatura({
     versao: 2,
     tipo: 'assinatura',
     eventoId: `evt_r3_${id}`,
-    ocorridoEm: new Date().toISOString(),
+    ocorridoEm,
     evento,
     planoId: assinatura.id,
     documento,
@@ -883,6 +883,49 @@ test('AUD-006: pagamento com outro documento na mesma assinatura — pendência 
     assert.equal((await assinaturasRepo.buscarPorId(assinatura.id)).status, 'cancelada');
   } finally {
     mock?.restaurar();
+    await eventos.aguardarGravacoes();
+    await limparR3(ids);
+    await apagar(c.id, rodada);
+  }
+});
+
+// 5ª revisão Codex do PR #136: a inbox reenvia com espera e a conciliação
+// aplica ciclo atrasado — um pagamento ANTIGO com o documento A pode entrar
+// DEPOIS do novo com B. `cicloNovo` só diz que o ciclo não tinha entrado
+// aqui; quem está cobrando é o pagamento mais novo, e o vigente fica.
+test('AUD-006: pagamento antigo com outro documento que entra depois do novo não devolve o vigente', async () => {
+  const c = await conta(); // cpf_cnpj da conta: 11144477735
+  const rodada = randomUUID().slice(0, 8);
+  const ids = [`${rodada}n`, `${rodada}v`];
+  const outro = '52998224725';
+  const DIA = 24 * 3600 * 1000;
+  try {
+    const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO });
+    const agora = Date.now();
+    // O novo (2ª recorrência, outro CPF/CNPJ) entra primeiro...
+    await eventoV2(assinatura, { id: ids[0], documento: outro, ocorridoEm: new Date(agora).toISOString() });
+    assert.equal((await assinaturasRepo.buscarPorId(assinatura.id)).documento_pagador, outro);
+    // ...e o antigo (1ª recorrência, pago 30 dias antes) chega atrasado.
+    await eventoV2(assinatura, {
+      id: ids[1],
+      documento: c.cpf_cnpj,
+      ocorridoEm: new Date(agora - 30 * DIA).toISOString(),
+    });
+    assert.equal(
+      (await assinaturasRepo.buscarPorId(assinatura.id)).documento_pagador,
+      outro,
+      'o vigente é o do pagamento mais novo, não o do processado por último',
+    );
+    assert.equal(await cobrancasDe(c.id), 2, 'o dinheiro dos dois entrou');
+    const mudou = (await pendenciasCompletas(assinatura.id)).filter(
+      (p) => p.payload.evento === 'documento_pagador_mudou',
+    );
+    assert.equal(mudou.length, 1, 'o Admin fica sabendo das duas recorrências');
+    assert.equal(mudou[0].payload.documentoAtrasado, c.cpf_cnpj);
+    assert.equal(mudou[0].payload.documentoMantido, outro);
+    assert.match(mudou[0].motivo, /ATRASADO/);
+    assert.doesNotMatch(mudou[0].motivo, /\d{11}/, 'o número não vai no texto');
+  } finally {
     await eventos.aguardarGravacoes();
     await limparR3(ids);
     await apagar(c.id, rodada);

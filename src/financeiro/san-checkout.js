@@ -984,9 +984,29 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
 //     cancelamento ia pra recorrência velha e a nova seguia cobrando calada.
 //   · reentrega ou aviso de um ciclo que já tinha entrado (`cicloNovo:
 //     false`) nunca troca o vigente.
-async function registrarDocumentoDoPagador(cliente, assinatura, documento, anunciante, contexto, { cicloNovo }) {
+//   · ciclo novo aqui mas PAGO ANTES do ciclo mais novo já aplicado nesta
+//     assinatura (`pagoEm`) — a inbox reenvia com espera e a conciliação
+//     aplica atrasados, então o antigo (documento A) pode entrar depois do
+//     novo (B) — não troca o vigente: só o pagamento mais novo diz quem está
+//     cobrando (5ª revisão Codex do PR #136). A pendência avisa do mesmo jeito.
+async function registrarDocumentoDoPagador(
+  cliente,
+  assinatura,
+  documento,
+  anunciante,
+  contexto,
+  { cicloNovo, pagoEm },
+) {
   const vigente = assinatura?.documento_pagador || null;
   if (!documento || documento === vigente || (vigente && !cicloNovo)) return;
+  if (vigente && (await pagoAntesDoMaisNovo(cliente, assinatura.id, pagoEm))) {
+    await registrarPendencia(
+      { ...contexto, evento: 'documento_pagador_mudou', documentoAtrasado: documento, documentoMantido: vigente },
+      'pagamento ATRASADO com OUTRO CPF/CNPJ nesta assinatura (o dele está em documentoAtrasado no payload; o vigente, de um pagamento mais novo, foi mantido) — a Asaas pode ter DUAS recorrências deste plano, uma por documento: pelo Checkout, cancelar a antiga (a do documento atrasado) e, se as duas cobraram o mesmo período, devolver uma (RUNBOOK §6)',
+      cliente,
+    );
+    return;
+  }
   await cliente.query('UPDATE assinaturas SET documento_pagador = $2 WHERE id = $1', [assinatura.id, documento]);
   if (vigente) {
     await registrarPendencia(
@@ -1001,6 +1021,22 @@ async function registrarDocumentoDoPagador(cliente, assinatura, documento, anunc
       cliente,
     );
   }
+}
+
+// Este pagamento (`pagoEm`, do PSP) é mais antigo que o pagamento mais novo
+// já creditado nesta assinatura? Sem `pagoEm` (ciclo registrado à mão) não dá
+// pra saber, e vale a ordem de chegada, como antes.
+async function pagoAntesDoMaisNovo(cliente, assinaturaId, pagoEm) {
+  if (!pagoEm) return false;
+  const {
+    rows: [{ maisNovo }],
+  } = await cliente.query(
+    `SELECT max(c.pago_em) AS "maisNovo" FROM ciclos_contratados ci
+       JOIN cobrancas_confirmadas c ON c.id = ci.cobranca_confirmada_id
+      WHERE ci.assinatura_id = $1`,
+    [assinaturaId],
+  );
+  return Boolean(maisNovo) && new Date(pagoEm) < new Date(maisNovo);
 }
 
 // Credita um ciclo pago na conta: estende a cobertura, registra a cobrança e
@@ -1178,6 +1214,7 @@ async function aplicarCicloPago(
     }
     await registrarDocumentoDoPagador(cliente, assinaturaTravada, documentoDoPagador, anunciante, contexto, {
       cicloNovo: true,
+      pagoEm,
     });
     // Renovação atrasada de uma assinatura que o cliente já trocou por outra
     // (cancelada com ciclo pago): os dias contam, a escolha nova fica.
