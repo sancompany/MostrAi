@@ -53,6 +53,12 @@ não no repositório. O que mudou e não se desfaz sem contexto:
   `::1` morto no teste de e-mail, `DELETE FROM webhooks_recebidos` sem
   WHERE no teste do inbox (zerava no meio as entregas do teste de estorno),
   `|` sem escape em tabelas de `docs/api.md`/`docs/funcional.md`.
+- Revisão Codex do PR #136 (P2, válido): devolução em parcelas — a parcial
+  fecha o pedido aberto e, quando a total chega, `pedidoAbertoDa` não acha
+  nada e o momento caía na hora da confirmação (fora do prazo → crédito
+  ficava). Agora `estornos.js#momentoDoPedidoDe` lê o pedido mais antigo não
+  cancelado da cobrança (`min(LEAST(solicitado_em, confirmado_em))`); teste
+  "AUD-009: devolução em parcelas" em `tests/estorno.test.js`.
 - Ambiente dos e2e de navegador: `playwright` tem de resolver a partir de
   `node_modules` (aqui está instalado global em `/opt/node22`, e um
   `npm ci` apaga o link — recriar com `ln -s`); sem isso todo `.mjs` morre

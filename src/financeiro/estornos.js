@@ -124,6 +124,23 @@ async function pedidoAbertoDa(db, cobrancaId) {
   return rows[0] || null;
 }
 
+// Quando a devolução desta cobrança foi PEDIDA — o momento que decide se o
+// crédito de indicação ainda não tinha consolidado (reverterCreditoDeIndicacao).
+// Não é o pedido aberto: a Asaas pode devolver em parcelas, e a primeira
+// (parcial) já fecha o pedido 'solicitado' — quando a total chega, só existe
+// o pedido confirmado e a linha 'externo' da própria parcela (revisão Codex do
+// PR #136). Vale o mais antigo dos pedidos não cancelados; numa devolução
+// feita direto na Asaas, a hora que o PSP informou (`confirmado_em`), não a
+// hora em que o aviso foi processado aqui.
+async function momentoDoPedidoDe(db, cobrancaId) {
+  const { rows } = await db.query(
+    `SELECT min(LEAST(solicitado_em, confirmado_em)) AS em FROM estornos
+      WHERE cobranca_id = $1 AND status <> 'cancelado'`,
+    [cobrancaId],
+  );
+  return rows[0].em;
+}
+
 // Admin pede o estorno de uma cobrança. Tudo é conferido aqui, de novo, com a
 // cobrança TRAVADA: o que a tela mostrou não vale como prova (relógio,
 // valor, janela e pedido em aberto são os do servidor agora). Devolve a
@@ -460,8 +477,14 @@ async function registrarEstornoDoPsp(payload) {
     let creditoRevertido = null;
     if (novoStatus === 'estornado') {
       // O crédito de indicação que esta cobrança gerou (AUD-009) — antes de
-      // qualquer saída de aplicarEstornoTotal (acerto, desistência).
-      const credito = await reverterCreditoDeIndicacao(cliente, cobranca, pedido?.solicitado_em ?? confirmadoEm);
+      // qualquer saída de aplicarEstornoTotal (acerto, desistência). O pedido
+      // ou a linha 'externo' desta confirmação já estão gravados acima, então
+      // sempre há um momento.
+      const credito = await reverterCreditoDeIndicacao(
+        cliente,
+        cobranca,
+        await momentoDoPedidoDe(cliente, cobranca.id),
+      );
       creditoRevertido = credito.revertido;
       avisos.push(
         ...credito.avisos,

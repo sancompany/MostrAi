@@ -1598,6 +1598,55 @@ test('AUD-009: devolução fora dos 7 dias não tira o crédito (consolidado); p
   }
 });
 
+// Revisão Codex do PR #136: a Asaas pode devolver em parcelas. A primeira
+// (parcial) já fecha o pedido aberto; quando a total chega, não há mais
+// pedido 'solicitado' e o momento caía na hora da confirmação — fora do
+// prazo, o crédito ficava com o ponto mesmo com o pedido feito no 6º dia.
+test('AUD-009: devolução em parcelas — o pedido no prazo vale mesmo com a parcela total chegando fora dele', async () => {
+  const creditosRepo = require('../src/creditos/repository');
+  const par = await pontoQueIndicou();
+  const { ponto, indicado } = par;
+  try {
+    const { assinatura, chargeId, cobranca } = await pagar(indicado);
+    assert.equal(await creditosRepo.saldo(ponto.id), 1);
+    const pedido = await admin('POST', `/admin/cobrancas/${cobranca.id}/estornos`, {
+      tipo: 'ordinario',
+      motivo: 'pediu no 6º dia',
+    });
+    assert.equal(pedido.status, 201, pedido.texto);
+    // Pago há 10 dias, pedido há 4 (6º dia). A Asaas devolve em duas parcelas
+    // e a total só chega hoje, no 10º dia.
+    await pool.query("UPDATE cobrancas_confirmadas SET pago_em = now() - interval '10 days' WHERE id = $1", [
+      cobranca.id,
+    ]);
+    await pool.query("UPDATE estornos SET solicitado_em = now() - interval '4 days' WHERE cobranca_id = $1", [
+      cobranca.id,
+    ]);
+    await estornoDoPsp(assinatura, indicado, chargeId, {
+      statusFinanceiro: 'estornado_parcialmente',
+      valorEstornado: 30,
+      estornoParcial: true,
+      valor: 134.99,
+    });
+    assert.equal(
+      (await linha('SELECT status FROM estornos WHERE cobranca_id = $1', [cobranca.id])).status,
+      'confirmado',
+      'a parcial fechou o pedido aberto',
+    );
+    assert.equal((await reversoesDo(ponto)).length, 0, 'parcial não mexe no crédito');
+
+    await estornoDoPsp(assinatura, indicado, chargeId, { statusFinanceiro: 'estornado', valor: 134.99 });
+    assert.deepEqual(
+      (await reversoesDo(ponto)).map((r) => [r.quantidade, r.estorno_de_cobranca_id]),
+      [[-1, cobranca.id]],
+      'o momento do pedido é que vale, não o da última parcela',
+    );
+    assert.equal(await creditosRepo.saldo(ponto.id), 0);
+  } finally {
+    await limparIndicacao(par);
+  }
+});
+
 test('AUD-009: o card de indicações e o aviso ao ponto acompanham o crédito que saiu', async () => {
   const indicacoesRepo = require('../src/indicacoes/repository');
   const creditosRepo = require('../src/creditos/repository');
