@@ -659,10 +659,19 @@ function htmlPontoMovelEscolha(p) {
     </div>`;
 }
 
-// "Ver agenda" do Mostraí Móvel: um <dialog> com o PRESENTE e o FUTURO da
-// rede (GET /anunciantes/me/redes-moveis/:id/agenda — só dado público:
-// nome, local, período e tipo; nunca histórico, público estimado, conta ou
-// tela). Carrega sob demanda, no clique.
+// "Ver agenda" do Mostraí Móvel: um <dialog> com três blocos (ADR-047) —
+// AGORA, PRÓXIMAS PASSAGENS e o HISTÓRICO (as últimas passagens encerradas,
+// com o período REAL, em tom secundário) — de
+// GET /anunciantes/me/redes-moveis/:id/agenda. Só dado público: tipo, nome,
+// local do evento e período; nunca público estimado, conta, tela, motivo ou
+// planejamento. O servidor já tira a cancelada e decide o bloco de cada
+// passagem: aqui nada é refiltrado por estado. Carrega sob demanda, no clique.
+const AGENDA_MOVEL = {
+  proximas: 'Próximas passagens',
+  semProximas: 'Nenhuma passagem publicada.',
+  historico: 'Histórico',
+  semHistorico: 'Nenhuma passagem encerrada ainda.',
+};
 async function abrirAgendaMovel(redeId) {
   let dlg = document.getElementById('dlgAgendaMovel');
   if (!dlg) {
@@ -679,7 +688,14 @@ async function abrirAgendaMovel(redeId) {
       <div><h3 id="agendaMovelTitulo">${esc(titulo)}</h3>${sub ? `<p>${esc(sub)}</p>` : ''}</div>
       <button type="button" class="btn ghost mini" data-fechar-agenda aria-label="Fechar">Fechar</button>
     </header>`;
-  dlg.innerHTML = `${cabecalho('Agenda')}<p class="dlg-agenda-msg">Carregando...</p>`;
+  // Trocar o conteúdo tira do DOM o botão que tinha o foco (o showModal o pôs
+  // no "Fechar" do "Carregando..."): quem navega pelo teclado ficaria no
+  // <body>, atrás do modal. Com o diálogo aberto, o foco volta ao "Fechar".
+  const pintar = (html) => {
+    dlg.innerHTML = html;
+    if (dlg.open && !dlg.contains(document.activeElement)) dlg.querySelector('[data-fechar-agenda]').focus();
+  };
+  dlg.innerHTML = `${cabecalho('Agenda')}<p class="dlg-agenda-msg" role="status">Carregando...</p>`;
   if (!dlg.open) dlg.showModal();
   let a;
   try {
@@ -689,7 +705,9 @@ async function abrirAgendaMovel(redeId) {
     a = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(a.erro || 'não deu pra carregar a agenda');
   } catch (erro) {
-    dlg.innerHTML = `${cabecalho('Agenda')}<p class="dlg-agenda-msg form-msg err" role="alert">Não deu pra carregar a agenda agora (${esc(window.frase(erro.message))}).</p>`;
+    pintar(
+      `${cabecalho('Agenda')}<p class="dlg-agenda-msg form-msg err" role="alert">Não deu pra carregar a agenda agora (${esc(window.frase(erro.message))}).</p>`,
+    );
     return;
   }
   const linha = (c) => {
@@ -700,15 +718,18 @@ async function abrirAgendaMovel(redeId) {
         <span class="agenda-movel-tipo">${esc(window.PONTO_MOVEL.tipo(c.tipo))}</span>
       </li>`;
   };
-  const bloco = (titulo, itens, vazio) =>
-    `<section class="agenda-movel-bloco"><h4>${titulo}</h4>${
+  // `chave` vira o data-agenda-bloco (âncora estável para os roteiros) e
+  // liga a seção ao título dela (aria-labelledby).
+  const bloco = (chave, titulo, itens, vazio, classe = '') =>
+    `<section class="agenda-movel-bloco${classe}" data-agenda-bloco="${chave}" aria-labelledby="agendaMovel-${chave}"><h4 id="agendaMovel-${chave}">${titulo}</h4>${
       itens.length
         ? `<ul class="agenda-movel-lista">${itens.map(linha).join('')}</ul>`
         : `<p class="u-dim">${vazio}</p>`
     }</section>`;
-  dlg.innerHTML = `${cabecalho(a.rede.nome, window.PONTO_MOVEL.cidade(a.rede.cidade, a.rede.uf))}
-    ${bloco('Agora', a.agora, window.PONTO_MOVEL.semLocal)}
-    ${bloco('Próximas localizações', a.proximos, 'Nenhuma localização programada.')}`;
+  pintar(`${cabecalho(a.rede.nome, window.PONTO_MOVEL.cidade(a.rede.cidade, a.rede.uf))}
+    ${bloco('agora', 'Agora', a.agora || [], window.PONTO_MOVEL.semLocal)}
+    ${bloco('proximas', AGENDA_MOVEL.proximas, a.proximos || [], AGENDA_MOVEL.semProximas)}
+    ${bloco('historico', AGENDA_MOVEL.historico, a.historico || [], AGENDA_MOVEL.semHistorico, ' agenda-movel-historico')}`);
 }
 
 // Estado da seleção (contador e modo), repintado depois de cada salvamento

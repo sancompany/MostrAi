@@ -17,10 +17,12 @@
 //     MÓVEL, cidade, "Local atual" / "Próxima localização", sem dado técnico;
 //     com 0 tela em operação, 0 evento e 0 alocação a caixa está HABILITADA
 //     (nunca "Indisponível para escolha") e a escolha conta 1 posição;
-//     "Ver agenda" mostra só presente e futuro; 390px sem rolagem lateral.
+//     sem próxima, "Ainda não publicada"; "Ver agenda" com Agora / Próximas
+//     passagens / Histórico (ADR-047); 390px sem rolagem lateral.
 //   D. Site público "Onde estamos" — UM card da rede (selo MÓVEL, foto da rede),
 //     "Ver no mapa" só nos locais reais de agora; sem alocação, "Sem
-//     localização no momento" e nenhum mapa; o card fixo continua.
+//     localização no momento" e nenhum mapa; o card fixo só depois de
+//     instalado (ADR-047: aprovado sem 1º sinal fica fora do site).
 // Banco zerado, servidor na 3999 (o roteiro o reinicia com STORAGE_CAPTURA)
 // e o .env carregado:
 //   tests/e2e/reset-db.sh && tests/e2e/restart.sh
@@ -365,7 +367,9 @@ check('card: nome "Mostraí Móvel" (sem cidade colada)', textoCard.includes('Mo
 check('card: cidade separada', textoCard.includes('Matão/SP'));
 check('card: selo MÓVEL (sem ITINERANTE)', /MÓVEL/.test(await cardRede.locator('.selo-movel').innerText()) && !/itinerante/i.test(textoCard), textoCard);
 check('card: Local atual — Sem localização no momento', /Local atual\s*Sem localização no momento/i.test(textoCard), textoCard);
-check('card: Próxima localização — Nenhuma programada', /Próxima localização\s*Nenhuma programada/i.test(textoCard), textoCard);
+// ADR-047: sem próxima passagem, "Ainda não publicada" (era "Nenhuma
+// programada") — o cliente só vê o que já foi confirmado.
+check('card: Próxima localização — Ainda não publicada', /Próxima localização\s*Ainda não publicada/i.test(textoCard), textoCard);
 check(
   'card: nada técnico',
   !/telas na rede|em operação agora|inventário|volta automaticamente|Sem alocação|Indisponível/i.test(textoCard),
@@ -397,7 +401,15 @@ check(
 await cardRede.locator('[data-agenda-rede]').click();
 await anun.waitForSelector('#dlgAgendaMovel[open] .agenda-movel-bloco', { timeout: 8000 });
 const agendaVazia = await anun.locator('#dlgAgendaMovel').innerText();
-check('Ver agenda: vazia — "Sem localização no momento" e "Nenhuma localização programada."', /Sem localização no momento/.test(agendaVazia) && /Nenhuma localização programada\./.test(agendaVazia), agendaVazia);
+// ADR-047: a agenda do cliente tem Agora / Próximas passagens / Histórico
+// (era "Próximas localizações", sem histórico), cada um com a frase de vazio.
+check(
+  'Ver agenda: vazia — Agora, Próximas passagens e Histórico, cada um com a frase de vazio',
+  /Agora\s*Sem localização no momento/i.test(agendaVazia) &&
+    /Próximas passagens\s*Nenhuma passagem publicada\./i.test(agendaVazia) &&
+    /Histórico\s*Nenhuma passagem encerrada ainda\./i.test(agendaVazia),
+  agendaVazia,
+);
 check('Ver agenda não marca/desmarca a caixa', await cardRede.locator('input').isChecked());
 await anun.locator('#dlgAgendaMovel [data-fechar-agenda]').click();
 await recarregarQuieto(anun);
@@ -682,9 +694,24 @@ await modal().locator('[data-fechar]').first().click();
 
 // ---------------------------------------------------------------------------
 console.log('== Onde estamos e dados ==');
+// ADR-047 (D3): o fixo criado em "B" foi aprovado mas nunca instalado
+// (nenhuma tela deu o 1º sinal) — fica fora do site e de toda contagem
+// comercial. Instalado pelo contrato do Player (tela, código, provisionar =
+// 1º sinal), passa a aparecer: é o "card fixo" que o site confere abaixo.
+const antesDaInstalacao = await (await fetch(`${B}/pontos`)).json();
+check('"Onde estamos": o fixo aguardando instalação NÃO aparece', !antesDaInstalacao.some((p) => String(p.id) === FIXO));
+const telaFixo = await apiAdmin(`/admin/pontos/${FIXO}/dispositivos`, 'POST', {});
+const codigoFixo = await apiAdmin(`/admin/dispositivos/${telaFixo.json?.id}/codigo-instalacao`, 'POST');
+const instalouFixo = await fetch(`${B}/player/provisionar`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-Player-Version': '1.2.0+12' },
+  body: JSON.stringify({ codigoTela: codigoFixo.json?.codigoTela, codigoInstalacao: codigoFixo.json?.codigo }),
+});
+check('fixo instalado pelo Player (1º sinal): em operação', instalouFixo.ok && PG(`SELECT status FROM pontos WHERE id = ${FIXO}`) === 'em_operacao');
 // UM card por rede (estação "Onde estamos", 08/10/2026): com os locais
 // reais de agora, sem endereço-base nem status técnico.
 const publico = await (await fetch(`${B}/pontos`)).json();
+check('"Onde estamos": instalado, o fixo aparece', publico.some((p) => String(p.id) === FIXO));
 const linhasDaRede = publico.filter((p) => String(p.id) === REDE);
 check('"Onde estamos": UMA linha da rede', linhasDaRede.length === 1, JSON.stringify(linhasDaRede));
 const daRede = (linhasDaRede[0]?.movel?.agora || []).map((l) => l.nome).sort();

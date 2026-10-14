@@ -2342,7 +2342,7 @@ dialog.dlg-endereco::backdrop { background: rgba(20,23,31,.5); }
 .ponto-movel-onde.vazio .ponto-movel-valor { font-weight: 400; color: var(--text-dim); }
 button.ponto-agenda { border: 0; font-family: inherit; cursor: pointer; }
 
-/* "Ver agenda": diálogo nativo, presente + futuro da rede. */
+/* "Ver agenda": diálogo nativo — agora, próximas passagens e histórico da rede. */
 .dlg-agenda-movel { width: min(560px, calc(100vw - 32px)); max-height: min(80vh, 640px); padding: 0; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 18px 48px rgba(20, 23, 31, .22); }
 .dlg-agenda-movel::backdrop { background: rgba(20, 23, 31, .45); }
 .dlg-agenda-topo { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid var(--border); }
@@ -2362,6 +2362,12 @@ button.ponto-agenda { border: 0; font-family: inherit; cursor: pointer; }
 .agenda-movel-data span, .agenda-movel-local span { font-size: .8rem; color: var(--text-dim); overflow-wrap: anywhere; }
 .agenda-movel-local b { overflow-wrap: anywhere; }
 .agenda-movel-tipo { font-size: .72rem; font-weight: 700; color: var(--text-dim); white-space: nowrap; }
+/* Histórico (ADR-047): o que já passou, secundário — separado por uma linha,
+   sem o fundo das linhas de agora/próximas e com o texto em cinza. */
+.agenda-movel-historico { margin-top: 8px; border-top: 1px solid var(--border); }
+.agenda-movel-historico .agenda-movel-item { background: transparent; border-style: dashed; }
+.agenda-movel-historico .agenda-movel-data b,
+.agenda-movel-historico .agenda-movel-local b { font-weight: 600; color: var(--text-dim); }
 @media (max-width: 520px) {
   .agenda-movel-item { grid-template-columns: minmax(0, 1fr) auto; }
   .agenda-movel-data { grid-column: 1 / -1; flex-direction: row; gap: 8px; }

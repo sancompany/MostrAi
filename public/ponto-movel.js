@@ -17,9 +17,11 @@
     telas: (total, emOperacao) => `${plural(total, 'tela', 'telas')} · ${emOperacao} em operação`,
     // Card do anunciante: onde está AGORA e a PRÓXIMA localização. Sem
     // localização não é erro nem indisponibilidade — a rede continua
-    // escolhível.
+    // escolhível. Sem próxima: "ainda não publicada" (ADR-047) — o cliente
+    // só vê passagem confirmada; o planejamento da equipe (ponto aguardando
+    // instalação, data prevista) fica no Admin.
     semLocal: 'Sem localização no momento',
-    semProximo: 'Nenhuma programada',
+    semProximo: 'Ainda não publicada',
     // "Onde estamos" (site público): rótulo "Próximo".
     semProximoCompromisso: 'Nenhum programado',
     locais: (n) => `${n} locais em operação`,
