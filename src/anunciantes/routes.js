@@ -865,8 +865,9 @@ function cardDaRede(m) {
   };
 }
 
-// "Ver agenda" do card do Mostraí Móvel: presente + futuro da rede, só com
-// dado público (src/pontos/movel.js#agendaPublicaDaRede). Qualquer conta
+// "Ver agenda" do card do Mostraí Móvel: agora, próximas e o histórico (as
+// últimas encerradas, ADR-047) da rede, só com dado público
+// (src/pontos/movel.js#agendaPublicaDaRede). Qualquer conta
 // logada vê — não precisa ter escolhido a rede.
 router.get('/anunciantes/me/redes-moveis/:id/agenda', exigirAnuncianteLogado, async (req, res) => {
   const agenda = await agendaPublicaDaRede(req.params.id);
