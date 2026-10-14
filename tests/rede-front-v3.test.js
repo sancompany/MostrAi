@@ -729,9 +729,13 @@ test('d4. conta: uma tela só, conflito por tela = 409, e a lista unificada most
   // A ficha da rede traz o mesmo formato.
   const ficha = (await admin('GET', `/admin/pontos/${rede.id}/movel`)).json;
   assert.ok(ficha.compromissos.proximos.some((x) => x.ref === ok.json.ref));
-  // Ponto fixo não tem compromisso.
+  // Ponto fixo não tem compromisso PRÓPRIO: desde a ADR-047 a rota lista as
+  // passagens do Móvel vinculadas a ele (local_ponto_id) — este não recebeu
+  // nenhuma (tests/movel-agenda-instalacao.test.js cobre o vinculado).
   const fixo = await pontoFixoSemHorario();
-  assert.strictEqual((await admin('GET', `/admin/pontos/${fixo.id}/compromissos`)).status, 409);
+  const doFixo = await admin('GET', `/admin/pontos/${fixo.id}/compromissos`);
+  assert.strictEqual(doFixo.status, 200, JSON.stringify(doFixo.json));
+  assert.deepStrictEqual(doFixo.json, { agora: [], proximos: [], historico: [] });
 });
 
 test('d5. conta: iniciar sem o termo físico assinado = 409', async () => {

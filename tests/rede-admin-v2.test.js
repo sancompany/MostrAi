@@ -471,7 +471,9 @@ test('1. Agenda móvel do Admin: agora + futuro por padrão, um item por comprom
 });
 
 // ---------- 2. Agenda pública da rede ----------
-test('2. agenda pública da rede ("Ver agenda"): só agora e futuro, só tipo/nome/local/período; qualquer conta logada lê', async () => {
+// Desde a ADR-047 (14/10/2026) o "Ver agenda" também tem o HISTÓRICO das
+// passagens encerradas (período real); cancelado continua invisível.
+test('2. agenda pública da rede ("Ver agenda"): agora, futuro e histórico encerrado, só tipo/nome/local/período; qualquer conta logada lê', async () => {
   // Uma conta sem plano e sem escolha nenhuma: não precisa ter escolhido a rede.
   const leitora = await novaConta();
   const nav = await entrar(leitora);
@@ -483,6 +485,7 @@ test('2. agenda pública da rede ("Ver agenda"): só agora e futuro, só tipo/no
     rede: { id: vazia.id, nome: 'Mostraí Móvel', cidade: vazia.cidade, uf: 'SP' },
     agora: [],
     proximos: [],
+    historico: [],
   });
 
   const rede = await redeComTelas(3);
@@ -515,7 +518,8 @@ test('2. agenda pública da rede ("Ver agenda"): só agora e futuro, só tipo/no
     inicio: paredeMais(10 * 24),
     fim: paredeMais(11 * 24),
   });
-  // PASSADO e fora: encerrado, cancelado e programado que já terminou.
+  // PASSADO: o encerrado vai para o histórico; cancelado e programado que já
+  // terminou (sem nunca começar) não aparecem em lugar nenhum.
   const encerrado = await cadastrarEvento(rede.id, [c], {
     nome: 'Show Encerrado',
     inicio: paredeMais(30 * 24),
@@ -533,7 +537,7 @@ test('2. agenda pública da rede ("Ver agenda"): só agora e futuro, só tipo/no
 
   const r = await agendaPublica(nav, rede.id);
   assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-  assert.deepStrictEqual(Object.keys(r.json).sort(), ['agora', 'proximos', 'rede']);
+  assert.deepStrictEqual(Object.keys(r.json).sort(), ['agora', 'historico', 'proximos', 'rede']);
   assert.deepStrictEqual(r.json.rede, { id: rede.id, nome: 'Mostraí Móvel', cidade: rede.cidade, uf: 'SP' });
   assert.deepStrictEqual(
     r.json.agora.map((x) => [x.tipo, x.nome, x.local]),
@@ -564,15 +568,32 @@ test('2. agenda pública da rede ("Ver agenda"): só agora e futuro, só tipo/no
     assert.deepStrictEqual(Object.keys(item).sort(), CHAVES_PUBLICAS, `só o público: ${JSON.stringify(item)}`);
     assert.ok(new Date(item.fim).getTime() > Date.now(), 'nada do passado');
   }
+  // Histórico: só o que aconteceu (encerrado), com o período REAL — iniciado
+  // e encerrado agora há pouco, não os 30 dias à frente que foram previstos.
+  assert.deepStrictEqual(
+    r.json.historico.map((x) => [x.tipo, x.nome, x.local]),
+    [['evento', 'Show Encerrado', 'Parque de Exposições']],
+    'o encerrado no histórico; cancelado e vencido sem começar, nunca',
+  );
+  for (const item of r.json.historico) {
+    assert.deepStrictEqual(Object.keys(item).sort(), CHAVES_PUBLICAS, `só o público: ${JSON.stringify(item)}`);
+    assert.ok(new Date(item.fim).getTime() <= Date.now(), 'o fim real, já passado');
+    assert.ok(new Date(item.inicio).getTime() <= new Date(item.fim).getTime());
+  }
+  assert.doesNotMatch(
+    JSON.stringify({ agora: r.json.agora, proximos: r.json.proximos }),
+    /Encerrado/,
+    'o passado não volta para agora/próximos',
+  );
   const texto = JSON.stringify(r.json);
   assert.doesNotMatch(
     texto,
-    /Sigilosa|4321|5000|nota interna|chave com o gerente|Rua Secreta|Av\. das Feiras|Encerrado|Cancelado|Velho/,
-    'nenhum dado administrativo, interno ou do passado',
+    /Sigilosa|4321|5000|nota interna|chave com o gerente|Rua Secreta|Av\. das Feiras|Cancelado|Velho/,
+    'nenhum dado administrativo, interno, cancelado ou vencido sem começar',
   );
   assert.doesNotMatch(
     texto,
-    /"(conta|telas?|endereco|percentual|termo\w*|publico\w*|observacao|organizacao|estado)"/,
+    /"(conta|telas?|endereco|percentual|termo\w*|publico\w*|observacao|organizacao|estado|motivo\w*|encerrado\w*)"/,
     'nenhuma chave interna',
   );
 

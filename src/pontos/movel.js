@@ -252,11 +252,83 @@ function redePublica(m) {
   };
 }
 
+// A ALOCAÇÃO DO MÓVEL VINCULADA a cada ponto fixo pedido (local_ponto_id,
+// migration 123): a hospedagem ATIVA, senão a PROGRAMADA que começa
+// primeiro — no mesmo recorte de "agora + futuro" da agenda (a programada
+// que já passou do fim está saindo pelo job e não é mais a próxima); ponto
+// sem nenhuma fica fora do mapa (= null). É a "unidade alocada" da linha
+// "aguardando instalação" da agenda, na mesma forma do `alocacao_movel` de
+// GET /admin/pontos (src/pontos/repository.js#listar). Map pontoId → { ref,
+// id, redeId, rede, estado, inicio, fim, motivoAlocacao, tela: { id, codigo } }.
+async function alocacoesVinculadas(pontoIds, db = pool) {
+  const ids = [...new Set(pontoIds.map(Number))].filter((id) => Number.isInteger(id) && id > 0);
+  if (!ids.length) return new Map();
+  const { rows } = await db.query(
+    `SELECT DISTINCT ON (h.local_ponto_id) h.local_ponto_id, h.id, h.ponto_id, r.nome AS rede, h.estado, h.inicio,
+            h.fim, h.motivo_alocacao, h.dispositivo_id
+       FROM pontos_moveis_hospedagens h JOIN pontos r ON r.id = h.ponto_id
+      WHERE h.local_ponto_id = ANY($1::int[])
+        AND (h.estado = 'ativa' OR (h.estado = 'programada' AND h.fim > now()))
+      ORDER BY h.local_ponto_id, (h.estado = 'ativa') DESC, h.inicio, h.id`,
+    [ids],
+  );
+  return new Map(
+    rows.map((h) => [
+      h.local_ponto_id,
+      {
+        ref: `h${h.id}`,
+        id: Number(h.id),
+        redeId: h.ponto_id,
+        rede: h.rede,
+        estado: h.estado,
+        inicio: h.inicio,
+        fim: h.fim,
+        motivoAlocacao: h.motivo_alocacao,
+        tela: { id: h.dispositivo_id, codigo: formatarCodigoTela(h.dispositivo_id) },
+      },
+    ]),
+  );
+}
+
+// "AGUARDANDO INSTALAÇÃO" na Agenda móvel do Admin (?aguardando=1, ADR-047):
+// os pontos fixos aprovados que nunca tiveram tela com o 1º sinal — o mesmo
+// predicado único da escolha e do site (aguardandoInstalacaoSql) —, elegíveis
+// para receber o Móvel. Pela data prevista da instalação; "Sem data definida"
+// (null) por último. Cada um com a alocação vinculada atual ou a próxima.
+// Sem LIMIT: cortar a lista esconderia um ponto elegível, e ela só cresce
+// com aprovação que ainda não foi instalada.
+async function pontosAguardandoInstalacao() {
+  const { aguardandoInstalacaoSql } = require('./repository');
+  const { rows } = await pool.query(
+    `SELECT p.id, p.nome, p.cidade, p.uf, p.categoria_id, cat.nome AS categoria_nome, p.anunciante_id,
+            a.nome_empresa AS conta, p.instalacao_prevista_em
+       FROM pontos p
+       LEFT JOIN categorias cat ON cat.id = p.categoria_id
+       LEFT JOIN anunciantes a ON a.id = p.anunciante_id
+      WHERE ${aguardandoInstalacaoSql('p')}
+      ORDER BY p.instalacao_prevista_em NULLS LAST, p.nome, p.id`,
+  );
+  const alocacoes = await alocacoesVinculadas(rows.map((p) => p.id));
+  return rows.map((p) => ({
+    pontoId: p.id,
+    nome: p.nome,
+    cidade: p.cidade,
+    uf: p.uf,
+    categoria: p.categoria_id ? { id: p.categoria_id, nome: p.categoria_nome } : null,
+    contaId: p.anunciante_id,
+    conta: p.conta,
+    // 'AAAA-MM-DD' (o pool devolve `date` como texto) ou null.
+    instalacaoPrevistaEm: p.instalacao_prevista_em,
+    alocacao: alocacoes.get(p.id) || null,
+  }));
+}
+
 // AGENDA MÓVEL do Admin (Rede → Pontos, filtro Móveis → "Agenda móvel"):
 // os compromissos de todas as redes, uma linha por compromisso (evento com
 // várias telas é UMA linha com as telas juntas). Padrão: AGORA + FUTURO (em
 // curso, ou programado que ainda não terminou), por início; `historico`:
-// os encerrados e cancelados, do mais recente para trás.
+// os encerrados e cancelados, do mais recente para trás. (A aba
+// "Aguardando instalação" é pontosAguardandoInstalacao, acima.)
 async function agendaDasRedes({ historico = false } = {}) {
   const filtroH = historico
     ? `h.estado IN ('encerrada', 'cancelada')`
@@ -296,11 +368,17 @@ async function agendaDasRedes({ historico = false } = {}) {
   }));
 }
 
-// AGENDA PÚBLICA de uma rede (o "Ver agenda" do card do anunciante): só o
-// PRESENTE e o FUTURO — o que está acontecendo agora e o que vai acontecer.
-// Nunca o passado, nunca público estimado, conta, contato, percentual,
-// termo, tela ou observação: só tipo, nome (o comércio da hospedagem ou o
-// nome do evento), local do evento e período. `null` = não é rede ativa.
+// Quantas passagens encerradas o "Ver agenda" mostra no Histórico.
+const LIMITE_HISTORICO_PUBLICO = 10;
+
+// AGENDA PÚBLICA de uma rede (o "Ver agenda" do card do anunciante): o que
+// está acontecendo AGORA, as PRÓXIMAS e, desde a ADR-047 (14/10/2026), o
+// HISTÓRICO — as últimas passagens que aconteceram de verdade (encerradas),
+// da mais recente para trás, com o período REAL (chegada e saída da tela).
+// Cancelada nunca aparece: não aconteceu. Nunca público estimado, conta,
+// contato, percentual, termo, tela, observação ou motivo: só tipo, nome (o
+// comércio da hospedagem ou o nome do evento), local do evento e período.
+// `null` = não é rede ativa.
 async function agendaPublicaDaRede(redeId) {
   const id = /^\d{1,9}$/.test(String(redeId)) ? Number(redeId) : null;
   if (!id) return null;
@@ -323,11 +401,27 @@ async function agendaPublicaDaRede(redeId) {
       ORDER BY 5, 2 LIMIT 100`,
     [id],
   );
+  // O período do histórico é o REAL (iniciada_em/encerrada_em;
+  // iniciado_em/encerrado_em — os CHECKs da 112/113 garantem os dois no
+  // encerrado), nas mesmas chaves `inicio`/`fim` do público.
+  const { rows: passadas } = await pool.query(
+    `SELECT 'hospedagem' AS tipo, h.id, h.local AS nome, NULL::text AS local, h.iniciada_em AS inicio,
+            h.encerrada_em AS fim
+       FROM pontos_moveis_hospedagens h
+      WHERE h.ponto_id = $1 AND h.estado = 'encerrada'
+     UNION ALL
+     SELECT 'evento', e.id, e.nome, e.local, e.iniciado_em, e.encerrado_em
+       FROM pontos_moveis_eventos e
+      WHERE e.ponto_id = $1 AND e.estado = 'encerrado'
+      ORDER BY fim DESC, inicio DESC, tipo, id DESC LIMIT $2`,
+    [id, LIMITE_HISTORICO_PUBLICO],
+  );
   const linha = (r) => compromissoPublico(r);
   return {
     rede: { id: rede.id, nome: rede.nome, cidade: rede.cidade, uf: rede.uf },
     agora: rows.filter((r) => r.em_curso).map(linha),
     proximos: rows.filter((r) => !r.em_curso).map(linha),
+    historico: passadas.map(linha),
   };
 }
 
@@ -929,6 +1023,7 @@ module.exports = {
   LIMITES,
   situacaoDasRedes,
   redePublica,
+  pontosAguardandoInstalacao,
   agendaDasRedes,
   agendaPublicaDaRede,
   fichaDaRede,

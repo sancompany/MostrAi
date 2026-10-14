@@ -456,11 +456,14 @@ function normalizar(hospedagens, eventos) {
   };
 }
 
-async function listar(redeId) {
-  const ficha = await movel.fichaDaRede(redeId);
+// Da REDE: os compromissos dela (a ficha). De um PONTO FIXO (ADR-047): as
+// passagens do Móvel por ele — as hospedagens vinculadas (local_ponto_id),
+// de qualquer rede, no mesmo formato; sem vínculo, as três listas vazias.
+async function listar(pontoId) {
+  const ficha = await movel.fichaDaRede(pontoId);
   if (!ficha) return null;
-  if (ficha.tipo !== 'movel') throw erro(409, 'compromisso é da rede móvel');
-  return ficha.compromissos;
+  if (ficha.tipo === 'movel') return ficha.compromissos;
+  return normalizar(await hospedagem.hospedagensDoPonto(pontoId, pool, { doLocal: true }), []);
 }
 
 module.exports = {

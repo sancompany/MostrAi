@@ -18,6 +18,7 @@ const { limiteTentativas } = require('../lib/limite-tentativas');
 // vale para todas: o anfitrião, o anunciante e o organizador do evento não
 // mexem em nada daqui.
 //   GET  /admin/pontos-moveis/agenda[?historico=1]           agenda de todas as redes (agora + futuro | histórico)
+//   GET  /admin/pontos-moveis/agenda?aguardando=1            pontos fixos aguardando instalação + a alocação vinculada
 //   POST /admin/pontos-moveis                                criar rede (nome + cidade + UF; sem tela)
 //   PATCH /admin/pontos/:id/movel                            editar a rede (nome, cidade, UF, nota)
 //   (a foto/capa da rede é a foto do ponto: POST /admin/pontos/:id/foto, src/pontos/routes.js)
@@ -107,11 +108,14 @@ function simples(fn) {
 // Rede móvel
 // ---------------------------------------------------------------------------
 // A AGENDA MÓVEL (Rede → Pontos, filtro Móveis → "Agenda móvel"): agora +
-// futuro por padrão; `?historico=1` traz os encerrados e cancelados. As
+// futuro por padrão; `?historico=1` traz os encerrados e cancelados;
+// `?aguardando=1` (ADR-047), os pontos fixos aguardando instalação —
+// elegíveis para receber o Móvel — com a alocação vinculada de cada um. As
 // redes em si vêm de GET /admin/pontos (`movel`), no mesmo grid dos fixos.
 router.get(
   '/admin/pontos-moveis/agenda',
   simples(async (req, res) => {
+    if (req.query.aguardando === '1') return res.json({ aguardando: await movel.pontosAguardandoInstalacao() });
     res.json(await movel.agendaDasRedes({ historico: req.query.historico === '1' }));
   }),
 );
@@ -307,6 +311,8 @@ router.get(
   }),
 );
 
+// Rede: agora, próximos e histórico dela. Ponto FIXO: as passagens do Móvel
+// vinculadas a ele (src/pontos/compromissos.js#listar), no mesmo formato.
 router.get(
   '/admin/pontos/:id/compromissos',
   rota(async (_req, res, id) => {
