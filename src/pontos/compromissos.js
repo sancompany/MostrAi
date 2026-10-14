@@ -306,7 +306,16 @@ async function editar(redeId, ref, corpo) {
     );
     if (!h) throw erro(404, 'compromisso não encontrado');
     if (h.estado === 'ativa') {
-      const r = await hospedagem.alterarPeriodo(redeId, id, { fim: corpo?.fim });
+      // Em curso, só o fim muda. O motivo e a troca de local — que leva o
+      // estabelecimento vinculado junto (ADR-047) — seguem para
+      // alterarPeriodo, que os recusa com 400: nunca descartados calados.
+      const origem = corpo?.endereco_origem;
+      const vinculoPedido = origem === 'ponto' ? (corpo.ponto_id ?? null) : null;
+      const r = await hospedagem.alterarPeriodo(redeId, id, {
+        fim: corpo?.fim,
+        ...motivoDoCorpo(corpo),
+        ...(origem !== undefined && origem !== 'atual' ? { local_ponto_id: vinculoPedido } : {}),
+      });
       return { ref, contaId: r.contaId };
     }
     const { corpo: traduzido } = await traduzir(

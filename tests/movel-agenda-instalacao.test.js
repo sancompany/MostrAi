@@ -551,6 +551,72 @@ test('vínculo: origem "ponto" grava local_ponto_id; ponto de outra conta, móve
   assert.deepStrictEqual([c.localPontoId, c.pontoInstalado, c.avisoEncerrar], [loja.id, false, false]);
 });
 
+// ---------- 2b. Em curso: só o fim muda ----------
+test('hospedagem em curso: pedir motivo ou vínculo = 400, como local e endereço (rotas nova e antiga) — nada muda; prorrogar segue', async () => {
+  const rede = await redeComTelas(1);
+  const conta = await novaConta();
+  const loja = await estabelecimento(conta);
+  const filial = await estabelecimento(conta);
+  const r = await postarCompromisso(
+    rede.id,
+    corpoConta(conta, rede.telas[0], {
+      endereco_origem: 'ponto',
+      ponto_id: loja.id,
+      motivo: 'teste_ponto',
+      inicio: paredeMais(-1),
+      fim: paredeMais(24),
+    }),
+  );
+  assert.strictEqual(r.status, 201, JSON.stringify(r.json));
+  await iniciarNaConta(rede.id, r.json.ref);
+  const JA_COMECOU = { erro: 'A hospedagem já começou — só o fim pode mudar (prorrogar)', campo: 'fim' };
+  const planejamento = async () => {
+    const l = await linhaHospedagem(r.json.ref);
+    return [l.motivo_alocacao, l.local_ponto_id, new Date(l.fim).getTime()];
+  };
+  const antes = await planejamento();
+  assert.deepStrictEqual(antes.slice(0, 2), ['teste_ponto', loja.id]);
+
+  // Rota nova (PATCH do compromisso): o motivo (válido ou não) e a troca de
+  // local — que leva o vínculo junto — não são descartados calados.
+  const fim = paredeMais(48);
+  for (const extra of [
+    { motivo: 'outro' },
+    { motivo: 'rascunho' },
+    { motivo: null },
+    { endereco_origem: 'ponto', ponto_id: filial.id },
+    { endereco_origem: 'conta' },
+  ]) {
+    const x = await admin('PATCH', `/admin/pontos/${rede.id}/compromissos/${r.json.ref}`, { fim, ...extra });
+    assert.strictEqual(x.status, 400, `${JSON.stringify(extra)}: ${JSON.stringify(x.json)}`);
+    assert.deepStrictEqual(x.json, JA_COMECOU);
+  }
+  // Rota antiga (PUT /periodo): a mesma regra de local, endereço e horário.
+  const hid = r.json.ref.slice(1);
+  for (const extra of [
+    { motivo: 'outro' },
+    { motivo: 'nao_existe' },
+    { local_ponto_id: filial.id },
+    { local_ponto_id: null },
+  ]) {
+    const x = await admin('PUT', `/admin/pontos/${rede.id}/hospedagens/${hid}/periodo`, { fim, ...extra });
+    assert.strictEqual(x.status, 400, `${JSON.stringify(extra)}: ${JSON.stringify(x.json)}`);
+    assert.deepStrictEqual(x.json, JA_COMECOU);
+  }
+  assert.deepStrictEqual(await planejamento(), antes, 'recusado não muda nada (nem o fim)');
+
+  // Prorrogar (só o fim; "manter o local" também) continua valendo e mantém
+  // o motivo e o vínculo.
+  const p = await admin('PATCH', `/admin/pontos/${rede.id}/compromissos/${r.json.ref}`, {
+    fim,
+    endereco_origem: 'atual',
+  });
+  assert.strictEqual(p.status, 200, JSON.stringify(p.json));
+  const depois = await planejamento();
+  assert.deepStrictEqual(depois.slice(0, 2), ['teste_ponto', loja.id]);
+  assert.ok(depois[2] > antes[2], 'prorrogou');
+});
+
 // ---------- 3. Cancelamento auditável ----------
 test('cancelar à mão: 409 de estado primeiro; sem motivo = 400; com motivo grava o porquê e quem (hospedagem e evento); encerrar evento grava quem', async () => {
   const rede = await redeComTelas(3);

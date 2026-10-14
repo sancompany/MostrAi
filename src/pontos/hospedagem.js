@@ -514,7 +514,8 @@ async function cancelar(pontoId, hospedagemId, admin = null, corpo = {}) {
 // endereço, o estabelecimento vinculado (`local_ponto_id`: o id novo, ou
 // null = sem vínculo) e o motivo da alocação — cada um só muda se vier no
 // corpo. ATIVA: só prorrogar o fim (o início e o horário já estão
-// valendo; para terminar antes, Encerrar). Sem conflito na agenda da tela;
+// valendo; para terminar antes, Encerrar) — pedir qualquer outra mudança,
+// motivo e vínculo inclusive, é 400. Sem conflito na agenda da tela;
 // o percentual continua o congelado.
 async function alterarPeriodo(pontoId, hospedagemId, corpo) {
   try {
@@ -535,11 +536,15 @@ async function alterarPeriodo(pontoId, hospedagemId, corpo) {
         if (inicioPedido && inicioPedido.getTime() !== new Date(h.inicio).getTime()) {
           throw erro(400, 'A hospedagem já começou — só o fim pode mudar', 'inicio');
         }
+        // O motivo e o estabelecimento vinculado (ADR-047) também não mudam
+        // depois de começar: 400, como o local — nunca um 200 que não grava.
         if (
           corpo?.horario_operacao !== undefined ||
           corpo?.operar_todo_periodo !== undefined ||
           corpo?.local !== undefined ||
           corpo?.endereco !== undefined ||
+          corpo?.local_ponto_id !== undefined ||
+          corpo?.motivo !== undefined ||
           (corpo?.dispositivo_id !== undefined && Number(corpo.dispositivo_id) !== h.dispositivo_id)
         ) {
           throw erro(400, 'A hospedagem já começou — só o fim pode mudar (prorrogar)', 'fim');
