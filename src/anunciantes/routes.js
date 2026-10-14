@@ -728,15 +728,14 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
 
   await pontosRepo.avaliarBloqueios();
 
-  // Ponto `a_instalar` entra na lista (RN-49, decisão do dono em 17/09/2026):
-  // ele já conta como vaga do plano, pra quem paga por cobertura maior não
-  // perder o lugar num comércio que está sendo montado. Ele não veicula, e é
-  // por isso que a compensação abaixo o trata como ponto FALTANDO.
-  // `em_reparo` entra pela mesma regra (rodada final da Rede, 22/09/2026):
-  // status automático desde a migration 069, mesma situação de "não veicula
-  // agora mas o lugar é real e pode voltar" que `a_instalar` já cobria — o
-  // `noAr` abaixo já trata os dois como "fora do ar" hoje, só `inativo`
-  // (tela cadastrada, nenhuma funcionando) fica fora da lista.
+  // Ponto FIXO só entra se for VENDÁVEL (ADR-047, 14/10/2026, que superou a
+  // RN-49 e a ADR-009 nesta parte): aprovado não é instalado. O que ainda
+  // aguarda a primeira instalação (nenhuma tela deu o 1º sinal) fica fora da
+  // lista — inclusive o próprio ponto da conta. O instalado que está fora do
+  // ar agora (reparo, Player revogado) continua escolhível: o lugar é real e
+  // volta, e o `noAr` abaixo o trata como FALTANDO na compensação. `inativo`
+  // e `arquivado` ficam fora. Regra única em src/pontos/repository.js
+  // (fixoVendavelSql), a mesma do PUT abaixo e do site.
   const { rows } = await pool.query(
     `SELECT p.id, p.nome, p.cidade, p.uf, p.endereco, p.status, ${horarioDoPontoSql('p')} AS horario_semanal, p.tipo,
             ${inventarioSql('p')} AS inventario,
@@ -750,11 +749,11 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
        LEFT JOIN anunciantes ao ON ao.id = outros.anunciante_id AND NOT ao.suspenso AND ao.excluido_em IS NULL
        LEFT JOIN planos pl ON pl.id = ao.plano_id
        LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id AND ap.anunciante_id = $1
-      WHERE p.status = ANY($2::text[]) OR (p.tipo = 'movel' AND p.status <> 'arquivado')
+      WHERE ${pontosRepo.fixoVendavelSql('p')} OR (p.tipo = 'movel' AND p.status <> 'arquivado')
       GROUP BY p.id, p.nome, p.cidade, p.uf, p.endereco, p.status, p.horario_semanal, p.tipo, p.escolha_bloqueada_em,
                ap.ponto_id, ap.escolhido_em, p.anunciante_id
       ORDER BY (p.anunciante_id IS NOT DISTINCT FROM $1) DESC, p.status DESC, p.nome`,
-    [conta.id, pontosRepo.STATUS_NA_REDE],
+    [conta.id],
   );
 
   // A REDE MÓVEL de uma cidade (migration 115) aparece SEMPRE — com 0 tela
@@ -887,20 +886,27 @@ router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =>
     });
   }
 
-  // `a_instalar`/`em_reparo` são escolha válida desde a RN-49 (a_instalar) e
-  // a rodada final da Rede (em_reparo entra pela mesma regra, 22/09/2026): a
-  // vaga fica reservada pro ponto que não está veiculando agora, e enquanto
-  // não veicula o tempo dele volta pros pontos no ar. O que continua
-  // recusado é ponto que não existe (ou `inativo`).
+  // O MESMO filtro do GET acima (ADR-047): fixo só se vendável, rede móvel se
+  // não arquivada. O instalado fora do ar agora (reparo, Player revogado)
+  // continua escolha válida — a vaga fica reservada e, enquanto não veicula,
+  // o tempo dele volta pros pontos no ar. Recusados: o ponto aprovado que
+  // ainda aguarda a primeira instalação (com motivo próprio, que a aba
+  // aberta antes de ele sair da lista precisa entender) e o que não existe,
+  // está `inativo` ou arquivado.
   if (pedidos.length) {
     const { rows } = await pool.query(
-      `SELECT p.id FROM pontos p
+      `SELECT p.id, ${pontosRepo.aguardandoInstalacaoSql('p')} AS aguardando
+         FROM pontos p
         WHERE p.id = ANY($1::int[])
-          AND (p.status = ANY($2::text[]) OR (p.tipo = 'movel' AND p.status <> 'arquivado'))`,
-      [pedidos, pontosRepo.STATUS_NA_REDE],
+          AND (${pontosRepo.fixoVendavelSql('p')} OR ${pontosRepo.aguardandoInstalacaoSql('p')}
+               OR (p.tipo = 'movel' AND p.status <> 'arquivado'))`,
+      [pedidos],
     );
     if (rows.length !== pedidos.length) {
       return res.status(400).json({ erro: 'um dos pontos escolhidos não existe na rede' });
+    }
+    if (rows.some((r) => r.aguardando)) {
+      return res.status(400).json({ erro: 'Esse ponto ainda está em instalação e ainda não pode ser escolhido.' });
     }
 
     // G.7 (18/09/2026): ponto cruzou 80% pára de aceitar escolha NOVA — mas

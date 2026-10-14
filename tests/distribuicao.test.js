@@ -247,10 +247,15 @@ test.after(async () => {
 // ===========================================================================
 // 25. Targeting (1–9)
 // ===========================================================================
+// Testes 1 e 9 escolhem pela rota: os pontos são INSTALADOS (tela com 1º
+// sinal). Até a ADR-047 (14/10/2026) ponto sem tela era escolha válida
+// (RN-49); agora o aprovado que aguarda instalação é recusado pelo PUT
+// (tests/instalacao-fixa.test.js). O que estes dois provam — o limite do
+// plano e a ordem da escolha — não depende disso.
 test('1. plano permite N pontos (N = pontos_incluidos do plano, não um número fixo)', async () => {
   const conta = await novaConta(); // essencial: 3
   const pontos = [];
-  for (let i = 0; i < 3; i++) pontos.push((await novoPonto({ comTela: false })).pontoId);
+  for (let i = 0; i < 3; i++) pontos.push((await novoPonto()).pontoId);
   const lista = await app.chamar('GET', '/anunciantes/me/pontos-disponiveis', { conta: conta.id });
   assert.equal(lista.json.limite, 3, 'o limite vem do plano');
   const put = await app.chamar('PUT', '/anunciantes/me/pontos', { conta: conta.id, corpo: { pontos } });
@@ -374,9 +379,9 @@ test('8. próprio ponto fora da escolha: entra só pelo Básico (o comercial fic
 
 test('9. próprio ponto conta no limite; salvar de novo preserva a ordem da escolha', async () => {
   const conta = await novaConta();
-  const proprio = await novoPonto({ dono: conta.id, comTela: false });
+  const proprio = await novoPonto({ dono: conta.id });
   const outros = [];
-  for (let i = 0; i < 3; i++) outros.push((await novoPonto({ comTela: false })).pontoId);
+  for (let i = 0; i < 3; i++) outros.push((await novoPonto()).pontoId);
   const quatro = await app.chamar('PUT', '/anunciantes/me/pontos', {
     conta: conta.id,
     corpo: { pontos: [proprio.pontoId, ...outros] },

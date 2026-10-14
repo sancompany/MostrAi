@@ -362,9 +362,11 @@ function pontosDoAnunciante(conta, pontosEmOperacao, pontosBloqueados = []) {
 //
 // "Pontos cobertos" é quantos pontos EM OPERAÇÃO entram na fatia dele hoje —
 // quem escolheu 2 dos 7 concentra nos 2, quem não escolheu nada concentra em
-// todos os que estão no ar. Ponto com status `a_instalar` conta como vaga do
-// plano (a pessoa não perde o lugar dele), mas não veicula: é exatamente por
-// isso que ele entra no numerador e nunca no denominador.
+// todos os que estão no ar. Ponto escolhido que já foi instalado e está fora
+// de operação agora (em reparo, Player revogado) continua sendo vaga do plano
+// (a pessoa não perde o lugar dele), mas não veicula: é exatamente por isso
+// que ele entra no numerador e nunca no denominador. O ponto que ainda
+// aguarda a primeira instalação não é vaga nem escolha (ADR-047, 14/10/2026).
 //
 // TETO: um anunciante nunca passa de um sexto da hora numa tela.
 //

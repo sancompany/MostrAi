@@ -1196,8 +1196,12 @@ test('situacaoDasRedes ignora ponto fixo e id inválido; "Meus pontos" não tem 
 const daRede = async (id) => (await publicos()).filter((p) => p.id === id);
 const TECNICO = /heartbeat|player|versao|online|erro|telas|emOperacao|percentual|saldo|conta/i;
 
+// O fixo do site é o INSTALADO (ADR-047, 14/10/2026: a P9 foi revogada nesta
+// parte) — antes bastava aprovar. O aprovado que aguarda instalação sai do
+// "Onde estamos" e da contagem (caso abaixo).
 test('Onde estamos: o fixo segue igual; a rede sem compromisso aparece UMA vez, sem local, sem próximo e sem base', async () => {
   const fixo = await aprovar(await novaConta());
+  await instalarPlayer((await dispositivosRepo.criar(fixo.id, {})).id);
   const m = await criarMovel({}, { telas: 3 });
   const lista = await publicos();
   const f = lista.find((p) => p.id === fixo.id);
@@ -1227,6 +1231,15 @@ test('Onde estamos: o fixo segue igual; a rede sem compromisso aparece UMA vez, 
     [m.id],
   );
   assert.strictEqual((await daRede(m.id)).length, 0, 'rede arquivada não aparece');
+});
+
+test('Onde estamos: o fixo aprovado que ainda não foi instalado não aparece (nem com tela cadastrada sem Player)', async () => {
+  const semTela = await aprovar(await novaConta());
+  const semPlayer = await aprovar(await novaConta());
+  await dispositivosRepo.criar(semPlayer.id, {});
+  const ids = (await publicos()).map((p) => p.id);
+  assert.ok(!ids.includes(semTela.id), 'aprovado, a_instalar, sem tela: fora do site');
+  assert.ok(!ids.includes(semPlayer.id), 'tela cadastrada sem 1º sinal não é instalação');
 });
 
 test('Onde estamos: a foto do card é a da própria rede', async () => {

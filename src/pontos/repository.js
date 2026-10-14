@@ -321,18 +321,16 @@ async function sincronizarStatusPonto(pontoId, db = pool) {
   return rowCount ? status : 'arquivado';
 }
 
-// Pública (módulo 7 "onde estamos") — pontos ativos + em construção/reparo,
-// pra mostrar a rede crescendo com status visível, só campo seguro. Nunca
-// devolver responsavel_contato aqui. (O player não usa isso — ele resolve
-// playlist por ponto_id direto, não lista pontos.)
+// Pública (módulo 7 "onde estamos") — só campo seguro. Nunca devolver
+// responsavel_contato aqui. (O player não usa isso — ele resolve playlist por
+// ponto_id direto, não lista pontos.)
 //
-// Só `inativo` fica de fora (rodada final da Rede, 22/09/2026): antes desta
-// rodada `pontos.status` só tinha 2 valores possíveis (a_instalar/em_operacao,
-// migration 045) e este filtro incluía os dois — na prática, 100% dos pontos
-// reais. Com o status automático (migration 069) `em_reparo` virou um valor
-// de verdade; este comentário já dizia "ativos + em construção/reparo" desde
-// antes, então entra na mesma lista — só `inativo` (tela(s) cadastrada(s),
-// nenhuma funcionando) é o caso realmente novo que faz sentido esconder.
+// Ponto FIXO só se for vendável (ADR-047, 14/10/2026, que revogou a P9 nesta
+// parte): o mesmo predicado da escolha do anunciante (fixoVendavelSql). O
+// aprovado que ainda aguarda a primeira instalação não aparece no site nem
+// entra em "N pontos" — quem lê "a rede tem 3 pontos" entende 3 telas no ar.
+// O instalado que está fora do ar agora (reparo, Player revogado) continua,
+// com o status dele; `inativo` e `arquivado` ficam de fora.
 //
 // Rede móvel (estação "Onde estamos", 08/10/2026): UMA linha por rede não
 // arquivada, com ou sem localização — é inventário real mesmo entre duas
@@ -347,9 +345,8 @@ async function listarPublicos() {
             CASE WHEN p.tipo = 'movel' THEN NULL ELSE p.status END AS status,
             p.foto_instalacao_url, CASE WHEN p.tipo = 'movel' THEN NULL ELSE c.nome END AS categoria_nome, p.tipo
        FROM pontos p LEFT JOIN categorias c ON c.id = p.categoria_id
-      WHERE (p.tipo <> 'movel' AND p.status = ANY($1::text[])) OR (p.tipo = 'movel' AND p.status <> 'arquivado')
+      WHERE ${fixoVendavelSql('p')} OR (p.tipo = 'movel' AND p.status <> 'arquivado')
       ORDER BY (p.tipo <> 'movel' AND p.status = 'em_operacao') DESC, (p.tipo = 'movel') DESC, p.nome, p.id`,
-    [STATUS_NA_REDE],
   );
   return rows;
 }
@@ -412,9 +409,9 @@ async function ocupacaoPorAnunciante() {
 // Roda a cada vez que a tabela do admin é aberta (não é cron — não precisa:
 // é lida com frequência suficiente, e bloquear um pouco depois de cruzar
 // 80% não tem custo nenhum). Só ENTRA sozinho; só admin tira (`liberarEscolha`).
-// Só `em_operacao` — `a_instalar` não veicula ainda, então "cheio" não tem
-// sentido pra ele; e ele já é escolha válida por si (RN-49), sem depender
-// deste bloqueio.
+// Só `em_operacao` — ponto fora de operação não veicula agora, então "cheio"
+// não tem sentido pra ele (se ainda aguarda a primeira instalação, nem
+// escolhível é: ADR-047).
 //
 // Capacidade da hora (estação Rede/Admin V2): 3600 s por ponto fixo; na REDE
 // MÓVEL, 3600 s por tela ativa cadastrada (no mínimo 1) — a cota de cada
