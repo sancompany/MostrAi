@@ -568,18 +568,26 @@ const PONTO_STATUS_CLASSE = {
   em_reparo: 'badge-info',
   inativo: 'badge-err',
 };
-// O SELO do ponto FIXO (ADR-047, 14/10/2026): aprovado não é disponível. O
+// O SELO do ponto (ADR-047, 14/10/2026): aprovado não é disponível. O
 // servidor decide (GET /admin/pontos, pelos mesmos predicados da escolha e
-// do site) se o ponto ainda AGUARDA a instalação (`aguardando_instalacao`) e
-// se já foi instalado (`ja_instalado`: alguma tela deu o 1º sinal) — aqui só
-// se mostra. Nunca deduzir "aguardando" de `status === 'a_instalar'`: o
-// Player revogado depois de operar também volta a `a_instalar` e NÃO é
-// aguardando (D1) — é instalado e está fora do ar agora.
+// do site) se o ponto FIXO ainda AGUARDA a instalação
+// (`aguardando_instalacao`) e se já foi instalado (`ja_instalado`: alguma
+// tela deu o 1º sinal) — aqui só se mostra. Nunca deduzir "aguardando" de
+// `status === 'a_instalar'`: o Player revogado depois de operar também volta
+// a `a_instalar` e NÃO é aguardando (D1) — é instalado e está fora do ar
+// agora. A REDE MÓVEL não tem instalação: é "Ativa" ou "Arquivada" — o status
+// cru dela segue as telas (a rede nova, sem sinal, é `a_instalar`) e não vira
+// selo. Um helper só para card, ficha, ocupação e seletor de pontos.
 const SELO_INSTALACAO = {
   aguardando: { rotulo: 'Aguardando instalação', classe: 'badge-pendente' },
   indisponivel: { rotulo: 'Temporariamente indisponível', classe: 'badge-pendente' },
 };
-function seloDoPontoFixo(p) {
+const SELO_REDE_MOVEL = {
+  ativa: { rotulo: 'Ativa', classe: 'badge-ok' },
+  arquivada: { rotulo: 'Arquivada', classe: 'badge-neutro' },
+};
+function seloDoPonto(p) {
+  if (p.tipo === 'movel') return p.status === 'arquivado' ? SELO_REDE_MOVEL.arquivada : SELO_REDE_MOVEL.ativa;
   if (p.aguardando_instalacao) return SELO_INSTALACAO.aguardando;
   if (p.ja_instalado && (p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal')) {
     return SELO_INSTALACAO.indisponivel;
@@ -588,7 +596,7 @@ function seloDoPontoFixo(p) {
 }
 // "● Aguardando instalação" — o selo em linha de apoio (tabelas e seletores).
 const seloEmLinha = (p) => {
-  const s = seloDoPontoFixo(p);
+  const s = seloDoPonto(p);
   return `<i class="ponto-status ${s.classe}" aria-hidden="true"></i>${esc(s.rotulo)}`;
 };
 const TELA_STATUS = { ativo: 'Ativa', reparo: 'Em reparo', inativo: 'Inativa' };
@@ -2243,7 +2251,8 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
       categoriaNome: cad?.categoria_nome || null,
       categoriaLivre: cad?.categoria_livre || null,
       segmento: cad?.segmento || null,
-      // O selo do ponto (seloDoPontoFixo) vem do cadastro, decidido no servidor.
+      // O selo do ponto (seloDoPonto) vem do cadastro, decidido no servidor.
+      tipo: cad?.tipo,
       aguardando_instalacao: cad?.aguardando_instalacao,
       ja_instalado: cad?.ja_instalado,
     };
@@ -3243,7 +3252,7 @@ function montarPontoCard(p) {
   const movel = p.tipo === 'movel';
   const e = p.estadoTelas || { total: 0, filtros: [] };
   const arquivada = movel && p.status === 'arquivado';
-  // O filtro do fixo segue o SELO (seloDoPontoFixo): o ponto que aguarda a
+  // O filtro do fixo segue o SELO (seloDoPonto): o ponto que aguarda a
   // instalação responde ao chip "Aguardando instalação", não ao status cru —
   // um ponto em reparo que nunca operou não aparece em "Em reparo".
   const situacao = movel
@@ -3274,15 +3283,12 @@ function montarPontoCard(p) {
     const segmento = p.categoria_nome || p.categoria_livre || p.segmento;
     meta = `${cidade}${p.endereco ? ` · ${esc(p.endereco)}` : ''}${segmento ? `<br>${esc(segmento)}` : ''}<br><span class="u-dim">${esc(resumoHorarioSemanal(p.horario_semanal) || 'Aberto 24 horas')}</span>`;
   }
-  const selo = movel
-    ? `<span class="badge ${arquivada ? 'badge-neutro' : 'badge-ok'}">${arquivada ? 'Arquivada' : 'Ativa'}</span>`
-    : badge(seloDoPontoFixo(p));
   return cardEntidade({
     href: `#rede/pontos/${p.id}`,
     filtro: [movel ? 'movel' : 'fixo', situacao, ...(e.filtros || [])].join(' '),
     foto: `${fotoOuPlaceholder(p.foto_instalacao_url, p.nome)}${movel ? `<span class="selo-movel">${esc(window.PONTO_MOVEL.selo)}</span>` : ''}`,
     nome: esc(p.nome),
-    badge: selo,
+    badge: badge(seloDoPonto(p)),
     meta,
     rodape: `${resumoDasTelas(e)}${p.endereco_a_conferir ? '<br><span class="txt-alerta">Endereço alterado — conferir</span>' : ''}`,
     busca: [...(p.codigosTelas || []), p.cidade, p.uf, p.endereco, p.bairro].filter(Boolean).join(' '),
@@ -3778,7 +3784,7 @@ function renderPontoFixo(el, ponto, telas, pendencias, remontar) {
       ${cabecalhoDoPonto({
         foto: fotoOuPlaceholder(ponto.foto_instalacao_url, ponto.nome),
         nome: esc(ponto.nome),
-        selos: `<span class="badge badge-neutro">Fixo</span>${badge(seloDoPontoFixo(ponto))}`,
+        selos: `<span class="badge badge-neutro">Fixo</span>${badge(seloDoPonto(ponto))}`,
         local: esc(local),
         resumo: resumoDasTelas(ponto.estadoTelas),
         acoes: arquivado
@@ -4020,7 +4026,7 @@ function renderRedeMovel(el, ponto, f, telas, remontar) {
       ${cabecalhoDoPonto({
         foto: fotoOuPlaceholder(f.foto, f.nome),
         nome: `<span class="rede-titulo">${esc(f.nome)}</span>`,
-        selos: `<span class="badge badge-info">${esc(window.PONTO_MOVEL.selo)}</span><span class="badge ${arquivada ? 'badge-neutro' : 'badge-ok'}">${arquivada ? 'Arquivada' : 'Ativa'}</span>`,
+        selos: `<span class="badge badge-info">${esc(window.PONTO_MOVEL.selo)}</span>${badge(seloDoPonto(ponto))}`,
         local: esc(window.PONTO_MOVEL.cidade(f.cidade, f.uf)),
         resumo: `${plural(telas.length, 'tela')} · ${operando} operando · ${plural(c.proximos.length, 'compromisso futuro', 'compromissos futuros')}`,
         acoes: arquivada

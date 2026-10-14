@@ -216,6 +216,14 @@ const rede = await apiAdmin('/admin/pontos-moveis', 'POST', { nome: 'Mostraí M�
 const REDE = Number(rede.json.id);
 const M1 = await telaNova(REDE);
 const M2 = await telaNova(REDE);
+// Uma conta com plano que escolheu a rede: a rede entra na "Ocupação da rede"
+// da Visão geral. A rede nova, sem nenhum sinal, tem o status cru
+// `a_instalar` — e mesmo assim é "Ativa" (rede não tem instalação).
+const DONO3 = await cadastrar('Loja Na Rede Ltda', '39053344705', `dono-r3-${marca}@teste.com`);
+PG(
+  `UPDATE anunciantes SET plano_id = 'essencial-1m', plano_cortesia = true, data_inicio_cobertura = current_date, data_expiracao = current_date + 30 WHERE id = ${DONO3}`,
+);
+PG(`INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES (${DONO3}, ${REDE})`);
 // PIN de saída (sem ele não há código de instalação do Player).
 await apiAdmin('/admin/player/pin-saida', 'PUT', { pin: '48213' });
 
@@ -235,6 +243,7 @@ check(
   (await seloDe(R)) === 'Temporariamente indisponível',
   await seloDe(R),
 );
+check('card da rede móvel: "Ativa"', (await seloDe(REDE)) === 'Ativa', await seloDe(REDE));
 const resumo = await admin.locator('.rede-resumo').innerText();
 const nAguardando = Number(/(\d+)\s*\n?\s*aguardando instalação/i.exec(resumo)?.[1]);
 check(
@@ -265,6 +274,17 @@ await irAdmin('#visaogeral', '.visao-geral-colunas');
 await admin.click('#btnRecarregar');
 await admin.waitForSelector('.status-resumo', { timeout: 10000 });
 await redeQuieta(admin);
+// Ocupação da rede: o selo da rede móvel é "Ativa", como no card da grade —
+// nunca o "Aguardando instalação" do status cru dela.
+await admin.waitForSelector(`#ocupacaoRede tr[data-ponto-id="${REDE}"]`, { timeout: 10000 });
+const seloOcupacaoRede = await texto(`#ocupacaoRede tr[data-ponto-id="${REDE}"] .celula-sub`);
+check(
+  'Ocupação da rede: a rede móvel (status cru a_instalar) é "Ativa", não "Aguardando instalação"',
+  PG(`SELECT status FROM pontos WHERE id = ${REDE}`) === 'a_instalar' &&
+    seloOcupacaoRede.startsWith('Ativa ·') &&
+    !/Aguardando instalação/.test(seloOcupacaoRede),
+  seloOcupacaoRede,
+);
 await admin.click('[data-status-clique="a_instalar"]');
 await admin.waitForSelector('.colecao .chip.active');
 await redeQuieta(admin);
