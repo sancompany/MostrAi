@@ -9,10 +9,43 @@ const { PARTES, colunasDoEndereco } = require('../lib/endereco');
 // de CAMPOS_ATUALIZAVEIS — só essa função grava a coluna. `arquivado` é
 // decisão explícita (migration 080), fora desta lista.
 const STATUS = ['a_instalar', 'aguardando_primeiro_sinal', 'em_operacao', 'em_reparo', 'inativo'];
-// Os status em que o ponto é um lugar real da rede (aparece no site, conta
-// como vaga do plano — RN-49). Só `inativo` (tela cadastrada, nenhuma
-// funcionando) e `arquivado` ficam de fora.
+// Os status de um ponto fixo que pertence à rede (não está desligado nem
+// arquivado). NÃO quer dizer vendável: desde a ADR-047 (14/10/2026), que
+// superou a RN-49 e a ADR-009 nesta parte, `a_instalar` deixou de ser vaga do
+// plano. Quem decide se o fixo pode ser escolhido, contado ou mostrado no site
+// é fixoVendavelSql (abaixo). Só `inativo` (tela cadastrada, nenhuma
+// funcionando) e `arquivado` ficam de fora desta lista.
 const STATUS_NA_REDE = ['em_operacao', 'aguardando_primeiro_sinal', 'a_instalar', 'em_reparo'];
+const STATUS_NA_REDE_SQL = `ARRAY[${STATUS_NA_REDE.map((s) => `'${s}'`).join(',')}]::text[]`;
+
+// A prova DURÁVEL de instalação operacional: alguma tela do ponto já deu o 1º
+// sinal real do Player (src/dispositivos/repository.js grava
+// primeiro_sinal_em na troca do código de instalação e nunca mais o apaga —
+// revogar o Player zera a chave, não o fato). Tela cadastrada sem Player,
+// tela em reparo que nunca operou, data prevista: nada disso prova.
+// `p` é o alias da tabela pontos na consulta que usa o predicado.
+function jaInstaladoSql(p = 'p') {
+  return `EXISTS (SELECT 1 FROM dispositivos d_inst WHERE d_inst.ponto_id = ${p}.id AND d_inst.primeiro_sinal_em IS NOT NULL)`;
+}
+
+// PONTO FIXO VENDÁVEL (ADR-047) — a única verdade para escolher, validar a
+// escolha no servidor, mostrar no site e contar como ponto comercial:
+// pertence à rede E já provou instalação operacional. Instalado que depois
+// ficou offline, em reparo ou teve o Player revogado continua vendável,
+// pelas regras atuais de indisponibilidade (a veiculação de verdade segue só
+// em `em_operacao`, no gerador). O atalho `status = 'em_operacao'` é o mesmo
+// fato (o sincronizar só põe em operação com tela que deu o 1º sinal).
+function fixoVendavelSql(p = 'p') {
+  return `(${p}.tipo = 'fixo' AND ${p}.status = ANY(${STATUS_NA_REDE_SQL}) AND (${p}.status = 'em_operacao' OR ${jaInstaladoSql(p)}))`;
+}
+
+// AGUARDANDO INSTALAÇÃO — o complemento exato do vendável dentro da rede:
+// ponto fixo aprovado (existe e não está desligado nem arquivado) que nunca
+// teve tela com o 1º sinal. Aparece no Admin e é elegível para receber o
+// Mostraí Móvel; nunca aparece para o anunciante nem no site.
+function aguardandoInstalacaoSql(p = 'p') {
+  return `(${p}.tipo = 'fixo' AND ${p}.status = ANY(${STATUS_NA_REDE_SQL}) AND ${p}.status <> 'em_operacao' AND NOT ${jaInstaladoSql(p)})`;
+}
 
 // Whitelist de colunas editáveis via PATCH — nunca monta SET a partir de
 // chave arbitrária vinda do body.
@@ -573,4 +606,7 @@ module.exports = {
   FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS,
   STATUS,
   STATUS_NA_REDE,
+  jaInstaladoSql,
+  fixoVendavelSql,
+  aguardandoInstalacaoSql,
 };
