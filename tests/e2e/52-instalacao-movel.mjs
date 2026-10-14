@@ -361,6 +361,20 @@ check('gravada no banco (AAAA-MM-DD)', PG(`SELECT instalacao_prevista_em FROM po
 check('o botão vira [Alterar data]', (await texto('[data-definir-previsao]')) === 'Alterar data');
 check('a data não muda o status do ponto', PG(`SELECT status FROM pontos WHERE id = ${P}`) === 'a_instalar');
 await shot(admin.locator('#conteudo'), 'ficha-aguardando');
+// Uma leitura do formulário falha (a rede caiu no meio): [Alocar Móvel]
+// avisa — nada de clique mudo nem promessa rejeitada sem dono. São dois
+// cortes: a leitura tenta de novo uma vez (carga.js).
+let cortes = 2;
+await admin.route('**/admin/hospedagem/percentual', (r) => (cortes-- > 0 ? r.abort('failed') : r.continue()));
+await admin.click('#pontoCabecalho [data-alocar-movel]');
+await admin.waitForSelector('#toast.err:not([hidden])', { timeout: 10000 }).catch(() => {});
+const avisoFalha = ((await admin.locator('#toast').textContent().catch(() => '')) || '').trim();
+check(
+  '[Alocar Móvel] com a leitura do formulário falhando: aviso, nenhum modal',
+  /Não foi possível abrir o formulário/.test(avisoFalha) && !(await admin.locator('dialog[open]').count()),
+  avisoFalha || '(nenhum aviso)',
+);
+await admin.unroute('**/admin/hospedagem/percentual');
 
 // ---------------------------------------------------------------------------
 console.log('== C. [Alocar Móvel] pela ficha ==');

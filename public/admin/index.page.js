@@ -4336,11 +4336,26 @@ async function abrirCompromisso({
   const c = compromisso;
   const edicao = Boolean(c);
   const travaConta = edicao || Boolean(local);
-  const [redes, { percentual }, categorias] = await Promise.all([
-    rede ? [rede] : pegar('/admin/pontos').then((l) => l.filter((p) => p.tipo === 'movel' && p.status !== 'arquivado')),
-    pegar('/admin/hospedagem/percentual'),
-    pegar('/categorias').catch(() => []),
-  ]);
+  // As leituras do formulário. Se uma falha, o Admin é avisado — nunca um
+  // clique mudo; sessão caída pede para entrar de novo (carga.js); leitura
+  // cancelada (a tela mudou) não mostra nada.
+  let redes;
+  let percentual;
+  let categorias;
+  try {
+    [redes, { percentual }, categorias] = await Promise.all([
+      rede
+        ? [rede]
+        : pegar('/admin/pontos').then((l) => l.filter((p) => p.tipo === 'movel' && p.status !== 'arquivado')),
+      pegar('/admin/hospedagem/percentual'),
+      pegar('/categorias').catch(() => []),
+    ]);
+  } catch (err) {
+    const d = window.CargaAdmin.desfecho(err);
+    if (!d) return;
+    if (d.acao === 'entrar') return sessaoCaiu(d);
+    return toast('Não foi possível abrir o formulário agora. Tente de novo em alguns segundos.', 'err');
+  }
   const st = {
     redeId: rede ? rede.id : redes.length === 1 ? redes[0].id : null,
     contexto: c?.contexto || 'conta',
