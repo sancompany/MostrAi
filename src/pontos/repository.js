@@ -646,8 +646,100 @@ async function deletar(id) {
   }
 }
 
+// CORREÇÃO D2 (ADR-047, decisão do dono de 14/10/2026): a escolha que um
+// anunciante já tinha gravado num ponto que NUNCA foi instalado é liberada
+// (apagada) e a conta é avisada pela central de atualizações. Até aqui o
+// ponto aprovado contava como vaga do plano (RN-49); agora ele nem aparece na
+// escolha, e a linha esquecida no banco ocuparia uma posição do plano sem o
+// cliente ver — e o próximo salvar do painel a apagaria sem aviso nenhum.
+//
+// Roda por script explícito depois do deploy (scripts/liberar-escolhas-sem-
+// instalacao.js), nunca por id fixo: quem decide é o MESMO predicado
+// "aguardando instalação" (nunca houve 1º sinal). A escolha em ponto já
+// instalado — mesmo offline, em reparo ou com Player revogado — e a escolha
+// na rede móvel não são tocadas. Só sai a linha de anunciantes_pontos (o
+// gatilho de sempre marca as playlists para refazer, como em qualquer troca
+// de escolha) e entra a notificação: obrigação, saldo, cobrança, ciclo e
+// crédito da conta não mudam (a obrigação nasce do ciclo, não da escolha).
+//
+// Sem `aplicar`, só lista e desfaz (ROLLBACK). Idempotente: a segunda
+// execução não encontra nada. Devolve só ids e contagens — nenhum nome,
+// e-mail ou documento (a saída vai para o log do script). `apenasPontos`
+// restringe aos pontos dados (o mesmo recurso de basico.sincronizar: os
+// testes rodam em paralelo no mesmo banco); o script nunca passa.
+const LINK_ESCOLHA_DE_PONTOS = '/anunciante/painel.html#painelPontos';
+
+async function liberarEscolhasSemInstalacao({ aplicar = false, apenasPontos = null } = {}, db = pool) {
+  // Require tardio: só o script usa, e quem só lê pontos não precisa
+  // carregar a central de avisos.
+  const notificacoes = require('../creditos/notificacoes');
+  const sse = require('../lib/sse');
+  const client = await db.connect();
+  let escolhas;
+  try {
+    await client.query('BEGIN');
+    // Trava a escolha e o ponto: um 1º sinal que chegue agora espera esta
+    // transação para mudar o status do ponto.
+    ({ rows: escolhas } = await client.query(
+      `SELECT ap.anunciante_id, ap.ponto_id, p.nome AS ponto_nome
+         FROM anunciantes_pontos ap JOIN pontos p ON p.id = ap.ponto_id
+        WHERE ${aguardandoInstalacaoSql('p')} AND ($1::int[] IS NULL OR p.id = ANY($1::int[]))
+        ORDER BY ap.anunciante_id, ap.ponto_id
+        FOR UPDATE OF ap, p`,
+      [apenasPontos],
+    ));
+    if (!aplicar) {
+      await client.query('ROLLBACK');
+    } else {
+      for (const e of escolhas) {
+        await client.query('DELETE FROM anunciantes_pontos WHERE anunciante_id = $1 AND ponto_id = $2', [
+          e.anunciante_id,
+          e.ponto_id,
+        ]);
+        // Na MESMA transação: escolha liberada sem aviso é exatamente a
+        // perda silenciosa que esta correção existe para evitar.
+        e.notificacao = await notificacoes.registrar(
+          e.anunciante_id,
+          {
+            tipo: 'ESCOLHA_LIBERADA',
+            titulo: 'Um ponto que você escolheu ainda está em instalação',
+            descricao: `${e.ponto_nome} ainda não está instalado e deixou de ocupar uma das posições do seu plano. Você já pode escolher outro ponto; quando ele estiver no ar, poderá escolhê-lo de novo.`,
+            entidadeTipo: 'ponto',
+            entidadeId: e.ponto_id,
+            link: LINK_ESCOLHA_DE_PONTOS,
+          },
+          client,
+        );
+      }
+      await client.query('COMMIT');
+    }
+  } catch (err) {
+    // O erro que importa é o original; a falha do ROLLBACK (conexão caída)
+    // só vai para o log.
+    await client.query('ROLLBACK').catch((falha) => console.error('liberar escolhas: ROLLBACK falhou', falha.message));
+    throw err;
+  } finally {
+    client.release();
+  }
+  // Tempo real só depois do COMMIT (nunca anunciar o que pode dar ROLLBACK):
+  // o painel aberto refaz a escolha de pontos e a central de avisos.
+  if (aplicar) {
+    for (const e of escolhas) {
+      sse.emitirParaConta(e.anunciante_id, 'point.updated', { id: e.ponto_id });
+      sse.emitirParaConta(e.anunciante_id, 'notification.created', { id: e.notificacao.id });
+    }
+  }
+  return {
+    aplicado: Boolean(aplicar),
+    total: escolhas.length,
+    contas: new Set(escolhas.map((e) => e.anunciante_id)).size,
+    escolhas: escolhas.map((e) => ({ anunciante_id: e.anunciante_id, ponto_id: e.ponto_id })),
+  };
+}
+
 module.exports = {
   deletar,
+  liberarEscolhasSemInstalacao,
   contaEhPonto,
   criar,
   estabelecimentoJaCadastrado,

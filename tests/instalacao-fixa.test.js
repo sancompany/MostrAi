@@ -495,3 +495,181 @@ test('PATCH /admin/pontos/:id: data prevista de instalação (válida, vazia →
     c.release();
   }
 });
+
+// ===========================================================================
+// Correção D2: escolha gravada em ponto nunca instalado (itens 2 e 22)
+// ===========================================================================
+// O que a conta tem de dinheiro e de entrega, linha a linha: a correção só
+// pode tirar a escolha e pôr a notificação.
+const TABELAS_DA_CONTA = ['assinaturas', 'cobrancas_confirmadas', 'ciclos_contratados', 'obrigacoes_veiculacao'];
+async function retratoDaConta(conta) {
+  const retrato = {};
+  for (const t of [...TABELAS_DA_CONTA, 'creditos_ledger', 'anunciantes']) {
+    const coluna = t === 'anunciantes' ? 'id' : 'anunciante_id';
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS n, md5(COALESCE(string_agg(x::text, '|' ORDER BY x::text), '')) AS h
+         FROM ${t} x WHERE x.${coluna} = $1`,
+      [conta],
+    );
+    retrato[t] = rows[0];
+  }
+  return retrato;
+}
+
+async function contaPagante() {
+  const conta = await novaConta();
+  const assinatura = `teste-d2-${randomUUID()}`;
+  await pool.query(
+    `INSERT INTO assinaturas (id, anunciante_id, plano_id, status) VALUES ($1, $2, 'essencial-1m', 'ativa')`,
+    [assinatura, conta],
+  );
+  const { rows: cobranca } = await pool.query(
+    `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor) VALUES ($1, 'essencial-1m', 99.9) RETURNING id`,
+    [conta],
+  );
+  const { rows: ciclo } = await pool.query(
+    `INSERT INTO ciclos_contratados (anunciante_id, plano_id, assinatura_id, cobranca_confirmada_id, origem, ciclo_meses,
+                                     valor_ciclo, exibicoes_previstas_mes, exibicoes_previstas_ciclo)
+     VALUES ($1, 'essencial-1m', $2, $3, 'compra', 1, 99.9, 100, 100) RETURNING id`,
+    [conta, assinatura, cobranca[0].id],
+  );
+  await pool.query(
+    `INSERT INTO obrigacoes_veiculacao (anunciante_id, tipo, chave, segundos, plano_id, ciclo_contratado_id, inicio, fim, motivo)
+     VALUES ($1, 'ciclo', 'teste-d2:' || gen_random_uuid(), 3600, 'essencial-1m', $2, now(), now() + interval '30 days',
+             'teste: ciclo da correção D2')`,
+    [conta, ciclo[0].id],
+  );
+  await pool.query(
+    `INSERT INTO creditos_ledger (anunciante_id, tipo, quantidade, concedido_por, observacao)
+     VALUES ($1, 'concessao_admin', 2, 'teste', 'teste: correção D2')`,
+    [conta],
+  );
+  return conta;
+}
+
+// Escolha antiga, gravada quando o ponto aprovado ainda contava como vaga
+// (RN-49): direto no banco, como está em produção.
+async function escolhaAntiga(conta, pontos) {
+  for (const ponto of pontos) {
+    await pool.query(
+      'INSERT INTO anunciantes_pontos (anunciante_id, ponto_id, escolhido_em) VALUES ($1, $2, clock_timestamp())',
+      [conta, ponto],
+    );
+  }
+}
+
+const parOrdenado = (a, b) => a.anunciante_id - b.anunciante_id || a.ponto_id - b.ponto_id;
+const avisosLiberados = async (contas) =>
+  (
+    await pool.query(
+      `SELECT anunciante_id, tipo, titulo, descricao, entidade_tipo, entidade_id, link FROM notificacoes
+        WHERE anunciante_id = ANY($1::int[]) AND tipo = 'ESCOLHA_LIBERADA' ORDER BY anunciante_id, entidade_id`,
+      [contas],
+    )
+  ).rows;
+
+test('correção D2: sem --aplicar só lista; com --aplicar libera só a escolha em ponto nunca instalado, avisa a conta e não toca no dinheiro', async () => {
+  const { liberarEscolhasSemInstalacao } = require('../src/pontos/repository');
+  const c = await todosOsCasos();
+  const rede = await novaRede();
+  const x = await contaPagante(); // A (nunca instalado), D (revogado) e a rede
+  const y = await contaPagante(); // B (tela sem Player), F (reparo) e E offline
+  const z = await novaConta(); // o próprio ponto, aguardando instalação
+  const proprio = await montar('A', { dono: z });
+  await escolhaAntiga(x, [c.A, c.D, rede.id]);
+  await escolhaAntiga(y, [c.B, c.F, c.Eoff]);
+  await escolhaAntiga(z, [proprio]);
+  const apenasPontos = [...Object.values(c), rede.id, proprio];
+  const contas = [x, y, z];
+  const antes = { x: await retratoDaConta(x), y: await retratoDaConta(y) };
+  const liberaveis = [
+    { anunciante_id: x, ponto_id: c.A },
+    { anunciante_id: y, ponto_id: c.B },
+    { anunciante_id: z, ponto_id: proprio },
+  ].sort(parOrdenado);
+
+  // Sem --aplicar: lista e desfaz.
+  const ensaio = await liberarEscolhasSemInstalacao({ apenasPontos });
+  assert.deepStrictEqual(
+    { ...ensaio, escolhas: [...ensaio.escolhas].sort(parOrdenado) },
+    { aplicado: false, total: 3, contas: 3, escolhas: liberaveis },
+  );
+  assert.doesNotMatch(JSON.stringify(ensaio), /Instalação|@/, 'só ids e contagens');
+  assert.deepStrictEqual(await escolhasNoBanco(x), [c.A, c.D, rede.id], 'o ensaio não apaga nada');
+  assert.deepStrictEqual(await avisosLiberados(contas), [], 'nem avisa ninguém');
+
+  // Com --aplicar: só as três escolhas em ponto nunca instalado saem.
+  const r = await liberarEscolhasSemInstalacao({ aplicar: true, apenasPontos });
+  assert.deepStrictEqual([r.aplicado, r.total, r.contas], [true, 3, 3]);
+  assert.deepStrictEqual(await escolhasNoBanco(x), [c.D, rede.id], 'revogado e rede ficam');
+  assert.deepStrictEqual(await escolhasNoBanco(y), [c.F, c.Eoff], 'reparo e offline ficam');
+  assert.deepStrictEqual(await escolhasNoBanco(z), []);
+  const nomes = new Map(
+    (await pool.query('SELECT id, nome FROM pontos WHERE id = ANY($1::int[])', [[c.A, c.B, proprio]])).rows.map((p) => [
+      p.id,
+      p.nome,
+    ]),
+  );
+  assert.deepStrictEqual(
+    await avisosLiberados(contas),
+    liberaveis.map((e) => ({
+      anunciante_id: e.anunciante_id,
+      tipo: 'ESCOLHA_LIBERADA',
+      titulo: 'Um ponto que você escolheu ainda está em instalação',
+      descricao: `${nomes.get(e.ponto_id)} ainda não está instalado e deixou de ocupar uma das posições do seu plano. Você já pode escolher outro ponto; quando ele estiver no ar, poderá escolhê-lo de novo.`,
+      entidade_tipo: 'ponto',
+      entidade_id: e.ponto_id,
+      link: '/anunciante/painel.html#painelPontos',
+    })),
+  );
+  // Obrigação, cobrança, ciclo, assinatura, crédito e a própria conta: iguais.
+  assert.deepStrictEqual(await retratoDaConta(x), antes.x);
+  assert.deepStrictEqual(await retratoDaConta(y), antes.y);
+  for (const t of [...TABELAS_DA_CONTA, 'creditos_ledger']) assert.strictEqual(antes.x[t].n, 1, `${t} tinha linha`);
+
+  // Idempotente: a segunda execução não encontra nada nem avisa de novo.
+  const denovo = await liberarEscolhasSemInstalacao({ aplicar: true, apenasPontos });
+  assert.deepStrictEqual(denovo, { aplicado: true, total: 0, contas: 0, escolhas: [] });
+  assert.strictEqual((await avisosLiberados(contas)).length, 3);
+
+  // A posição do plano voltou: a conta escolhe um ponto instalado no lugar.
+  const novo = await montar('E');
+  assert.deepStrictEqual((await disponiveis(x)).escolhidos, [c.D, rede.id]);
+  const put = await escolher(x, [c.D, rede.id, novo]);
+  assert.strictEqual(put.status, 200, put.texto);
+  assert.deepStrictEqual(await escolhasNoBanco(x), [c.D, rede.id, novo]);
+});
+
+test('script da correção D2: sem --aplicar não grava e imprime só ids; argumento desconhecido sai com 2', async () => {
+  const { execFile } = require('node:child_process');
+  const path = require('node:path');
+  const rodar = (args) =>
+    new Promise((resolve) => {
+      execFile(
+        process.execPath,
+        [path.join(__dirname, '..', 'scripts', 'liberar-escolhas-sem-instalacao.js'), ...args],
+        { cwd: path.join(__dirname, '..'), env: process.env },
+        (err, stdout, stderr) => resolve({ codigo: err ? err.code : 0, stdout, stderr }),
+      );
+    });
+  const conta = await novaConta();
+  const ponto = await montar('A');
+  await escolhaAntiga(conta, [ponto]);
+
+  const ensaio = await rodar([]);
+  assert.strictEqual(ensaio.codigo, 0, ensaio.stderr);
+  const saida = JSON.parse(ensaio.stdout);
+  assert.strictEqual(saida.aplicado, false);
+  assert.ok(
+    saida.escolhas.some((e) => e.anunciante_id === conta && e.ponto_id === ponto),
+    'lista a escolha em ponto nunca instalado',
+  );
+  assert.doesNotMatch(ensaio.stdout, /Instalação|@/, 'nenhum nome nem e-mail na saída');
+  assert.deepStrictEqual(await escolhasNoBanco(conta), [ponto], 'sem --aplicar nada sai');
+  assert.deepStrictEqual(await avisosLiberados([conta]), []);
+
+  const errado = await rodar(['--aplica']);
+  assert.strictEqual(errado.codigo, 2);
+  assert.strictEqual(errado.stdout, '');
+  assert.deepStrictEqual(await escolhasNoBanco(conta), [ponto]);
+});
