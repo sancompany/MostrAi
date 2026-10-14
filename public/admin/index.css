@@ -4310,7 +4310,28 @@ button.pend-bloco:focus-visible {
 .agenda-admin-topo { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .agenda-admin td { vertical-align: top; }
 .agenda-admin td:nth-child(3) a { white-space: nowrap; }
-.agenda-aguardando [data-movel] .badge { margin-top: 4px; }
+[data-agenda-aguardando] [data-movel] .badge { margin-top: 4px; }
+/* No celular, cada linha da agenda vira um bloco empilhado: o rótulo da
+   coluna (data-rotulo, o mesmo do cabeçalho) ao lado do valor. Nada fica
+   escondido atrás de rolagem lateral — Previsão, Móvel e [Alocar Móvel]
+   à vista. O cabeçalho segue para leitor de tela. */
+@media (max-width: 640px) {
+  .agenda-admin thead {
+    position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap;
+  }
+  .agenda-admin, .agenda-admin tbody, .agenda-admin tr, .agenda-admin td { display: block; }
+  .agenda-admin tr { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .agenda-admin tbody tr:last-child { border-bottom: 0; }
+  .agenda-admin td,
+  .agenda-admin tbody tr:last-child td { position: relative; min-height: 1.6em; padding: 3px 0 3px 96px; border: 0; overflow-wrap: anywhere; }
+  .agenda-admin td[data-rotulo]::before {
+    content: attr(data-rotulo); position: absolute; left: 0; top: 5px; width: 88px;
+    font-size: .7rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #8a94a3;
+  }
+  .agenda-admin td:not([data-rotulo]) { padding-left: 0; }
+  .agenda-admin td:not([data-rotulo]):empty { display: none; }
+  .agenda-admin td:nth-child(3) a { white-space: normal; }
+}
 /* Ficha do ponto fixo: as passagens do Mostraí Móvel por ele (ADR-047). */
 .ponto-passagens { margin-top: var(--e-4); }
 .lista-passagens { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 0.85rem; }

@@ -3600,51 +3600,89 @@ const ABAS_DA_AGENDA = [
   { id: 'historico', rotulo: 'Histórico', vazio: 'Nenhum compromisso encerrado ainda.' },
 ];
 
+// As tabelas da agenda: o cabeçalho e o rótulo de cada célula
+// (`data-rotulo`) saem da MESMA lista de colunas. No celular (≤ 640 px,
+// admin/index.css) a linha empilha e cada célula mostra o rótulo ao lado do
+// valor — nada escondido atrás de rolagem lateral, a ação da linha à vista.
+// Coluna sem rótulo ('') é a da ação. Cada célula: [html, atributos?].
+function tabelaDaAgendaMovel(atributos, colunas, linhas) {
+  const cabecalho = colunas.map((c) => `<th>${c || '<span class="u-sr">Ação</span>'}</th>`).join('');
+  const corpo = linhas
+    .map(
+      ({ attrs, celulas }) =>
+        `<tr ${attrs}>${celulas
+          .map(
+            ([html, extra = ''], i) =>
+              `<td${colunas[i] ? ` data-rotulo="${colunas[i]}"` : ''}${extra ? ` ${extra}` : ''}>${html}</td>`,
+          )
+          .join('')}</tr>`,
+    )
+    .join('');
+  return `<div class="tabela-rolagem"><table class="mini-table agenda-admin" ${atributos}>
+      <thead><tr>${cabecalho}</tr></thead><tbody>${corpo}</tbody></table></div>`;
+}
+
 // Agora, Próximos e Histórico: uma linha por compromisso (evento com várias
 // telas é UMA linha), com o porquê como linha secundária.
+const COLUNAS_AGENDA = ['Data', 'Horário', 'Rede', 'Tela(s)', 'Onde', 'Local', 'Estado'];
 function tabelaDaAgenda(linhas) {
-  return `<div class="tabela-rolagem"><table class="mini-table agenda-admin" data-agenda-admin>
-      <thead><tr><th>Data</th><th>Horário</th><th>Rede</th><th>Tela(s)</th><th>Onde</th><th>Local</th><th>Estado</th></tr></thead>
-      <tbody>${linhas
-        .map((l) => {
-          const { data: dia, horario } = window.PONTO_MOVEL.periodoDaAgenda(l.inicio, l.fim);
-          const [rotulo, classe] = estadoCru(l.estado);
-          const porque = porqueDoCompromisso(l, l.estado === 'cancelada' || l.estado === 'cancelado');
-          return `<tr data-agenda-tipo="${l.tipo}">
-            <td class="u-nowrap">${esc(dia)}</td>
-            <td class="u-nowrap">${esc(horario)}</td>
-            <td><a href="#rede/pontos/${l.redeId}" data-abrir-rede>${esc(l.rede)}</a><span class="dado-sub">${esc(window.PONTO_MOVEL.cidade(l.cidade, l.uf))}</span></td>
-            <td>${(l.telas || []).map((t) => `<span class="u-nowrap">${esc(t.codigo)}</span>`).join(', ')}</td>
-            <td>${l.tipo === 'hospedagem' ? 'Na conta' : 'Outro local'}</td>
-            <td>${esc(l.nome)}${l.local ? `<span class="dado-sub">${esc(l.local)}</span>` : ''}${l.conta && l.conta !== l.nome ? `<span class="dado-sub">${esc(l.conta)}</span>` : ''}${porque.map((t) => `<span class="dado-sub agenda-porque">${esc(t)}</span>`).join('')}</td>
-            <td><span class="badge ${classe}">${rotulo}</span></td>
-          </tr>`;
-        })
-        .join('')}</tbody></table></div>`;
+  return tabelaDaAgendaMovel(
+    'data-agenda-admin',
+    COLUNAS_AGENDA,
+    linhas.map((l) => {
+      const { data: dia, horario } = window.PONTO_MOVEL.periodoDaAgenda(l.inicio, l.fim);
+      const [rotulo, classe] = estadoCru(l.estado);
+      const porque = porqueDoCompromisso(l, l.estado === 'cancelada' || l.estado === 'cancelado');
+      return {
+        attrs: `data-agenda-tipo="${l.tipo}"`,
+        celulas: [
+          [esc(dia), 'class="u-nowrap"'],
+          [esc(horario), 'class="u-nowrap"'],
+          [
+            `<a href="#rede/pontos/${l.redeId}" data-abrir-rede>${esc(l.rede)}</a><span class="dado-sub">${esc(window.PONTO_MOVEL.cidade(l.cidade, l.uf))}</span>`,
+          ],
+          [(l.telas || []).map((t) => `<span class="u-nowrap">${esc(t.codigo)}</span>`).join(', ')],
+          [l.tipo === 'hospedagem' ? 'Na conta' : 'Outro local'],
+          [
+            `${esc(l.nome)}${l.local ? `<span class="dado-sub">${esc(l.local)}</span>` : ''}${l.conta && l.conta !== l.nome ? `<span class="dado-sub">${esc(l.conta)}</span>` : ''}${porque.map((t) => `<span class="dado-sub agenda-porque">${esc(t)}</span>`).join('')}`,
+          ],
+          [`<span class="badge ${classe}">${rotulo}</span>`],
+        ],
+      };
+    }),
+  );
 }
 
 // Aguardando instalação: o ponto, onde está, de quem é, quando a instalação
 // está prevista e a unidade do Móvel que já está (ou vai) lá.
+const COLUNAS_AGUARDANDO = ['Ponto', 'Categoria', 'Cidade', 'Conta', 'Previsão', 'Móvel', ''];
 function tabelaAguardando(lista) {
-  return `<div class="tabela-rolagem"><table class="mini-table agenda-admin agenda-aguardando" data-agenda-aguardando>
-      <thead><tr><th>Ponto</th><th>Categoria</th><th>Cidade</th><th>Conta</th><th>Previsão</th><th>Móvel</th><th><span class="u-sr">Ação</span></th></tr></thead>
-      <tbody>${lista
-        .map((l) => {
-          const a = l.alocacao ? partesDaAlocacao(l.alocacao) : null;
-          const movel = a
-            ? `<b class="u-nowrap">${esc(a.unidade)}</b> · ${esc(a.rede)}<span class="dado-sub">${esc(a.periodo)}</span><span class="badge ${a.estado[1]}">${a.estado[0]}</span>`
-            : '<span class="u-dim">—</span>';
-          return `<tr data-aguardando-ponto="${l.pontoId}">
-            <td><a href="#rede/pontos/${l.pontoId}">${esc(l.nome)}</a></td>
-            <td>${l.categoria ? esc(l.categoria.nome) : '<span class="u-dim">—</span>'}</td>
-            <td class="u-nowrap">${esc(window.PONTO_MOVEL.cidade(l.cidade, l.uf))}</td>
-            <td>${l.contaId ? `<a href="#contas/contas/${l.contaId}">${esc(l.conta)}</a>` : naoInformado('Sem conta')}</td>
-            <td class="u-nowrap" data-previsao>${esc(textoDaPrevisao(l.instalacaoPrevistaEm))}</td>
-            <td data-movel>${movel}</td>
-            <td>${!l.alocacao && l.contaId ? `<button type="button" class="btn ghost mini u-nowrap" data-alocar-movel="${l.pontoId}">Alocar Móvel</button>` : ''}</td>
-          </tr>`;
-        })
-        .join('')}</tbody></table></div>`;
+  return tabelaDaAgendaMovel(
+    'data-agenda-aguardando',
+    COLUNAS_AGUARDANDO,
+    lista.map((l) => {
+      const a = l.alocacao ? partesDaAlocacao(l.alocacao) : null;
+      const movel = a
+        ? `<b class="u-nowrap">${esc(a.unidade)}</b> · ${esc(a.rede)}<span class="dado-sub">${esc(a.periodo)}</span><span class="badge ${a.estado[1]}">${a.estado[0]}</span>`
+        : '<span class="u-dim">—</span>';
+      return {
+        attrs: `data-aguardando-ponto="${l.pontoId}"`,
+        celulas: [
+          [`<a href="#rede/pontos/${l.pontoId}">${esc(l.nome)}</a>`],
+          [l.categoria ? esc(l.categoria.nome) : '<span class="u-dim">—</span>'],
+          [esc(window.PONTO_MOVEL.cidade(l.cidade, l.uf)), 'class="u-nowrap"'],
+          [l.contaId ? `<a href="#contas/contas/${l.contaId}">${esc(l.conta)}</a>` : naoInformado('Sem conta')],
+          [esc(textoDaPrevisao(l.instalacaoPrevistaEm)), 'class="u-nowrap" data-previsao'],
+          [movel, 'data-movel'],
+          [
+            !l.alocacao && l.contaId
+              ? `<button type="button" class="btn ghost mini u-nowrap" data-alocar-movel="${l.pontoId}">Alocar Móvel</button>`
+              : '',
+          ],
+        ],
+      };
+    }),
+  );
 }
 
 async function abrirAgendaMovel() {

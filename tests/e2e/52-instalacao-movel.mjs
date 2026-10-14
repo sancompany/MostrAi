@@ -677,7 +677,29 @@ for (const id of ['agora', 'proximos', 'aguardando', 'historico']) {
   await aba(id);
   check(`390: agenda (${id}) sem rolagem lateral`, await semRolagemLateral(admin));
 }
+// No celular a linha empilha: Previsão, Móvel e a ação à vista, sem rolar a
+// tabela de lado (antes, a 390 px, só Ponto/Categoria/Cidade/Conta).
+const dentroDoModal = (seletor) =>
+  modal().evaluate((dlg, s) => {
+    const limite = dlg.querySelector('[data-agenda-corpo]').getBoundingClientRect();
+    const alvos = [...dlg.querySelectorAll(s)];
+    return (
+      alvos.length > 0 &&
+      alvos.every((el) => {
+        const r = el.getBoundingClientRect();
+        return r.left >= limite.left - 1 && r.right <= limite.right + 1;
+      })
+    );
+  }, seletor);
+await aba('agora');
+check('390: agenda (agora) — Local e Estado à vista, sem rolar a tabela de lado', await dentroDoModal('[data-agenda-admin] td'));
+await shot(modal(), 'agenda-agora-390');
 await aba('aguardando');
+check(
+  '390: aba Aguardando — Previsão, Móvel e [Alocar Móvel] à vista, sem rolar a tabela de lado',
+  (await modal().locator('[data-alocar-movel]').count()) > 0 &&
+    (await dentroDoModal('[data-agenda-aguardando] [data-previsao], [data-agenda-aguardando] [data-movel], [data-agenda-aguardando] [data-alocar-movel]')),
+);
 await shot(modal(), 'agenda-390');
 await modal().locator('[data-fechar]').last().click();
 await irAdmin(`#rede/pontos/${REDE}`, `[data-compromisso="h${HP}"]`);
