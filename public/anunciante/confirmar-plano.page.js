@@ -15,7 +15,7 @@ function montarAvisoRede(plano, pontos) {
     naRede === 0
       ? 'A rede ainda não tem nenhum ponto ativo hoje.'
       : `Hoje ${naRede === 1 ? 'há 1 ponto na rede' : `há ${naRede} pontos na rede`}${
-          veiculando !== naRede ? `, ${veiculando} já no ar` : ', todos no ar'
+          veiculando !== naRede ? `, ${veiculando} já no ar` : naRede === 1 ? ', no ar' : ', todos no ar'
         }.`;
   const cobreMaisQueARede = plano.pontos_incluidos && veiculando > 0 && plano.pontos_incluidos > veiculando;
   const explicacaoBancoHoras = cobreMaisQueARede

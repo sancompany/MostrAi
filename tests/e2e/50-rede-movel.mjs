@@ -105,6 +105,16 @@ async function cadastrar(nome, cpf, email) {
 async function pagina(largura, altura, rotulo, permitir = /status of 401/) {
   const ctx = await navegador.newContext({ viewport: { width: largura, height: altura } });
   await ctx.route(/google\.com\/maps/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: 'mapa' }));
+  // O ViaCEP de verdade às vezes falha (erro de CORS no console derrubava o
+  // roteiro): responde o que ele responde para o CEP geral de Matão.
+  await ctx.route(/viacep\.com\.br/, (r) =>
+    r.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({ cep: '15990-000', logradouro: '', complemento: '', bairro: '', localidade: 'Matão', uf: 'SP' }),
+    }),
+  );
   await ctx.route('**/e2e-storage/**', (rota) =>
     rota.fulfill({ path: path.join(STORAGE, path.basename(new URL(rota.request().url()).pathname)) }),
   );

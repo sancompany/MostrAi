@@ -318,7 +318,7 @@ await anf.waitForSelector('#confirmacaoPedido .aviso-rede', { timeout: 10000 });
 const aviso = texto(await anf.locator('#confirmacaoPedido .aviso-rede').innerText());
 check(
   'confirmar-plano: "1 ponto na rede" (a rede móvel; os 2 aguardando não contam)',
-  /^Hoje há 1 ponto na rede, todos no ar\./.test(aviso) && !/cadastrad/i.test(aviso),
+  /^Hoje há 1 ponto na rede, no ar\./.test(aviso) && !/cadastrad/i.test(aviso),
   aviso,
 );
 // Com plano, o PRÓPRIO estabelecimento aguardando também não é escolhível.

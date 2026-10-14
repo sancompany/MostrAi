@@ -667,6 +667,7 @@ function htmlPontoMovelEscolha(p) {
 // planejamento. O servidor já tira a cancelada e decide o bloco de cada
 // passagem: aqui nada é refiltrado por estado. Carrega sob demanda, no clique.
 const AGENDA_MOVEL = {
+  agora: 'Agora',
   proximas: 'Próximas passagens',
   semProximas: 'Nenhuma passagem publicada.',
   historico: 'Histórico',
@@ -697,6 +698,10 @@ async function abrirAgendaMovel(redeId) {
   };
   dlg.innerHTML = `${cabecalho('Agenda')}<p class="dlg-agenda-msg" role="status">Carregando...</p>`;
   if (!dlg.open) dlg.showModal();
+  // Abrir de novo (outra rede, ou a mesma) antes da resposta: só a abertura
+  // mais nova pinta — a resposta atrasada da anterior não a sobrescreve.
+  dlg._pedido = (dlg._pedido || 0) + 1;
+  const pedido = dlg._pedido;
   let a;
   try {
     const r = await fetch(`${API_BASE_URL}/anunciantes/me/redes-moveis/${encodeURIComponent(redeId)}/agenda`, {
@@ -705,11 +710,13 @@ async function abrirAgendaMovel(redeId) {
     a = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(a.erro || 'não deu pra carregar a agenda');
   } catch (erro) {
+    if (pedido !== dlg._pedido) return;
     pintar(
       `${cabecalho('Agenda')}<p class="dlg-agenda-msg form-msg err" role="alert">Não deu pra carregar a agenda agora (${esc(window.frase(erro.message))}).</p>`,
     );
     return;
   }
+  if (pedido !== dlg._pedido) return;
   const linha = (c) => {
     const { data, horario } = window.PONTO_MOVEL.periodoDaAgenda(c.inicio, c.fim);
     return `<li class="agenda-movel-item">
@@ -727,7 +734,7 @@ async function abrirAgendaMovel(redeId) {
         : `<p class="u-dim">${vazio}</p>`
     }</section>`;
   pintar(`${cabecalho(a.rede.nome, window.PONTO_MOVEL.cidade(a.rede.cidade, a.rede.uf))}
-    ${bloco('agora', 'Agora', a.agora || [], window.PONTO_MOVEL.semLocal)}
+    ${bloco('agora', AGENDA_MOVEL.agora, a.agora || [], window.PONTO_MOVEL.semLocal)}
     ${bloco('proximas', AGENDA_MOVEL.proximas, a.proximos || [], AGENDA_MOVEL.semProximas)}
     ${bloco('historico', AGENDA_MOVEL.historico, a.historico || [], AGENDA_MOVEL.semHistorico, ' agenda-movel-historico')}`);
 }

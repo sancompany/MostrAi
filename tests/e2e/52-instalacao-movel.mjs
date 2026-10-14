@@ -527,9 +527,10 @@ check(
 );
 corpo = await aba('proximos');
 check('Próximos: a passagem de Q2, com o motivo', corpo.includes(NOME_Q2) && /Motivo: Aguardando instalação/.test(corpo), corpo.slice(0, 300));
+await shot(modal(), 'agenda-proximos');
 corpo = await aba('historico');
 check('Histórico: vazio com frase própria', /Nenhum compromisso encerrado ainda\./.test(corpo), corpo);
-await shot(modal(), 'agenda-proximos');
+await shot(modal(), 'agenda-historico-vazio');
 await modal().locator('[data-fechar]').last().click();
 
 // ---------------------------------------------------------------------------
