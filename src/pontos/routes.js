@@ -291,6 +291,20 @@ router.get('/admin/pontos/:id/enderecos', async (req, res) => {
   res.json(await historicoDoPonto(id));
 });
 
+// Data prevista da instalação fixa (migration 123, ADR-047): 'AAAA-MM-DD' de
+// um dia que existe no calendário, ano 2020–2100 (fora disso é erro de
+// digitação, não planejamento). '' e null limpam ("Sem data definida").
+// Devolve undefined quando a data é inválida.
+function dataPrevistaDeInstalacao(v) {
+  if (v === '' || v === null) return null;
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return undefined;
+  const [ano, mes, dia] = v.split('-').map(Number);
+  // Date.UTC "conserta" 31/02 para 03/03: se o dia voltar diferente, não existe.
+  const d = new Date(Date.UTC(ano, mes - 1, dia));
+  const existe = d.getUTCFullYear() === ano && d.getUTCMonth() === mes - 1 && d.getUTCDate() === dia;
+  return existe && ano >= 2020 && ano <= 2100 ? v : undefined;
+}
+
 router.patch('/admin/pontos/:id', async (req, res) => {
   try {
     // Modalidade de comodato aposentada (24/09/2026, ADR-016): não se troca
@@ -302,6 +316,15 @@ router.patch('/admin/pontos/:id', async (req, res) => {
     const comEndereco = [...PARTES, 'endereco'].filter((c) => resto[c] !== undefined);
     if (comEndereco.length) {
       return res.status(400).json({ erro: 'endereço do ponto muda por PATCH /admin/pontos/:id/endereco' });
+    }
+    // Só logística: não muda status, escolha nem playlist (o ponto só vira
+    // vendável com o 1º sinal de uma tela, nunca por esta data).
+    if (resto.instalacao_prevista_em !== undefined) {
+      const data = dataPrevistaDeInstalacao(resto.instalacao_prevista_em);
+      if (data === undefined) {
+        return res.status(400).json({ erro: 'data prevista de instalação inválida (use AAAA-MM-DD)' });
+      }
+      resto.instalacao_prevista_em = data;
     }
     const antes = await repo.buscarPorId(req.params.id);
     // Ponto móvel é da Mostraí (migrations 112 e 114): não tem dona, e

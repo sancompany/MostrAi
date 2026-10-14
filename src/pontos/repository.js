@@ -2,6 +2,7 @@ const pool = require('../db/pool');
 const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
 const { LIMITE_COMERCIAL, SEGUNDOS_DA_HORA, telasDaCapacidadeSql } = require('../lib/capacidade');
 const { PARTES, colunasDoEndereco } = require('../lib/endereco');
+const { formatarCodigoTela } = require('../lib/codigo-tela');
 
 // Cinco status (migration 069 + `aguardando_primeiro_sinal` na 088) —
 // e AUTOMÁTICO: ninguém escreve aqui direto, `sincronizarStatusPonto` (mais
@@ -91,6 +92,11 @@ const CAMPOS_ATUALIZAVEIS = [
   // outros dados de ficha, não porque o admin deva reescrever a palavra do
   // estabelecimento.
   'observacoes',
+  // Migration 123 (ADR-047): data prevista da instalação fixa, só logística
+  // do Admin. Nula = "Sem data definida". Não muda status, escolha nem
+  // playlist (o gatilho playlist_desatualizada de pontos não olha esta
+  // coluna); a rota valida o formato antes de chegar aqui.
+  'instalacao_prevista_em',
 ];
 
 async function criar(dados, db = pool) {
@@ -212,6 +218,22 @@ async function estabelecimentoJaCadastrado(
 // Ponto arquivado (migration 080) fica fora de toda listagem da experiência
 // normal. O histórico continua no banco — `mesclado_em_ponto_id` diz para
 // qual registro canônico ele foi.
+//
+// Instalação e disponibilidade (ADR-047) saem decididas daqui, pelos MESMOS
+// predicados da escolha e do site — a ficha e o contador do Admin só
+// mostram, nunca reclassificam pelo status:
+//   ja_instalado          alguma tela já deu o 1º sinal (móvel: null);
+//   aguardando_instalacao aprovado, na rede e nunca instalado (móvel: false);
+//   disponibilidade       'ativa' (vendável e em operação) |
+//                         'temporariamente_indisponivel' (vendável, fora de
+//                         operação agora) | 'nao_disponivel' (aguardando
+//                         instalação ou inativo) | null (móvel);
+//   alocacao_movel        a passagem do Mostraí Móvel vinculada ao ponto
+//                         (migration 123): a ATIVA, senão a programada mais
+//                         próxima que ainda não terminou, senão null;
+//   movel_a_encerrar      o ponto já foi instalado e ainda tem passagem do
+//                         Móvel ativa ou programada — o Admin é avisado para
+//                         encerrar (ou cancelar); nada encerra sozinho.
 async function listar() {
   const { rows } = await pool.query(
     `SELECT p.*, c.nome AS categoria_nome,
@@ -221,14 +243,48 @@ async function listar() {
             -- Mudou de endereço depois da instalação e a operação ainda não
             -- conferiu (src/pendencias/, estação de endereços).
             EXISTS (SELECT 1 FROM pendencias pe WHERE pe.ponto_id = p.id AND pe.tipo = 'ENDERECO_PONTO_ALTERADO'
-                      AND pe.resolvido_em IS NULL) AS endereco_a_conferir
+                      AND pe.resolvido_em IS NULL) AS endereco_a_conferir,
+            CASE WHEN p.tipo = 'movel' THEN NULL ELSE ${jaInstaladoSql('p')} END AS ja_instalado,
+            ${aguardandoInstalacaoSql('p')} AS aguardando_instalacao,
+            CASE WHEN p.tipo = 'movel' THEN NULL
+                 WHEN ${fixoVendavelSql('p')} AND p.status = 'em_operacao' THEN 'ativa'
+                 WHEN ${fixoVendavelSql('p')} THEN 'temporariamente_indisponivel'
+                 ELSE 'nao_disponivel' END AS disponibilidade,
+            am.id AS am_id, am.ponto_id AS am_rede_id, am.rede AS am_rede, am.estado AS am_estado,
+            am.inicio AS am_inicio, am.fim AS am_fim, am.motivo_alocacao AS am_motivo, am.dispositivo_id AS am_tela
      FROM pontos p
      LEFT JOIN categorias c ON c.id = p.categoria_id
      LEFT JOIN anunciantes a ON a.id = p.anunciante_id
+     -- Mesmo recorte de "agora + futuro" da Agenda móvel (movel.js#
+     -- agendaDasRedes): a programada que já passou do fim está saindo pelo
+     -- job e não é mais a próxima.
+     LEFT JOIN LATERAL (
+       SELECT h.id, h.ponto_id, r.nome AS rede, h.estado, h.inicio, h.fim, h.motivo_alocacao, h.dispositivo_id
+         FROM pontos_moveis_hospedagens h JOIN pontos r ON r.id = h.ponto_id
+        WHERE h.local_ponto_id = p.id
+          AND (h.estado = 'ativa' OR (h.estado = 'programada' AND h.fim > now()))
+        ORDER BY (h.estado = 'ativa') DESC, h.inicio, h.id
+        LIMIT 1
+     ) am ON true
      WHERE p.status <> 'arquivado'
      ORDER BY p.created_at DESC`,
   );
-  return rows;
+  return rows.map(({ am_id, am_rede_id, am_rede, am_estado, am_inicio, am_fim, am_motivo, am_tela, ...p }) => {
+    const alocacao = am_id
+      ? {
+          ref: `h${am_id}`,
+          id: Number(am_id),
+          redeId: am_rede_id,
+          rede: am_rede,
+          estado: am_estado,
+          inicio: am_inicio,
+          fim: am_fim,
+          motivoAlocacao: am_motivo,
+          tela: { id: am_tela, codigo: formatarCodigoTela(am_tela) },
+        }
+      : null;
+    return { ...p, alocacao_movel: alocacao, movel_a_encerrar: Boolean(p.ja_instalado && alocacao) };
+  });
 }
 
 async function buscarPorId(id) {

@@ -9,6 +9,7 @@ const anunciantesRepo = require('../src/anunciantes/repository');
 const dispositivosRepo = require('../src/dispositivos/repository');
 const movel = require('../src/pontos/movel');
 const credencial = require('../src/player/credencial');
+const { formatarCodigoTela } = require('../src/lib/codigo-tela');
 const { instalarPlayer } = require('./apoio-player');
 
 // PONTO FIXO VENDÁVEL × AGUARDANDO INSTALAÇÃO (ADR-047, 14/10/2026). Aprovar
@@ -216,6 +217,11 @@ const idsDoSite = async () => {
   assert.strictEqual(r.status, 200, r.texto);
   return new Set(r.json.map((p) => p.id));
 };
+const naFichaDoAdmin = async (ids) => {
+  const r = await app.chamar('GET', '/admin/pontos');
+  assert.strictEqual(r.status, 200, r.texto);
+  return new Map(r.json.filter((p) => ids.includes(p.id)).map((p) => [p.id, p]));
+};
 
 test.after(async () => {
   await app.fechar();
@@ -326,4 +332,166 @@ test('item 19: o Móvel parado num ponto aguardando não torna o estabelecimento
   assert.strictEqual(r.status, 400);
   assert.deepStrictEqual(r.json, { erro: ERRO_EM_INSTALACAO });
   assert.strictEqual((await escolher(cliente, [rede.id])).status, 200);
+});
+
+// ===========================================================================
+// Ficha do ponto no Admin (itens 5 e 15; contrato BACK-1, 4 e 5)
+// ===========================================================================
+const projecao = (p) => ({
+  ja_instalado: p.ja_instalado,
+  aguardando_instalacao: p.aguardando_instalacao,
+  disponibilidade: p.disponibilidade,
+  instalacao_prevista_em: p.instalacao_prevista_em,
+  alocacao_movel: p.alocacao_movel,
+  movel_a_encerrar: p.movel_a_encerrar,
+});
+const fixoSemMovel = (ja, aguardando, disponibilidade) => ({
+  ja_instalado: ja,
+  aguardando_instalacao: aguardando,
+  disponibilidade,
+  instalacao_prevista_em: null,
+  alocacao_movel: null,
+  movel_a_encerrar: false,
+});
+
+test('item 5: GET /admin/pontos decide instalação e disponibilidade nos 7 casos (a rede fica de fora dos dois)', async () => {
+  const c = await todosOsCasos();
+  const rede = await novaRede();
+  const ficha = await naFichaDoAdmin([...Object.values(c), rede.id]);
+  const esperado = {
+    A: fixoSemMovel(false, true, 'nao_disponivel'),
+    B: fixoSemMovel(false, true, 'nao_disponivel'),
+    C: fixoSemMovel(false, true, 'nao_disponivel'),
+    D: fixoSemMovel(true, false, 'temporariamente_indisponivel'),
+    E: fixoSemMovel(true, false, 'ativa'),
+    Eoff: fixoSemMovel(true, false, 'ativa'),
+    F: fixoSemMovel(true, false, 'temporariamente_indisponivel'),
+    G: fixoSemMovel(true, false, 'nao_disponivel'),
+  };
+  for (const [k, e] of Object.entries(esperado)) assert.deepStrictEqual(projecao(ficha.get(c[k])), e, `caso ${k}`);
+  assert.deepStrictEqual(projecao(ficha.get(rede.id)), {
+    ja_instalado: null,
+    aguardando_instalacao: false,
+    disponibilidade: null,
+    instalacao_prevista_em: null,
+    alocacao_movel: null,
+    movel_a_encerrar: false,
+  });
+});
+
+test('item 15: a instalação fixa (1º sinal) tira o ponto de "aguardando" e o põe na escolha e no site', async () => {
+  const conta = await novaConta();
+  const ponto = await montar('A');
+  assert.strictEqual((await naFichaDoAdmin([ponto])).get(ponto).aguardando_instalacao, true);
+  await instalarPlayer((await dispositivosRepo.criar(ponto, {})).id);
+  assert.deepStrictEqual(projecao((await naFichaDoAdmin([ponto])).get(ponto)), fixoSemMovel(true, false, 'ativa'));
+  assert.ok((await idsDisponiveis(conta)).has(ponto), 'entra na escolha');
+  assert.ok((await idsDoSite()).has(ponto), 'entra no site');
+  assert.strictEqual((await escolher(conta, [ponto])).status, 200);
+});
+
+test('alocação do Móvel na ficha: a ativa, senão a programada mais próxima que não terminou; instalado com passagem = avisar, nunca encerrar', async () => {
+  const dono = await novaConta();
+  const ponto = await montar('A', { dono });
+  const rede = await novaRede({ telas: 4 });
+  const [t1, t2, t3, t4] = rede.telas;
+  const alocacao = async () => projecao((await naFichaDoAdmin([ponto])).get(ponto));
+  // Passagens que já acabaram (encerrada, cancelada) e a programada cujo fim
+  // já passou (o job está tirando) não são a alocação de agora.
+  await passagem({ rede: rede.id, tela: t1, conta: dono, ponto, estado: 'encerrada', de: -96, ate: -72 });
+  await passagem({ rede: rede.id, tela: t1, conta: dono, ponto, estado: 'cancelada', de: 200, ate: 220 });
+  await passagem({ rede: rede.id, tela: t4, conta: dono, ponto, estado: 'programada', de: -48, ate: -24 });
+  assert.strictEqual((await alocacao()).alocacao_movel, null);
+  await passagem({ rede: rede.id, tela: t1, conta: dono, ponto, estado: 'programada', de: 72, ate: 96 });
+  const proxima = await passagem({
+    rede: rede.id,
+    tela: t2,
+    conta: dono,
+    ponto,
+    estado: 'programada',
+    de: 24,
+    ate: 48,
+  });
+  let a = await alocacao();
+  assert.strictEqual(a.aguardando_instalacao, true);
+  assert.strictEqual(a.movel_a_encerrar, false, 'não instalado: nada a avisar');
+  const { rows } = await pool.query('SELECT inicio, fim FROM pontos_moveis_hospedagens WHERE id = $1', [proxima]);
+  assert.deepStrictEqual(a.alocacao_movel, {
+    ref: `h${proxima}`,
+    id: proxima,
+    redeId: rede.id,
+    rede: rede.nome,
+    estado: 'programada',
+    inicio: rows[0].inicio.toISOString(),
+    fim: rows[0].fim.toISOString(),
+    motivoAlocacao: 'aguardando_instalacao',
+    tela: { id: t2, codigo: formatarCodigoTela(t2) },
+  });
+  const ativa = await passagem({ rede: rede.id, tela: t3, conta: dono, ponto, estado: 'ativa', de: -1, ate: 24 });
+  a = await alocacao();
+  assert.deepStrictEqual([a.alocacao_movel.ref, a.alocacao_movel.estado], [`h${ativa}`, 'ativa'], 'a ativa vem antes');
+  // Instalação fixa concluída: o Admin é avisado; a passagem continua ativa.
+  await instalarPlayer((await dispositivosRepo.criar(ponto, {})).id);
+  a = await alocacao();
+  assert.deepStrictEqual(
+    [a.ja_instalado, a.aguardando_instalacao, a.movel_a_encerrar, a.alocacao_movel.ref],
+    [true, false, true, `h${ativa}`],
+  );
+  const { rows: depois } = await pool.query('SELECT estado FROM pontos_moveis_hospedagens WHERE id = $1', [ativa]);
+  assert.strictEqual(depois[0].estado, 'ativa', 'nada encerra sozinho');
+});
+
+test('PATCH /admin/pontos/:id: data prevista de instalação (válida, vazia → null, inválida 400) sem mexer em status nem playlist', async () => {
+  const ponto = await montar('B'); // aguardando, com uma tela cadastrada
+  await pool.query('UPDATE dispositivos SET playlist_desatualizada_em = NULL WHERE ponto_id = $1', [ponto]);
+  const patch = (valor) => app.chamar('PATCH', `/admin/pontos/${ponto}`, { corpo: { instalacao_prevista_em: valor } });
+  const noBanco = async () =>
+    (await pool.query('SELECT instalacao_prevista_em AS d, status FROM pontos WHERE id = $1', [ponto])).rows[0];
+
+  let r = await patch('2026-11-20');
+  assert.strictEqual(r.status, 200, r.texto);
+  assert.strictEqual(r.json.instalacao_prevista_em, '2026-11-20');
+  assert.deepStrictEqual(await noBanco(), { d: '2026-11-20', status: 'a_instalar' });
+  assert.strictEqual((await naFichaDoAdmin([ponto])).get(ponto).instalacao_prevista_em, '2026-11-20');
+  assert.strictEqual((await patch('2028-02-29')).status, 200, 'dia 29 de ano bissexto existe');
+
+  for (const invalida of [
+    '2026-02-30',
+    '2027-02-29',
+    '2026-13-01',
+    '20-11-2026',
+    '2026-11-20T10:00',
+    '2019-12-31',
+    '2101-01-01',
+    'amanhã',
+    20261120,
+  ]) {
+    r = await patch(invalida);
+    assert.strictEqual(r.status, 400, `${invalida}: ${r.texto}`);
+    assert.deepStrictEqual(r.json, { erro: 'data prevista de instalação inválida (use AAAA-MM-DD)' });
+  }
+  assert.strictEqual((await noBanco()).d, '2028-02-29', 'inválida não grava nada');
+
+  r = await patch('');
+  assert.strictEqual(r.status, 200, r.texto);
+  assert.strictEqual(r.json.instalacao_prevista_em, null, 'vazio = "Sem data definida"');
+  await patch('2026-12-01');
+  assert.strictEqual((await patch(null)).json.instalacao_prevista_em, null, 'null também limpa');
+
+  assert.strictEqual((await noBanco()).status, 'a_instalar', 'a data não muda o status');
+  assert.strictEqual((await naFichaDoAdmin([ponto])).get(ponto).aguardando_instalacao, true, 'nem a instalação');
+  const { rows } = await pool.query('SELECT playlist_desatualizada_em FROM dispositivos WHERE ponto_id = $1', [ponto]);
+  assert.strictEqual(rows[0].playlist_desatualizada_em, null, 'nem marca a playlist');
+  // Nem o livro global de mudanças (migration 117): o gatilho de pontos não
+  // olha esta coluna. Na mesma transação a marca dele fica visível.
+  const c = await pool.connect();
+  try {
+    await c.query('BEGIN');
+    await c.query('UPDATE pontos SET instalacao_prevista_em = $2 WHERE id = $1', [ponto, '2027-01-15']);
+    const { rows: marca } = await c.query(`SELECT current_setting('mostrai.playlist_mudou', true) AS sim`);
+    assert.notStrictEqual(marca[0].sim, 'sim');
+  } finally {
+    await c.query('ROLLBACK');
+    c.release();
+  }
 });
