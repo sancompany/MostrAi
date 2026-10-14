@@ -575,10 +575,17 @@ await modal().locator('[data-fechar]').last().click();
 // ---------------------------------------------------------------------------
 console.log('== F. Instalação fixa com o Móvel no ponto ==');
 await irAdmin(`#rede/pontos/${P}`, '#pontoCabecalho [data-registrar-instalacao]');
-await admin.click('#pontoCabecalho [data-registrar-instalacao]');
+// Duplo clique: a trava global de envio (public/config.js) segura o 2º — uma
+// tela só, sem trava própria no adicionarTela.
+await admin.dblclick('#pontoCabecalho [data-registrar-instalacao]');
 await admin.waitForSelector('.tela-ficha', { timeout: 10000 });
+await redeQuieta(admin);
 const T = Number(admin.url().split('/').pop());
-check('[Registrar instalação] sem tela pendente: cria a tela e abre a ficha dela', T > 0 && PG(`SELECT COUNT(*) FROM dispositivos WHERE ponto_id = ${P}`) === '1');
+check(
+  '[Registrar instalação] sem tela pendente (duplo clique): cria UMA tela e abre a ficha dela',
+  T > 0 && PG(`SELECT COUNT(*) FROM dispositivos WHERE ponto_id = ${P}`) === '1',
+  PG(`SELECT COUNT(*) FROM dispositivos WHERE ponto_id = ${P}`),
+);
 // De volta à ficha: tela Ativa ainda sem Player → abre a MESMA tela.
 await irAdmin(`#rede/pontos/${P}`, '#pontoCabecalho [data-registrar-instalacao]');
 check('tela sem Player: o ponto continua aguardando', (await seloFicha()) === 'Aguardando instalação', await seloFicha());

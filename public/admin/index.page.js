@@ -5984,21 +5984,12 @@ function editarHorarioPonto(ponto, remontar) {
 
 // Nada para preencher: a tela nasce Ativa, com o código humano (M-0235) e
 // "Aguardando instalação". A ficha dela já abre com "Gerar código".
-// Um pedido por vez: o duplo clique em [Registrar instalação] / [+ Adicionar
-// tela] não cria duas telas.
-let criandoTela = false;
 async function adicionarTela(ponto) {
-  if (criandoTela) return;
-  criandoTela = true;
-  try {
-    const r = await api(`/admin/pontos/${ponto.id}/dispositivos`, { method: 'POST', body: JSON.stringify({}) });
-    if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível criar a tela.', 'err');
-    const tela = await r.json();
-    toast(`${tela.codigo} criada.`);
-    irPara(`rede/pontos/${ponto.id}/telas/${tela.id}`);
-  } finally {
-    criandoTela = false;
-  }
+  const r = await api(`/admin/pontos/${ponto.id}/dispositivos`, { method: 'POST', body: JSON.stringify({}) });
+  if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível criar a tela.', 'err');
+  const tela = await r.json();
+  toast(`${tela.codigo} criada.`);
+  irPara(`rede/pontos/${ponto.id}/telas/${tela.id}`);
 }
 
 // Excluir de verdade só tela sem histórico de exibição; com histórico o
