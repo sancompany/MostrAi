@@ -427,6 +427,12 @@ test('8. foto do ponto (fixo ou rede): só pelo Admin, só imagem de verdade, e 
       headers: { 'content-type': 'application/json', 'x-forwarded-for': IP },
       body: JSON.stringify({ usuario: process.env.ADMIN_USER, senha: process.env.ADMIN_PASSWORD }),
     });
+    // Ler a resposta até o fim: o express-session manda os cabeçalhos (com o
+    // cookie) ENQUANTO grava a sessão no banco e só fecha a resposta depois
+    // de gravar. Usar o cookie antes disso corria contra o INSERT da sessão —
+    // com a suíte inteira em paralelo, o upload chegava primeiro e levava 401.
+    assert.strictEqual(r.status, 200, 'login do admin');
+    await r.text();
     return r.headers
       .getSetCookie()
       .map((c) => c.split(';')[0])
