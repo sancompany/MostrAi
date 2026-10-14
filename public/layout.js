@@ -587,6 +587,13 @@ window.ROTULOS = {
     em_reparo: 'badge-pendente',
     inativo: 'badge-neutro',
   },
+  // Disponibilidade COMERCIAL do ponto fixo (ADR-047), que não é o status
+  // técnico acima: o anunciante só recebe ponto já instalado, e o que está
+  // fora do ar agora (reparo, Player revogado ou sem chave) continua
+  // escolhível com este rótulo. A chave é a de `disponibilidade` em
+  // GET /admin/pontos (src/pontos/repository.js#listar).
+  disponibilidade: { temporariamente_indisponivel: 'Temporariamente indisponível' },
+  disponibilidadeClasse: { temporariamente_indisponivel: 'badge-pendente' },
   // "Meus pontos" do painel (src/pontos/meus-pontos.js): o ciclo inteiro do
   // estabelecimento, do pedido em análise ao ponto no ar.
   estabelecimento: {

@@ -43,17 +43,16 @@ fetch(`${API_BASE_URL}/pontos`)
     // Rede móvel: `em_operacao` só com local atual (GET /pontos), nunca o
     // estado técnico das telas.
     const ativos = pontos.filter((p) => p.status === 'em_operacao').length;
-    const emConstrucao = pontos.filter(
-      (p) => p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal',
-    ).length;
     const cidades = new Set(pontos.map((p) => p.cidade)).size;
+    // O número "Em instalação" saiu (ADR-047, que revogou a P9 nesta parte):
+    // o ponto aprovado que ainda não foi instalado não aparece no site nem
+    // conta como ponto — GET /pontos só traz o fixo já instalado e a rede.
     // `cidades || 1` dizia "1 Cidade atendida" com a rede vazia — o numero que
     // mais importa pra quem esta decidindo assinar, inventado. Com zero ponto a
     // faixa some e a pagina diz o que e verdade logo abaixo.
     document.getElementById('statRow').innerHTML = pontos.length
       ? `
       <div class="stat"><b>${ativos}</b><span>${ativos === 1 ? 'Ponto ativo' : 'Pontos ativos'}</span></div>
-      <div class="stat"><b>${emConstrucao}</b><span>Em instalação</span></div>
       <div class="stat"><b>${cidades}</b><span>${cidades > 1 ? 'Cidades atendidas' : 'Cidade atendida'}</span></div>
     `
       : '';
@@ -75,10 +74,14 @@ fetch(`${API_BASE_URL}/pontos`)
         '<p class="empty-state">A rede está em montagem: nenhuma tela no ar ainda. Se você tem comércio em Matão, <a href="/anunciante/cadastro.html">a primeira pode ser a sua</a>.</p>';
       return;
     }
+    // `a_instalar`/`aguardando_primeiro_sinal` só chegam aqui de ponto JÁ
+    // instalado (ADR-047): Player revogado ou sem chave — fora do ar agora,
+    // nunca "em instalação". É também o rótulo de qualquer status novo.
+    const FORA_DO_AR = { texto: 'Temporariamente fora do ar', classe: 'badge-pendente' };
     const STATUS_LABEL = {
       em_operacao: { texto: 'No ar', classe: 'badge-ok' },
-      a_instalar: { texto: 'Em instalação', classe: 'badge-pendente' },
-      aguardando_primeiro_sinal: { texto: 'Em instalação', classe: 'badge-pendente' },
+      a_instalar: FORA_DO_AR,
+      aguardando_primeiro_sinal: FORA_DO_AR,
       em_reparo: { texto: 'Em reparo', classe: 'badge-pendente' },
     };
     const linkDoMapa = (endereco) =>
@@ -87,7 +90,7 @@ fetch(`${API_BASE_URL}/pontos`)
       // Linha do endereço com a mesma regra do resto do sistema
       // (window.linhaEndereco — D5, 24/09/2026): rua, número e bairro.
       const linha = window.linhaEndereco(p);
-      const st = STATUS_LABEL[p.status] || STATUS_LABEL.a_instalar;
+      const st = STATUS_LABEL[p.status] || FORA_DO_AR;
       return `
       <div class="ponto-card">
         <div class="ponto-card-media">${fotoOuPlaceholder(p.foto_instalacao_url, p.nome)}</div>

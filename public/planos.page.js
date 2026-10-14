@@ -333,14 +333,15 @@ const PONTOS_PARA_TIRAR_AVISO = 10;
 Promise.all([fetch(`${API_BASE_URL}/pontos`).then((r) => r.json()), planosCarregados])
   .then(([pontos]) => {
     if (!Array.isArray(pontos)) return;
-    // UMA contagem só (pedido do dono, 17/09/2026): ponto ATIVO é o que já
-    // tem cadastro na rede — em operação mais esperando instalação. A vitrine
-    // não separa os dois; quem separa é o admin, e o desenho de status vai ser
-    // fechado quando o dono chegar naquela aba.
+    // UMA contagem só (P9, pedido do dono de 17/09/2026): o tamanho da lista
+    // de `/pontos`. A P9 somava "em operação + esperando instalação"; a
+    // ADR-047 (14/10/2026) a SUPEROU nessa parte — aprovado não é disponível:
+    // a lista (e por isso a contagem) é de pontos fixos VENDÁVEIS, já
+    // instalados (no ar ou temporariamente fora do ar), mais as redes móveis.
+    // O ponto que ainda aguarda instalação só aparece no Admin.
     //
-    // `/pontos` já devolve só esses dois status, então a contagem é o tamanho
-    // da lista. Filtrar por status aqui de novo seria repetir a regra do
-    // servidor num lugar que não manda nela.
+    // Filtrar por status aqui de novo seria repetir a regra do servidor
+    // (src/pontos/repository.js#fixoVendavelSql) num lugar que não manda nela.
     const naRede = pontos.length;
     if (naRede >= PONTOS_PARA_TIRAR_AVISO) return;
     const veiculando = pontos.filter((p) => p.status === 'em_operacao').length;

@@ -10,6 +10,11 @@
 //   · limite do plano trava os outros, ponto sem espaço/bloqueado fica apagado;
 //   · o mapa abre sem marcar; a busca filtra; a vitrine fora do ar não quebra a escolha;
 //   · desktop, tablet e celular sem rolagem lateral, sem texto vazando nem selo em cima do nome.
+// ADR-047 (14/10/2026, decisões D1 e D3 do dono): aprovado não é disponível —
+// a lista só traz ponto fixo VENDÁVEL (já deu o 1º sinal). A Academia (sem
+// tela) e a Pizzaria (tela com Player que nunca deu sinal) não aparecem; o
+// instalado fora do ar agora (Barbearia com o Player revogado, Pet em reparo)
+// aparece como "Temporariamente indisponível", nunca "Aguardando instalação".
 // Banco zerado, servidor na 3999 e o .env carregado (DATABASE_URL):
 //   tests/e2e/reset-db.sh && tests/e2e/restart.sh
 //   set -a; . ./.env; set +a; PW_CHROME=... node tests/e2e/35-cards-pontos-cliente.mjs
@@ -106,6 +111,18 @@ function ponto({ nome, rua, bairro, categoria, status, foto = null, h = H24, don
        VALUES (${id}, 'Tela 1', 'ativo', md5(random()::text), now())`,
     );
   if (tela === 'reparo') PG(`INSERT INTO dispositivos (ponto_id, apelido, status) VALUES (${id}, 'Tela 1', 'reparo')`);
+  // Já operou (1º sinal há um mês) e hoje está em reparo / com o Player
+  // revogado (a revogação zera a chave, não o 1º sinal — D1).
+  if (tela === 'reparo_ja_instalada')
+    PG(
+      `INSERT INTO dispositivos (ponto_id, apelido, status, primeiro_sinal_em)
+       VALUES (${id}, 'Tela 1', 'reparo', now() - interval '30 days')`,
+    );
+  if (tela === 'revogada')
+    PG(
+      `INSERT INTO dispositivos (ponto_id, apelido, status, primeiro_sinal_em, ultima_vez_online)
+       VALUES (${id}, 'Tela 1', 'ativo', now() - interval '30 days', now() - interval '2 days')`,
+    );
   return id;
 }
 // Ocupação: contas do Prime (180 s/h = 5% da hora) que escolheram o ponto.
@@ -163,6 +180,9 @@ P.otica = ponto({
   status: 'em_operacao',
   foto: await fachada({ nome: 'Visão Clara', parede: '#dde7f7', toldo: '#1d4ed8' }),
 });
+// AGUARDANDO INSTALAÇÃO (ADR-047): aprovados, nenhuma tela com o 1º sinal —
+// fora da lista do anunciante e do site. Academia sem tela; Pizzaria com a
+// tela cadastrada e o Player provisionado, que nunca deu o 1º sinal.
 P.academia = ponto({
   nome: 'Academia Força Total',
   rua: 'Rua Brasil, 300',
@@ -171,6 +191,17 @@ P.academia = ponto({
   status: 'a_instalar',
   tela: 'nenhuma',
 });
+P.pizzaria = ponto({
+  nome: 'Pizzaria Esquina',
+  rua: 'Rua Quinze, 15',
+  bairro: 'Centro',
+  categoria: 'Pizzaria',
+  status: 'aguardando_primeiro_sinal',
+  tela: 'sem_comunicacao',
+});
+// JÁ INSTALADOS e fora do ar agora (D1): continuam escolhíveis, como
+// "Temporariamente indisponível". A Barbearia teve o Player revogado depois
+// de operar (tela ativa sem chave → `a_instalar`, que o sincronizar grava).
 // Foto em pé: enquadrada no formato canônico 16:9 (object-fit: cover),
 // como em todos os cards de ponto (estação Rede/Admin V2).
 P.barbearia = ponto({
@@ -178,9 +209,9 @@ P.barbearia = ponto({
   rua: 'Rua Tiradentes, 55',
   bairro: 'Centro',
   categoria: 'Barbearia',
-  status: 'aguardando_primeiro_sinal',
+  status: 'a_instalar',
   foto: '/img/exemplo-ponto-completo-720.jpg',
-  tela: 'sem_comunicacao',
+  tela: 'revogada',
 });
 const NOME_LONGO = 'Pet Shop Amigo Fiel — Banho, Tosa e Hotel para Pets da Vila Santa Cruz';
 P.pet = ponto({
@@ -190,15 +221,22 @@ P.pet = ponto({
   categoria: 'Pet shop',
   status: 'em_reparo',
   foto: await fachada({ nome: 'Amigo Fiel', parede: '#ffe4cc', toldo: '#e0640a' }),
-  tela: 'reparo',
+  tela: 'reparo_ja_instalada',
 });
 ocupar(P.mercado, 4); // 20%
 ocupar(P.farmacia, 9); // 45%
 ocupar(P.sorveteria, 20); // 100%: sem espaço
 ocupar(P.otica, 17); // 85%: cruzou 80%, não aceita escolha nova
-const NA_REDE = Number(
-  PG(`SELECT COUNT(*) FROM pontos WHERE status IN ('em_operacao','aguardando_primeiro_sinal','a_instalar','em_reparo')`),
-);
+// Quantos cards a lista deve ter: os pontos VENDÁVEIS, contados pela MESMA
+// regra do servidor (fixoVendavelSql, src/pontos/repository.js — ADR-047),
+// nunca por uma lista de status: `a_instalar` sozinho não diz se o ponto já
+// foi instalado.
+const FIXO_VENDAVEL = execSync(
+  `node -e "process.stdout.write(require('./src/pontos/repository').fixoVendavelSql('p')); process.exit(0)"`,
+  { cwd: new URL('../../', import.meta.url).pathname },
+).toString();
+const NA_REDE = Number(PG(`SELECT COUNT(*) FROM pontos p WHERE ${FIXO_VENDAVEL}`));
+check('rede de teste: 7 vendáveis, os 2 aguardando instalação fora', NA_REDE === 7, String(NA_REDE));
 const escolhidos = () =>
   PG(
     `SELECT COALESCE(string_agg(ponto_id::text, ',' ORDER BY ponto_id), '') FROM anunciantes_pontos WHERE anunciante_id = ${CONTA}`,
@@ -368,9 +406,36 @@ check(
     .locator('img')
     .evaluate((img) => getComputedStyle(img).objectFit === 'cover' && !img.classList.contains('foto-contida')),
 );
-check('aguardando primeiro sinal', (await card(p, P.barbearia).locator('.badge').innerText()) === 'Aguardando primeiro sinal');
-check('em instalação: nada de "hora vendida"', !SEM_HORAS.test(await card(p, P.academia).innerText()));
-check('em reparo', (await card(p, P.pet).locator('.badge').innerText()) === 'Em reparo');
+// ADR-047 (D1/D3): o card diz a DISPONIBILIDADE, não o status técnico.
+const INDISPONIVEL = 'Temporariamente indisponível';
+const selo = (id) => card(p, id).locator('.ponto-card-topo .badge');
+check(
+  'Player revogado depois de operar: "Temporariamente indisponível" (badge-pendente)',
+  (await selo(P.barbearia).innerText()) === INDISPONIVEL &&
+    (await selo(P.barbearia).evaluate((el) => el.classList.contains('badge-pendente'))),
+  await selo(P.barbearia).innerText(),
+);
+check('Player revogado: continua escolhível', await card(p, P.barbearia).locator('input').isEnabled());
+check(
+  'em reparo já instalado: "Temporariamente indisponível" (badge-pendente)',
+  (await selo(P.pet).innerText()) === INDISPONIVEL && (await selo(P.pet).evaluate((el) => el.classList.contains('badge-pendente'))),
+  await selo(P.pet).innerText(),
+);
+check('no ar: "Ativo" (badge-ok)', await selo(P.mercado).evaluate((el) => el.textContent === 'Ativo' && el.classList.contains('badge-ok')));
+check(
+  'aprovado sem instalação fora da lista (sem tela; Player sem 1º sinal)',
+  (await card(p, P.academia).count()) === 0 && (await card(p, P.pizzaria).count()) === 0,
+);
+check(
+  'nenhum card diz status técnico de instalação',
+  !/Aguardando instalação|Aguardando primeiro sinal|Em reparo|Em instalação/i.test(await p.locator('#listaPontos').innerText()),
+);
+const vitrinePublica = await (await fetch(`${B}/pontos`)).json();
+check(
+  'site (GET /pontos): também sem os aguardando instalação',
+  !vitrinePublica.some((v) => v.id === P.academia || v.id === P.pizzaria) && vitrinePublica.length === NA_REDE,
+  JSON.stringify(vitrinePublica.map((v) => v.id)),
+);
 const nomeLongo = card(p, P.pet).locator('.ponto-nome');
 check('nome longo inteiro no title', (await nomeLongo.getAttribute('title')) === NOME_LONGO);
 check('nome longo em no máximo 2 linhas', await nomeLongo.evaluate((el) => el.getBoundingClientRect().height <= parseFloat(getComputedStyle(el).lineHeight) * 2 + 1));
@@ -544,6 +609,40 @@ for (const [nome, largura, altura, esperadas] of [
   }
   await foto(t.p, '#painelPontos', nome);
   await t.ctx.close();
+}
+
+// ===========================================================================
+// ADR-047 (D3, que superou a P9 nesta parte): o site não mostra nem conta o
+// aprovado que ainda não foi instalado — sai o número "Em instalação"; o já
+// instalado com o Player revogado está "Temporariamente fora do ar"; o em
+// reparo, como antes.
+console.log('== site "Onde estamos": mesma régua da escolha ==');
+{
+  const ctx = await navegador.newContext({ viewport: { width: 1280, height: 900 } });
+  const s = await ctx.newPage();
+  s.on('pageerror', (e) => erros.push(`[onde-estamos] pageerror: ${e.message}`));
+  s.on('console', (m) => {
+    if (m.type() === 'error' && !/net::|ERR_FAILED/.test(m.text())) erros.push(`[onde-estamos] console: ${m.text()}`);
+  });
+  await irQuieto(s, `${B}/pontos.html`);
+  await s.waitForSelector('#pontosGrid .ponto-card');
+  const cardSite = (nome) => s.locator('#pontosGrid .ponto-card', { hasText: nome });
+  check('site: um card por ponto vendável', (await s.locator('#pontosGrid .ponto-card').count()) === NA_REDE);
+  check(
+    'site: aguardando instalação fora (Academia, Pizzaria)',
+    (await cardSite('Academia Força Total').count()) === 0 && (await cardSite('Pizzaria Esquina').count()) === 0,
+  );
+  check(
+    'site: Player revogado — "Temporariamente fora do ar"',
+    (await cardSite('Barbearia do Zé').locator('.badge').innerText()) === 'Temporariamente fora do ar',
+    await cardSite('Barbearia do Zé').locator('.badge').innerText(),
+  );
+  check('site: em reparo como antes', (await cardSite('Amigo Fiel').locator('.badge').innerText()) === 'Em reparo');
+  const faixa = (await s.locator('#statRow').innerText()).replace(/\s+/g, ' ');
+  check('site: sem o número "Em instalação"', !/instala/i.test(faixa), faixa);
+  check('site: nenhum card "Em instalação"', !/Em instalação/.test(await s.locator('#pontosGrid').innerText()));
+  await s.screenshot({ path: `${SAIDA}cards-pontos-onde-estamos.png`, fullPage: true });
+  await ctx.close();
 }
 
 // ===========================================================================

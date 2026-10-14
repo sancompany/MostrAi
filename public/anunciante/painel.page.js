@@ -506,8 +506,9 @@ const iconePonto = (nome) =>
   `<svg class="ponto-icone" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${ICONES_PONTO[nome]}</svg>`;
 
 // Foto da fachada, segmento e bairro de cada ponto: a vitrine pública de
-// "Onde estamos" (GET /pontos — mesmos status que a lista da escolha,
-// STATUS_NA_REDE; confirmar-plano já lê a mesma rota). É enfeite, não regra:
+// "Onde estamos" (GET /pontos — desde a ADR-047, a MESMA régua da lista da
+// escolha: ponto fixo vendável, já instalado, e a rede móvel; confirmar-plano
+// já lê a mesma rota). É enfeite, não regra:
 // se ela falhar — ou demorar mais que o prazo, que a lista espera por ela —,
 // o card cai no placeholder oficial, sem segmento, e a escolha continua
 // funcionando igual. Por isso nunca rejeita.
@@ -548,17 +549,25 @@ function htmlPontoEscolha(p, vitrine = {}) {
   // (era por aí que ela herdava `.cheio`/"Indisponível para escolha" sem
   // alocação).
   if (p.tipo === 'movel') return htmlPontoMovelEscolha(p);
-  const instalando = p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal';
-  // Ponto em instalação nunca está "cheio": ele não vendeu hora nenhuma
-  // ainda. Bloquear ele por ocupação seria bloquear por um zero que
-  // significa "ainda não existe", não "tem espaço de sobra".
-  const cheio = !instalando && p.ocupacao >= 100;
+  // Sem Player funcionando (`a_instalar`/`aguardando_primeiro_sinal`) o
+  // ponto nunca fica "cheio" por ocupação — regra de antes, que a ADR-047
+  // não mudou. Desde ela esses dois status só chegam aqui de ponto JÁ
+  // instalado (Player revogado ou sem chave): o servidor tira da lista o
+  // que nunca deu o 1º sinal. O bloqueio de 80% (G.7) continua valendo.
+  const semPlayer = p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal';
+  const cheio = !semPlayer && p.ocupacao >= 100;
   // G.7: cruzou 80% e parou de aceitar escolha NOVA (quem já tinha fica).
   const fechado = !p.escolhido && (cheio || p.bloqueado);
   const enderecoCompleto = `${p.endereco ? `${p.endereco}, ` : ''}${p.cidade || ''}`;
   const mapaUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCompleto)}`;
-  const estado = window.ROTULOS.ponto[p.status] || p.status;
-  const classeEstado = window.ROTULOS.pontoClasse[p.status] || 'badge-neutro';
+  // Para o anunciante, a DISPONIBILIDADE e não o status técnico (ADR-047):
+  // no ar = "Ativo"; instalado fora do ar agora (reparo, Player revogado,
+  // sem chave) = "Temporariamente indisponível" — continua escolhível.
+  const noAr = p.status === 'em_operacao';
+  const estado = noAr ? window.ROTULOS.ponto.em_operacao : window.ROTULOS.disponibilidade.temporariamente_indisponivel;
+  const classeEstado = noAr
+    ? window.ROTULOS.pontoClasse.em_operacao
+    : window.ROTULOS.disponibilidadeClasse.temporariamente_indisponivel;
   // Endereço com a regra do resto do sistema (window.linhaEndereco — D5):
   // "Rua, número - bairro, cidade". O bairro vem da vitrine, quando há.
   const local = window.linhaEndereco(
