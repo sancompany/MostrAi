@@ -4178,9 +4178,7 @@ async function acaoNoCompromisso(ponto, f, c, acao, remontar) {
   if (!textos || !(await confirmarModal(textos))) return;
   const r = await api(`/admin/pontos/${ponto.id}/compromissos/${c.ref}/${acao}`, { method: 'POST' });
   if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível agora.', 'err');
-  toast(
-    { iniciar: 'Compromisso iniciado.', encerrar: 'Compromisso encerrado.', cancelar: 'Compromisso cancelado.' }[acao],
-  );
+  toast({ iniciar: 'Compromisso iniciado.', encerrar: 'Compromisso encerrado.' }[acao]);
   remontar();
 }
 
