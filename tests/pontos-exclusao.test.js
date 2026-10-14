@@ -10,8 +10,18 @@ const pool = require('../src/db/pool');
 // com as telas; com histórico (exibição confirmada, crédito, repasse, Plano
 // Básico já dado, mesclagem) recusa com 409 e a saída é inativar as telas.
 
-const criadas = { contas: [], pontos: [] };
+const criadas = { contas: [], pontos: [], redes: [] };
 test.after(async () => {
+  // A passagem do Móvel sai antes do ponto onde ela foi e da rede dela.
+  for (const id of criadas.redes) await pool.query('DELETE FROM pontos_moveis_hospedagens WHERE ponto_id = $1', [id]);
+  await require('../src/lib/eventos').aguardarGravacoes();
+  for (const id of criadas.redes) {
+    await pool.query(`DELETE FROM eventos WHERE anunciante_id IS NULL AND propriedades->>'ponto_id' = $1::int::text`, [
+      id,
+    ]);
+    await pool.query('DELETE FROM dispositivos WHERE ponto_id = $1', [id]);
+    await pool.query('DELETE FROM pontos WHERE id = $1', [id]);
+  }
   for (const id of criadas.pontos) {
     await pool.query(
       'DELETE FROM exibicoes_contador WHERE dispositivo_id IN (SELECT id FROM dispositivos WHERE ponto_id = $1)',
@@ -201,6 +211,52 @@ for (const caso of casos) {
       await pool.query('DELETE FROM beneficios_basico_ponto WHERE ponto_id IN (SELECT unnest($1::int[]))', [
         criadas.pontos,
       ]);
+      await app.fechar();
+    }
+  });
+}
+
+// Passagem do Mostraí Móvel por um ponto FIXO (migration 123,
+// `local_ponto_id`), em qualquer estado: o histórico dela depende do ponto.
+// A FK é sem ON DELETE de propósito (a linha encerrada/cancelada é
+// imutável) — sem a checagem, o DELETE dava 23503 e a rota, 500. Gravada
+// direto no banco: o vínculo pela rota é de outra fatia.
+for (const estado of ['programada', 'cancelada', 'encerrada']) {
+  test(`recusa com 409 — o Mostraí Móvel passou por ele (hospedagem ${estado})`, async () => {
+    const app = await subirApp();
+    try {
+      const dono = await conta();
+      const p = await ponto(dono, 'a_instalar');
+      const rede = await require('../src/pontos/movel').criarRedeMovel({
+        nome: 'Mostraí Móvel',
+        cidade: `Exclusão ${randomUUID()}`,
+        uf: 'SP',
+      });
+      criadas.redes.push(rede.id);
+      const telaDaRede = (await require('../src/dispositivos/repository').criar(rede.id, {})).id;
+      const h = (horas) => new Date(Date.now() + horas * 3_600_000);
+      const [inicio, fim] = estado === 'encerrada' ? [h(-72), h(-48)] : [h(24), h(48)];
+      await pool.query(
+        `INSERT INTO pontos_moveis_hospedagens
+           (ponto_id, dispositivo_id, conta_id, local_ponto_id, local, endereco, data_inicio, data_fim, percentual,
+            inicio, fim, estado, iniciada_em, encerrada_em, cancelada_em, encerramento,
+            tempo_operacional_segundos, beneficio_segundos)
+         VALUES ($1, $2, $3, $4, 'Loja', 'Rua Teste, 1', $5::timestamptz::date, $6::timestamptz::date, 20, $5, $6, $7,
+                 CASE WHEN $7 = 'encerrada' THEN $5::timestamptz END, CASE WHEN $7 = 'encerrada' THEN $6::timestamptz END,
+                 CASE WHEN $7 = 'cancelada' THEN now() END, CASE WHEN $7 = 'encerrada' THEN 'manual' END,
+                 CASE WHEN $7 = 'encerrada' THEN 0 END, CASE WHEN $7 = 'encerrada' THEN 0 END)`,
+        [rede.id, telaDaRede, dono, p, inicio, fim, estado],
+      );
+
+      const r = await app.excluir(p);
+      assert.strictEqual(r.status, 409, JSON.stringify(r.corpo));
+      assert.strictEqual(
+        r.corpo.erro,
+        'Este ponto recebeu o Mostraí Móvel e o histórico dessa passagem depende dele: não pode ser excluído. Deixe as telas dele Inativas.',
+      );
+      assert.strictEqual(await existe('pontos', 'id', p), true, 'o ponto fica');
+      assert.strictEqual(await existe('pontos_moveis_hospedagens', 'local_ponto_id', p), true, 'a passagem fica');
+    } finally {
       await app.fechar();
     }
   });

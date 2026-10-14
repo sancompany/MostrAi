@@ -550,7 +550,8 @@ async function contaEhPonto(contaId, db = pool) {
 // deixar as telas Inativas (o ponto vira Inativo sozinho). Histórico é tudo o
 // que comprova algo a alguém: exibição confirmada em qualquer tela dele
 // (anúncio ou Mídia Mostraí), crédito, repasse, Plano Básico já concedido,
-// ou ponto mesclado nele. Ponto arquivado também é histórico (mesclagem).
+// ponto mesclado nele, ou passagem do Mostraí Móvel por ele (migration 123).
+// Ponto arquivado também é histórico (mesclagem).
 // Sem histórico, o ponto e as telas saem numa transação só: o que as telas
 // tinham é programação que nunca virou exibição, e a escolha de quem marcou
 // o ponto sai junto (a cobertura dessas contas se redistribui sozinha).
@@ -583,7 +584,12 @@ async function deletar(id) {
          EXISTS (SELECT 1 FROM pagamentos_ponto WHERE ponto_id = $1) AS repasse,
          EXISTS (SELECT 1 FROM beneficios_basico_ponto WHERE ponto_id = $1) AS basico,
          EXISTS (SELECT 1 FROM pontos WHERE mesclado_em_ponto_id = $1) AS mesclado,
-         EXISTS (SELECT 1 FROM pontos_moveis_hospedagens WHERE ponto_id = $1) AS hospedagem`,
+         EXISTS (SELECT 1 FROM pontos_moveis_hospedagens WHERE ponto_id = $1) AS hospedagem,
+         -- O ponto FIXO onde o Mostraí Móvel passou (migration 123), em
+         -- qualquer estado: a FK é sem ON DELETE de propósito (a linha
+         -- encerrada/cancelada é imutável), então sem esta checagem o DELETE
+         -- daria 23503 → 500.
+         EXISTS (SELECT 1 FROM pontos_moveis_hospedagens WHERE local_ponto_id = $1) AS passagem_movel`,
       [id, telaIds],
     );
     const motivo =
@@ -601,7 +607,9 @@ async function deletar(id) {
                   ? 'Outro ponto foi mesclado neste e o histórico depende dele: não pode ser excluído.'
                   : h.hospedagem
                     ? 'Este ponto móvel tem hospedagens registradas (o benefício de um anfitrião depende delas) e não pode ser excluído permanentemente. Deixe a tela Inativa.'
-                    : null;
+                    : h.passagem_movel
+                      ? 'Este ponto recebeu o Mostraí Móvel e o histórico dessa passagem depende dele: não pode ser excluído. Deixe as telas dele Inativas.'
+                      : null;
     if (motivo) throw Object.assign(new Error(motivo), { status: 409 });
 
     if (telaIds.length) {
