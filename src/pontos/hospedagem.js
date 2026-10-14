@@ -1010,14 +1010,15 @@ async function hospedagensDaConta(contaId) {
 // Admin: todas as hospedagens das telas de uma rede (agenda + histórico) —
 // ou, com `doLocal`, todas as passagens do Móvel por um PONTO FIXO (as
 // vinculadas a ele por local_ponto_id, de qualquer rede). `pontoInstalado`:
-// o estabelecimento vinculado já é vendável (o mesmo predicado único da
-// escolha, fixoVendavelSql) — a instalação fixa chegou e a alocação pode
-// ser encerrada (nada encerra sozinho).
+// o estabelecimento vinculado já foi instalado (alguma tela dele deu o 1º
+// sinal — jaInstaladoSql, o mesmo fato do `ja_instalado`/`movel_a_encerrar`
+// da ficha do ponto em GET /admin/pontos) — a instalação fixa chegou e a
+// alocação pode ser encerrada (nada encerra sozinho).
 async function hospedagensDoPonto(pontoId, db = pool, { doLocal = false } = {}) {
-  const { fixoVendavelSql } = require('./repository');
+  const { jaInstaladoSql } = require('./repository');
   const { rows } = await db.query(
     `SELECT h.*, a.nome_empresa AS conta_nome, (h.fim <= now()) AS terminou, cat.nome AS categoria_nome,
-            EXISTS (SELECT 1 FROM pontos lp WHERE lp.id = h.local_ponto_id AND ${fixoVendavelSql('lp')})
+            EXISTS (SELECT 1 FROM pontos lp WHERE lp.id = h.local_ponto_id AND lp.tipo = 'fixo' AND ${jaInstaladoSql('lp')})
               AS ponto_instalado
        FROM pontos_moveis_hospedagens h JOIN anunciantes a ON a.id = h.conta_id
        LEFT JOIN categorias cat ON cat.id = h.categoria_id

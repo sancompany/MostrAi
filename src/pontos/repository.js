@@ -2,7 +2,6 @@ const pool = require('../db/pool');
 const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
 const { LIMITE_COMERCIAL, SEGUNDOS_DA_HORA, telasDaCapacidadeSql } = require('../lib/capacidade');
 const { PARTES, colunasDoEndereco } = require('../lib/endereco');
-const { formatarCodigoTela } = require('../lib/codigo-tela');
 
 // Cinco status (migration 069 + `aguardando_primeiro_sinal` na 088) —
 // e AUTOMÁTICO: ninguém escreve aqui direto, `sincronizarStatusPonto` (mais
@@ -249,40 +248,20 @@ async function listar() {
             CASE WHEN p.tipo = 'movel' THEN NULL
                  WHEN ${fixoVendavelSql('p')} AND p.status = 'em_operacao' THEN 'ativa'
                  WHEN ${fixoVendavelSql('p')} THEN 'temporariamente_indisponivel'
-                 ELSE 'nao_disponivel' END AS disponibilidade,
-            am.id AS am_id, am.ponto_id AS am_rede_id, am.rede AS am_rede, am.estado AS am_estado,
-            am.inicio AS am_inicio, am.fim AS am_fim, am.motivo_alocacao AS am_motivo, am.dispositivo_id AS am_tela
+                 ELSE 'nao_disponivel' END AS disponibilidade
      FROM pontos p
      LEFT JOIN categorias c ON c.id = p.categoria_id
      LEFT JOIN anunciantes a ON a.id = p.anunciante_id
-     -- Mesmo recorte de "agora + futuro" da Agenda móvel (movel.js#
-     -- agendaDasRedes): a programada que já passou do fim está saindo pelo
-     -- job e não é mais a próxima.
-     LEFT JOIN LATERAL (
-       SELECT h.id, h.ponto_id, r.nome AS rede, h.estado, h.inicio, h.fim, h.motivo_alocacao, h.dispositivo_id
-         FROM pontos_moveis_hospedagens h JOIN pontos r ON r.id = h.ponto_id
-        WHERE h.local_ponto_id = p.id
-          AND (h.estado = 'ativa' OR (h.estado = 'programada' AND h.fim > now()))
-        ORDER BY (h.estado = 'ativa') DESC, h.inicio, h.id
-        LIMIT 1
-     ) am ON true
      WHERE p.status <> 'arquivado'
      ORDER BY p.created_at DESC`,
   );
-  return rows.map(({ am_id, am_rede_id, am_rede, am_estado, am_inicio, am_fim, am_motivo, am_tela, ...p }) => {
-    const alocacao = am_id
-      ? {
-          ref: `h${am_id}`,
-          id: Number(am_id),
-          redeId: am_rede_id,
-          rede: am_rede,
-          estado: am_estado,
-          inicio: am_inicio,
-          fim: am_fim,
-          motivoAlocacao: am_motivo,
-          tela: { id: am_tela, codigo: formatarCodigoTela(am_tela) },
-        }
-      : null;
+  // A alocação vinculada sai da MESMA função da aba "Aguardando instalação"
+  // da agenda (movel.js#alocacoesVinculadas) — uma regra só para a ficha e
+  // a agenda. Pedida aqui dentro: movel.js também pede este arquivo.
+  const { alocacoesVinculadas } = require('./movel');
+  const alocacoes = await alocacoesVinculadas(rows.filter((p) => p.tipo === 'fixo').map((p) => p.id));
+  return rows.map((p) => {
+    const alocacao = alocacoes.get(p.id) || null;
     return { ...p, alocacao_movel: alocacao, movel_a_encerrar: Boolean(p.ja_instalado && alocacao) };
   });
 }

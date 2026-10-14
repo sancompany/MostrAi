@@ -257,8 +257,9 @@ function redePublica(m) {
 // primeiro — no mesmo recorte de "agora + futuro" da agenda (a programada
 // que já passou do fim está saindo pelo job e não é mais a próxima); ponto
 // sem nenhuma fica fora do mapa (= null). É a "unidade alocada" da linha
-// "aguardando instalação" da agenda, na mesma forma do `alocacao_movel` de
-// GET /admin/pontos (src/pontos/repository.js#listar). Map pontoId → { ref,
+// "aguardando instalação" da agenda e também o `alocacao_movel` de
+// GET /admin/pontos (src/pontos/repository.js#listar) — uma regra só para a
+// ficha do ponto e a agenda. Map pontoId → { ref,
 // id, redeId, rede, estado, inicio, fim, motivoAlocacao, tela: { id, codigo } }.
 async function alocacoesVinculadas(pontoIds, db = pool) {
   const ids = [...new Set(pontoIds.map(Number))].filter((id) => Number.isInteger(id) && id > 0);
@@ -339,13 +340,15 @@ async function agendaDasRedes({ historico = false } = {}) {
   const { rows } = await pool.query(
     `SELECT x.* FROM (
        SELECT 'hospedagem' AS tipo, h.id, h.ponto_id, p.nome AS rede, p.cidade, p.uf, h.local AS nome,
-              NULL::text AS local, ca.nome_empresa AS conta, h.inicio, h.fim, h.estado, ARRAY[h.dispositivo_id] AS telas
+              NULL::text AS local, ca.nome_empresa AS conta, h.inicio, h.fim, h.estado, ARRAY[h.dispositivo_id] AS telas,
+              h.motivo_alocacao, h.motivo_cancelamento, h.encerrado_por_admin, h.encerramento
          FROM pontos_moveis_hospedagens h JOIN pontos p ON p.id = h.ponto_id JOIN anunciantes ca ON ca.id = h.conta_id
         WHERE ${filtroH}
        UNION ALL
        SELECT 'evento', e.id, e.ponto_id, p.nome, p.cidade, p.uf, e.nome, e.local, NULL, e.inicio, e.fim, e.estado,
               (SELECT array_agg(et.dispositivo_id ORDER BY et.dispositivo_id) FROM pontos_moveis_evento_telas et
-                WHERE et.evento_id = e.id)
+                WHERE et.evento_id = e.id),
+              e.motivo_alocacao, e.motivo_cancelamento, e.encerrado_por_admin, e.encerramento
          FROM pontos_moveis_eventos e JOIN pontos p ON p.id = e.ponto_id
         WHERE ${filtroE}
      ) x ORDER BY ${historico ? 'x.inicio DESC' : 'x.inicio'}, x.id LIMIT 200`,
@@ -365,6 +368,14 @@ async function agendaDasRedes({ historico = false } = {}) {
     estado: r.estado,
     emCurso: r.estado === 'ativa' || r.estado === 'em_andamento',
     telas: (r.telas || []).map((id) => ({ id, codigo: formatarCodigoTela(id) })),
+    // Só o Admin (ADR-047): o porquê da alocação e, na cancelada, o porquê e
+    // quem cancelou — os mesmos nomes do compromisso normalizado. O
+    // cancelamento automático do job não grava motivo nem operador:
+    // `encerramento = 'automatico'` diz que foi o sistema.
+    motivoAlocacao: r.motivo_alocacao,
+    motivoCancelamento: r.motivo_cancelamento,
+    encerradoPor: r.encerrado_por_admin,
+    encerramento: r.encerramento,
   }));
 }
 
@@ -1023,6 +1034,7 @@ module.exports = {
   LIMITES,
   situacaoDasRedes,
   redePublica,
+  alocacoesVinculadas,
   pontosAguardandoInstalacao,
   agendaDasRedes,
   agendaPublicaDaRede,

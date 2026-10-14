@@ -163,17 +163,22 @@ const PONTO_DE_OUTRA_CONTA = { erro: 'esse ponto não é um estabelecimento dest
 const SEM_MOTIVO = { erro: 'informe o motivo do cancelamento (até 300 caracteres)' };
 // O compromisso visto pelo cliente: SÓ estas chaves.
 const CHAVES_PUBLICAS = ['fim', 'inicio', 'local', 'nome', 'tipo'];
-// Uma linha da Agenda móvel do Admin (padrão e ?historico=1) — exatamente as
-// de antes da ADR-047.
+// Uma linha da Agenda móvel do Admin (padrão e ?historico=1): as de antes da
+// ADR-047 mais o planejamento que só o Admin vê (motivo da alocação e, na
+// cancelada, o porquê e quem) — a mesma forma de lista, filtro e ordem.
 const CHAVES_DA_AGENDA = [
   'cidade',
   'conta',
   'emCurso',
+  'encerradoPor',
+  'encerramento',
   'estado',
   'fim',
   'id',
   'inicio',
   'local',
+  'motivoAlocacao',
+  'motivoCancelamento',
   'nome',
   'rede',
   'redeId',
@@ -850,7 +855,7 @@ test('agenda ?aguardando=1: só os aguardando, pela data prevista (sem data por 
   assert.strictEqual(linhaTela.alocacao, null);
 
   // Sem o parâmetro e com ?historico=1: a mesma agenda de antes (lista de
-  // compromissos, as mesmas chaves — nada do planejamento novo vaza).
+  // compromissos, mesmo filtro e ordem), com o planejamento do Admin.
   const padrao = await admin('GET', '/admin/pontos-moveis/agenda');
   assert.strictEqual(padrao.status, 200, JSON.stringify(padrao.json));
   assert.ok(Array.isArray(padrao.json));
@@ -871,6 +876,11 @@ test('agenda ?aguardando=1: só os aguardando, pela data prevista (sem data por 
     [[cancelada, 'cancelada']],
   );
   for (const c of histDaRede) assert.deepStrictEqual(Object.keys(c).sort(), CHAVES_DA_AGENDA);
+  assert.deepStrictEqual(
+    [histDaRede[0].motivoCancelamento, histDaRede[0].encerradoPor, histDaRede[0].encerramento],
+    ['remarcar', process.env.ADMIN_USER, 'manual'],
+    'a cancelada à mão diz por quê e quem',
+  );
 
   // Só o Admin.
   const nav = await entrar(dono);
