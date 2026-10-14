@@ -258,12 +258,13 @@ check(
 await shot(admin, 'grade', { fullPage: true });
 await admin.click('.chip[data-filtro=""]');
 // Visão geral: o "aguardando instalação" (contagem administrativa por status)
-// abre a grade no chip novo. O resumo é lido no carregamento — recarrega
-// depois do cenário.
-await admin.reload();
-await admin.waitForSelector('.admin-shell');
+// abre a grade no chip novo. O resumo do topo foi lido na entrada, antes do
+// cenário: [Atualizar] relê — sem recarregar a página no meio de uma leitura
+// (a leitura cortada pelo reload vira "Failed to fetch" no console).
+await irAdmin('#visaogeral', '.visao-geral-colunas');
+await admin.click('#btnRecarregar');
+await admin.waitForSelector('.status-resumo', { timeout: 10000 });
 await redeQuieta(admin);
-await irAdmin('#visaogeral', '.status-resumo');
 await admin.click('[data-status-clique="a_instalar"]');
 await admin.waitForSelector('.colecao .chip.active');
 await redeQuieta(admin);
@@ -537,18 +538,18 @@ const prov = await fetch(`${B}/player/provisionar`, {
 check('Player instalado pelo código (1º sinal)', prov.status === 200, prov.status);
 check('o ponto entrou em operação sozinho', PG(`SELECT status FROM pontos WHERE id = ${P}`) === 'em_operacao');
 check('a alocação do Móvel NÃO encerrou (continua ativa)', PG(`SELECT estado FROM pontos_moveis_hospedagens WHERE id = ${HP}`) === 'ativa');
-// Como no 09: a ficha da tela vê o Player sem F5; depois, a ficha do ponto
-// num carregamento limpo (o POST do código, de corpo não lido, o Playwright
-// conta como em voo).
+// Como no 09: a ficha da tela vê o Player sem F5; depois, um carregamento
+// limpo (o POST do código, de corpo não lido, o Playwright conta como em
+// voo) com a ficha da tela já assentada — recarregar no meio da leitura da
+// ficha do ponto vira "Failed to fetch" no console — e só então a ficha do
+// ponto.
 await admin.waitForFunction(() => /Player conectado/.test(document.querySelector('.tela-ficha')?.textContent || ''), null, {
   timeout: 8000,
 });
-await admin.evaluate((h) => {
-  location.hash = h;
-}, `#rede/pontos/${P}`);
 await admin.reload();
-await admin.waitForSelector('#pontoInformacoes [data-instalacao]', { timeout: 10000 });
+await admin.waitForSelector('.tela-ficha', { timeout: 10000 });
 await redeQuieta(admin);
+await irAdmin(`#rede/pontos/${P}`, '#pontoInformacoes [data-instalacao]');
 check(
   'cabeçalho: "Ativo" e "+ Adicionar tela" de volta',
   (await seloFicha()) === 'Ativo' &&
