@@ -578,13 +578,16 @@ const PONTO_STATUS_CLASSE = {
 // agora. A REDE MÓVEL não tem instalação: é "Ativa" ou "Arquivada" — o status
 // cru dela segue as telas (a rede nova, sem sinal, é `a_instalar`) e não vira
 // selo. Um helper só para card, ficha, ocupação e seletor de pontos.
+// `situacao` é a chave do selo nos filtros: o chip da grade e a contagem da
+// Visão geral contam pela MESMA chave (o instalado fora do ar sem Player,
+// `indisponivel`, não tem chip — fica em Todos/Fixos).
 const SELO_INSTALACAO = {
-  aguardando: { rotulo: 'Aguardando instalação', classe: 'badge-pendente' },
-  indisponivel: { rotulo: 'Temporariamente indisponível', classe: 'badge-pendente' },
+  aguardando: { rotulo: 'Aguardando instalação', classe: 'badge-pendente', situacao: 'aguardando_instalacao' },
+  indisponivel: { rotulo: 'Temporariamente indisponível', classe: 'badge-pendente', situacao: 'indisponivel' },
 };
 const SELO_REDE_MOVEL = {
-  ativa: { rotulo: 'Ativa', classe: 'badge-ok' },
-  arquivada: { rotulo: 'Arquivada', classe: 'badge-neutro' },
+  ativa: { rotulo: 'Ativa', classe: 'badge-ok', situacao: 'em_operacao' },
+  arquivada: { rotulo: 'Arquivada', classe: 'badge-neutro', situacao: 'arquivado' },
 };
 function seloDoPonto(p) {
   if (p.tipo === 'movel') return p.status === 'arquivado' ? SELO_REDE_MOVEL.arquivada : SELO_REDE_MOVEL.ativa;
@@ -592,7 +595,11 @@ function seloDoPonto(p) {
   if (p.ja_instalado && (p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal')) {
     return SELO_INSTALACAO.indisponivel;
   }
-  return { rotulo: PONTO_STATUS[p.status] || p.status, classe: PONTO_STATUS_CLASSE[p.status] || 'badge-neutro' };
+  return {
+    rotulo: PONTO_STATUS[p.status] || p.status,
+    classe: PONTO_STATUS_CLASSE[p.status] || 'badge-neutro',
+    situacao: p.status,
+  };
 }
 // "● Aguardando instalação" — o selo em linha de apoio (tabelas e seletores).
 const seloEmLinha = (p) => {
@@ -1363,37 +1370,85 @@ function painelPendenciasOperacionais(resumo, alertasHtml) {
     </section>`;
 }
 
-// Resumo compacto de pontos por status (substitui a barra horizontal acima,
-// seção 9 do pedido): "3 pontos · 1 ativo · 2 aguardando instalação · 1
-// tela em operação", cada status clicável (mesmo `data-status-clique` de
-// sempre, filtra a aba Pontos). `rede.telasAtivas` já é só tela com status
-// 'ativo' EM ponto 'em_operacao' (src/admin/routes.js) — é exatamente
-// "tela em operação", não "tela cadastrada".
-// Plural do status pra contagem ("2 ativos", não "2 ativo").
-const PONTO_STATUS_PLURAL = {
-  a_instalar: ['aguardando instalação', 'aguardando instalação'],
-  aguardando_primeiro_sinal: ['aguardando primeiro sinal', 'aguardando primeiro sinal'],
+// Resumo compacto dos pontos (substitui a barra horizontal acima, seção 9 do
+// pedido): "3 pontos · 1 tela em operação" e "1 ativo · 2 aguardando
+// instalação", cada um clicável (`data-status-clique`, abre a aba Pontos no
+// chip). `rede.telasAtivas` já é só tela com status 'ativo' EM ponto
+// 'em_operacao' (src/admin/routes.js) — é exatamente "tela em operação", não
+// "tela cadastrada".
+//
+// ADR-047: cada número conta pela MESMA chave do chip que ele abre — a
+// situação do selo (seloDoPonto), lida de GET /admin/pontos, onde o servidor
+// marca `aguardando_instalacao`. Nunca pelo status cru de /admin/resumo: o
+// `a_instalar` também vale para o fixo instalado com o Player revogado e para
+// a rede móvel nova, e os dois NÃO aguardam instalação. O instalado fora do ar
+// sem Player não tem chip na grade: aqui é texto, sem clique.
+// Plural pra contagem ("2 ativos", não "2 ativo").
+const SITUACAO_PLURAL = {
+  aguardando_instalacao: ['aguardando instalação', 'aguardando instalação'],
+  indisponivel: ['temporariamente indisponível', 'temporariamente indisponíveis'],
   em_operacao: ['ativo', 'ativos'],
   em_reparo: ['em reparo', 'em reparo'],
   inativo: ['inativo', 'inativos'],
 };
 
 function resumoPontosCompacto(rede) {
-  const porStatus = Object.fromEntries((rede.pontosPorStatus || []).map((r) => [r.status, Number(r.qtd)]));
-  const total = Object.values(porStatus).reduce((soma, v) => soma + v, 0);
-  const partes = Object.keys(PONTO_STATUS)
-    .filter((s) => porStatus[s])
-    .map((s) => {
-      const [um, varios] = PONTO_STATUS_PLURAL[s];
-      return `<button type="button" class="status-contagem" data-status-clique="${s}"><i class="ponto-status ${PONTO_STATUS_CLASSE[s]}" aria-hidden="true"></i><b>${porStatus[s]}</b> ${porStatus[s] === 1 ? um : varios}</button>`;
-    })
-    .join('');
+  // O total não depende de situação nenhuma: os não arquivados, os mesmos de
+  // GET /admin/pontos.
+  const total = (rede.pontosPorStatus || []).reduce((soma, r) => soma + Number(r.qtd), 0);
   const telas = Number(rede.telasAtivas) || 0;
   return `
     <section class="panel">
       <div class="secao-topo"><h3>Pontos</h3><span class="secao-nota">${plural(total, 'ponto')} · ${plural(telas, 'tela')} em operação</span></div>
-      ${partes ? `<div class="status-resumo">${partes}</div>` : '<p class="u-dim u-fs-85 u-m-0">Nenhum ponto cadastrado ainda.</p>'}
+      ${total ? '<div class="status-resumo" id="resumoPontos"><p class="carregando">Carregando...</p></div>' : '<p class="u-dim u-fs-85 u-m-0">Nenhum ponto cadastrado ainda.</p>'}
     </section>`;
+}
+
+async function renderResumoPontos(el, lerPontos) {
+  const grupos = new Map();
+  for (const p of await lerPontos) {
+    const selo = seloDoPonto(p);
+    const g = grupos.get(selo.situacao) || { qtd: 0, classe: selo.classe };
+    g.qtd += 1;
+    grupos.set(selo.situacao, g);
+  }
+  const comChip = new Set(CHIPS_DO_PONTO.map((c) => c.valor));
+  el.innerHTML = Object.entries(SITUACAO_PLURAL)
+    .filter(([s]) => grupos.has(s))
+    .map(([s, [um, varios]]) => {
+      const { qtd, classe } = grupos.get(s);
+      const corpo = `<i class="ponto-status ${classe}" aria-hidden="true"></i><b>${qtd}</b> ${qtd === 1 ? um : varios}`;
+      return comChip.has(s)
+        ? `<button type="button" class="status-contagem" data-status-clique="${s}">${corpo}</button>`
+        : `<span class="status-contagem status-contagem-texto" data-situacao="${s}">${corpo}</span>`;
+    })
+    .join('');
+  ligarFiltroDePontos(el);
+}
+
+// Clique num número da Visão geral (resumo dos pontos ou alerta): abre a aba
+// Pontos já no chip daquele número.
+function ligarFiltroDePontos(el) {
+  el.querySelectorAll('[data-status-clique]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      FILTRO_PONTOS_STATUS = btn.dataset.statusClique;
+      irPara('pontos');
+    }),
+  );
+}
+
+// Uma leitura dividida entre os blocos da mesma tela: o primeiro que pede
+// busca, os outros esperam a mesma resposta. Falhou, não fica guardada — o
+// [Tentar novamente] de cada bloco lê de novo.
+function leituraUnica(caminho) {
+  let promessa = null;
+  return () => {
+    promessa ||= pegar(caminho).catch((err) => {
+      promessa = null;
+      throw err;
+    });
+    return promessa;
+  };
 }
 
 // Conciliação diária (seção 10 do pedido, 23/09/2026): saudável vira uma
@@ -1556,18 +1611,24 @@ async function renderResumo(el) {
       document.getElementById(`${btn.dataset.rolar}Secao`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
     ),
   );
-  el.querySelectorAll('[data-status-clique]').forEach((btn) =>
-    btn.addEventListener('click', () => {
-      FILTRO_PONTOS_STATUS = btn.dataset.statusClique;
-      irPara('pontos');
-    }),
-  );
+  ligarFiltroDePontos(el);
 
   // Sem await de propósito (não seguram a Visão geral). Cada bloco falha
   // SOZINHO: erro na ocupação mostra o erro e [Tentar novamente] só naquele
   // bloco — o resto da Visão geral continua de pé. Antes o bloco ficava em
-  // "Carregando..." pra sempre (o erro só ia pro console).
-  blocoIndependente(document.getElementById('ocupacaoRede'), renderOcupacaoRede, 'ocupação da rede');
+  // "Carregando..." pra sempre (o erro só ia pro console). Os pontos
+  // (GET /admin/pontos) são lidos uma vez para os dois blocos que os usam.
+  const pontosDaRede = leituraUnica('/admin/pontos');
+  blocoIndependente(
+    document.getElementById('resumoPontos'),
+    (alvo) => renderResumoPontos(alvo, pontosDaRede()),
+    'pontos',
+  );
+  blocoIndependente(
+    document.getElementById('ocupacaoRede'),
+    (alvo) => renderOcupacaoRede(alvo, pontosDaRede()),
+    'ocupação da rede',
+  );
   blocoIndependente(document.getElementById('promocaoAtivaResumo'), renderPromocaoAtivaResumo, 'promoção ativa');
   blocoIndependente(document.getElementById('qrResumo'), renderQrResumo, 'QR institucional');
   // Comunicados por e-mail: public/admin/comunicados.js (carrega antes deste).
@@ -1648,10 +1709,12 @@ async function renderPromocaoAtivaResumo(el) {
 // `GET /admin/capacidade-rede?escopo=rede` — a MESMA régua 80/20 da tela
 // Mídia Mostraí (src/lib/capacidade.js). Antes a reserva aparecia fixa em
 // "20%" aqui (ignorando o que a Mostraí já usava) e como "Livre 96,7%" lá.
-async function renderOcupacaoRede(el) {
+// `lerPontos`: a leitura de GET /admin/pontos que a Visão geral divide com o
+// resumo dos pontos; sem ela (Liberar), lê de novo.
+async function renderOcupacaoRede(el, lerPontos = pegar('/admin/pontos')) {
   const [linhasOcupacao, pontos, capacidade] = await Promise.all([
     pegar('/admin/pontos-ocupacao'),
-    pegar('/admin/pontos'),
+    lerPontos,
     pegar('/admin/capacidade-rede?escopo=rede'),
   ]);
   const pontosPorId = new Map(pontos.map((p) => [p.id, p]));
@@ -3251,17 +3314,11 @@ function resumoDasTelas(e) {
 function montarPontoCard(p) {
   const movel = p.tipo === 'movel';
   const e = p.estadoTelas || { total: 0, filtros: [] };
-  const arquivada = movel && p.status === 'arquivado';
-  // O filtro do fixo segue o SELO (seloDoPonto): o ponto que aguarda a
-  // instalação responde ao chip "Aguardando instalação", não ao status cru —
-  // um ponto em reparo que nunca operou não aparece em "Em reparo".
-  const situacao = movel
-    ? arquivada
-      ? 'arquivado'
-      : 'em_operacao'
-    : p.aguardando_instalacao
-      ? 'aguardando_instalacao'
-      : p.status;
+  // O filtro segue o SELO (seloDoPonto): o ponto que aguarda a instalação
+  // responde ao chip "Aguardando instalação", não ao status cru — um ponto
+  // em reparo que nunca operou não aparece em "Em reparo"; a rede móvel
+  // ativa responde a "Ativos".
+  const selo = seloDoPonto(p);
   const cidade = esc([p.cidade, p.uf].filter(Boolean).join('/'));
   let meta;
   if (movel) {
@@ -3285,10 +3342,10 @@ function montarPontoCard(p) {
   }
   return cardEntidade({
     href: `#rede/pontos/${p.id}`,
-    filtro: [movel ? 'movel' : 'fixo', situacao, ...(e.filtros || [])].join(' '),
+    filtro: [movel ? 'movel' : 'fixo', selo.situacao, ...(e.filtros || [])].join(' '),
     foto: `${fotoOuPlaceholder(p.foto_instalacao_url, p.nome)}${movel ? `<span class="selo-movel">${esc(window.PONTO_MOVEL.selo)}</span>` : ''}`,
     nome: esc(p.nome),
-    badge: badge(seloDoPonto(p)),
+    badge: badge(selo),
     meta,
     rodape: `${resumoDasTelas(e)}${p.endereco_a_conferir ? '<br><span class="txt-alerta">Endereço alterado — conferir</span>' : ''}`,
     busca: [...(p.codigosTelas || []), p.cidade, p.uf, p.endereco, p.bairro].filter(Boolean).join(' '),
@@ -3394,18 +3451,12 @@ const CHIPS_DO_PONTO = [
   { valor: 'em_reparo', nome: PONTO_STATUS.em_reparo },
   { valor: 'inativo', nome: 'Inativos' },
 ];
-const FILTRO_DO_STATUS_ANTIGO = {
-  a_instalar: 'aguardando_instalacao',
-  aguardando_primeiro_sinal: 'aguardando_instalacao',
-};
 
 async function renderPontosGrade(el) {
-  // Vem da Visão geral ("Pontos por status" → clique num status real do
-  // banco) ou do hash antigo #rede/moveis (filtro Móveis) — consumido na
-  // primeira montagem, não a cada atualização. Os dois status de "ainda
-  // sem Player" da Visão geral abrem o chip "Aguardando instalação" — a régua
-  // não tem mais um chip por status cru desses dois (ADR-047).
-  const filtroStatus = FILTRO_DO_STATUS_ANTIGO[FILTRO_PONTOS_STATUS] || FILTRO_PONTOS_STATUS;
+  // Vem da Visão geral (clique num número do resumo dos pontos ou num alerta
+  // — a chave já é a do chip, ADR-047) ou do hash antigo #rede/moveis (filtro
+  // Móveis) — consumido na primeira montagem, não a cada atualização.
+  const filtroStatus = FILTRO_PONTOS_STATUS;
   FILTRO_PONTOS_STATUS = null;
 
   async function montar() {
@@ -3619,11 +3670,8 @@ async function abrirAgendaMovel() {
   const leituras = {};
   const FONTES = { padrao: '', aguardando: '?aguardando=1', historico: '?historico=1' };
   const ler = (fonte) => {
-    leituras[fonte] ||= pegar(`/admin/pontos-moveis/agenda${FONTES[fonte]}`).catch((err) => {
-      delete leituras[fonte];
-      throw err;
-    });
-    return leituras[fonte];
+    leituras[fonte] ||= leituraUnica(`/admin/pontos-moveis/agenda${FONTES[fonte]}`);
+    return leituras[fonte]();
   };
   let atual = 'agora';
   let vez = 0;

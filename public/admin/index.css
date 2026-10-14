@@ -2144,6 +2144,13 @@ button.pend-bloco:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 2px;
 }
+/* Contagem sem chip na grade (o instalado fora do ar sem Player): só texto. */
+.status-contagem-texto,
+.status-contagem-texto:hover {
+  border-color: var(--border);
+  background: var(--card);
+  cursor: default;
+}
 .fin-numeros {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

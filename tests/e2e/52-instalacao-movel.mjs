@@ -7,8 +7,9 @@
 // de console). A parte do cliente é o 53-agenda-cliente-movel.mjs.
 //   A. Grade: selo "Aguardando instalação" pelo servidor (nunca pelo status:
 //      o instalado com o Player revogado é "Temporariamente indisponível"),
-//      contador e chip `aguardando_instalacao`, sem chips por status cru; o
-//      clique em "aguardando instalação" da Visão geral cai no chip novo.
+//      contador e chip `aguardando_instalacao`, sem chips por status cru; a
+//      Visão geral conta pela mesma régua (o número = o do chip que abre) e
+//      a rede móvel é "Ativa" em todo selo (card e Ocupação da rede).
 //   B. Ficha do ponto aguardando: [Registrar instalação] no lugar do
 //      "+ Adicionar tela", [Alocar Móvel], Instalação, Disponibilidade,
 //      Instalação prevista ("Sem data definida" → data definida).
@@ -285,12 +286,37 @@ check(
     !/Aguardando instalação/.test(seloOcupacaoRede),
   seloOcupacaoRede,
 );
-await admin.click('[data-status-clique="a_instalar"]');
+// Pontos: cada número conta pela régua do chip que ele abre (o servidor
+// marca `aguardando_instalacao`) — nunca pelo status cru `a_instalar`, que
+// aqui vale para P, Q, Q2, R (Player revogado) e a rede nova.
+await admin.waitForSelector('.status-resumo .status-contagem', { timeout: 10000 });
+const resumoVg = (await admin.locator('.status-resumo').innerText()).replace(/\s+/g, ' ');
+const nVg = Number(/(\d+) aguardando instalação/.exec(resumoVg)?.[1]);
+check(
+  'Visão geral: "aguardando instalação" = o do servidor (P, Q e Q2 — sem R e sem a rede)',
+  nVg === 3 && nVg === Number(PG(AGUARDANDO_SQL)),
+  resumoVg,
+);
+check(
+  'Visão geral: R é "1 temporariamente indisponível" (texto, sem clique) e a rede conta como ativa',
+  /\b1 temporariamente indisponível\b/.test(resumoVg) &&
+    /\b1 ativo\b/.test(resumoVg) &&
+    (await admin.locator('.status-resumo [data-situacao="indisponivel"]:not(button)').count()) === 1,
+  resumoVg,
+);
+check(
+  'Visão geral: nenhuma contagem pelo status cru (a_instalar, aguardando_primeiro_sinal)',
+  !(await admin.locator('[data-status-clique="a_instalar"], [data-status-clique="aguardando_primeiro_sinal"]').count()),
+);
+await shot(admin.locator('.coluna-operacional'), 'visao-geral');
+await admin.locator('.status-resumo [data-status-clique]', { hasText: 'aguardando instalação' }).click();
 await admin.waitForSelector('.colecao .chip.active');
 await redeQuieta(admin);
 check(
-  'Visão geral "aguardando instalação" → chip "Aguardando instalação"',
-  (await admin.getAttribute('.colecao .chip.active', 'data-filtro')) === 'aguardando_instalacao',
+  'Visão geral "aguardando instalação" → chip "Aguardando instalação", com o MESMO número',
+  (await admin.getAttribute('.colecao .chip.active', 'data-filtro')) === 'aguardando_instalacao' &&
+    (await visiveis()).length === nVg,
+  `${nVg} na Visão geral; chip: ${(await visiveis()).join(',')}`,
 );
 
 // ---------------------------------------------------------------------------
@@ -622,6 +648,9 @@ check('390: ficha do ponto aguardando sem rolagem lateral', await semRolagemLate
 await shot(admin, 'ficha-aguardando-390', { fullPage: true });
 await irAdmin('#rede/pontos', '.rede-resumo');
 check('390: grade sem rolagem lateral', await semRolagemLateral(admin));
+await irAdmin('#visaogeral', '.status-resumo .status-contagem');
+check('390: Visão geral sem rolagem lateral', await semRolagemLateral(admin));
+await shot(admin.locator('.coluna-operacional'), 'visao-geral-390');
 await abrirAgenda();
 for (const id of ['agora', 'proximos', 'aguardando', 'historico']) {
   await aba(id);
