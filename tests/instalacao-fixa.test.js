@@ -379,6 +379,22 @@ test('item 5: GET /admin/pontos decide instalação e disponibilidade nos 7 caso
   });
 });
 
+test('D1 nas telas do dono e da conta: instalado com o Player revogado nunca é "Aguardando instalação" (Meus pontos e ficha da conta no Admin)', async () => {
+  const dono = await novaConta({ plano: null });
+  const nunca = await montar('A', { dono });
+  const revogado = await montar('D', { dono });
+  const { meusPontosDaConta } = require('../src/pontos/meus-pontos');
+  const meus = await meusPontosDaConta(dono);
+  const estado = (id) => meus.find((e) => e.tipo === 'ponto' && e.id === id)?.estado;
+  assert.strictEqual(estado(nunca), 'aguardando_instalacao');
+  assert.strictEqual(estado(revogado), 'em_manutencao', 'instalado não volta a "aguardando instalação"');
+  const { situacaoDaConta } = require('../src/anunciantes/situacao');
+  const ficha = await situacaoDaConta(dono);
+  const texto = (id) => ficha.pontos.find((p) => p.id === id)?.statusTexto;
+  assert.strictEqual(texto(nunca), 'Aguardando instalação');
+  assert.strictEqual(texto(revogado), 'Temporariamente indisponível');
+});
+
 test('item 15: a instalação fixa (1º sinal) tira o ponto de "aguardando" e o põe na escolha e no site', async () => {
   const conta = await novaConta();
   const ponto = await montar('A');

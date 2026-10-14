@@ -31,6 +31,17 @@ const ESTADO_DO_PONTO = {
   inativo: 'inativo',
 };
 
+// Instalado nunca volta a "aguardando instalação" (ADR-047, D1): o ponto que
+// já teve tela com o 1º sinal e está sem Player (revogado) ou com uma tela
+// nova ainda sem sinal é tela fora do ar — manutenção —, não instalação
+// pendente. `ja_instalado` vem do predicado único (jaInstaladoSql).
+function estadoDoPonto(p) {
+  if (p.ja_instalado && (p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal')) {
+    return 'em_manutencao';
+  }
+  return ESTADO_DO_PONTO[p.status] || 'inativo';
+}
+
 // Texto humano de cada situação da tela (src/lib/status-tela.js). Nível
 // decide a cor: `atencao` só para o que precisa de alguém agir.
 const SITUACAO_DA_TELA = {
@@ -69,10 +80,11 @@ function telaPublica(t, horarioDoPonto, agora) {
 }
 
 async function meusPontosDaConta(contaId, agora = new Date()) {
+  const { jaInstaladoSql } = require('./repository');
   const [pontos, telas, candidaturas] = await Promise.all([
     pool.query(
       `SELECT p.id, p.candidatura_id, p.nome, p.endereco, p.logradouro, p.numero, p.complemento, p.bairro,
-              p.cidade, p.uf, p.cep, p.status,
+              p.cidade, p.uf, p.cep, p.status, ${jaInstaladoSql('p')} AS ja_instalado,
               p.foto_instalacao_url, p.horario_semanal, p.created_at,
               c.nome AS categoria_nome
          FROM pontos p
@@ -137,7 +149,7 @@ async function meusPontosDaConta(contaId, agora = new Date()) {
       cep: p.cep,
       fotoUrl: p.foto_instalacao_url,
       categoria: p.categoria_nome,
-      estado: ESTADO_DO_PONTO[p.status] || 'inativo',
+      estado: estadoDoPonto(p),
       desde: p.created_at,
       beneficio: beneficios.get(p.id) || null,
       telas: suas,

@@ -266,7 +266,11 @@ async function situacaoDaConta(contaId, agora = new Date()) {
     creditosRepo.saldo(conta.id),
     creditosRepo.movimentacoes(conta.id, 200),
     meusPontosDaConta(conta.id, agora),
-    pool.query(`SELECT id, status FROM pontos WHERE anunciante_id = $1 AND status <> 'arquivado'`, [conta.id]),
+    pool.query(
+      `SELECT p.id, p.status, ${require('../pontos/repository').jaInstaladoSql('p')} AS ja_instalado
+         FROM pontos p WHERE p.anunciante_id = $1 AND p.status <> 'arquivado'`,
+      [conta.id],
+    ),
     criativosComSituacao(conta),
     conta.categoria_id
       ? pool.query(
@@ -279,6 +283,7 @@ async function situacaoDaConta(contaId, agora = new Date()) {
   ]);
   const planos = Object.fromEntries(planosRows.map((p) => [p.id, p]));
   const statusPorPonto = new Map(statusDosPontos.map((r) => [r.id, r.status]));
+  const jaInstalado = new Set(statusDosPontos.filter((r) => r.ja_instalado).map((r) => r.id));
 
   // ---------- pontos (aprovados) e solicitações (candidaturas em análise) ----------
   const pontos = estabelecimentos
@@ -297,7 +302,13 @@ async function situacaoDaConta(contaId, agora = new Date()) {
         uf: e.uf,
         fotoUrl: e.fotoUrl,
         status,
-        statusTexto: STATUS_DO_PONTO[status] || 'Inativo',
+        // Instalado nunca volta a "Aguardando instalação" (ADR-047, D1): sem
+        // Player (revogado) ou com tela nova ainda sem sinal, é o mesmo
+        // "Temporariamente indisponível" da grade de Rede.
+        statusTexto:
+          jaInstalado.has(e.id) && (status === 'a_instalar' || status === 'aguardando_primeiro_sinal')
+            ? 'Temporariamente indisponível'
+            : STATUS_DO_PONTO[status] || 'Inativo',
         telas: e.telas.length,
         telasComAlerta: e.alertas,
         saude: saudeDoPonto(e.telas),
