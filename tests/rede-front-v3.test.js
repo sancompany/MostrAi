@@ -862,11 +862,12 @@ test('e3. externo: iniciar o em curso e cancelar o programado pela mesma porta; 
   const depois = await postarCompromisso(rede.id, corpoExterno([rede.telas[1]]));
   assert.strictEqual(depois.status, 201, JSON.stringify(depois.json));
 
-  const acao = (ref, a) => admin('POST', `/admin/pontos/${rede.id}/compromissos/${ref}/${a}`);
+  const acao = (ref, a, corpo) => admin('POST', `/admin/pontos/${rede.id}/compromissos/${ref}/${a}`, corpo);
   const ini = await acao(agora.json.ref, 'iniciar');
   assert.strictEqual(ini.status, 200, JSON.stringify(ini.json));
   assert.strictEqual((await linhaEvento(agora.json.ref)).estado, 'em_andamento');
-  const can = await acao(depois.json.ref, 'cancelar');
+  // Cancelar exige o porquê desde a ADR-047 (migration 123).
+  const can = await acao(depois.json.ref, 'cancelar', { motivo: 'evento adiado' });
   assert.strictEqual(can.status, 200, JSON.stringify(can.json));
   assert.strictEqual((await linhaEvento(depois.json.ref)).estado, 'cancelado');
 

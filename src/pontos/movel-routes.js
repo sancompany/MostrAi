@@ -25,10 +25,10 @@ const { limiteTentativas } = require('../lib/limite-tentativas');
 //   GET  /admin/pontos/:id/telas-livres?inicio=&fim=         cada tela da rede, livre ou não no período
 //   PUT  /admin/pontos/:id/base                              410 — a rede não tem base (114)
 //   POST /admin/pontos/:id/eventos                           cadastrar evento (com as telas participantes)
-//   POST /admin/pontos/:id/eventos/:eventoId/:acao           iniciar | encerrar | cancelar
+//   POST /admin/pontos/:id/eventos/:eventoId/:acao           iniciar | encerrar | cancelar (exige { motivo })
 //   POST /admin/pontos/:id/hospedagens                       confirmar hospedagem de UMA tela (percentual congelado)
 //   POST /admin/pontos/:id/hospedagens/:hid/:acao            iniciar (exige termo físico + entrega) | encerrar
-//                                                            (retirada opcional) | cancelar | retirada
+//                                                            (retirada opcional) | cancelar (exige { motivo }) | retirada
 //   PUT  /admin/pontos/:id/hospedagens/:hid/termo-fisico     termo físico Pendente/Assinado (data e observação)
 //   POST /admin/pontos/:id/hospedagens/:hid/movimentacoes/:tipo/foto  foto da entrega/retirada
 //   PUT  /admin/pontos/:id/hospedagens/:hid/periodo          alterar tela/período/horário/local (programada)
@@ -225,7 +225,8 @@ router.post(
   '/admin/pontos/:id/eventos/:eventoId/:acao',
   rota(async (req, res, id) => {
     if (!Object.hasOwn(ACOES_DO_EVENTO, req.params.acao)) return res.status(404).json({ erro: 'ação desconhecida' });
-    await ACOES_DO_EVENTO[req.params.acao](id, req.params.eventoId);
+    // Quem encerrou ou cancelou, e o porquê do cancelamento (o corpo).
+    await ACOES_DO_EVENTO[req.params.acao](id, req.params.eventoId, adminDe(req), req.body || {});
     await avisar(id);
     res.json({ ok: true });
   }),
@@ -251,7 +252,7 @@ router.post(
 const ACOES_DA_HOSPEDAGEM = {
   iniciar: (id, hid, admin, corpo) => hospedagem.iniciar(id, hid, corpo, admin),
   encerrar: (id, hid, admin, corpo) => hospedagem.encerrar(id, hid, admin, corpo),
-  cancelar: (id, hid) => hospedagem.cancelar(id, hid),
+  cancelar: (id, hid, admin, corpo) => hospedagem.cancelar(id, hid, admin, corpo),
   retirada: (id, hid, admin, corpo) => equipamento.registrarRetirada(id, hid, corpo, admin),
 };
 router.post(

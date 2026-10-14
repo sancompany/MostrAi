@@ -174,7 +174,9 @@ function lerCategoriaEscolhida(corpo) {
 }
 
 // O local de um compromisso de CONTA: de onde vem o endereço e, com ele, o
-// horário e a categoria padrão.
+// horário e a categoria padrão. `pontoId`: o estabelecimento vinculado
+// (migration 123) — o ponto escolhido, ou null quando o endereço é da conta
+// ou digitado; ausente quando o local é mantido (o vínculo também fica).
 async function localDaConta(contaId, corpo, atual) {
   const locais = await locaisDaConta(contaId);
   if (!locais) throw erro(400, 'Escolha a conta anfitriã', 'conta_id');
@@ -193,20 +195,32 @@ async function localDaConta(contaId, corpo, atual) {
       endereco: locais.conta.endereco,
       horario: null,
       categoria: locais.conta.categoria,
+      pontoId: null,
     };
   }
   if (origem === 'ponto') {
     const ponto = locais.pontos.find((p) => String(p.id) === String(corpo?.ponto_id));
     if (!ponto) throw erro(400, 'Escolha um ponto desta conta', 'ponto_id');
-    return { nome: ponto.nome, endereco: ponto.endereco, horario: ponto.horario, categoria: ponto.categoria };
+    return {
+      nome: ponto.nome,
+      endereco: ponto.endereco,
+      horario: ponto.horario,
+      categoria: ponto.categoria,
+      pontoId: ponto.id,
+    };
   }
   return {
     nome: locais.conta.nome,
     endereco: linhaDoEnderecoDigitado(corpo),
     horario: null,
     categoria: locais.conta.categoria,
+    pontoId: null,
   };
 }
+
+// O motivo da alocação vai para a hospedagem ou o evento, que o validam
+// (a rota antiga chega lá direto). Na edição, só se veio no corpo.
+const motivoDoCorpo = (corpo) => (corpo?.motivo !== undefined ? { motivo: corpo.motivo } : {});
 
 // O corpo do compromisso → o corpo que a hospedagem ou o evento aceitam.
 async function traduzir(corpo, { edicao = false, atual = null } = {}) {
@@ -232,7 +246,9 @@ async function traduzir(corpo, { edicao = false, atual = null } = {}) {
       ...periodo,
       ...horario,
       observacao,
+      ...motivoDoCorpo(corpo),
     };
+    if (local.pontoId !== undefined) base.local_ponto_id = local.pontoId;
     if (categoria.nenhuma) base.sem_categoria = true;
     else base.categoria_id = categoria.padrao ? (local.categoria?.id ?? '') : categoria.id;
     if (base.categoria_id === '') base.sem_categoria = true;
@@ -262,6 +278,7 @@ async function traduzir(corpo, { edicao = false, atual = null } = {}) {
       observacao,
       categoria_id: categoria.padrao || categoria.nenhuma ? '' : categoria.id,
       telas,
+      ...motivoDoCorpo(corpo),
     },
   };
 }
@@ -310,16 +327,17 @@ async function editar(redeId, ref, corpo) {
 
 // Iniciar / encerrar / cancelar — a mesma porta para os dois contextos. Na
 // conta, iniciar continua exigindo termo físico assinado e a entrega.
+// Encerrar e cancelar gravam quem foi; cancelar exige `corpo.motivo`.
 async function agir(redeId, ref, acao, corpo, admin) {
   const { tipo, id } = lerRef(ref);
   if (!['iniciar', 'encerrar', 'cancelar'].includes(acao)) throw erro(404, 'ação desconhecida');
   if (tipo === 'hospedagem') {
     if (acao === 'iniciar') return hospedagem.iniciar(redeId, id, corpo || {}, admin);
     if (acao === 'encerrar') return hospedagem.encerrar(redeId, id, admin, corpo || {});
-    return hospedagem.cancelar(redeId, id);
+    return hospedagem.cancelar(redeId, id, admin, corpo || {});
   }
   const fn = { iniciar: movel.iniciarEvento, encerrar: movel.encerrarEvento, cancelar: movel.cancelarEvento }[acao];
-  await fn(redeId, id);
+  await fn(redeId, id, admin, corpo || {});
   return { contaId: null };
 }
 
@@ -337,6 +355,15 @@ const ESTADO = {
   cancelada: 'cancelado',
   cancelado: 'cancelado',
 };
+
+// O planejamento interno do compromisso (migration 123): por que a tela
+// foi, por que foi cancelada e quem encerrou ou cancelou à mão. Só o Admin
+// — nunca entra em compromissoPublico (src/pontos/movel.js).
+const soAdmin = (x) => ({
+  motivoAlocacao: x.motivoAlocacao,
+  motivoCancelamento: x.motivoCancelamento,
+  encerradoPor: x.encerradoPor,
+});
 
 function daHospedagem(h) {
   return {
@@ -361,6 +388,13 @@ function daHospedagem(h) {
     categoria: h.categoria,
     observacao: h.observacao,
     encerramento: h.encerramento,
+    ...soAdmin(h),
+    // O estabelecimento vinculado (migration 123) e o aviso "a instalação
+    // fixa chegou — encerre (ou cancele) a alocação": derivado na leitura,
+    // nada encerra sozinho.
+    localPontoId: h.localPontoId,
+    pontoInstalado: h.pontoInstalado,
+    avisoEncerrar: h.pontoInstalado && (h.estado === 'ativa' || h.estado === 'programada'),
     // Só no contexto de conta: benefício, termo físico e equipamento.
     hospedagem: {
       percentual: h.percentual,
@@ -398,6 +432,11 @@ function doEvento(e) {
     categoria: e.categoria,
     observacao: e.observacao,
     encerramento: e.encerramento,
+    ...soAdmin(e),
+    // O vínculo com ponto fixo é só da hospedagem (D4 da ADR-047).
+    localPontoId: null,
+    pontoInstalado: false,
+    avisoEncerrar: false,
     exibicoesConfirmadas: e.exibicoesConfirmadas,
     hospedagem: null,
   };

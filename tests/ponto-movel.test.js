@@ -317,7 +317,9 @@ async function eventoEmAndamento(ponto, extra = {}) {
 
 const ficha = async (pontoId) => (await admin('GET', `/admin/pontos/${pontoId}/movel`)).json;
 const telaNaFicha = (f, telaId) => f.telas.find((t) => t.id === telaId);
-const acaoNoEvento = (pontoId, eventoId, acao) => admin('POST', `/admin/pontos/${pontoId}/eventos/${eventoId}/${acao}`);
+// `corpo`: o motivo, que cancelar exige desde a ADR-047 (migration 123).
+const acaoNoEvento = (pontoId, eventoId, acao, corpo) =>
+  admin('POST', `/admin/pontos/${pontoId}/eventos/${eventoId}/${acao}`, corpo);
 // A rede vista pelo grid do Admin e pelo card (src/pontos/movel.js
 // #situacaoDasRedes) e os compromissos dela na Agenda móvel do Admin
 // (#agendaDasRedes: um por compromisso, evento com várias telas é UM).
@@ -732,7 +734,7 @@ test('evento com hora: dois no mesmo dia na mesma tela, sem se cruzar, entram; c
   const noite = await cadastrarEvento(ponto, { nome: 'Noite', inicio: `${dia}T18:00`, fim: `${dia}T23:00` });
   assert.ok(noite);
   // Cancelado libera a agenda da tela.
-  assert.strictEqual((await acaoNoEvento(ponto.id, manha, 'cancelar')).status, 200);
+  assert.strictEqual((await acaoNoEvento(ponto.id, manha, 'cancelar', { motivo: 'evento remarcado' })).status, 200);
   await cadastrarEvento(ponto, { nome: 'Almoço', inicio: `${dia}T11:00`, fim: `${dia}T12:00` });
   // O banco é a última linha de defesa: a tela não entra num evento que
   // cruza outro dela.
@@ -758,7 +760,7 @@ test('10. evento cancelado não é próximo nem alocação, e fica no histórico
     inicio: paredeMais(9 * 24),
     fim: paredeMais(10 * 24),
   });
-  assert.strictEqual((await acaoNoEvento(ponto.id, cedo, 'cancelar')).status, 200);
+  assert.strictEqual((await acaoNoEvento(ponto.id, cedo, 'cancelar', { motivo: 'organizador desistiu' })).status, 200);
   const f = await ficha(ponto.id);
   assert.strictEqual(telaNaFicha(f, ponto.telaId).proximo.id, tarde);
   assert.strictEqual(telaNaFicha(f, ponto.telaId).alocacao, null);

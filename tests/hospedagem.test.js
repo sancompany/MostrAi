@@ -616,7 +616,8 @@ test('16. cancelar: só antes de começar, sem benefício; depois de começar, o
   const m = await criarMovel();
   const anfitria = await novaConta();
   const hid = await programarOk(m.id, anfitria, { data_inicio: hojeMais(1), data_fim: hojeMais(1) });
-  assert.strictEqual((await acao(m.id, hid, 'cancelar')).status, 200);
+  // Cancelar à mão exige o porquê desde a ADR-047 (migration 123).
+  assert.strictEqual((await acao(m.id, hid, 'cancelar', { motivo: 'o comércio desistiu' })).status, 200);
   const h = await linha(hid);
   assert.strictEqual(h.estado, 'cancelada');
   assert.strictEqual(h.beneficio_segundos, null);
@@ -1602,7 +1603,7 @@ test('47 a 52. trava de concorrente pelo contexto da ALOCAÇÃO: anfitrião, o r
   const outra = await programarOk(m.id, anfitria, { categoria_id: ramoEscolhido });
   assert.strictEqual((await linha(outra)).categoria_id, ramoEscolhido);
   assert.strictEqual((await programar(m.id, anfitria, { categoria_id: 'abc' })).status, 400);
-  await acao(m.id, outra, 'cancelar');
+  assert.strictEqual((await acao(m.id, outra, 'cancelar', { motivo: 'só para conferir o ramo' })).status, 200);
   // Evento com contexto próprio; e evento sem contexto não tem trava.
   const ev = await evento(m.id, { nome: 'Festival', data_inicio: hojeMais(0), categoria_id: ramoEvento });
   assert.strictEqual(ev.status, 201, JSON.stringify(ev.json));
@@ -1783,7 +1784,7 @@ test('60 a 63. painel do anfitrião: programada, em andamento (estimado) e concl
   assert.strictEqual(d.hospedagens[0].id, Number(futura));
   assert.strictEqual(d.saldo.disponivelSegundos, 0);
   assert.strictEqual(d.percentual, 20);
-  await acao(m.id, futura, 'cancelar');
+  assert.strictEqual((await acao(m.id, futura, 'cancelar', { motivo: 'remarcada' })).status, 200);
   const hid = await hospedagemAtiva(m, anfitria, 120);
   await operou(m.telaId, minutosAtras(100), minutosAtras(40));
   d = (await nav('GET', '/anunciantes/me/hospedagem')).json;
@@ -1844,7 +1845,7 @@ test('64. andamento do interesse: recebido → em contato → aprovado → agend
   const outro = await criarMovel();
   assert.strictEqual((await programar(outro.id, conta, { interesse_id: i.id })).status, 409, 'não agenda duas vezes');
   // Cancelada: o interesse volta para "em contato" e agenda de novo.
-  assert.strictEqual((await acao(m.id, hidI, 'cancelar')).status, 200);
+  assert.strictEqual((await acao(m.id, hidI, 'cancelar', { motivo: 'o comércio pediu para remarcar' })).status, 200);
   assert.strictEqual(
     (await pool.query('SELECT status FROM hospedagem_interesses WHERE id = $1', [i.id])).rows[0].status,
     'em_contato',

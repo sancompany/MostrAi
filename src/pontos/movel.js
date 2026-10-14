@@ -42,8 +42,32 @@ const LIMITES = {
   publicoMaximo: 1_000_000,
 };
 const UFS = new Set('AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' '));
+// Por que a tela foi para lá (migration 123, ADR-047): a mesma lista nos dois
+// contextos (hospedagem e evento) e no CHECK do banco. Só o Admin vê.
+const MOTIVOS_DE_ALOCACAO = new Set(['aguardando_instalacao', 'evento', 'ativacao_comercial', 'teste_ponto', 'outro']);
+// O porquê do cancelamento manual: o mesmo teto do CHECK da 123.
+const MAXIMO_MOTIVO_CANCELAMENTO = 300;
 
 const erro = (status, mensagem, campo) => Object.assign(new Error(mensagem), { status, ...(campo ? { campo } : {}) });
+
+// Motivo da alocação: ausente, null ou '' (a opção vazia do select) = sem
+// motivo — as linhas antigas também ficam assim. Fora da lista = 400.
+function lerMotivoAlocacao(valor) {
+  if (valor === undefined || valor === null || valor === '') return null;
+  if (!MOTIVOS_DE_ALOCACAO.has(valor)) throw erro(400, 'motivo da alocação inválido');
+  return valor;
+}
+
+// Cancelar à mão exige o porquê (1 a 300 caracteres depois do trim): o
+// cancelado continua no histórico do Admin e precisa se explicar sozinho.
+// Conta caracteres como o char_length do banco (um emoji é um).
+function lerMotivoCancelamento(valor) {
+  const t = typeof valor === 'string' ? valor.trim() : '';
+  if (!t || [...t].length > MAXIMO_MOTIVO_CANCELAMENTO) {
+    throw erro(400, `informe o motivo do cancelamento (até ${MAXIMO_MOTIVO_CANCELAMENTO} caracteres)`);
+  }
+  return t;
+}
 
 async function proximoNumeroMovel(db) {
   const { rows } = await db.query(`SELECT nextval('pontos_movel_numero_seq')::int AS numero`);
@@ -328,6 +352,7 @@ async function fichaDaRede(redeId) {
         `SELECT e.id, e.nome, e.organizacao, e.local, e.endereco, e.inicio, e.fim, e.horario_operacao,
                 e.publico_estimado, e.observacao, e.estado, e.iniciado_em, e.encerrado_em, e.cancelado_em, e.criado_em,
                 e.criado_por_admin, e.categoria_id, cat.nome AS categoria_nome, e.encerramento,
+                e.motivo_alocacao, e.motivo_cancelamento, e.encerrado_por_admin,
                 (e.fim <= now()) AS terminou,
                 (SELECT COUNT(*)::int FROM execucoes_confirmadas x
                   WHERE x.evento_id = e.id AND x.status = 'contabilizado') AS exibicoes_confirmadas
@@ -382,6 +407,11 @@ async function fichaDaRede(redeId) {
     canceladoEm: e.cancelado_em,
     criadoEm: e.criado_em,
     criadoPor: e.criado_por_admin,
+    // Só o Admin (migration 123): por que foi, por que foi cancelado e quem
+    // encerrou ou cancelou à mão (o job não grava ninguém).
+    motivoAlocacao: e.motivo_alocacao,
+    motivoCancelamento: e.motivo_cancelamento,
+    encerradoPor: e.encerrado_por_admin,
     terminou: e.terminou,
     exibicoesConfirmadas: e.exibicoes_confirmadas,
   }));
@@ -594,7 +624,19 @@ function validarEvento(corpo, { agora = new Date() } = {}) {
   }
   const observacao = texto(corpo?.observacao, 'observacao', 'Observação', LIMITES.observacao, { obrigatorio: false });
   const categoriaId = lerCategoria(corpo?.categoria_id);
-  return { nome, organizacao, local, endereco, ...periodo, horario, publicoEstimado, observacao, categoriaId };
+  const motivoAlocacao = lerMotivoAlocacao(corpo?.motivo);
+  return {
+    nome,
+    organizacao,
+    local,
+    endereco,
+    ...periodo,
+    horario,
+    publicoEstimado,
+    observacao,
+    categoriaId,
+    motivoAlocacao,
+  };
 }
 
 async function criarEvento(redeId, corpo, admin) {
@@ -607,8 +649,8 @@ async function criarEvento(redeId, corpo, admin) {
     const { rows } = await c.query(
       `INSERT INTO pontos_moveis_eventos
          (ponto_id, nome, organizacao, local, endereco, data_inicio, data_fim, publico_estimado, observacao,
-          criado_por_admin, categoria_id, inicio, fim, horario_operacao)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+          criado_por_admin, categoria_id, inicio, fim, horario_operacao, motivo_alocacao)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        RETURNING id`,
       [
         redeId,
@@ -625,6 +667,7 @@ async function criarEvento(redeId, corpo, admin) {
         ev.inicio,
         ev.fim,
         ev.horario ? JSON.stringify(ev.horario) : null,
+        ev.motivoAlocacao,
       ],
     );
     const id = rows[0].id;
@@ -641,13 +684,16 @@ async function criarEvento(redeId, corpo, admin) {
 // Editar um evento PROGRAMADO (estação Rede Front V3 — o compromisso unificado
 // edita os dois tipos): nome, organização, local, endereço, período, horário,
 // telas, categoria e observação, com as mesmas regras do cadastro e a agenda
-// conferida sem contar o próprio evento. Começou → 409 (só encerrar).
+// conferida sem contar o próprio evento. Começou → 409 (só encerrar). O
+// motivo da alocação só muda se vier no corpo (o formulário antigo não o
+// manda e não pode apagá-lo).
 async function editarEvento(redeId, eventoId, corpo) {
   const ev = validarEvento(corpo);
   return emTransacao(async (c) => {
     await travarMovel(c, redeId);
     const atual = await eventoDaRede(c, redeId, eventoId);
     if (atual.estado !== 'programado') throw erro(409, JA_ESTA[atual.estado]);
+    const motivoAlocacao = corpo?.motivo === undefined ? atual.motivo_alocacao : ev.motivoAlocacao;
     await exigirCategoria(c, ev.categoriaId);
     const telas = await telasValidas(c, redeId, corpo?.telas);
     await agenda.exigirLivres(c, telas, ev.inicio, ev.fim, { ignorar: { tipo: 'evento', id: atual.id } });
@@ -657,7 +703,8 @@ async function editarEvento(redeId, eventoId, corpo) {
     await c.query(
       `UPDATE pontos_moveis_eventos
           SET nome = $2, organizacao = $3, local = $4, endereco = $5, data_inicio = $6, data_fim = $7,
-              observacao = $8, categoria_id = $9, inicio = $10, fim = $11, horario_operacao = $12
+              observacao = $8, categoria_id = $9, inicio = $10, fim = $11, horario_operacao = $12,
+              motivo_alocacao = $13
         WHERE id = $1`,
       [
         atual.id,
@@ -672,6 +719,7 @@ async function editarEvento(redeId, eventoId, corpo) {
         ev.inicio,
         ev.fim,
         ev.horario ? JSON.stringify(ev.horario) : null,
+        motivoAlocacao,
       ],
     );
     await c.query(`INSERT INTO pontos_moveis_evento_telas (evento_id, dispositivo_id) SELECT $1, unnest($2::int[])`, [
@@ -741,33 +789,40 @@ async function avisarTelas(c, telaIds) {
   );
 }
 
-// "Encerrar evento": as telas dele ficam sem alocação (até a próxima).
-async function encerrarEvento(redeId, eventoId) {
+// "Encerrar evento": as telas dele ficam sem alocação (até a próxima). Grava
+// quem encerrou, como a hospedagem (o job, automático, não grava ninguém).
+async function encerrarEvento(redeId, eventoId, admin = null) {
   return emTransacao(async (c) => {
     await travarMovel(c, redeId);
     const ev = await eventoDaRede(c, redeId, eventoId);
     if (ev.estado === 'programado') throw erro(409, 'Esse evento ainda não começou — para desistir dele, cancele');
     if (ev.estado !== 'em_andamento') throw erro(409, JA_ESTA[ev.estado]);
     await c.query(
-      `UPDATE pontos_moveis_eventos SET estado = 'encerrado', encerrado_em = now(), encerramento = 'manual'
+      `UPDATE pontos_moveis_eventos
+          SET estado = 'encerrado', encerrado_em = now(), encerramento = 'manual', encerrado_por_admin = $2
         WHERE id = $1`,
-      [ev.id],
+      [ev.id, admin],
     );
     await avisarTelas(c, ev.telas);
   });
 }
 
-// Cancelado não vira alocação nem próximo compromisso, e continua auditável.
-async function cancelarEvento(redeId, eventoId) {
+// Cancelado não vira alocação nem próximo compromisso, e continua auditável:
+// quem cancelou e por quê. O motivo é conferido DEPOIS do estado — o 409 de
+// quem tenta cancelar o que já começou ou terminou vem primeiro.
+async function cancelarEvento(redeId, eventoId, admin = null, corpo = {}) {
   return emTransacao(async (c) => {
     await travarMovel(c, redeId);
     const ev = await eventoDaRede(c, redeId, eventoId);
     if (ev.estado === 'em_andamento') throw erro(409, 'O evento já está em andamento — use Encerrar');
     if (ev.estado !== 'programado') throw erro(409, JA_ESTA[ev.estado]);
+    const motivo = lerMotivoCancelamento(corpo?.motivo);
     await c.query(
-      `UPDATE pontos_moveis_eventos SET estado = 'cancelado', cancelado_em = now(), encerramento = 'manual'
+      `UPDATE pontos_moveis_eventos
+          SET estado = 'cancelado', cancelado_em = now(), encerramento = 'manual', motivo_cancelamento = $2,
+              encerrado_por_admin = $3
         WHERE id = $1`,
-      [ev.id],
+      [ev.id, motivo, admin],
     );
   });
 }
@@ -896,4 +951,6 @@ module.exports = {
   lerCategoria,
   exigirCategoria,
   avisarTelas,
+  lerMotivoAlocacao,
+  lerMotivoCancelamento,
 };

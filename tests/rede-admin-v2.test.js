@@ -296,8 +296,9 @@ async function cadastrarEvento(redeId, telas, extra = {}) {
   return r.json.id;
 }
 
-async function acaoNoEvento(redeId, eventoId, acao) {
-  const r = await admin('POST', `/admin/pontos/${redeId}/eventos/${eventoId}/${acao}`);
+// `corpo`: o motivo, que cancelar exige desde a ADR-047 (migration 123).
+async function acaoNoEvento(redeId, eventoId, acao, corpo) {
+  const r = await admin('POST', `/admin/pontos/${redeId}/eventos/${eventoId}/${acao}`, corpo);
   assert.strictEqual(r.status, 200, `${acao}: ${JSON.stringify(r.json)}`);
 }
 
@@ -418,7 +419,7 @@ test('1. Agenda móvel do Admin: agora + futuro por padrão, um item por comprom
     inicio: paredeMais(100),
     fim: paredeMais(110),
   });
-  await acaoNoEvento(rede.id, cancelado, 'cancelar');
+  await acaoNoEvento(rede.id, cancelado, 'cancelar', { motivo: 'chuva prevista' });
 
   const padrao = await agendaAdmin(rede.id);
   assert.deepStrictEqual(
@@ -527,7 +528,7 @@ test('2. agenda pública da rede ("Ver agenda"): só agora e futuro, só tipo/no
     inicio: paredeMais(40 * 24),
     fim: paredeMais(41 * 24),
   });
-  await acaoNoEvento(rede.id, cancelado, 'cancelar');
+  await acaoNoEvento(rede.id, cancelado, 'cancelar', { motivo: 'nota interna do cancelamento' });
   await eventoPassado(rede.id, c, 'Evento Velho');
 
   const r = await agendaPublica(nav, rede.id);

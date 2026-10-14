@@ -200,6 +200,29 @@ async function exigirCategoria(c, categoriaId) {
   if (!rows[0]) throw erro(400, 'Contexto de concorrência: ramo não encontrado', 'categoria_id');
 }
 
+// O ESTABELECIMENTO onde a tela fica (migration 123, ADR-047): o ponto fixo
+// da conta anfitriã que recebe o Móvel — por exemplo, enquanto aguarda a
+// instalação da tela fixa. É o vínculo da passagem com a ficha do ponto e a
+// agenda "aguardando instalação"; não vira ponto comercial, e obrigação,
+// POP e saldo continuam da REDE e da conta (`ponto_id` segue sendo a rede).
+// Vazio = sem vínculo.
+const PONTO_DE_OUTRA_CONTA = 'esse ponto não é um estabelecimento desta conta';
+function lerLocalPonto(valor) {
+  if (valor === undefined || valor === null || valor === '') return null;
+  if (!/^\d{1,9}$/.test(String(valor))) throw erro(400, PONTO_DE_OUTRA_CONTA);
+  return Number(valor);
+}
+
+// Conferido aqui, e não só no formulário (src/pontos/compromissos.js): a rota
+// antiga de hospedagem chega direto. Fixo, não arquivado e da conta anfitriã.
+async function exigirPontoDaConta(c, pontoId, contaId) {
+  const { rows } = await c.query(
+    `SELECT 1 FROM pontos WHERE id = $1 AND tipo = 'fixo' AND status <> 'arquivado' AND anunciante_id = $2`,
+    [pontoId, contaId],
+  );
+  if (!rows[0]) throw erro(400, PONTO_DE_OUTRA_CONTA);
+}
+
 // Agendar a hospedagem (o Admin orquestra tudo): TELA da rede → conta
 // anfitriã → local e endereço → período com data e hora → horário (padrão:
 // o período inteiro) → categoria protegida (padrão: a da conta) →
@@ -223,6 +246,8 @@ async function criar(pontoId, corpo, admin) {
   if (interesseId !== null && (!Number.isInteger(interesseId) || interesseId <= 0)) {
     throw erro(400, 'Interesse inválido', 'interesse_id');
   }
+  const motivoAlocacao = movel.lerMotivoAlocacao(corpo?.motivo);
+  const localPontoId = lerLocalPonto(corpo?.local_ponto_id);
 
   try {
     return await movel.emTransacao(async (c) => {
@@ -238,6 +263,7 @@ async function criar(pontoId, corpo, admin) {
       );
       if (!conta || conta.excluido_em) throw erro(400, 'Conta anfitriã não encontrada', 'conta_id');
       if (conta.conta_propria) throw erro(400, 'A conta própria da Mostraí não hospeda a própria tela', 'conta_id');
+      if (localPontoId) await exigirPontoDaConta(c, localPontoId, contaId);
       let interesse = null;
       if (interesseId) {
         const { rows } = await c.query(
@@ -292,8 +318,9 @@ async function criar(pontoId, corpo, admin) {
       const { rows } = await c.query(
         `INSERT INTO pontos_moveis_hospedagens
            (ponto_id, conta_id, interesse_id, local, endereco, categoria_id, data_inicio, data_fim, percentual,
-            criado_por_admin, inicio, fim, horario_operacao, observacao, dispositivo_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            criado_por_admin, inicio, fim, horario_operacao, observacao, dispositivo_id, local_ponto_id,
+            motivo_alocacao)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
          RETURNING id`,
         [
           pontoId,
@@ -311,6 +338,8 @@ async function criar(pontoId, corpo, admin) {
           horario ? JSON.stringify(horario) : null,
           observacao,
           telaId,
+          localPontoId,
+          motivoAlocacao,
         ],
       );
       if (interesseId) {
@@ -455,8 +484,10 @@ async function devolverInteresse(c, h) {
 }
 
 // Só antes de começar. Depois de começar, o caminho é encerrar (conta o
-// tempo real até ali).
-async function cancelar(pontoId, hospedagemId) {
+// tempo real até ali). Auditável: grava por quê (`corpo.motivo`, obrigatório)
+// e quem cancelou (`encerrado_por_admin`, a mesma coluna do encerramento). O
+// motivo é conferido DEPOIS do estado — os 409 de sempre vêm primeiro.
+async function cancelar(pontoId, hospedagemId, admin = null, corpo = {}) {
   return movel.emTransacao(async (c) => {
     await movel.travarMovel(c, pontoId);
     const h = await hospedagemDoPonto(c, pontoId, hospedagemId);
@@ -464,10 +495,13 @@ async function cancelar(pontoId, hospedagemId) {
       throw erro(409, 'A hospedagem já começou — use Encerrar (conta o tempo real até agora)');
     }
     if (h.estado !== 'programada') throw erro(409, JA_ESTA[h.estado]);
+    const motivo = movel.lerMotivoCancelamento(corpo?.motivo);
     await c.query(
-      `UPDATE pontos_moveis_hospedagens SET estado = 'cancelada', cancelada_em = now(), encerramento = 'manual'
+      `UPDATE pontos_moveis_hospedagens
+          SET estado = 'cancelada', cancelada_em = now(), encerramento = 'manual', motivo_cancelamento = $2,
+              encerrado_por_admin = $3
         WHERE id = $1`,
-      [h.id],
+      [h.id, motivo, admin],
     );
     await devolverInteresse(c, h);
     return { contaId: h.conta_id };
@@ -475,7 +509,9 @@ async function cancelar(pontoId, hospedagemId) {
 }
 
 // Alterar a hospedagem. PROGRAMADA: tela, período, horário, local e
-// endereço. ATIVA: só prorrogar o fim (o início e o horário já estão
+// endereço, o estabelecimento vinculado (`local_ponto_id`: o id novo, ou
+// null = sem vínculo) e o motivo da alocação — cada um só muda se vier no
+// corpo. ATIVA: só prorrogar o fim (o início e o horário já estão
 // valendo; para terminar antes, Encerrar). Sem conflito na agenda da tela;
 // o percentual continua o congelado.
 async function alterarPeriodo(pontoId, hospedagemId, corpo) {
@@ -489,6 +525,8 @@ async function alterarPeriodo(pontoId, hospedagemId, corpo) {
       let horario = h.horario_operacao;
       let local = h.local;
       let endereco = h.endereco;
+      let localPontoId = h.local_ponto_id;
+      let motivoAlocacao = h.motivo_alocacao;
       if (h.estado === 'ativa') {
         const { instanteComercial } = require('../lib/fuso-comercial');
         const inicioPedido = instanteComercial(corpo?.inicio, { campo: 'Início' });
@@ -525,6 +563,11 @@ async function alterarPeriodo(pontoId, hospedagemId, corpo) {
         if (corpo?.endereco !== undefined) {
           endereco = movel.texto(corpo.endereco, 'endereco', 'Endereço', LIMITES.endereco);
         }
+        if (corpo?.local_ponto_id !== undefined) {
+          localPontoId = lerLocalPonto(corpo.local_ponto_id);
+          if (localPontoId) await exigirPontoDaConta(c, localPontoId, h.conta_id);
+        }
+        if (corpo?.motivo !== undefined) motivoAlocacao = movel.lerMotivoAlocacao(corpo.motivo);
       }
       await agenda.exigirLivres(c, [telaId], periodo.inicio, periodo.fim, {
         ignorar: { tipo: 'hospedagem', id: h.id },
@@ -532,7 +575,7 @@ async function alterarPeriodo(pontoId, hospedagemId, corpo) {
       await c.query(
         `UPDATE pontos_moveis_hospedagens
             SET inicio = $2, fim = $3, data_inicio = $4, data_fim = $5, horario_operacao = $6, local = $7, endereco = $8,
-                dispositivo_id = $9
+                dispositivo_id = $9, local_ponto_id = $10, motivo_alocacao = $11
           WHERE id = $1`,
         [
           h.id,
@@ -544,6 +587,8 @@ async function alterarPeriodo(pontoId, hospedagemId, corpo) {
           local,
           endereco,
           telaId,
+          localPontoId,
+          motivoAlocacao,
         ],
       );
       return { contaId: h.conta_id, inicio: periodo.inicio, fim: periodo.fim };
@@ -956,9 +1001,15 @@ async function hospedagensDaConta(contaId) {
 }
 
 // Admin: todas as hospedagens das telas de uma rede (agenda + histórico).
+// `pontoInstalado`: o estabelecimento vinculado já é vendável (o mesmo
+// predicado único da escolha, fixoVendavelSql) — a instalação fixa chegou e
+// a alocação pode ser encerrada (nada encerra sozinho).
 async function hospedagensDoPonto(pontoId, db = pool) {
+  const { fixoVendavelSql } = require('./repository');
   const { rows } = await db.query(
-    `SELECT h.*, a.nome_empresa AS conta_nome, (h.fim <= now()) AS terminou, cat.nome AS categoria_nome
+    `SELECT h.*, a.nome_empresa AS conta_nome, (h.fim <= now()) AS terminou, cat.nome AS categoria_nome,
+            EXISTS (SELECT 1 FROM pontos lp WHERE lp.id = h.local_ponto_id AND ${fixoVendavelSql('lp')})
+              AS ponto_instalado
        FROM pontos_moveis_hospedagens h JOIN anunciantes a ON a.id = h.conta_id
        LEFT JOIN categorias cat ON cat.id = h.categoria_id
       WHERE h.ponto_id = $1
@@ -1003,7 +1054,14 @@ async function hospedagensDoPonto(pontoId, db = pool) {
       estimado: ativa,
       criadoEm: h.criado_em,
       criadoPor: h.criado_por_admin,
+      // Quem encerrou ou cancelou à mão (o job não grava ninguém).
       encerradoPor: h.encerrado_por_admin,
+      // Só o Admin (migration 123): por que a tela foi, por que foi
+      // cancelada, o estabelecimento vinculado e se ele já foi instalado.
+      motivoAlocacao: h.motivo_alocacao,
+      motivoCancelamento: h.motivo_cancelamento,
+      localPontoId: h.local_ponto_id,
+      pontoInstalado: h.ponto_instalado,
       // Termo físico (Pendente/Assinado) e equipamento (entrega e retirada).
       termo: doc?.termo || null,
       entrega: doc?.entrega || null,
