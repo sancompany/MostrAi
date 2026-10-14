@@ -4298,10 +4298,16 @@ button.pend-bloco:focus-visible {
 /* Card da rede móvel no grid dos pontos: "Atual" e "Próximo" em duas linhas. */
 .rede-card-linha { display: flex; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
 .rede-card-rotulo { flex: none; font-size: .7rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #8a94a3; padding-top: 2px; }
-/* Agenda móvel (modal): a régua Agora/Histórico. */
-.agenda-admin-topo { display: flex; gap: 8px; margin-bottom: 12px; }
+/* Agenda móvel (modal): as quatro abas (Agora, Próximos, Aguardando
+   instalação, Histórico) quebram linha no celular. */
+.agenda-admin-topo { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .agenda-admin td { vertical-align: top; }
 .agenda-admin td:nth-child(3) a { white-space: nowrap; }
+.agenda-aguardando [data-movel] .badge { margin-top: 4px; }
+/* Ficha do ponto fixo: as passagens do Mostraí Móvel por ele (ADR-047). */
+.ponto-passagens { margin-top: var(--e-4); }
+.lista-passagens { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 0.85rem; }
+.passagem { min-width: 0; overflow-wrap: anywhere; }
 /* Interesses: a conta não espreme; as ações quebram em duas linhas. */
 [data-interesses] .interesse-conta { min-width: 170px; }
 .interesse-acoes { display: flex; flex-wrap: wrap; gap: 6px; min-width: 190px; max-width: 280px; }

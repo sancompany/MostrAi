@@ -108,13 +108,16 @@ PG(
 );
 PG(`INSERT INTO dispositivos (ponto_id) VALUES (${idC})`); // sem Player ainda
 
-// Ponto E: 1 tela em reparo, nenhuma ativa -> em reparo.
+// Ponto E: 1 tela em reparo, nenhuma ativa -> em reparo. A tela JÁ OPEROU
+// (deu o 1º sinal há 10 dias): desde a ADR-047 (14/10/2026, D1/D3) o ponto em
+// reparo que nunca deu o 1º sinal é "Aguardando instalação" — não aparece no
+// site nem no chip "Em reparo". O caso deste roteiro é o instalado que quebrou.
 const idE = PG(
   `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, status)
    VALUES ('Loja Em Reparo', 'Rua Baixa, 9', 'Matão', 'SP', '15990000', 'loja', 'Elis', '16999990005', 'em_reparo')
    RETURNING id`,
 );
-PG(`INSERT INTO dispositivos (ponto_id, status) VALUES (${idE}, 'reparo')`);
+PG(`INSERT INTO dispositivos (ponto_id, status, primeiro_sinal_em) VALUES (${idE}, 'reparo', now() - interval '10 days')`);
 
 // Ponto F: tem tela cadastrada, nenhuma ativa/reparo -> inativo. Não deve
 // aparecer no site público (só `inativo` fica de fora, ver
@@ -216,12 +219,17 @@ check('segmento aparece', (await admin.textContent('#pontoInformacoes')).include
 check('responsável somente-leitura (sem input)', (await admin.locator('#pontoInformacoes input, #pontoInformacoes select').count()) === 0);
 check('horário de funcionamento mostrado como texto', (await admin.textContent('#pontoInformacoes')).includes('06:00'));
 check('observações aparecem', (await admin.textContent('#pontoInformacoes')).includes('estacionamento'));
-// "Instalação" voltou como grupo de CADA TELA (data e horário da tela) — o
-// que não pode voltar é o painel de instalação/ACM da ficha do ponto.
+// "Instalação" voltou como grupo de CADA TELA (data e horário da tela) e,
+// desde a ADR-047 (A4 do contrato da estação), como UMA linha informativa da
+// ficha do ponto, decidida no servidor ("Concluída — 1º sinal em …") — o que
+// não pode voltar é o painel de instalação/ACM, com controles, da ficha.
+const linhaInstalacao = ((await admin.textContent('#pontoInformacoes [data-instalacao]')) || '').trim();
 check(
-  'sem painel de Instalação/ACM na ficha',
+  'sem painel de Instalação/ACM na ficha (só a linha informativa da ADR-047)',
   !(await admin.locator('text=/ACM|molde/i').count()) &&
-    !(await admin.locator('#pontoInformacoes').locator('text=/Instalação/i').count()),
+    /^Concluída — 1º sinal em \d{2}\/\d{2}\/\d{4}$/.test(linhaInstalacao) &&
+    !(await admin.locator('#pontoInformacoes').locator('text=/Colocar em operação/i').count()),
+  linhaInstalacao,
 );
 check('3 telas em linhas (não tabela)', (await admin.locator('#pontoTelas .tela-linha').count()) === 3);
 check('sem tabela de telas', (await admin.locator('#pontoTelas table').count()) === 0);

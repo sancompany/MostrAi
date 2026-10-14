@@ -568,6 +568,29 @@ const PONTO_STATUS_CLASSE = {
   em_reparo: 'badge-info',
   inativo: 'badge-err',
 };
+// O SELO do ponto FIXO (ADR-047, 14/10/2026): aprovado não é disponível. O
+// servidor decide (GET /admin/pontos, pelos mesmos predicados da escolha e
+// do site) se o ponto ainda AGUARDA a instalação (`aguardando_instalacao`) e
+// se já foi instalado (`ja_instalado`: alguma tela deu o 1º sinal) — aqui só
+// se mostra. Nunca deduzir "aguardando" de `status === 'a_instalar'`: o
+// Player revogado depois de operar também volta a `a_instalar` e NÃO é
+// aguardando (D1) — é instalado e está fora do ar agora.
+const SELO_INSTALACAO = {
+  aguardando: { rotulo: 'Aguardando instalação', classe: 'badge-pendente' },
+  indisponivel: { rotulo: 'Temporariamente indisponível', classe: 'badge-pendente' },
+};
+function seloDoPontoFixo(p) {
+  if (p.aguardando_instalacao) return SELO_INSTALACAO.aguardando;
+  if (p.ja_instalado && (p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal')) {
+    return SELO_INSTALACAO.indisponivel;
+  }
+  return { rotulo: PONTO_STATUS[p.status] || p.status, classe: PONTO_STATUS_CLASSE[p.status] || 'badge-neutro' };
+}
+// "● Aguardando instalação" — o selo em linha de apoio (tabelas e seletores).
+const seloEmLinha = (p) => {
+  const s = seloDoPontoFixo(p);
+  return `<i class="ponto-status ${s.classe}" aria-hidden="true"></i>${esc(s.rotulo)}`;
+};
 const TELA_STATUS = { ativo: 'Ativa', reparo: 'Em reparo', inativo: 'Inativa' };
 const CICLOS = { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
 
@@ -1677,7 +1700,7 @@ async function renderOcupacaoRede(el) {
         return `<tr data-filtro="${l.bloqueado ? 'bloqueado' : ''}" data-ponto-id="${l.pontoId}">
       <td data-valor="${esc(l.nome)}"><div class="celula-ponto">
         <a href="#rede/pontos/${l.pontoId}">${esc(l.nome)}</a>
-        ${ponto ? `<span class="celula-sub"><i class="ponto-status ${PONTO_STATUS_CLASSE[ponto.status] || ''}" aria-hidden="true"></i>${PONTO_STATUS[ponto.status] || ponto.status} · ${telas}</span>` : ''}
+        ${ponto ? `<span class="celula-sub">${seloEmLinha(ponto)} · ${telas}</span>` : ''}
       </div></td>
       <td class="num"><button type="button" class="link-contagem" data-expandir-ocupacao="${l.pontoId}" aria-expanded="false" title="Ver o peso de cada anunciante neste ponto">${l.anunciantes.length}</button></td>
       <td class="num grupo-inicio" title="${Math.round(l.segundosVendidos)}s de 3600s/hora">${cap ? pct(cap.comercialPct) : '—'}${l.bloqueado ? ' <span class="badge badge-err">travado</span>' : ''}</td>
@@ -2107,7 +2130,7 @@ function montarPontoPickerCard(p, marcado) {
     <span class="mm-picker-foto">${fotoOuPlaceholder(p.fotoUrl, p.pontoNome)}</span>
     <span class="mm-picker-corpo">
       <span class="mm-picker-nome">${esc(p.pontoNome)}</span>
-      <span class="mm-picker-meta"><i class="ponto-status ${PONTO_STATUS_CLASSE[p.status] || ''}" aria-hidden="true"></i>${PONTO_STATUS[p.status] || p.status}${p.cidade ? ` · ${esc(p.cidade)}${p.uf ? `/${esc(p.uf)}` : ''}` : ''}${segmento ? ` · ${esc(segmento)}` : ''}</span>
+      <span class="mm-picker-meta">${seloEmLinha(p)}${p.cidade ? ` · ${esc(p.cidade)}${p.uf ? `/${esc(p.uf)}` : ''}` : ''}${segmento ? ` · ${esc(segmento)}` : ''}</span>
       <span class="mm-picker-stats">
         <span>Comercial <b>${pct(p.comercialPct)}</b></span>
         <span>Mostraí <b>${pct(p.mostraiPct)}</b></span>
@@ -2220,6 +2243,9 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
       categoriaNome: cad?.categoria_nome || null,
       categoriaLivre: cad?.categoria_livre || null,
       segmento: cad?.segmento || null,
+      // O selo do ponto (seloDoPontoFixo) vem do cadastro, decidido no servidor.
+      aguardando_instalacao: cad?.aguardando_instalacao,
+      ja_instalado: cad?.ja_instalado,
     };
   });
   const pontosSelecionados = new Set(midia?.pontosIds || []);
@@ -3217,7 +3243,16 @@ function montarPontoCard(p) {
   const movel = p.tipo === 'movel';
   const e = p.estadoTelas || { total: 0, filtros: [] };
   const arquivada = movel && p.status === 'arquivado';
-  const situacao = movel ? (arquivada ? 'arquivado' : 'em_operacao') : p.status;
+  // O filtro do fixo segue o SELO (seloDoPontoFixo): o ponto que aguarda a
+  // instalação responde ao chip "Aguardando instalação", não ao status cru —
+  // um ponto em reparo que nunca operou não aparece em "Em reparo".
+  const situacao = movel
+    ? arquivada
+      ? 'arquivado'
+      : 'em_operacao'
+    : p.aguardando_instalacao
+      ? 'aguardando_instalacao'
+      : p.status;
   const cidade = esc([p.cidade, p.uf].filter(Boolean).join('/'));
   let meta;
   if (movel) {
@@ -3241,7 +3276,7 @@ function montarPontoCard(p) {
   }
   const selo = movel
     ? `<span class="badge ${arquivada ? 'badge-neutro' : 'badge-ok'}">${arquivada ? 'Arquivada' : 'Ativa'}</span>`
-    : `<span class="badge ${PONTO_STATUS_CLASSE[p.status]}">${PONTO_STATUS[p.status] || p.status}</span>`;
+    : badge(seloDoPontoFixo(p));
   return cardEntidade({
     href: `#rede/pontos/${p.id}`,
     filtro: [movel ? 'movel' : 'fixo', situacao, ...(e.filtros || [])].join(' '),
@@ -3257,9 +3292,11 @@ function montarPontoCard(p) {
 
 // O resumo do topo: só números que fazem alguém agir, somados do MESMO
 // `estadoTelas` dos cards. Os que têm filtro são botões que o aplicam.
+// "Aguardando instalação" conta o que o SERVIDOR marca (ADR-047) — nunca o
+// status `a_instalar`, que também vale para o instalado com o Player revogado.
 function resumoDaRede(pontos) {
   const soma = (k) => pontos.reduce((n, p) => n + (p.estadoTelas?.[k] || 0), 0);
-  const aguardando = pontos.filter((p) => p.status === 'a_instalar').length;
+  const aguardando = pontos.filter((p) => p.aguardando_instalacao).length;
   const item = (valor, rotulo, { classe = '', filtro = null } = {}) => {
     const corpo = `<b>${num(valor)}</b><span>${rotulo}</span>`;
     return filtro != null && valor
@@ -3276,7 +3313,7 @@ function resumoDaRede(pontos) {
     ${item(operando, 'operando', { classe: operando ? 'ok' : '' })}
     ${item(semComunicacao, 'sem comunicação', { classe: semComunicacao ? 'atencao' : '', filtro: 'sem_comunicacao' })}
     ${item(problema, 'com problema', { classe: problema ? 'alerta' : '', filtro: 'problema' })}
-    ${item(aguardando, 'aguardando instalação', { filtro: 'a_instalar' })}
+    ${item(aguardando, 'aguardando instalação', { filtro: 'aguardando_instalacao' })}
   </div>`;
 }
 
@@ -3340,11 +3377,29 @@ function alterarPinSaida(remontar) {
   });
 }
 
+// A régua do estado do ponto (ADR-047): "Aguardando instalação" é a chave
+// que o servidor marca (`aguardando_instalacao`) e cobre os dois casos reais
+// de antes (`a_instalar` e `aguardando_primeiro_sinal` de ponto que nunca
+// operou); o resto segue o status. O fixo instalado sem Player agora
+// ("Temporariamente indisponível") fica em Todos/Fixos.
+const CHIPS_DO_PONTO = [
+  { valor: 'aguardando_instalacao', nome: SELO_INSTALACAO.aguardando.rotulo },
+  { valor: 'em_operacao', nome: 'Ativos' },
+  { valor: 'em_reparo', nome: PONTO_STATUS.em_reparo },
+  { valor: 'inativo', nome: 'Inativos' },
+];
+const FILTRO_DO_STATUS_ANTIGO = {
+  a_instalar: 'aguardando_instalacao',
+  aguardando_primeiro_sinal: 'aguardando_instalacao',
+};
+
 async function renderPontosGrade(el) {
   // Vem da Visão geral ("Pontos por status" → clique num status real do
   // banco) ou do hash antigo #rede/moveis (filtro Móveis) — consumido na
-  // primeira montagem, não a cada atualização.
-  const filtroStatus = FILTRO_PONTOS_STATUS;
+  // primeira montagem, não a cada atualização. Os dois status de "ainda
+  // sem Player" da Visão geral abrem o chip "Aguardando instalação" — a régua
+  // não tem mais um chip por status cru desses dois (ADR-047).
+  const filtroStatus = FILTRO_DO_STATUS_ANTIGO[FILTRO_PONTOS_STATUS] || FILTRO_PONTOS_STATUS;
   FILTRO_PONTOS_STATUS = null;
 
   async function montar() {
@@ -3365,10 +3420,7 @@ async function renderPontosGrade(el) {
               { valor: 'movel', nome: 'Móveis' },
               { valor: 'problema', nome: 'Com problema' },
               { valor: 'sem_comunicacao', nome: 'Sem comunicação' },
-              ...Object.entries(PONTO_STATUS).map(([v, n]) => ({
-                valor: v,
-                nome: v === 'em_operacao' ? 'Ativos' : n === 'Inativo' ? 'Inativos' : n,
-              })),
+              ...CHIPS_DO_PONTO,
             ],
             html: pontos.map(montarPontoCard).join(''),
             ativo: chipAtivo,
@@ -3418,73 +3470,212 @@ async function renderPontosGrade(el) {
   definirVistaRede(montar);
 }
 
-// AGENDA MÓVEL (filtro Móveis → "Agenda móvel"): sob demanda, num modal —
-// agora + futuro por padrão; o histórico só quando o Admin pede.
-async function abrirAgendaMovel() {
-  const ESTADO = {
-    ativa: ['Em andamento', 'badge-ok'],
-    em_andamento: ['Em andamento', 'badge-ok'],
-    programada: ['Programada', 'badge-pendente'],
-    programado: ['Programado', 'badge-pendente'],
-    encerrada: ['Encerrada', 'badge-neutro'],
-    encerrado: ['Encerrado', 'badge-neutro'],
-    cancelada: ['Cancelada', 'badge-err'],
-    cancelado: ['Cancelado', 'badge-err'],
+// O estado CRU de uma linha da agenda e da alocação vinculada (hospedagem:
+// programada/ativa/encerrada/cancelada; evento: programado/em_andamento/…).
+const ESTADO_AGENDA = {
+  ativa: ['Em andamento', 'badge-ok'],
+  em_andamento: ['Em andamento', 'badge-ok'],
+  programada: ['Programada', 'badge-pendente'],
+  programado: ['Programado', 'badge-pendente'],
+  encerrada: ['Encerrada', 'badge-neutro'],
+  encerrado: ['Encerrado', 'badge-neutro'],
+  cancelada: ['Cancelada', 'badge-err'],
+  cancelado: ['Cancelado', 'badge-err'],
+};
+const estadoCru = (estado) => ESTADO_AGENDA[estado] || [estado, 'badge-neutro'];
+
+// POR QUE a tela do Móvel foi (migration 123, ADR-047): os rótulos num lugar
+// só — formulário do compromisso, linhas, agenda e ficha do ponto. Só a
+// equipe vê; nunca vai para o anunciante.
+const MOTIVO_ALOCACAO = {
+  aguardando_instalacao: 'Aguardando instalação',
+  evento: 'Evento',
+  ativacao_comercial: 'Ativação comercial',
+  teste_ponto: 'Teste do ponto',
+  outro: 'Outro',
+};
+const rotuloDoMotivo = (m) => (m ? MOTIVO_ALOCACAO[m] || m : '');
+
+// O cancelado se explica sozinho (ADR-047): quem cancelou e por quê. Sem
+// motivo gravado: o job (a programada não começou até o fim previsto) ou
+// uma linha de antes da migration 123.
+function textoDoCancelamento(x) {
+  if (x.motivoCancelamento) {
+    return `Cancelado${x.encerradoPor ? ` por ${x.encerradoPor}` : ''} · ${x.motivoCancelamento}`;
+  }
+  if (x.encerramento === 'automatico') return 'Cancelado automaticamente — não começou até o fim previsto';
+  return 'Cancelado';
+}
+
+// As linhas do PORQUÊ de um compromisso, em texto puro (quem pinta escapa):
+// "Motivo: Evento" e, no cancelado, o cancelamento.
+function porqueDoCompromisso(x, cancelado) {
+  const motivo = x.motivoAlocacao ? `Motivo: ${rotuloDoMotivo(x.motivoAlocacao)}` : '';
+  return [motivo, cancelado ? textoDoCancelamento(x) : ''].filter(Boolean);
+}
+
+// A alocação do Móvel vinculada a um ponto fixo — `alocacao_movel` de
+// GET /admin/pontos e `alocacao` da aba "Aguardando instalação" têm a mesma
+// forma e a mesma regra no servidor (movel.js#alocacoesVinculadas).
+function partesDaAlocacao(a) {
+  return {
+    unidade: a.tela?.codigo || '',
+    rede: a.rede || '',
+    periodo: window.periodoComHora(a.inicio, a.fim),
+    estado: estadoCru(a.estado),
+    motivo: rotuloDoMotivo(a.motivoAlocacao),
   };
+}
+
+// Data prevista da instalação: só do PONTO e só do Admin (D5).
+const SEM_DATA_PREVISTA = 'Sem data definida';
+const textoDaPrevisao = (v) => (v ? data(v) : SEM_DATA_PREVISTA);
+
+// AGENDA MÓVEL (filtro Móveis → "Agenda móvel"): sob demanda, num modal, em
+// quatro abas (ADR-047). Agora (em curso) e Próximos (programados) saem da
+// MESMA leitura padrão — uma chamada só; "Aguardando instalação" são os
+// pontos fixos aprovados que nunca deram o 1º sinal (?aguardando=1),
+// elegíveis para o Móvel; Histórico, encerrados e cancelados (?historico=1).
+const ABAS_DA_AGENDA = [
+  { id: 'agora', rotulo: 'Agora', vazio: 'Nenhum compromisso em andamento agora.' },
+  { id: 'proximos', rotulo: 'Próximos', vazio: 'Nenhum compromisso programado.' },
+  { id: 'aguardando', rotulo: SELO_INSTALACAO.aguardando.rotulo, vazio: 'Nenhum ponto aguardando instalação.' },
+  { id: 'historico', rotulo: 'Histórico', vazio: 'Nenhum compromisso encerrado ainda.' },
+];
+
+// Agora, Próximos e Histórico: uma linha por compromisso (evento com várias
+// telas é UMA linha), com o porquê como linha secundária.
+function tabelaDaAgenda(linhas) {
+  return `<div class="tabela-rolagem"><table class="mini-table agenda-admin" data-agenda-admin>
+      <thead><tr><th>Data</th><th>Horário</th><th>Rede</th><th>Tela(s)</th><th>Onde</th><th>Local</th><th>Estado</th></tr></thead>
+      <tbody>${linhas
+        .map((l) => {
+          const { data: dia, horario } = window.PONTO_MOVEL.periodoDaAgenda(l.inicio, l.fim);
+          const [rotulo, classe] = estadoCru(l.estado);
+          const porque = porqueDoCompromisso(l, l.estado === 'cancelada' || l.estado === 'cancelado');
+          return `<tr data-agenda-tipo="${l.tipo}">
+            <td class="u-nowrap">${esc(dia)}</td>
+            <td class="u-nowrap">${esc(horario)}</td>
+            <td><a href="#rede/pontos/${l.redeId}" data-abrir-rede>${esc(l.rede)}</a><span class="dado-sub">${esc(window.PONTO_MOVEL.cidade(l.cidade, l.uf))}</span></td>
+            <td>${(l.telas || []).map((t) => `<span class="u-nowrap">${esc(t.codigo)}</span>`).join(', ')}</td>
+            <td>${l.tipo === 'hospedagem' ? 'Na conta' : 'Outro local'}</td>
+            <td>${esc(l.nome)}${l.local ? `<span class="dado-sub">${esc(l.local)}</span>` : ''}${l.conta && l.conta !== l.nome ? `<span class="dado-sub">${esc(l.conta)}</span>` : ''}${porque.map((t) => `<span class="dado-sub agenda-porque">${esc(t)}</span>`).join('')}</td>
+            <td><span class="badge ${classe}">${rotulo}</span></td>
+          </tr>`;
+        })
+        .join('')}</tbody></table></div>`;
+}
+
+// Aguardando instalação: o ponto, onde está, de quem é, quando a instalação
+// está prevista e a unidade do Móvel que já está (ou vai) lá.
+function tabelaAguardando(lista) {
+  return `<div class="tabela-rolagem"><table class="mini-table agenda-admin agenda-aguardando" data-agenda-aguardando>
+      <thead><tr><th>Ponto</th><th>Categoria</th><th>Cidade</th><th>Conta</th><th>Previsão</th><th>Móvel</th><th><span class="u-sr">Ação</span></th></tr></thead>
+      <tbody>${lista
+        .map((l) => {
+          const a = l.alocacao ? partesDaAlocacao(l.alocacao) : null;
+          const movel = a
+            ? `<b class="u-nowrap">${esc(a.unidade)}</b> · ${esc(a.rede)}<span class="dado-sub">${esc(a.periodo)}</span><span class="badge ${a.estado[1]}">${a.estado[0]}</span>`
+            : '<span class="u-dim">—</span>';
+          return `<tr data-aguardando-ponto="${l.pontoId}">
+            <td><a href="#rede/pontos/${l.pontoId}">${esc(l.nome)}</a></td>
+            <td>${l.categoria ? esc(l.categoria.nome) : '<span class="u-dim">—</span>'}</td>
+            <td class="u-nowrap">${esc(window.PONTO_MOVEL.cidade(l.cidade, l.uf))}</td>
+            <td>${l.contaId ? `<a href="#contas/contas/${l.contaId}">${esc(l.conta)}</a>` : naoInformado('Sem conta')}</td>
+            <td class="u-nowrap" data-previsao>${esc(textoDaPrevisao(l.instalacaoPrevistaEm))}</td>
+            <td data-movel>${movel}</td>
+            <td>${!l.alocacao && l.contaId ? `<button type="button" class="btn ghost mini u-nowrap" data-alocar-movel="${l.pontoId}">Alocar Móvel</button>` : ''}</td>
+          </tr>`;
+        })
+        .join('')}</tbody></table></div>`;
+}
+
+async function abrirAgendaMovel() {
   const { dlg, fechar } = abrirModal({
     titulo: 'Agenda móvel',
     largo: true,
-    corpo: `<div class="agenda-admin-topo" role="group" aria-label="Período da agenda">
-        <button type="button" class="chip active" data-agenda-modo="">Agora e próximos</button>
-        <button type="button" class="chip" data-agenda-modo="1">Histórico</button>
-      </div>
-      <div data-agenda-corpo><p class="u-dim">Carregando...</p></div>`,
+    corpo: `<div class="agenda-admin-topo" role="tablist" aria-label="Agenda móvel">${ABAS_DA_AGENDA.map(
+      (a, i) =>
+        `<button type="button" class="chip${i ? '' : ' active'}" role="tab" id="agendaAba-${a.id}" aria-controls="agendaPainel" aria-selected="${i ? 'false' : 'true'}" tabindex="${i ? '-1' : '0'}" data-agenda-aba="${a.id}">${esc(a.rotulo)}</button>`,
+    ).join('')}</div>
+      <div id="agendaPainel" role="tabpanel" aria-labelledby="agendaAba-agora" data-agenda-corpo><p class="u-dim">Carregando...</p></div>`,
     rodape: '<button type="button" class="btn primary" data-fechar>Fechar</button>',
   });
   const corpo = dlg.querySelector('[data-agenda-corpo]');
-  // Abrir a rede pela agenda fecha o modal (a ficha abre por baixo).
+  const abas = [...dlg.querySelectorAll('[data-agenda-aba]')];
+  // Abrir a rede, o ponto ou a conta pela agenda fecha o modal (a ficha
+  // abre por baixo).
   corpo.addEventListener('click', (e) => {
-    if (e.target.closest('[data-abrir-rede]')) fechar();
+    if (e.target.closest('a[href^="#"]')) fechar();
   });
-  async function carregar(historico) {
+  // Uma leitura por fonte (Agora e Próximos dividem a padrão); alocar o
+  // Móvel invalida as duas que mudam.
+  const leituras = {};
+  const FONTES = { padrao: '', aguardando: '?aguardando=1', historico: '?historico=1' };
+  const ler = (fonte) => {
+    leituras[fonte] ||= pegar(`/admin/pontos-moveis/agenda${FONTES[fonte]}`).catch((err) => {
+      delete leituras[fonte];
+      throw err;
+    });
+    return leituras[fonte];
+  };
+  let atual = 'agora';
+  let vez = 0;
+  async function mostrar(aba) {
+    atual = aba;
+    const minha = ++vez;
+    const def = ABAS_DA_AGENDA.find((a) => a.id === aba);
+    corpo.setAttribute('aria-labelledby', `agendaAba-${aba}`);
     corpo.innerHTML = '<p class="u-dim">Carregando...</p>';
-    let linhas;
+    let dados;
     try {
-      linhas = await pegar(`/admin/pontos-moveis/agenda${historico ? '?historico=1' : ''}`);
+      dados = await ler(aba === 'agora' || aba === 'proximos' ? 'padrao' : aba);
     } catch (err) {
-      if (err?.cancelada) return;
+      if (err?.cancelada || minha !== vez) return;
       corpo.innerHTML = '<p class="form-msg err">Não foi possível carregar a agenda agora.</p>';
       return;
     }
-    if (!linhas.length) {
-      corpo.innerHTML = `<p class="empty-state">${historico ? 'Nenhum compromisso encerrado ainda.' : 'Nenhum compromisso agora nem programado.'}</p>`;
+    if (minha !== vez) return;
+    if (aba === 'aguardando') {
+      const lista = dados.aguardando || [];
+      corpo.innerHTML = lista.length ? tabelaAguardando(lista) : `<p class="empty-state">${def.vazio}</p>`;
+      for (const b of corpo.querySelectorAll('[data-alocar-movel]')) {
+        const l = lista.find((x) => String(x.pontoId) === b.dataset.alocarMovel);
+        b.addEventListener('click', () =>
+          alocarMovel(l, () => {
+            delete leituras.padrao;
+            delete leituras.aguardando;
+            if (dlg.open) mostrar(atual);
+          }),
+        );
+      }
       return;
     }
-    corpo.innerHTML = `<div class="tabela-rolagem"><table class="mini-table agenda-admin" data-agenda-admin>
-        <thead><tr><th>Data</th><th>Horário</th><th>Rede</th><th>Tela(s)</th><th>Onde</th><th>Local</th><th>Estado</th></tr></thead>
-        <tbody>${linhas
-          .map((l) => {
-            const { data: dia, horario } = window.PONTO_MOVEL.periodoDaAgenda(l.inicio, l.fim);
-            const [rotulo, classe] = ESTADO[l.estado] || [l.estado, 'badge-neutro'];
-            return `<tr data-agenda-tipo="${l.tipo}">
-              <td class="u-nowrap">${esc(dia)}</td>
-              <td class="u-nowrap">${esc(horario)}</td>
-              <td><a href="#rede/pontos/${l.redeId}" data-abrir-rede>${esc(l.rede)}</a><span class="dado-sub">${esc(window.PONTO_MOVEL.cidade(l.cidade, l.uf))}</span></td>
-              <td>${(l.telas || []).map((t) => `<span class="u-nowrap">${esc(t.codigo)}</span>`).join(', ')}</td>
-              <td>${l.tipo === 'hospedagem' ? 'Na conta' : 'Outro local'}</td>
-              <td>${esc(l.nome)}${l.local ? `<span class="dado-sub">${esc(l.local)}</span>` : ''}${l.conta && l.conta !== l.nome ? `<span class="dado-sub">${esc(l.conta)}</span>` : ''}</td>
-              <td><span class="badge ${classe}">${rotulo}</span></td>
-            </tr>`;
-          })
-          .join('')}</tbody></table></div>`;
+    const linhas = aba === 'historico' ? dados : dados.filter((l) => Boolean(l.emCurso) === (aba === 'agora'));
+    corpo.innerHTML = linhas.length ? tabelaDaAgenda(linhas) : `<p class="empty-state">${def.vazio}</p>`;
   }
-  dlg.querySelectorAll('[data-agenda-modo]').forEach((b) =>
-    b.addEventListener('click', () => {
-      dlg.querySelectorAll('[data-agenda-modo]').forEach((x) => x.classList.toggle('active', x === b));
-      carregar(b.dataset.agendaModo === '1');
-    }),
-  );
-  await carregar(false);
+  // Abas por clique e por teclado (setas, Home, End), como num tablist.
+  const ativar = (b) => {
+    for (const x of abas) {
+      const sim = x === b;
+      x.classList.toggle('active', sim);
+      x.setAttribute('aria-selected', String(sim));
+      x.tabIndex = sim ? 0 : -1;
+    }
+    mostrar(b.dataset.agendaAba);
+  };
+  abas.forEach((b, i) => {
+    b.addEventListener('click', () => ativar(b));
+    b.addEventListener('keydown', (e) => {
+      const alvo = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: abas.length - 1 }[e.key];
+      if (alvo === undefined) return;
+      e.preventDefault();
+      const proxima = abas[(alvo + abas.length) % abas.length];
+      proxima.focus();
+      ativar(proxima);
+    });
+  });
+  await mostrar('agora');
 }
 
 // ---------- ficha do ponto ----------
@@ -3567,18 +3758,32 @@ async function renderPontoDetalhe(el, pontoId) {
 function renderPontoFixo(el, ponto, telas, pendencias, remontar) {
   const arquivado = ponto.status === 'arquivado';
   const local = window.linhaEndereco(ponto, { comCidade: true }) || [ponto.cidade, ponto.uf].filter(Boolean).join('/');
+  // Aguardando instalação (ADR-047): a ação principal é REGISTRAR A
+  // INSTALAÇÃO — a tela Ativa que ainda não tem Player (a ficha dela tem o
+  // [Gerar código]) ou, sem ela, uma tela nova. O ponto entra na rede sozinho
+  // com o 1º sinal (D1): não há botão "Ativar". Sem tela pendente o botão É o
+  // "+ Adicionar tela" (`data-nova-tela`).
+  const aguardando = Boolean(ponto.aguardando_instalacao);
+  const telaSemPlayer = aguardando
+    ? telas.find((t) => t.status === 'ativo' && t.instalacao?.estado !== 'conectado')
+    : null;
+  const podeAlocar = aguardando && ponto.anunciante_id && !ponto.alocacao_movel;
+  const principal = aguardando
+    ? `<button type="button" class="btn primary mini" data-registrar-instalacao ${telaSemPlayer ? '' : 'data-nova-tela'}>Registrar instalação</button>
+       ${podeAlocar ? '<button type="button" class="btn ghost mini" data-alocar-movel>Alocar Móvel</button>' : ''}`
+    : '<button type="button" class="btn primary mini" data-nova-tela>+ Adicionar tela</button>';
   el.innerHTML = `
     ${migalha([{ rotulo: 'Pontos', href: '#rede/pontos' }, { rotulo: ponto.nome }])}
     <section class="panel ponto-ficha-topo" id="pontoCabecalho">
       ${cabecalhoDoPonto({
         foto: fotoOuPlaceholder(ponto.foto_instalacao_url, ponto.nome),
         nome: esc(ponto.nome),
-        selos: `<span class="badge badge-neutro">Fixo</span><span class="badge ${PONTO_STATUS_CLASSE[ponto.status]}">${PONTO_STATUS[ponto.status] || ponto.status}</span>`,
+        selos: `<span class="badge badge-neutro">Fixo</span>${badge(seloDoPontoFixo(ponto))}`,
         local: esc(local),
         resumo: resumoDasTelas(ponto.estadoTelas),
         acoes: arquivado
           ? ''
-          : `<button type="button" class="btn primary mini" data-nova-tela>+ Adicionar tela</button>
+          : `${principal}
              ${menuMais([
                ['data-alterar-foto', 'Alterar foto'],
                ['data-excluir-ponto', 'Excluir ponto', true],
@@ -3598,7 +3803,16 @@ function renderPontoFixo(el, ponto, telas, pendencias, remontar) {
   secaoTelas(el.querySelector('#pontoTelas'), ponto, telas);
   renderPontoInformacoes(el.querySelector('#pontoInformacoes'), ponto, telas, remontar);
   renderPontoEndereco(el.querySelector('#pontoEndereco'), ponto, pendencias, remontar);
-  el.querySelector('[data-nova-tela]')?.addEventListener('click', () => adicionarTela(ponto));
+  const cabecalho = el.querySelector('#pontoCabecalho');
+  const registrar = cabecalho.querySelector('[data-registrar-instalacao]');
+  if (registrar) {
+    registrar.addEventListener('click', () =>
+      telaSemPlayer ? irPara(`rede/pontos/${ponto.id}/telas/${telaSemPlayer.id}`) : adicionarTela(ponto),
+    );
+  } else {
+    cabecalho.querySelector('[data-nova-tela]')?.addEventListener('click', () => adicionarTela(ponto));
+  }
+  cabecalho.querySelector('[data-alocar-movel]')?.addEventListener('click', () => alocarMovelNoPonto(ponto, remontar));
   el.querySelector('[data-alterar-foto]')?.addEventListener('click', () => alterarFotoDoPonto(ponto, remontar));
   el.querySelector('[data-excluir-ponto]')?.addEventListener('click', () => excluirPonto(ponto, telas));
 }
@@ -3616,6 +3830,13 @@ const ESTADO_COMPROMISSO = {
   em_curso: ['Agora', 'badge-ok'],
   encerrado: ['Encerrado', 'badge-neutro'],
   cancelado: ['Cancelado', 'badge-err'],
+};
+// Instalação fixa concluída com o Móvel ainda alocado no ponto (ADR-047):
+// nada encerra sozinho — o Admin é avisado na linha do compromisso (rede) e
+// na ficha do ponto.
+const AVISO_MOVEL = {
+  naLinha: 'Instalação fixa concluída no ponto — encerre (ou cancele) esta alocação.',
+  naFicha: 'Instalação fixa concluída — encerre (ou cancele) a alocação do Mostraí Móvel neste ponto.',
 };
 const codigosDasTelas = (telas) => (telas || []).map((t) => esc(t.codigo)).join(', ');
 const UFS_BR = 'AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' ');
@@ -3673,6 +3894,9 @@ function linhaDoCompromisso(c, comAcoes) {
     if (h.retirada) linhas.push(movimento(h.retirada, 'Retirada'));
   }
   if (!naConta && c.estado === 'encerrado') linhas.push(`${num(c.exibicoesConfirmadas)} exibições confirmadas`);
+  // O porquê (só o Admin, ADR-047): o motivo da alocação e, no cancelado,
+  // quem cancelou e por quê.
+  for (const t of porqueDoCompromisso(c, c.estado === 'cancelado')) linhas.push(esc(t));
   const acoes = [];
   if (comAcoes) {
     const botao = (acao, texto, estilo = 'ghost', extra = '') =>
@@ -3709,6 +3933,7 @@ function linhaDoCompromisso(c, comAcoes) {
       <p class="compromisso-linha">${quando.join(' · ')}</p>
       <p class="compromisso-sub">${quem}${c.endereco ? ` · ${esc(c.endereco)}` : ''}</p>
       ${linhas.map((l) => `<p class="compromisso-sub">${l}</p>`).join('')}
+      ${c.avisoEncerrar ? `<p class="aviso-linha u-mt-4" data-aviso-encerrar>${AVISO_MOVEL.naLinha}</p>` : ''}
       ${c.estado === 'em_curso' && c.terminou ? '<p class="aviso-linha u-mt-4">O fim já passou — o sistema encerra sozinho em instantes.</p>' : ''}
       ${c.observacao ? `<p class="compromisso-sub u-dim">Obs.: ${esc(c.observacao)}</p>` : ''}
       ${acoes.length ? `<div class="acoes compromisso-acoes">${acoes.join('')}</div>` : ''}
@@ -3893,6 +4118,9 @@ async function acaoNoCompromisso(ponto, f, c, acao, remontar) {
       perigo: true,
     },
   }[acao];
+  // Cancelar pede o MOTIVO (ADR-047): o cancelado fica no histórico e se
+  // explica sozinho.
+  if (acao === 'cancelar') return cancelarCompromisso(ponto, c, textos, remontar);
   if (!textos || !(await confirmarModal(textos))) return;
   const r = await api(`/admin/pontos/${ponto.id}/compromissos/${c.ref}/${acao}`, { method: 'POST' });
   if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível agora.', 'err');
@@ -3900,6 +4128,52 @@ async function acaoNoCompromisso(ponto, f, c, acao, remontar) {
     { iniciar: 'Compromisso iniciado.', encerrar: 'Compromisso encerrado.', cancelar: 'Compromisso cancelado.' }[acao],
   );
   remontar();
+}
+
+// Cancelar um compromisso (os dois contextos): o texto de sempre e o MOTIVO,
+// obrigatório (1 a 300 caracteres) — o servidor grava quem cancelou. Sem
+// motivo nada é enviado; o erro do servidor fica no modal; um envio por vez.
+const MAXIMO_MOTIVO_CANCELAMENTO = 300;
+function cancelarCompromisso(ponto, c, textos, remontar) {
+  const { dlg, fechar } = abrirModal({
+    titulo: textos.titulo,
+    corpo: `<form id="formCancelarCompromisso" class="modal-form" novalidate>
+        ${textos.texto}
+        <div class="campo-grupo"><label for="cancelarCompromissoMotivo">Motivo do cancelamento</label>
+          <textarea id="cancelarCompromissoMotivo" name="motivo" rows="3" maxlength="${MAXIMO_MOTIVO_CANCELAMENTO}" required aria-describedby="cancelarCompromissoAjuda"></textarea>
+          <span class="campo-ajuda" id="cancelarCompromissoAjuda">Obrigatório, até ${MAXIMO_MOTIVO_CANCELAMENTO} caracteres. Só a equipe vê.</span></div>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape: `<button type="button" class="btn ghost" data-fechar>Voltar</button><button type="submit" form="formCancelarCompromisso" class="btn perigo">${esc(textos.botao)}</button>`,
+  });
+  const form = dlg.querySelector('#formCancelarCompromisso');
+  const botao = dlg.querySelector('[type="submit"]');
+  form.motivo.focus();
+  let enviando = false;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (enviando) return;
+    const motivo = form.motivo.value.trim();
+    if (!motivo || [...motivo].length > MAXIMO_MOTIVO_CANCELAMENTO) {
+      form.motivo.focus();
+      return erroNoModal(dlg, `Informe o motivo do cancelamento (até ${MAXIMO_MOTIVO_CANCELAMENTO} caracteres).`);
+    }
+    enviando = true;
+    botao.disabled = true;
+    try {
+      const r = await api(`/admin/pontos/${ponto.id}/compromissos/${c.ref}/cancelar`, {
+        method: 'POST',
+        body: JSON.stringify({ motivo }),
+      });
+      if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível cancelar agora.');
+      fechar();
+      toast('Compromisso cancelado.');
+      remontar();
+    } finally {
+      enviando = false;
+      botao.disabled = false;
+    }
+  });
 }
 
 // Em curso na conta: só o fim pode mudar, para depois.
@@ -3992,9 +4266,22 @@ function linhaDaConta(c) {
 // explícito → benefício (só na conta) → configurações avançadas (categoria
 // protegida, nome exibido, organização, observação). Nada que o sistema já
 // sabe é redigitado: endereço, horário e categoria vêm da conta ou do ponto.
-async function abrirCompromisso({ rede = null, f = null, compromisso = null, interesse = null, aoSalvar }) {
+//
+// `local` (ADR-047): o [Alocar Móvel] de um ponto fixo aguardando instalação
+// — { conta: { id, nome }, pontoId, motivo }. É uma hospedagem na conta do
+// dono (D4): o contexto fica "Na conta", a conta e o ponto já escolhidos e o
+// motivo pré-selecionado; sem interesse. O fim continua obrigatório (D5).
+async function abrirCompromisso({
+  rede = null,
+  f = null,
+  compromisso = null,
+  interesse = null,
+  local = null,
+  aoSalvar,
+}) {
   const c = compromisso;
   const edicao = Boolean(c);
+  const travaConta = edicao || Boolean(local);
   const [redes, { percentual }, categorias] = await Promise.all([
     rede ? [rede] : pegar('/admin/pontos').then((l) => l.filter((p) => p.tipo === 'movel' && p.status !== 'arquivado')),
     pegar('/admin/hospedagem/percentual'),
@@ -4011,7 +4298,12 @@ async function abrirCompromisso({ rede = null, f = null, compromisso = null, int
     telasDaRede: f ? f.telas : null,
   };
   const redeAtual = () => redes.find((r) => r.id === st.redeId) || rede || {};
-  const titulo = edicao ? `Editar compromisso — ${c.contexto === 'conta' ? c.local : c.nome}` : 'Novo compromisso';
+  const titulo = edicao
+    ? `Editar compromisso — ${c.contexto === 'conta' ? c.local : c.nome}`
+    : local
+      ? 'Alocar Mostraí Móvel'
+      : 'Novo compromisso';
+  const motivoInicial = edicao ? c.motivoAlocacao || '' : local?.motivo || '';
   const categoriaInicial = edicao
     ? c.categoria
       ? String(c.categoria.id)
@@ -4031,14 +4323,14 @@ async function abrirCompromisso({ rede = null, f = null, compromisso = null, int
               </select></div>`
             : ''
         }
-        <div data-contexto ${edicao ? 'hidden' : ''}><span class="contexto-rotulo" id="cmpContextoRotulo">Onde a tela vai ficar</span>
+        <div data-contexto ${travaConta ? 'hidden' : ''}><span class="contexto-rotulo" id="cmpContextoRotulo">Onde a tela vai ficar</span>
           <div class="segmentado" role="radiogroup" aria-labelledby="cmpContextoRotulo">
             <label><input type="radio" name="contexto" value="conta" ${st.contexto === 'conta' ? 'checked' : ''}><span>Numa conta</span></label>
             <label><input type="radio" name="contexto" value="externo" ${st.contexto === 'externo' ? 'checked' : ''}><span>Outro local ou evento</span></label>
           </div>
         </div>
         <div data-so="conta">
-          <div class="campo-grupo conta-busca" data-conta-busca ${edicao ? 'hidden' : ''}>
+          <div class="campo-grupo conta-busca" data-conta-busca ${travaConta ? 'hidden' : ''}>
             <label for="cmpConta">Conta anfitriã</label>
             <input id="cmpConta" type="search" autocomplete="off" placeholder="Nome, e-mail ou CPF/CNPJ" role="combobox" aria-expanded="false" aria-controls="cmpContaLista" aria-autocomplete="list">
             <ul id="cmpContaLista" class="conta-resultados" role="listbox" hidden></ul>
@@ -4068,6 +4360,14 @@ async function abrirCompromisso({ rede = null, f = null, compromisso = null, int
           <div class="horario-editor" data-grade hidden>${gradeDeHorario(c?.horarioOperacao || null)}</div>
           <p class="campo-ajuda u-m-0" data-horario-ajuda></p>
         </fieldset>
+        <div class="campo-grupo"><label for="cmpMotivo">Motivo da alocação</label>
+          <select id="cmpMotivo" name="motivo" aria-describedby="cmpMotivoAjuda">
+            <option value="">—</option>
+            ${Object.entries(MOTIVO_ALOCACAO)
+              .map(([v, n]) => `<option value="${v}" ${v === motivoInicial ? 'selected' : ''}>${esc(n)}</option>`)
+              .join('')}
+          </select>
+          <span class="campo-ajuda" id="cmpMotivoAjuda">Opcional. Só a equipe vê.</span></div>
         <p class="aviso-bloco" data-so="conta" data-beneficio>${
           edicao
             ? `Benefício congelado em <b>${percentualBR(c.hospedagem?.percentual ?? percentual)}</b> do tempo operado.`
@@ -4185,7 +4485,7 @@ async function abrirCompromisso({ rede = null, f = null, compromisso = null, int
     $('[data-conta-busca]').hidden = true;
     const escolhida = $('[data-conta-escolhida]');
     escolhida.hidden = false;
-    escolhida.innerHTML = `<div><span class="conta-escolhida-rotulo">Conta anfitriã</span><b>${esc(conta.nome)}</b>${conta.cidade || conta.email ? `<span class="dado-sub">${linhaDaConta(conta)}</span>` : ''}</div>${edicao ? '' : '<button type="button" class="btn ghost mini" data-trocar-conta>Trocar</button>'}`;
+    escolhida.innerHTML = `<div><span class="conta-escolhida-rotulo">Conta anfitriã</span><b>${esc(conta.nome)}</b>${conta.cidade || conta.email ? `<span class="dado-sub">${linhaDaConta(conta)}</span>` : ''}</div>${travaConta ? '' : '<button type="button" class="btn ghost mini" data-trocar-conta>Trocar</button>'}`;
     escolhida.querySelector('[data-trocar-conta]')?.addEventListener('click', () => {
       st.conta = null;
       st.locais = null;
@@ -4394,6 +4694,8 @@ async function abrirCompromisso({ rede = null, f = null, compromisso = null, int
   }
   pintarContexto();
   if (edicao && c.contexto === 'conta') escolherConta({ id: c.conta.id, nome: c.conta.nome });
+  // Alocar Móvel: a conta do dono e o próprio ponto já escolhidos.
+  if (!edicao && local?.conta) escolherConta(local.conta, { origem: 'ponto', pontoId: local.pontoId });
   if (!edicao && interesse?.conta) {
     escolherConta(
       { id: interesse.conta.id, nome: interesse.conta.nome },
@@ -4447,6 +4749,8 @@ async function abrirCompromisso({ rede = null, f = null, compromisso = null, int
       telas,
       horario_modo: modo,
       observacao: form.observacao.value,
+      // Motivo da alocação: "—" = sem motivo (null).
+      motivo: form.motivo.value || null,
     };
     if (modo === 'personalizado') {
       const lido = lerGradeDeHorario($('[data-grade]'));
@@ -4494,6 +4798,18 @@ async function abrirCompromisso({ rede = null, f = null, compromisso = null, int
     }
   });
 }
+
+// [Alocar Móvel] num ponto fixo AGUARDANDO INSTALAÇÃO (ADR-047), da ficha do
+// ponto ou da aba "Aguardando instalação" da agenda: o MESMO formulário do
+// compromisso, já na conta do dono, no próprio ponto e com o motivo.
+function alocarMovel({ contaId, conta, pontoId }, aoSalvar) {
+  return abrirCompromisso({
+    local: { conta: { id: contaId, nome: conta }, pontoId, motivo: 'aguardando_instalacao' },
+    aoSalvar,
+  });
+}
+const alocarMovelNoPonto = (ponto, remontar) =>
+  alocarMovel({ contaId: ponto.anunciante_id, conta: ponto.dono_nome, pontoId: ponto.id }, remontar);
 
 // Termo FÍSICO da hospedagem: o Admin marca que o termo em papel foi
 // assinado (data e observação opcionais). Desmarcar só antes de iniciar.
@@ -5185,6 +5501,16 @@ function textoBeneficioPonto(b) {
 // Estado do ponto é automático (src/pontos/repository.js
 // sincronizarStatusPonto): "Ativo" só com tela ativa que já deu sinal.
 // A rede móvel tem a ficha própria (renderRedeCabecalho).
+//
+// Instalação e disponibilidade (ADR-047) vêm decididas do servidor
+// (GET /admin/pontos: `ja_instalado`, `aguardando_instalacao`,
+// `disponibilidade`, `alocacao_movel`, `movel_a_encerrar`) — aqui só se
+// mostra. "Disponível" nunca aparece para o ponto que aguarda a instalação.
+const DISPONIBILIDADE_COMERCIAL = {
+  ativa: 'Disponível para os anunciantes',
+  temporariamente_indisponivel: 'Temporariamente indisponível (instalado, fora do ar agora)',
+  nao_disponivel: 'Não disponível',
+};
 function renderPontoInformacoes(el, ponto, telas, remontar) {
   const segmento = ponto.categoria_nome || ponto.categoria_livre || ponto.segmento;
   const primeiroSinal = telas
@@ -5196,22 +5522,147 @@ function renderPontoInformacoes(el, ponto, telas, remontar) {
       ? `<a href="#contas/contas/${ponto.anunciante_id}">${esc(ponto.dono_nome)}</a>`
       : esc(ponto.dono_nome)
     : naoInformado('Sem conta vinculada');
+  const arquivado = ponto.status === 'arquivado';
+  const aguardando = Boolean(ponto.aguardando_instalacao);
+  const instalacao = ponto.ja_instalado
+    ? `Concluída${primeiroSinal ? ` — 1º sinal em ${data(primeiroSinal)}` : ''}`
+    : aguardando
+      ? SELO_INSTALACAO.aguardando.rotulo
+      : naoInformado('Nenhum 1º sinal de tela ainda');
+  const disponibilidade = DISPONIBILIDADE_COMERCIAL[ponto.disponibilidade]
+    ? `${DISPONIBILIDADE_COMERCIAL[ponto.disponibilidade]}${ponto.disponibilidade === 'nao_disponivel' && aguardando ? ' — aguardando instalação' : ''}`
+    : '';
+  const a = ponto.alocacao_movel;
+  const movel = a
+    ? (() => {
+        const x = partesDaAlocacao(a);
+        return [
+          esc(x.unidade),
+          `<a href="#rede/pontos/${a.redeId}">${esc(x.rede)}</a>`,
+          esc(x.periodo),
+          x.estado[0],
+          // "Motivo: …" — depois da instalação, "Aguardando instalação" solto
+          // leria como o estado do ponto.
+          x.motivo ? `Motivo: ${esc(x.motivo)}` : '',
+        ]
+          .filter(Boolean)
+          .join(' · ');
+      })()
+    : aguardando
+      ? `${naoInformado('Nenhuma alocação')}${ponto.anunciante_id && !arquivado ? '<div class="u-mt-8"><button type="button" class="btn ghost mini" data-alocar-movel>Alocar Móvel</button></div>' : ''}`
+      : '';
   el.innerHTML = `
     <div class="secao-topo"><h3>Informações</h3></div>
+    ${ponto.movel_a_encerrar && a ? `<p class="aviso-linha" role="note" data-aviso-encerrar>${AVISO_MOVEL.naFicha} <a href="#rede/pontos/${a.redeId}">Abrir ${esc(a.rede)}</a></p>` : ''}
     <dl class="dados dados-2">
       <div><dt>Proprietário</dt><dd>${proprietario}</dd></div>
       <div><dt>Segmento</dt><dd>${segmento ? esc(segmento) : naoInformado()}</dd></div>
       <div><dt>Responsável no local</dt><dd>${esc(ponto.responsavel_nome || '—')}${ponto.responsavel_contato ? `<span class="dado-sub">${esc(ponto.responsavel_contato)}</span>` : ''}</dd></div>
       <div><dt>Benefício do ponto</dt><dd>${textoBeneficioPonto(ponto.beneficio)}</dd></div>
       <div><dt>Aprovado em</dt><dd>${data(ponto.created_at)}</dd></div>
-      <div><dt>Primeiro sinal de tela</dt><dd>${primeiroSinal ? data(primeiroSinal) : naoInformado('Nenhum ainda')}</dd></div>
+      <div><dt>Instalação</dt><dd data-instalacao>${instalacao}</dd></div>
+      ${disponibilidade ? `<div><dt>Disponibilidade comercial</dt><dd data-disponibilidade>${disponibilidade}</dd></div>` : ''}
+      ${
+        aguardando
+          ? `<div><dt>Instalação prevista<span class="dado-ajuda">Só a equipe vê.</span></dt><dd><span data-instalacao-prevista>${esc(textoDaPrevisao(ponto.instalacao_prevista_em))}</span>
+              ${arquivado ? '' : `<div class="u-mt-8"><button type="button" class="btn ghost mini" data-definir-previsao>${ponto.instalacao_prevista_em ? 'Alterar data' : 'Definir data'}</button></div>`}</dd></div>`
+          : ''
+      }
+      ${movel ? `<div class="dados-largo"><dt>Mostraí Móvel</dt><dd data-movel-alocacao>${movel}</dd></div>` : ''}
       ${ponto.fluxo_estimado_mensal ? `<div><dt>Movimento estimado</dt><dd>${num(ponto.fluxo_estimado_mensal)} pessoas/mês</dd></div>` : ''}
       <div class="dados-largo"><dt>Horário de funcionamento<span class="dado-ajuda">As telas do ponto seguem este horário.</span></dt>
         <dd>${ponto.horario_semanal ? horarioEmLinhas(ponto.horario_semanal) : 'Aberto 24 horas'}
-          <div class="u-mt-8"><button type="button" class="btn ghost mini" data-editar-horario ${ponto.status === 'arquivado' ? 'disabled' : ''}>Editar horário</button></div></dd></div>
+          <div class="u-mt-8"><button type="button" class="btn ghost mini" data-editar-horario ${arquivado ? 'disabled' : ''}>Editar horário</button></div></dd></div>
       ${ponto.observacoes ? `<div class="dados-largo"><dt>Observações</dt><dd>${esc(ponto.observacoes)}</dd></div>` : ''}
-    </dl>`;
+    </dl>
+    <div class="ponto-passagens" data-passagens hidden>
+      <h4 class="compromissos-grupo">Passagens do Mostraí Móvel</h4>
+      <ul class="lista-passagens"></ul>
+    </div>`;
   el.querySelector('[data-editar-horario]')?.addEventListener('click', () => editarHorarioPonto(ponto, remontar));
+  el.querySelector('[data-definir-previsao]')?.addEventListener('click', () =>
+    definirInstalacaoPrevista(ponto, remontar),
+  );
+  el.querySelector('[data-alocar-movel]')?.addEventListener('click', () => alocarMovelNoPonto(ponto, remontar));
+  carregarPassagens(el.querySelector('[data-passagens]'), ponto.id);
+}
+
+// PASSAGENS do Mostraí Móvel por este ponto fixo (as hospedagens vinculadas,
+// de qualquer rede — GET /admin/pontos/:id/compromissos), lidas depois da
+// ficha: sem nenhuma, ou se a leitura falhar, o bloco fica oculto e a ficha
+// segue inteira.
+async function carregarPassagens(alvo, pontoId) {
+  let p;
+  try {
+    p = await pegar(`/admin/pontos/${pontoId}/compromissos`);
+  } catch {
+    return;
+  }
+  const todas = [...(p?.agora || []), ...(p?.proximos || []), ...(p?.historico || [])];
+  if (!todas.length || !alvo.isConnected) return;
+  alvo.querySelector('ul').innerHTML = todas
+    .map((c) => {
+      const [rotulo, classe] = ESTADO_COMPROMISSO[c.estado] || [c.estado, 'badge-neutro'];
+      const porque = porqueDoCompromisso(c, c.estado === 'cancelado');
+      return `<li class="passagem" data-passagem="${esc(c.ref)}">
+          <span class="passagem-linha"><span class="badge ${classe}">${rotulo}</span> ${esc(window.periodoComHora(c.inicio, c.fim))} · tela <b class="u-nowrap">${codigosDasTelas(c.telas)}</b></span>
+          ${porque.map((t) => `<span class="dado-sub">${esc(t)}</span>`).join('')}
+        </li>`;
+    })
+    .join('');
+  alvo.hidden = false;
+}
+
+// Data prevista da instalação (só logística do Admin): uma data, ou "Sem
+// data definida". Não muda status, escolha nem playlist — o ponto entra na
+// rede com o 1º sinal da tela (D1). O servidor valida e o erro fica no modal.
+function definirInstalacaoPrevista(ponto, remontar) {
+  const atual = ponto.instalacao_prevista_em || '';
+  const { dlg, fechar } = abrirModal({
+    titulo: `Instalação prevista — ${ponto.nome}`,
+    corpo: `<form id="formInstalacaoPrevista" class="modal-form" novalidate>
+        <div class="campo-grupo"><label for="instalacaoPrevistaData">Data prevista da instalação</label>
+          <input id="instalacaoPrevistaData" type="date" name="data" min="2020-01-01" max="2100-12-31" value="${esc(atual)}"></div>
+        <label class="check-linha"><input type="checkbox" name="semData"> ${SEM_DATA_PREVISTA}</label>
+        <p class="campo-ajuda u-m-0">Só a equipe vê. Não deixa o ponto disponível: ele entra na rede sozinho com o 1º sinal da tela.</p>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formInstalacaoPrevista" class="btn primary">Salvar</button>',
+  });
+  const form = dlg.querySelector('#formInstalacaoPrevista');
+  const botao = dlg.querySelector('[type="submit"]');
+  form.semData.addEventListener('change', () => {
+    form.data.disabled = form.semData.checked;
+  });
+  form.data.focus();
+  let enviando = false;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (enviando) return;
+    const valor = form.semData.checked ? null : form.data.value;
+    if (valor === '') {
+      form.data.focus();
+      return erroNoModal(dlg, `Escolha a data ou marque “${SEM_DATA_PREVISTA}”.`);
+    }
+    enviando = true;
+    botao.disabled = true;
+    try {
+      const r = await api(`/admin/pontos/${ponto.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ instalacao_prevista_em: valor }),
+      });
+      if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível salvar a data.');
+      fechar();
+      toast(
+        valor ? `Instalação prevista para ${data(valor)}.` : `Instalação prevista: ${SEM_DATA_PREVISTA.toLowerCase()}.`,
+      );
+      remontar();
+    } finally {
+      enviando = false;
+      botao.disabled = false;
+    }
+  });
 }
 
 // ---------- foto canônica do ponto (estação Rede/Admin V2) ----------
@@ -5464,12 +5915,21 @@ function editarHorarioPonto(ponto, remontar) {
 
 // Nada para preencher: a tela nasce Ativa, com o código humano (M-0235) e
 // "Aguardando instalação". A ficha dela já abre com "Gerar código".
+// Um pedido por vez: o duplo clique em [Registrar instalação] / [+ Adicionar
+// tela] não cria duas telas.
+let criandoTela = false;
 async function adicionarTela(ponto) {
-  const r = await api(`/admin/pontos/${ponto.id}/dispositivos`, { method: 'POST', body: JSON.stringify({}) });
-  if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível criar a tela.', 'err');
-  const tela = await r.json();
-  toast(`${tela.codigo} criada.`);
-  irPara(`rede/pontos/${ponto.id}/telas/${tela.id}`);
+  if (criandoTela) return;
+  criandoTela = true;
+  try {
+    const r = await api(`/admin/pontos/${ponto.id}/dispositivos`, { method: 'POST', body: JSON.stringify({}) });
+    if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível criar a tela.', 'err');
+    const tela = await r.json();
+    toast(`${tela.codigo} criada.`);
+    irPara(`rede/pontos/${ponto.id}/telas/${tela.id}`);
+  } finally {
+    criandoTela = false;
+  }
 }
 
 // Excluir de verdade só tela sem histórico de exibição; com histórico o
