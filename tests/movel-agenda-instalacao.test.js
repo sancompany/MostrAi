@@ -497,8 +497,9 @@ test('vínculo: origem "ponto" grava local_ponto_id; ponto de outra conta, móve
     assert.strictEqual(x.status, 400, `ponto ${id}: ${JSON.stringify(x.json)}`);
     assert.strictEqual(x.json.campo, 'ponto_id');
   }
-  // Pela rota antiga (chega direto): o servidor confere de novo.
-  for (const id of [alheio.id, arquivado.id, rede.id, 'abc', 999999999]) {
+  // Pela rota antiga (chega direto): o servidor confere de novo — também o 0
+  // (é número, mas não é ponto: 400, nunca o 500 da chave estrangeira).
+  for (const id of [alheio.id, arquivado.id, rede.id, 'abc', 999999999, 0, '0', '000']) {
     const x = await hospedagemAntiga(rede.id, t2, conta, { local_ponto_id: id });
     assert.strictEqual(x.status, 400, `ponto ${id}: ${JSON.stringify(x.json)}`);
     assert.deepStrictEqual(x.json, PONTO_DE_OUTRA_CONTA);
@@ -534,9 +535,11 @@ test('vínculo: origem "ponto" grava local_ponto_id; ponto de outra conta, móve
       fim: paredeMais(72),
       ...extra,
     });
-  const recusada = await periodo({ local_ponto_id: alheio.id });
-  assert.strictEqual(recusada.status, 400, JSON.stringify(recusada.json));
-  assert.deepStrictEqual(recusada.json, PONTO_DE_OUTRA_CONTA);
+  for (const id of [alheio.id, 0, '0']) {
+    const recusada = await periodo({ local_ponto_id: id });
+    assert.strictEqual(recusada.status, 400, `ponto ${id}: ${JSON.stringify(recusada.json)}`);
+    assert.deepStrictEqual(recusada.json, PONTO_DE_OUTRA_CONTA);
+  }
   assert.strictEqual((await linhaHospedagem(r.json.ref)).local_ponto_id, loja.id, 'recusada não muda');
   assert.strictEqual((await periodo({ local_ponto_id: null })).status, 200);
   assert.strictEqual((await linhaHospedagem(r.json.ref)).local_ponto_id, null);

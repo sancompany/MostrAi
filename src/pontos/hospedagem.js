@@ -263,7 +263,9 @@ async function criar(pontoId, corpo, admin) {
       );
       if (!conta || conta.excluido_em) throw erro(400, 'Conta anfitriã não encontrada', 'conta_id');
       if (conta.conta_propria) throw erro(400, 'A conta própria da Mostraí não hospeda a própria tela', 'conta_id');
-      if (localPontoId) await exigirPontoDaConta(c, localPontoId, contaId);
+      // `!== null`, nunca truthy: o 0 é um id lido e iria para o INSERT sem
+      // conferência (a chave estrangeira o recusaria com 500).
+      if (localPontoId !== null) await exigirPontoDaConta(c, localPontoId, contaId);
       let interesse = null;
       if (interesseId) {
         const { rows } = await c.query(
@@ -565,7 +567,7 @@ async function alterarPeriodo(pontoId, hospedagemId, corpo) {
         }
         if (corpo?.local_ponto_id !== undefined) {
           localPontoId = lerLocalPonto(corpo.local_ponto_id);
-          if (localPontoId) await exigirPontoDaConta(c, localPontoId, h.conta_id);
+          if (localPontoId !== null) await exigirPontoDaConta(c, localPontoId, h.conta_id);
         }
         if (corpo?.motivo !== undefined) motivoAlocacao = movel.lerMotivoAlocacao(corpo.motivo);
       }
