@@ -1,6 +1,50 @@
 # Current Handoff
 
 ## Updated
+2026-10-14 — **Estação focal: pontos aguardando instalação + Mostraí Móvel
+provisório + agenda (ADR-047)** — branch `claude/busy-noether-hheir2`,
+migration 123 (aditiva). Review-Master está PAUSADO (lote 2 não retomado;
+o checkpoint dele vive no artifact "Checkpoint Review-Master", §0.9). O que
+mudou e não se desfaz sem contexto:
+- **Aprovado não é disponível.** Ponto fixo VENDÁVEL = status em
+  `STATUS_NA_REDE` e (em operação ou alguma tela já deu o 1º sinal). Os três
+  predicados únicos moram em `src/pontos/repository.js` (`jaInstaladoSql`,
+  `fixoVendavelSql`, `aguardandoInstalacaoSql`) e são usados na escolha
+  (GET/PUT `/anunciantes/me/pontos*`), no site (`listarPublicos`), no
+  Admin (`listar`: `ja_instalado`, `aguardando_instalacao`,
+  `disponibilidade`), na agenda (`?aguardando=1`), em Meus pontos e na
+  ficha da conta. NUNCA deduzir "aguardando" de `status === 'a_instalar'`:
+  o Player revogado depois de operar também fica `a_instalar` e é
+  "Temporariamente indisponível" (D1 do dono: instalado nunca volta a
+  aguardar). Ativação = 1º sinal, automática; não existe botão "Ativar".
+- **Móvel num ponto aguardando = HOSPEDAGEM** na conta do dono, vinculada
+  por `pontos_moveis_hospedagens.local_ponto_id` (FK sem ON DELETE: excluir
+  ponto com passagem → 409 em `deletar`). A obrigação, o POP e o saldo
+  seguem da rede e da conta. A alocação vinculada sai de UMA função
+  (`movel.alocacoesVinculadas`), usada pela ficha e pela agenda. Instalado
+  com Móvel alocado → só aviso (`movel_a_encerrar`/`avisoEncerrar`, ambos
+  por `jaInstaladoSql`); nada encerra sozinho. Fim sempre obrigatório.
+- **Motivo da alocação** (`motivo_alocacao`, lista fechada) e
+  **cancelamento auditável** (`motivo_cancelamento` 1–300 + quem, em
+  `encerrado_por_admin`; o 400 vem DEPOIS dos 409 de estado). O job
+  automático não grava motivo (`encerramento = 'automatico'`).
+- **Agenda**: Admin em 4 abas (Agora / Próximos / Aguardando instalação /
+  Histórico) no MESMO modal e MESMA rota; cliente com Agora / Próximas
+  passagens / Histórico (10 encerradas, período real; cancelada nunca).
+- **D2 (dado real)**: `npm run liberar-escolhas-sem-instalacao` (ensaio) e
+  `-- --aplicar` (RUNBOOK §6.5). Em produção havia 1 escolha num fixo
+  `a_instalar` sem tela. Rodar SÓ depois do deploy e do backup; conferir com
+  o retrato só-leitura (ids, contagens, md5 por conta).
+- Superadas (marcadas no lugar, não apagadas): RN-49 na parte "a_instalar
+  conta como vaga", ADR-009 de 22/09 nas listas, P9 de 17/09, ADR-039 "só
+  presente e futuro". `src/lib/pacing.js`: só o comentário (D6).
+- Testes: `tests/instalacao-fixa.test.js` e
+  `tests/movel-agenda-instalacao.test.js` (novos) + ajustes em distribuicao,
+  ponto-movel, pontos-exclusao, rede-admin-v2, rede-front-v3, hospedagem.
+  E2E novos `52-instalacao-movel.mjs` (Admin) e `53-agenda-cliente-movel.mjs`
+  (cliente); 35, 50 e 09 ajustados (o 50 agora responde o ViaCEP sozinho).
+  E2E rodam UM por vez: `restart.sh` mata todo `node src/server.js`.
+
 2026-10-13 — **Review-Master, Ciclo 1, lote 1: 1 CRÍTICO + 10 ALTOS + 1
 MÉDIO corrigidos** (migration 122, aditiva; branch
 `claude/busy-noether-hheir2`, 15 commits sobre `48d6030`; PR do lote 1 a

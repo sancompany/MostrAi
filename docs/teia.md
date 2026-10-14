@@ -238,7 +238,7 @@ Superfície institucional pública do Mostraí: 6 páginas HTML (`/index.html`, 
   · ← carregamento de /planos.html
   · **cliente sabe:** Mesma lacuna da home: número sem metodologia, ausência silenciosa.
 
-**pontos.page.js — #statRow (contadores da rede)** — A partir do `GET /pontos`, conta `status==='ativo'`, `status==='aguardando_instalacao'` e o tamanho do Set de cidades, e escreve três .stat: "Pontos ativos", "Em instalação" e "Cidade atendida"/"Cidades atendidas" (com fallback `cidades || 1`). Depois insere…
+**pontos.page.js — #statRow (contadores da rede)** — A partir do `GET /pontos` (desde a ADR-047, só fixo instalado + redes móveis), conta `status==='em_operacao'` e o tamanho do Set de cidades, e escreve: "Pontos ativos" e "Cidade atendida"/"Cidades atendidas" ("Em instalação" saiu: o aprovado que nunca foi instalado não vem mais na lista). Depois insere…
   · `public/pontos.page.js`, `public/pontos.html` · rotas: `GET /pontos → repository.listarPublicos()`, `GET /pontos/fluxo` · papéis: visitante anônimo
   · ← menu "Onde estamos?"
   · **cliente sabe:** Os rótulos são curtos mas claros. Pontos em `reparo` entram na lista e no total implícito mas não têm contador próprio, e nenhum texto diz isso.

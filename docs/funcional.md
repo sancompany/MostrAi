@@ -331,19 +331,31 @@ Escrito por grupo, porque o padrão se repete.
   alocação** (não opera — nunca "24 h").
   **Pontos** (grade): no topo o resumo **Pontos · Telas · Operando · Sem
   comunicação · Com problema · Aguardando instalação**, somado do MESMO
-  estado que o servidor manda em cada ponto (`estadoTelas`) — os números com
-  filtro são clicáveis; busca por nome, cidade, endereço, nome da rede e
-  **código da tela** (M-0010); filtros Todos / Fixos / Móveis / Com problema /
-  **Sem comunicação** / Aguardando instalação / Aguardando primeiro sinal /
-  Ativos / Em reparo / Inativos. Fixo e móvel no MESMO card: foto 16:9, nome,
-  selo (MÓVEL na foto da rede; estado do ponto), localização (endereço e
+  estado que o servidor manda em cada ponto (`estadoTelas`; o "aguardando
+  instalação" é o `aguardando_instalacao` do servidor — ADR-047) — os
+  números com filtro são clicáveis; busca por nome, cidade, endereço, nome
+  da rede e **código da tela** (M-0010); filtros Todos / Fixos / Móveis / Com
+  problema / **Sem comunicação** / Aguardando instalação / Ativos / Em reparo
+  / Inativos ("Aguardando primeiro sinal" saiu: a chave nova cobre os dois
+  casos reais). Fixo e móvel no MESMO card: foto 16:9, nome, selo (MÓVEL na
+  foto da rede, que é sempre "Ativa" ou "Arquivada"; no fixo, "Aguardando
+  instalação" só para o que nunca deu o 1º sinal, "Temporariamente
+  indisponível" para o instalado que ficou sem Player — instalado nunca
+  volta a aguardar —, senão o estado do ponto), localização (endereço e
   horário no fixo; **Local atual** e **Próximo** na rede), o resumo das telas
   ("2 telas · 1 sem comunicação · 1 aguardando instalação") e [Abrir]. O
   filtro Móveis mostra a barra [+ Nova rede móvel] [Agenda móvel]. O PIN de
   saída do Player fica embaixo da grade.
-  **Agenda móvel** (modal, sob demanda): Data · Horário · Rede · Tela(s) ·
-  Onde (Na conta / Outro local) · Local · Estado — agora + futuro;
-  "Histórico" mostra encerrados e cancelados. **Candidaturas** tem duas
+  **Agenda móvel** (modal, sob demanda; ADR-047) em quatro abas: **Agora**
+  (em curso) e **Próximos** (programados) — Data · Horário · Rede · Tela(s) ·
+  Onde (Na conta / Outro local) · Local · Estado, com o motivo da alocação
+  em linha secundária —; **Aguardando instalação**: os pontos fixos
+  aprovados que nunca deram o 1º sinal, elegíveis para o Móvel — Ponto ·
+  Categoria · Cidade · Conta · Previsão (a data ou "Sem data definida",
+  estes por último) · Móvel (unidade M-NNNN, período e estado da alocação,
+  ou "—") · [Alocar Móvel] (com conta e sem alocação); no celular a linha
+  empilha; **Histórico**: encerrados e cancelados, a cancelada com o motivo
+  e quem cancelou (ou "cancelado automaticamente" pelo job). **Candidaturas** tem duas
   subabas: **Candidaturas de ponto** e **Interesses em hospedar**
   (`#rede/candidaturas/interesses`): a linha "Benefício padrão da hospedagem:
   20% [Alterar] [Ver histórico]" e a tabela com [Agendar compromisso] — abre
@@ -353,13 +365,29 @@ Escrito por grupo, porque o padrão se repete.
   (no ⋯ da ficha) → **Enquadrar foto** (16:9, zoom, arrastar, setas) → JPEG
   1280×720. [+ Nova rede móvel]: **Nome***, **Cidade*** e **UF***
   independentes, foto opcional e nota; nenhuma tela nasce junto.
-  **Ficha do ponto fixo**: cabeçalho (foto, nome, Fixo + estado, endereço, o
-  resumo das telas, [+ Adicionar tela] e ⋯ [Alterar foto] [Excluir ponto]);
-  **Telas** em linhas operacionais ("M-0002 · Sem comunicação · Fora do
-  horário · Último contato há 3 h · [Abrir]"); **Informações** (proprietário,
-  segmento, responsável, benefício, aprovado em, primeiro sinal, horário com
-  [Editar horário]); **Endereço e localização**; **Capacidade de
-  veiculação** recolhida.
+  **Ficha do ponto fixo**: cabeçalho (foto, nome, Fixo + o selo da grade,
+  endereço, o resumo das telas, [+ Adicionar tela] — no ponto aguardando
+  instalação vira **[Registrar instalação]** (abre a tela já cadastrada sem
+  Player, para [Gerar código], ou cria a tela) e, com dono e sem alocação,
+  **[Alocar Móvel]**; sem botão "Ativar": o 1º sinal ativa sozinho — e ⋯
+  [Alterar foto] [Excluir ponto]); **Telas** em linhas operacionais
+  ("M-0002 · Sem comunicação · Fora do horário · Último contato há 3 h ·
+  [Abrir]"); **Informações** (proprietário, segmento, responsável,
+  benefício, aprovado em, **Instalação** — "Aguardando instalação" ou
+  "Concluída — 1º sinal em dd/mm/aaaa" —, **Disponibilidade comercial** —
+  "Disponível para os anunciantes", "Temporariamente indisponível
+  (instalado, fora do ar agora)" ou "Não disponível — aguardando
+  instalação" —, **Instalação prevista** só enquanto aguarda — a data ou
+  "Sem data definida", [Definir data]/[Alterar data], só a equipe vê —,
+  **Mostraí Móvel** — a alocação vinculada: unidade, rede, período, estado
+  e motivo; ou "Nenhuma alocação" com [Alocar Móvel] —, horário com [Editar
+  horário]); com o ponto já instalado e o Móvel ainda alocado, o aviso
+  "Instalação fixa concluída — encerre (ou cancele) a alocação do Mostraí
+  Móvel neste ponto" (nada encerra sozinho); **Passagens do Mostraí Móvel**
+  (todas as que passaram pelo ponto, de qualquer rede; some quando não há
+  nenhuma); **Endereço e localização**; **Capacidade de veiculação**
+  recolhida. Ponto que recebeu o Móvel não pode ser excluído (409: deixe as
+  telas Inativas).
   **Ficha da rede móvel**: cabeçalho (nome, MÓVEL · Ativa, cidade/UF, "N
   telas · X operando · Y compromissos futuros", [+ Novo compromisso]
   [Adicionar tela] e ⋯ [Editar rede] [Alterar foto] [Excluir rede]) — saiu
@@ -390,10 +418,17 @@ Escrito por grupo, porque o padrão se repete.
   sem horário escolhido é recusado — nunca 24 h implícito. **Configurações
   avançadas** (recolhidas): categoria protegida (padrão: a do local; ou
   "Nenhuma restrição"), nome exibido ao anunciante, organização, observação.
+  **Motivo da alocação** (opcional, só a equipe vê — ADR-047): —, Aguardando
+  instalação, Evento, Ativação comercial, Teste do ponto, Outro;
+  [Alocar Móvel] já abre com a conta do dono, o próprio ponto como endereço
+  (o vínculo da hospedagem com o ponto) e "Aguardando instalação". O fim
+  continua obrigatório (até 120 dias, prorrogável na conta); "Sem data
+  definida" é só da instalação prevista do ponto.
   **Público estimado saiu do fluxo** (a coluna continua no banco). Editar um
   compromisso programado reabre o mesmo formulário ("Manter o endereço");
   em curso na conta, só [Prorrogar]. Ações: [Iniciar] (na conta, travado até
-  o termo físico estar assinado, e pede a entrega), [Editar], [Cancelar],
+  o termo físico estar assinado, e pede a entrega), [Editar], [Cancelar]
+  (pede o **motivo**, obrigatório, até 300 caracteres; grava quem cancelou),
   [Encerrar] (na conta, retirada opcional), [Registrar retirada], fotos.
   A aprovação de candidatura não pergunta tipo (sempre fixo); a ficha da
   conta mostra o **Saldo de hospedagem** com [Ajustar].
@@ -1982,8 +2017,8 @@ REDE, nunca uma tela**: o card da rede (estação Rede/Admin V2) é curto —
 FOTO (a capa da rede, mesmo formato 16:9 dos outros cards) com o selo
 MÓVEL, nome, cidade/UF, **Local atual** (o local de agora; "N locais em
 operação" com 2 ou mais; "Sem localização no momento" sem nenhum) e
-**Próxima localização** (nome · local · "08/10 às 18h"; "Nenhuma
-programada"), [Ver agenda] e a caixa **Selecionar**. Aparece SEMPRE e é
+**Próxima localização** (nome · local · "08/10 às 18h"; "Ainda não
+publicada"), [Ver agenda] e a caixa **Selecionar**. Aparece SEMPRE e é
 escolhível enquanto ativa e não arquivada — sem localização não é
 "Indisponível para escolha"; só travam o limite do plano e a capacidade
 REAL esgotada, medida por tela ativa (a causa do bug antigo era o card tratar "sem
@@ -1991,9 +2026,14 @@ alocação" como ponto cheio; a rede agora tem card próprio e o servidor
 mede a capacidade da hora por tela ativa, 3600 s × telas, então 0 em
 operação nunca bloqueia). **Ver agenda** abre a agenda PÚBLICA da rede,
 carregada sob demanda (qualquer anunciante logado, mesmo sem ter escolhido
-a rede): "Agora" e "Próximas localizações", cada uma com data, horário,
-nome, local do evento e tipo — só presente e futuro; nunca público
-estimado, conta, contato, notas, percentual, termo ou fotos de entrega.
+a rede): **Agora**, **Próximas passagens** e **Histórico** (ADR-047: as
+últimas 10 passagens encerradas, com o período real de chegada e saída, em
+tom secundário), cada uma com data, horário, nome, local do evento e tipo;
+só passagem confirmada, em andamento ou concluída — nunca cancelada,
+planejamento, interesse, "sem data", motivo, público estimado, conta,
+contato, notas, percentual, termo ou fotos de entrega. O ponto fixo que
+hospeda o Móvel enquanto aguarda instalação nunca vira posição escolhível:
+o anunciante vê só "Mostraí Móvel — cidade".
 A escolha conta **1 posição** do plano, com 1 ou 10 telas — nunca
 a conta, a agenda, o período ou a logística. Ninguém ganha crédito, Plano
 Básico, cupom ou papel de dono pela rede — nem o organizador do evento. A

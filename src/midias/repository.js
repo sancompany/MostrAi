@@ -282,9 +282,10 @@ async function ocupacaoPorPonto(pontosIds, excluirMidiaId, status = ['em_operaca
   const params = [pontosIds || null, excluirMidiaId || 0, status];
   const { rows } = await pool.query(
     `WITH comercial AS (
-       -- FILTER (WHERE p.status = 'em_operacao'): o anunciante pode escolher
-       -- um ponto ainda 'a_instalar' pra reservar a vaga (RN-49) — a linha em
-       -- anunciantes_pontos existe antes de qualquer tela física existir. Sem
+       -- FILTER (WHERE p.status = 'em_operacao'): o anunciante pode ter
+       -- escolhido um ponto que agora está fora de operação (já instalado e
+       -- sem Player, em reparo — desde a ADR-047 o nunca instalado não é mais
+       -- escolhível, mas a escolha num instalado fora do ar continua). Sem
        -- este filtro, esse ponto contava segundos_por_hora do plano do
        -- anunciante como ocupação comercial REAL, mesmo sem nenhuma tela pra
        -- exibir nada (achado na revisão da Visão geral, 23/09/2026). O filtro
