@@ -247,7 +247,10 @@ await irAdmin('#rede/pontos', '.colecao');
 const abas = await admin.locator('.modulo-aba').allInnerTexts();
 check('Rede: abas Pontos e Candidaturas', JSON.stringify(abas.map((a) => a.replace(/\s*\d+$/, '').trim())) === JSON.stringify(['Pontos', 'Candidaturas']), JSON.stringify(abas));
 const chips = await admin.locator('.colecao .chip').allInnerTexts();
-for (const c of ['Todos', 'Fixos', 'Móveis', 'Com problema', 'Sem comunicação', 'Aguardando instalação', 'Aguardando primeiro sinal', 'Ativos', 'Em reparo', 'Inativos']) {
+// "Aguardando primeiro sinal" saiu da lista conferida (ADR-047, A2 da
+// estação): o chip "Aguardando instalação" passa a cobrir os dois casos reais
+// — o filtro do Admin é da fatia do Admin; aqui só o que continua.
+for (const c of ['Todos', 'Fixos', 'Móveis', 'Com problema', 'Sem comunicação', 'Aguardando instalação', 'Ativos', 'Em reparo', 'Inativos']) {
   check(`filtro "${c}"`, chips.includes(c), JSON.stringify(chips));
 }
 check('barra Móveis escondida em "Todos"', !(await admin.locator('[data-barra-moveis]').isVisible()));
@@ -570,13 +573,19 @@ await admin.click('[data-barra-moveis] [data-agenda-movel]');
 await admin.waitForSelector('dialog[open] [data-agenda-admin]', { timeout: 10000 });
 const agendaAdmin = await modal().innerText();
 check('agenda móvel: colunas (Onde no lugar de Tipo)', ['Data', 'Horário', 'Rede', 'Tela(s)', 'Onde', 'Local', 'Estado'].every((c) => agendaAdmin.includes(c)) && !/\bTipo\b/.test(agendaAdmin), agendaAdmin.slice(0, 200));
-check('agenda móvel: evento, hospedagem e o futuro', /Feira de Negócios/.test(agendaAdmin) && /Padaria Central/.test(agendaAdmin) && /Festa do Peão/.test(agendaAdmin));
-check('agenda móvel: 3 linhas (agora + futuro)', (await modal().locator('[data-agenda-admin] tbody tr').count()) === 3);
+// ADR-047 (A9 da estação): a agenda tem quatro abas — Agora (em curso) e
+// Próximos (programados) saem da mesma leitura, cada um na sua aba; era uma
+// lista só "agora + futuro" e uma régua Agora/Histórico.
+check('agenda móvel, Agora: o evento e a hospedagem em curso', /Feira de Negócios/.test(agendaAdmin) && /Padaria Central/.test(agendaAdmin) && !/Festa do Peão/.test(agendaAdmin));
+check('agenda móvel, Agora: 2 linhas', (await modal().locator('[data-agenda-admin] tbody tr').count()) === 2);
 const onde = await modal().locator('[data-agenda-admin] tbody tr').evaluateAll((trs) => trs.map((tr) => `${tr.dataset.agendaTipo}:${tr.children[4].textContent.trim()}`).sort());
-check('agenda móvel: "Na conta" e "Outro local"', JSON.stringify(onde) === JSON.stringify(['evento:Outro local', 'evento:Outro local', 'hospedagem:Na conta']), JSON.stringify(onde));
+check('agenda móvel: "Na conta" e "Outro local"', JSON.stringify(onde) === JSON.stringify(['evento:Outro local', 'hospedagem:Na conta']), JSON.stringify(onde));
 check('agenda móvel: rede com a cidade', /Mostraí Móvel\s*Matão\/SP/.test(await modal().locator('[data-agenda-admin] tbody tr').first().locator('td').nth(2).innerText()));
 await shot(modal(), 'agenda-movel-admin');
-await modal().locator('[data-agenda-modo="1"]').click();
+await modal().locator('[data-agenda-aba="proximos"]').click();
+await admin.waitForFunction(() => /Festa do Peão/.test(document.querySelector('dialog[open] [data-agenda-corpo]')?.textContent || ''), null, { timeout: 10000 });
+check('agenda móvel, Próximos: a Festa do Peão (1 linha)', (await modal().locator('[data-agenda-admin] tbody tr').count()) === 1);
+await modal().locator('[data-agenda-aba="historico"]').click();
 await admin.waitForSelector('dialog[open] [data-agenda-corpo] .empty-state, dialog[open] [data-agenda-admin]', { timeout: 10000 });
 check('agenda móvel: histórico vazio por enquanto', /Nenhum compromisso encerrado/.test(await modal().innerText()));
 await modal().locator('[data-fechar]').first().click();
