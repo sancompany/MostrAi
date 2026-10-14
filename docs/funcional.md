@@ -1327,6 +1327,15 @@ com status `a_instalar` conta como vaga do plano — o anunciante pode escolher
 ele e não perde o lugar no comércio que está sendo montado —, mas não veicula,
 e é por isso que ele entra no numerador e nunca no denominador.
 
+> **SUPERADO em 14/10/2026 (ADR-047), só o parágrafo acima.** Aprovado não é
+> disponível: o ponto fixo que nunca deu o 1º sinal (nenhuma tela dele chegou
+> a operar) **não é escolhível**, não aparece no site nem na contagem
+> comercial, e a escolha antiga nele foi liberada com aviso à conta. O que já
+> foi instalado e está offline, em reparo ou com o Player revogado continua
+> escolhível ("temporariamente indisponível"). A compensação desta RN — base ×
+> pontos do plano ÷ pontos cobertos, teto de um sexto da hora — continua
+> exatamente igual. Texto antigo mantido como histórico.
+
 O teto existe porque sem ele a conta explode justamente quando ela mais roda:
 Prime numa rede de 1 ponto pediria 1800s, metade da hora daquela tela pra uma
 conta só, e o corte proporcional da RN-30 passaria a comer o de todo mundo,

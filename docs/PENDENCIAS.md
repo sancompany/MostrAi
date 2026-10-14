@@ -1812,6 +1812,12 @@ tempo se concentra, e o painel mostra o número exato. Com 1 ponto no ar o
 Essencial recebe **as 27 horas/mês contratadas inteiras** — então a promessa
 de horas é cumprida mesmo quando a de lugares ainda não é.
 
+> **SUPERADO em 14/10/2026 (ADR-047).** O dono decidiu que aprovado não é
+> disponível: a contagem do site, de Planos e da confirmação ("N pontos")
+> passa a contar só o ponto fixo **vendável** (em operação ou já instalado —
+> alguma tela deu o 1º sinal) mais a rede móvel. O ponto aguardando
+> instalação aparece só no Admin. Texto acima mantido como histórico.
+
 **P10. [x] O bônus da RN-49 no painel virou HORAS POR MÊS.** Estava em
 segundos por hora, que é a unidade do motor: o cliente comprou horas por mês,
 é assim que o card vende, e trocar de unidade no meio obrigava ele a

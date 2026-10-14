@@ -377,6 +377,11 @@ visual + o que já existia).
 
 Status: Ativa desde 22/09/2026 (rodada final da Rede, prompt de 35 seções
 do dono — "considere este prompt como a especificação definitiva").
+**Superada EM PARTE em 14/10/2026 pelo ADR-047**: a parte em que o site
+público e a escolha do anunciante aceitavam `a_instalar`/`em_reparo` como
+"um lugar real". Agora só entra o ponto fixo que já deu o 1º sinal
+(`fixoVendavelSql`). O status automático em si continua valendo. Texto
+abaixo mantido como histórico.
 
 Contexto: ADR-007 (acima) resolveu deliberadamente NÃO tocar
 `pontos.status` — manteve só 2 valores reais e simulou um 3º estado visual
@@ -1567,7 +1572,9 @@ a rede como "Indisponível para escolha" quando nenhuma tela estava alocada.
   enquanto ativa; a capacidade da hora (bloqueio de 80%, RN-55) passa a
   ser por tela ativa, para uma rede de N telas não "encher" como um ponto
   de 1 tela. A agenda pública vem sob demanda, só presente e futuro, sem
-  público estimado nem dado interno.
+  público estimado nem dado interno. *(SUPERADA em parte em 14/10/2026 pelo
+  ADR-047: a agenda pública ganhou o Histórico — até 10 passagens
+  encerradas, com o período real; cancelada continua fora.)*
 - Nome e cidade/UF da rede são campos separados, escolhidos pelo Admin; a
   116 desfaz só o nome que a 115 compôs (padrão exato), sem tocar IDs,
   telas, credenciais, Player ou POP.
@@ -1787,3 +1794,85 @@ nada. E o `/estornar` do San Checkout não alcança cobrança de assinatura
 - Janela contada da hora em que a Mostraí gravou, quando o PSP dá a hora.
 - Polling para "acelerar" a ativação: a demora (~110 s) é da Asaas.
 - Cancelar a assinatura junto com o estorno.
+
+## ADR-047 — Aprovado não é disponível: ponto fixo só vira vendável com o 1º sinal; Móvel provisório e agenda com histórico (14/10/2026)
+
+**Contexto.** Produção tinha um ponto fixo aprovado, ainda sem tela
+instalada (`a_instalar`), escolhido por um anunciante como uma das posições
+do plano. A regra antiga deixava isso acontecer de propósito (RN-49:
+"`a_instalar` conta como vaga do plano"; ADR-009 de 22/09 estendeu a lista a
+`em_reparo`; P9 de 17/09 somava "em operação + esperando instalação" na
+contagem do site). Mas o ponto não veicula: quem escolheu só ponto fora do
+ar caía no sorteio, e o painel seguia dizendo "Você escolheu". O dono
+decidiu (14/10/2026): **APROVADO não significa DISPONÍVEL**.
+
+**Decisão.**
+- Ponto fixo **vendável** = `status` em `STATUS_NA_REDE` **e** (em operação
+  **ou** alguma tela dele já deu o 1º sinal — `dispositivos.primeiro_sinal_em`).
+  Um predicado só, em SQL (`fixoVendavelSql`, `aguardandoInstalacaoSql` e
+  `jaInstaladoSql` em `src/pontos/repository.js`), usado na lista do
+  anunciante, na validação do `PUT /anunciantes/me/pontos`, no site público
+  e na contagem comercial "N pontos". Não vira coluna: deriva do histórico
+  real das telas.
+- **Ativação automática** pelo 1º sinal real do Player (D1). Não há botão
+  "Ativar". Tela cadastrada não torna o ponto vendável. Ponto que já foi
+  instalado e ficou offline, em reparo ou teve o Player revogado **não
+  volta** a "aguardando instalação" (a revogação zera a chave, não o fato
+  histórico) — aparece como "temporariamente indisponível" e continua
+  escolhível como hoje.
+- A escolha que já existia em ponto nunca instalado é **liberada** (D2):
+  script explícito pós-migration (`scripts/liberar-escolhas-sem-instalacao.js`),
+  pela prova "nenhuma tela com 1º sinal" — nunca por id fixo, nunca só por
+  `status = 'a_instalar'` —, com aviso à conta pela central de atualizações
+  (`notificacoes`). Escolha em ponto já instalado não é tocada.
+- Contagem administrativa de aprovados/em implantação continua no Admin,
+  nunca apresentada como "disponíveis" ou "ativos" (D3).
+- **Mostraí Móvel provisório** num ponto aguardando = **hospedagem** na conta
+  do responsável (D4): termo, entrega, retirada, histórico e benefício pelo
+  percentual GLOBAL, como qualquer hospedagem. O ponto continua fixo; nenhum
+  ponto comercial novo; obrigação, POP e saldo seguem da rede e da conta,
+  nunca do estabelecimento. O anunciante vê só "Mostraí Móvel — cidade".
+  Migration 123 (aditiva): `pontos.instalacao_prevista_em`,
+  `pontos_moveis_hospedagens.local_ponto_id` (FK sem `ON DELETE`: excluir
+  ponto com passagem é 409), `motivo_alocacao`, `motivo_cancelamento` e
+  `pontos_moveis_eventos.encerrado_por_admin`.
+- Todo compromisso tem fim previsto (D5; prorrogação até 120 dias, como
+  antes). "Sem data definida" existe só para o PONTO elegível (data prevista
+  da instalação), nunca para uma hospedagem.
+- Instalação fixa concluída com Móvel ainda alocado: **nada encerra
+  sozinho**; o Admin vê o aviso "encerre a alocação"; históricos preservados.
+- Cancelamento manual exige motivo (1 a 300 caracteres) e grava quem
+  cancelou; o cancelado fica visível ao Admin e nunca aparece ao cliente
+  como próxima passagem.
+- Agenda do Admin: Agora / Próximos / Aguardando instalação / Histórico.
+  Agenda do cliente: Agora / Próximas passagens / Histórico (até 10
+  encerradas, período real; nunca cancelada, planejamento, interesse ou
+  "sem data").
+- `src/lib/pacing.js`: só o comentário que dizia "`a_instalar` conta como
+  vaga" (D6). Nenhuma linha de lógica de veiculação, POP, obrigação, saldo
+  ou financeiro mudou.
+
+**Superadas (texto antigo mantido como histórico, marcado onde está).**
+- RN-49 (`docs/funcional.md`, `.ia/BUSINESS_RULES.md`), na parte
+  "`a_instalar` conta como vaga do plano / é escolhível". A compensação da
+  RN-49 (base × pontos do plano ÷ pontos cobertos, teto de 1/6) continua.
+- ADR-009 de 22/09/2026 (acima), na parte em que o site e a escolha do
+  anunciante aceitavam `a_instalar` e `em_reparo` sem distinção.
+- P9 de 17/09/2026 (`docs/PENDENCIAS.md`), na contagem única "em operação +
+  esperando instalação" apresentada ao público.
+- ADR-039, na parte "a agenda pública vem só presente e futuro": ganhou o
+  Histórico.
+
+**Recusado.**
+- Botão "Ativar" ou status novo no banco: a prova é o 1º sinal, que já
+  existe e não se falsifica pelo Admin.
+- Usar `status = 'a_instalar'` como única condição: o ponto que já operou e
+  teve o Player revogado volta a `a_instalar` (tela ativa sem chave) e seria
+  tratado como nunca instalado; e o ponto com tela em `em_reparo` ou
+  `aguardando_primeiro_sinal` que nunca deu sinal escaparia.
+- Transformar o ponto fixo em móvel, ou criar um segundo ponto comercial
+  para a passagem do Móvel.
+- Encerrar automaticamente a alocação do Móvel quando a instalação fixa
+  conclui.
+- Backfill de `local_ponto_id` ou de motivo nas linhas antigas (produção tem
+  0 hospedagens; linha encerrada é imutável por gatilho).

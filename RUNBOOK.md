@@ -559,6 +559,35 @@ dele §5.6). O que a equipe faz hoje, com o que existe:
    troca, §6.3), nem gerar link de assinatura nova com a de cartão ainda
    ativa (cobrança dupla na Asaas).
 
+## 6.5 Escolha de anunciante em ponto que nunca foi instalado (ADR-047, D2)
+
+Aprovado não é disponível: o ponto fixo só entra na escolha depois que uma
+tela dele deu o 1º sinal. Uma escolha gravada ANTES dessa regra (ou num ponto
+que depois perdeu todas as telas) fica ocupando uma posição do plano sem
+veicular. O script libera essas escolhas e avisa a conta pela central de
+atualizações. Ele decide pela prova "nenhuma tela do ponto deu o 1º sinal"
+(`aguardandoInstalacaoSql`), nunca por id e nunca só por `status`; escolha em
+ponto já instalado — mesmo offline, em reparo ou com o Player revogado — e na
+rede móvel não é tocada. Não mexe em saldo, obrigação, cobrança nem crédito.
+
+1. **Backup antes** (o passo apaga linhas): job `backup` no Northflank
+   (§5) e conferir que a execução terminou com sucesso.
+2. **Ver o que sairia** (só leitura — a transação é desfeita):
+   `npm run liberar-escolhas-sem-instalacao` no container do serviço. A saída
+   é JSON só com ids e contagens (`anunciante_id`, `ponto_id`, total).
+   Conferir no Admin que cada ponto listado está mesmo "Aguardando
+   instalação".
+3. **Aplicar**: `npm run liberar-escolhas-sem-instalacao -- --aplicar`. Apaga
+   exatamente os pares listados e grava, na mesma transação, a notificação
+   `ESCOLHA_LIBERADA` de cada conta. Idempotente: rodar de novo encontra 0.
+4. **Conferir** (só leitura): a escolha saiu, a notificação existe, e a
+   conta consegue escolher outro ponto no lugar (o painel mostra a posição
+   livre). Saldo, obrigação, cobranças e créditos da conta iguais aos de
+   antes.
+
+Reverter: restaurar o backup do passo 1 (§5) — o script não tem desfazer,
+porque a escolha num ponto não instalado não deve voltar.
+
 ## 7. Incidente com dado pessoal
 
 O Mostraí guarda nome, CNPJ/CPF, e-mail, telefone e endereço de anunciantes,

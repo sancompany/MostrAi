@@ -108,8 +108,14 @@ migration `064_playlist_hora_congelada.sql`.
 - Quem não escolhe (ou não preenche o limite) recebe o resto por **sorteio
   estável**: hash determinístico de `(conta.id, ponto.id)`, sempre a mesma
   fatia enquanto a rede não mudar.
-- Ponto `a_instalar` conta como vaga do plano (não perde o lugar), mas não
-  veicula — entra no numerador da compensação, nunca no denominador.
+- ~~Ponto `a_instalar` conta como vaga do plano (não perde o lugar), mas não
+  veicula — entra no numerador da compensação, nunca no denominador.~~
+  **SUPERADO em 14/10/2026 (ADR-047):** só é escolhível o ponto fixo
+  **vendável** — em operação ou com alguma tela que já deu o 1º sinal
+  (`fixoVendavelSql`). Ponto aprovado que nunca foi instalado não entra na
+  escolha, no site nem na contagem comercial; o já instalado que está
+  offline, em reparo ou com o Player revogado continua escolhível. A
+  compensação abaixo não muda.
 - **Compensação**: enquanto a rede tiver menos pontos em operação do que o
   plano promete, o tempo dos pontos que faltam volta pros que veiculam:
   `segundos por hora em cada ponto = base × (pontos do plano ÷ pontos

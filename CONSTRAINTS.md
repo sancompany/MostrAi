@@ -274,6 +274,27 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
     nunca o que toca. limite: gravar ramo e casa da tela em
     `exibicoes_contador` na hora programada (mexe no contador do comprovante
     — fora do escopo desta estação).
+- **Ponto aguardando instalação e Mostraí Móvel provisório (ADR-047,
+  14/10/2026):**
+  - "Vendável" é derivado do 1º sinal de alguma tela, não gravado. Ponto
+    que perde TODAS as telas (excluídas) volta a "aguardando instalação" e
+    sai da escolha; a escolha que já estava nele não é avisada sozinha — o
+    painel deixa de mostrá-la e o próximo salvar a apaga. limite: rodar de
+    novo `npm run liberar-escolhas-sem-instalacao` (RUNBOOK §6.5,
+    idempotente) quando isso acontecer; virar job se ficar frequente.
+  - O vínculo com o ponto fixo existe só na HOSPEDAGEM (`local_ponto_id`),
+    não no evento (D4: Móvel em ponto aguardando é hospedagem). Evento num
+    estabelecimento continua com o local em texto.
+  - Toda alocação do Móvel tem fim previsto (D5, até 120 dias com
+    prorrogação). "Fica até instalar" = prorrogar + o aviso "encerre a
+    alocação" que aparece quando o ponto é instalado; nada encerra sozinho.
+  - O cancelamento automático (programado que não começou até o fim
+    previsto) não grava motivo nem operador: o porquê é derivado de
+    `encerramento = 'automatico'`. Só o manual exige motivo.
+  - O Histórico da agenda do cliente mostra as 10 passagens encerradas mais
+    recentes. limite: paginar se o dono pedir mais.
+  - Ponto fixo que recebeu o Móvel não pode ser excluído (409: o histórico da
+    passagem depende dele) — deixa-se as telas Inativas.
 - ~~`og:image` com caminho relativo~~ — **limite fechado em 14/09/2026**: o
   domínio existe (`mostrai.sancocore.com.br`), e `og:image`, `og:url` e
   `canonical` passaram a ser absolutos nas 26 páginas.
