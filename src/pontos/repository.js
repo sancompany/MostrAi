@@ -47,6 +47,18 @@ function aguardandoInstalacaoSql(p = 'p') {
   return `(${p}.tipo = 'fixo' AND ${p}.status = ANY(${STATUS_NA_REDE_SQL}) AND ${p}.status <> 'em_operacao' AND NOT ${jaInstaladoSql(p)})`;
 }
 
+// A PRIMEIRA instalação fixa do ponto aconteceu a partir de `desde`: o 1º
+// sinal mais antigo entre as telas dele é de `desde` em diante (o 1º sinal
+// não muda num reprovisionamento — COALESCE em src/dispositivos/
+// repository.js). É o que transforma o Móvel alocado ali em "pode encerrar":
+// o aviso vale para a alocação que nasceu ANTES da instalação; a passagem
+// num ponto que já estava instalado (um evento, uma ativação comercial) não é
+// aviso nenhum — nem quando ele ganha mais uma tela depois. Sem tela com
+// sinal: false.
+function primeiraInstalacaoDesdeSql(pontoId, desde) {
+  return `COALESCE((SELECT MIN(d_inst.primeiro_sinal_em) FROM dispositivos d_inst WHERE d_inst.ponto_id = ${pontoId}) >= ${desde}, false)`;
+}
+
 // Whitelist de colunas editáveis via PATCH — nunca monta SET a partir de
 // chave arbitrária vinda do body.
 const CAMPOS_ATUALIZAVEIS = [
@@ -230,9 +242,10 @@ async function estabelecimentoJaCadastrado(
 //   alocacao_movel        a passagem do Mostraí Móvel vinculada ao ponto
 //                         (migration 123): a ATIVA, senão a programada mais
 //                         próxima que ainda não terminou, senão null;
-//   movel_a_encerrar      o ponto já foi instalado e ainda tem passagem do
-//                         Móvel ativa ou programada — o Admin é avisado para
-//                         encerrar (ou cancelar); nada encerra sozinho.
+//   movel_a_encerrar      a instalação fixa foi concluída DEPOIS da alocação
+//                         do Móvel ainda ativa ou programada — o Admin é
+//                         avisado para encerrar (ou cancelar); nada encerra
+//                         sozinho.
 async function listar() {
   const { rows } = await pool.query(
     `SELECT p.*, c.nome AS categoria_nome,
@@ -262,7 +275,7 @@ async function listar() {
   const alocacoes = await alocacoesVinculadas(rows.filter((p) => p.tipo === 'fixo').map((p) => p.id));
   return rows.map((p) => {
     const alocacao = alocacoes.get(p.id) || null;
-    return { ...p, alocacao_movel: alocacao, movel_a_encerrar: Boolean(p.ja_instalado && alocacao) };
+    return { ...p, alocacao_movel: alocacao, movel_a_encerrar: Boolean(alocacao?.avisoEncerrar) };
   });
 }
 
@@ -741,4 +754,5 @@ module.exports = {
   jaInstaladoSql,
   fixoVendavelSql,
   aguardandoInstalacaoSql,
+  primeiraInstalacaoDesdeSql,
 };

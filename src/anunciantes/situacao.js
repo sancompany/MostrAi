@@ -7,6 +7,7 @@ const planoAdministrativo = require('../financeiro/plano-administrativo');
 const creditosRepo = require('../creditos/repository');
 const { CUSTO_BASE_POR_MES, NOME_TIER } = require('../creditos/regras');
 const { meusPontosDaConta } = require('../pontos/meus-pontos');
+const pontosRepo = require('../pontos/repository');
 const { horasDeTelaPorMes } = require('../lib/pacing');
 const { limiteDeCriativos } = require('../playlist/gerador');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
@@ -65,6 +66,21 @@ const STATUS_DO_PONTO = {
   em_reparo: 'Em reparo',
   inativo: 'Inativo',
 };
+const INSTALADO_FORA_DO_AR = 'Temporariamente indisponível';
+
+// O selo do ponto na ficha da conta, pela mesma régua da grade de Rede
+// (ADR-047), nunca pelo status cru: o aprovado que nenhuma tela fez operar —
+// mesmo com tela cadastrada em reparo — "Aguardando instalação"; o que já
+// operou e está sem Player (revogado) ou com tela nova sem sinal nunca volta
+// a aguardar (D1): "Temporariamente indisponível".
+function textoDoPonto(linha) {
+  if (!linha) return 'Inativo';
+  if (linha.aguardando_instalacao) return STATUS_DO_PONTO.a_instalar;
+  if (linha.ja_instalado && (linha.status === 'a_instalar' || linha.status === 'aguardando_primeiro_sinal')) {
+    return INSTALADO_FORA_DO_AR;
+  }
+  return STATUS_DO_PONTO[linha.status] || 'Inativo';
+}
 
 const MOTIVO_ENCERRAMENTO = {
   substituido: 'substituído',
@@ -267,7 +283,8 @@ async function situacaoDaConta(contaId, agora = new Date()) {
     creditosRepo.movimentacoes(conta.id, 200),
     meusPontosDaConta(conta.id, agora),
     pool.query(
-      `SELECT p.id, p.status, ${require('../pontos/repository').jaInstaladoSql('p')} AS ja_instalado
+      `SELECT p.id, p.status, ${pontosRepo.jaInstaladoSql('p')} AS ja_instalado,
+              ${pontosRepo.aguardandoInstalacaoSql('p')} AS aguardando_instalacao
          FROM pontos p WHERE p.anunciante_id = $1 AND p.status <> 'arquivado'`,
       [conta.id],
     ),
@@ -282,14 +299,14 @@ async function situacaoDaConta(contaId, agora = new Date()) {
       : { rows: [] },
   ]);
   const planos = Object.fromEntries(planosRows.map((p) => [p.id, p]));
-  const statusPorPonto = new Map(statusDosPontos.map((r) => [r.id, r.status]));
-  const jaInstalado = new Set(statusDosPontos.filter((r) => r.ja_instalado).map((r) => r.id));
+  const linhaDoPonto = new Map(statusDosPontos.map((r) => [r.id, r]));
 
   // ---------- pontos (aprovados) e solicitações (candidaturas em análise) ----------
   const pontos = estabelecimentos
     .filter((e) => e.tipo === 'ponto')
     .map((e) => {
-      const status = statusPorPonto.get(e.id) || null;
+      const linha = linhaDoPonto.get(e.id);
+      const status = linha?.status || null;
       return {
         id: e.id,
         nome: e.nome,
@@ -302,13 +319,7 @@ async function situacaoDaConta(contaId, agora = new Date()) {
         uf: e.uf,
         fotoUrl: e.fotoUrl,
         status,
-        // Instalado nunca volta a "Aguardando instalação" (ADR-047, D1): sem
-        // Player (revogado) ou com tela nova ainda sem sinal, é o mesmo
-        // "Temporariamente indisponível" da grade de Rede.
-        statusTexto:
-          jaInstalado.has(e.id) && (status === 'a_instalar' || status === 'aguardando_primeiro_sinal')
-            ? 'Temporariamente indisponível'
-            : STATUS_DO_PONTO[status] || 'Inativo',
+        statusTexto: textoDoPonto(linha),
         telas: e.telas.length,
         telasComAlerta: e.alertas,
         saude: saudeDoPonto(e.telas),

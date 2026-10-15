@@ -891,19 +891,25 @@ router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =>
   // não arquivada. O instalado fora do ar agora (reparo, Player revogado)
   // continua escolha válida — a vaga fica reservada e, enquanto não veicula,
   // o tempo dele volta pros pontos no ar. Recusados: o ponto aprovado que
-  // ainda aguarda a primeira instalação (com motivo próprio, que a aba
-  // aberta antes de ele sair da lista precisa entender) e o que não existe,
-  // está `inativo` ou arquivado.
+  // ainda aguarda a primeira instalação e o que não existe, está `inativo`
+  // ou arquivado. O motivo próprio ("em instalação") só para o ponto que a
+  // conta já conhece — o dela, ou o que ela tinha escolhido antes de ele sair
+  // da lista (a aba aberta antes do deploy). Para os outros, a mesma resposta
+  // do inexistente: a lista de quem aguarda instalação é só do Admin, e o PUT
+  // não pode servir para descobri-la id a id.
   if (pedidos.length) {
     const { rows } = await pool.query(
-      `SELECT p.id, ${pontosRepo.aguardandoInstalacaoSql('p')} AS aguardando
+      `SELECT p.id, ${pontosRepo.aguardandoInstalacaoSql('p')} AS aguardando,
+              (p.anunciante_id = $2
+               OR EXISTS (SELECT 1 FROM anunciantes_pontos ap WHERE ap.anunciante_id = $2 AND ap.ponto_id = p.id))
+                AS conhecido
          FROM pontos p
         WHERE p.id = ANY($1::int[])
           AND (${pontosRepo.fixoVendavelSql('p')} OR ${pontosRepo.aguardandoInstalacaoSql('p')}
                OR (p.tipo = 'movel' AND p.status <> 'arquivado'))`,
-      [pedidos],
+      [pedidos, conta.id],
     );
-    if (rows.length !== pedidos.length) {
+    if (rows.length !== pedidos.length || rows.some((r) => r.aguardando && !r.conhecido)) {
       return res.status(400).json({ erro: 'um dos pontos escolhidos não existe na rede' });
     }
     if (rows.some((r) => r.aguardando)) {

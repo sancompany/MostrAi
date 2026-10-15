@@ -816,6 +816,7 @@ test('agenda ?aguardando=1: só os aguardando, pela data prevista (sem data por 
       'instalacaoPrevistaEm',
       'nome',
       'pontoId',
+      'segmento',
       'uf',
     ]);
   }
@@ -827,6 +828,7 @@ test('agenda ?aguardando=1: só os aguardando, pela data prevista (sem data por 
     cidade: 'Matão',
     uf: 'SP',
     categoria: { id: categoria.id, nome: categoria.nome },
+    segmento: categoria.nome,
     contaId: dono.id,
     conta: dono.nome_empresa,
     instalacaoPrevistaEm: '2026-12-20',
@@ -840,8 +842,12 @@ test('agenda ?aguardando=1: só os aguardando, pela data prevista (sem data por 
       fim: hAtiva.fim.toISOString(),
       motivoAlocacao: 'aguardando_instalacao',
       tela: { id: t3, codigo: formatarCodigoTela(t3) },
+      avisoEncerrar: false,
     },
   });
+  // Sem categoria: o ramo como a grade mostra (o segmento da candidatura),
+  // nunca "—" quando o ponto tem um.
+  assert.strictEqual(linhaSemDono.segmento, 'outro');
   assert.deepStrictEqual(
     [linhaNov.instalacaoPrevistaEm, linhaNov.alocacao.ref, linhaNov.alocacao.estado, linhaNov.alocacao.tela.id],
     ['2026-11-15', novembroProxima, 'programada', t2],

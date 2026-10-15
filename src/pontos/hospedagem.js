@@ -217,7 +217,12 @@ function lerLocalPonto(valor) {
 // antiga de hospedagem chega direto. Fixo, não arquivado e da conta anfitriã.
 async function exigirPontoDaConta(c, pontoId, contaId) {
   const { rows } = await c.query(
-    `SELECT 1 FROM pontos WHERE id = $1 AND tipo = 'fixo' AND status <> 'arquivado' AND anunciante_id = $2`,
+    // FOR KEY SHARE: um DELETE do ponto entre esta conferência e o INSERT da
+    // hospedagem espera por nós (e depois recusa com 409, a passagem existe)
+    // — ou nós esperamos por ele e não achamos o ponto (400), nunca o 500 da
+    // FK sem ON DELETE.
+    `SELECT 1 FROM pontos WHERE id = $1 AND tipo = 'fixo' AND status <> 'arquivado' AND anunciante_id = $2
+        FOR KEY SHARE`,
     [pontoId, contaId],
   );
   if (!rows[0]) throw erro(400, PONTO_DE_OUTRA_CONTA);
@@ -1011,15 +1016,19 @@ async function hospedagensDaConta(contaId) {
 // ou, com `doLocal`, todas as passagens do Móvel por um PONTO FIXO (as
 // vinculadas a ele por local_ponto_id, de qualquer rede). `pontoInstalado`:
 // o estabelecimento vinculado já foi instalado (alguma tela dele deu o 1º
-// sinal — jaInstaladoSql, o mesmo fato do `ja_instalado`/`movel_a_encerrar`
-// da ficha do ponto em GET /admin/pontos) — a instalação fixa chegou e a
-// alocação pode ser encerrada (nada encerra sozinho).
+// sinal — jaInstaladoSql, o `ja_instalado` da ficha); `instaladoDepois`: a
+// instalação fixa chegou DEPOIS desta alocação (o mesmo fato do
+// `movel_a_encerrar` de GET /admin/pontos) — a alocação pode ser encerrada
+// (nada encerra sozinho). A passagem num ponto que já estava instalado não
+// gera aviso.
 async function hospedagensDoPonto(pontoId, db = pool, { doLocal = false } = {}) {
-  const { jaInstaladoSql } = require('./repository');
+  const { jaInstaladoSql, primeiraInstalacaoDesdeSql } = require('./repository');
   const { rows } = await db.query(
     `SELECT h.*, a.nome_empresa AS conta_nome, (h.fim <= now()) AS terminou, cat.nome AS categoria_nome,
             EXISTS (SELECT 1 FROM pontos lp WHERE lp.id = h.local_ponto_id AND lp.tipo = 'fixo' AND ${jaInstaladoSql('lp')})
-              AS ponto_instalado
+              AS ponto_instalado,
+            (h.local_ponto_id IS NOT NULL AND ${primeiraInstalacaoDesdeSql('h.local_ponto_id', 'h.criado_em')})
+              AS instalado_depois
        FROM pontos_moveis_hospedagens h JOIN anunciantes a ON a.id = h.conta_id
        LEFT JOIN categorias cat ON cat.id = h.categoria_id
       WHERE ${doLocal ? 'h.local_ponto_id' : 'h.ponto_id'} = $1
@@ -1072,6 +1081,7 @@ async function hospedagensDoPonto(pontoId, db = pool, { doLocal = false } = {}) 
       motivoCancelamento: h.motivo_cancelamento,
       localPontoId: h.local_ponto_id,
       pontoInstalado: h.ponto_instalado,
+      instaladoDepois: h.instalado_depois,
       // Termo físico (Pendente/Assinado) e equipamento (entrega e retirada).
       termo: doc?.termo || null,
       entrega: doc?.entrega || null,

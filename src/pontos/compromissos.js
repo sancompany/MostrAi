@@ -403,7 +403,7 @@ function daHospedagem(h) {
     // nada encerra sozinho.
     localPontoId: h.localPontoId,
     pontoInstalado: h.pontoInstalado,
-    avisoEncerrar: h.pontoInstalado && (h.estado === 'ativa' || h.estado === 'programada'),
+    avisoEncerrar: Boolean(h.instaladoDepois) && (h.estado === 'ativa' || h.estado === 'programada'),
     // Só no contexto de conta: benefício, termo físico e equipamento.
     hospedagem: {
       percentual: h.percentual,

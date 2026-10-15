@@ -80,6 +80,11 @@ function traduzirErroDoBanco(err) {
   if (err?.code === '23514' && /não é da rede móvel/.test(err.message || '')) {
     return erro(400, 'Essa tela não é desta rede móvel', 'telas');
   }
+  // O ponto vinculado sumiu entre a conferência e a gravação (migration 123,
+  // FK sem ON DELETE): o mesmo 400 de ponto que não é desta conta.
+  if (err?.code === '23503' && err.constraint === 'pontos_moveis_hospedagens_local_ponto_id_fkey') {
+    return erro(400, 'esse ponto não é um estabelecimento desta conta');
+  }
   return err;
 }
 

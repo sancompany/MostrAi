@@ -268,16 +268,22 @@ test('itens 1, 3 e 4: a lista de escolha só traz o fixo instalado (mesmo offlin
   assert.ok(!ids.has(proprio), 'o próprio ponto da conta aguardando instalação também sai');
 });
 
-test('item 2: o PUT recusa o ponto em instalação com o motivo; aceita o instalado fora do ar; mantém o 400 de limite e o 409', async () => {
+test('item 2: o PUT recusa o ponto em instalação (com o motivo só para o que a conta conhece); aceita o instalado fora do ar; mantém o 400 de limite e o 409', async () => {
   const conta = await novaConta(); // essencial: 3 pontos
   const c = await todosOsCasos();
   const proprio = await montar('A', { dono: conta });
   const rede = await novaRede();
-  for (const id of [c.A, c.B, c.C, proprio]) {
+  // O ponto em instalação de OUTRA conta responde igual ao inexistente: a
+  // lista de quem aguarda é só do Admin, e o PUT não pode revelá-la id a id.
+  for (const id of [c.A, c.B, c.C]) {
     const r = await escolher(conta, [id]);
     assert.strictEqual(r.status, 400, r.texto);
-    assert.deepStrictEqual(r.json, { erro: ERRO_EM_INSTALACAO });
+    assert.deepStrictEqual(r.json, { erro: ERRO_FORA_DA_REDE });
   }
+  // O motivo próprio fica para o que a conta já conhece: o ponto dela…
+  const doProprio = await escolher(conta, [proprio]);
+  assert.strictEqual(doProprio.status, 400, doProprio.texto);
+  assert.deepStrictEqual(doProprio.json, { erro: ERRO_EM_INSTALACAO });
   assert.deepStrictEqual(await escolhasNoBanco(conta), [], 'nada salvo');
   // Inexistente, inativo e arquivado: o 400 de antes.
   const arquivado = await pontoFixo();
@@ -306,7 +312,14 @@ test('item 2: o PUT recusa o ponto em instalação com o motivo; aceita o instal
   assert.deepStrictEqual(cheio.json.pontosBloqueados, [c.E]);
   const misto = await escolher(conta, [c.A, c.E]);
   assert.strictEqual(misto.status, 400);
-  assert.deepStrictEqual(misto.json, { erro: ERRO_EM_INSTALACAO });
+  assert.deepStrictEqual(misto.json, { erro: ERRO_FORA_DA_REDE });
+  // …e o que ela tinha escolhido antes de ele sair da lista (a aba aberta
+  // antes do deploy reenviando a escolha antiga).
+  const outra = await novaConta();
+  await escolhaAntiga(outra, [c.B]);
+  const abaAntiga = await escolher(outra, [c.B]);
+  assert.strictEqual(abaAntiga.status, 400, abaAntiga.texto);
+  assert.deepStrictEqual(abaAntiga.json, { erro: ERRO_EM_INSTALACAO });
 });
 
 test('item 3: o site e a contagem comercial (GET /pontos) só trazem o fixo instalado e a rede', async () => {
@@ -330,7 +343,7 @@ test('item 19: o Móvel parado num ponto aguardando não torna o estabelecimento
   assert.ok(!(await idsDoSite()).has(ponto), 'nem aparece no site');
   const r = await escolher(cliente, [ponto]);
   assert.strictEqual(r.status, 400);
-  assert.deepStrictEqual(r.json, { erro: ERRO_EM_INSTALACAO });
+  assert.deepStrictEqual(r.json, { erro: ERRO_FORA_DA_REDE }, 'o ponto de outra conta em instalação não se revela');
   assert.strictEqual((await escolher(cliente, [rede.id])).status, 200);
 });
 
@@ -383,16 +396,35 @@ test('D1 nas telas do dono e da conta: instalado com o Player revogado nunca é 
   const dono = await novaConta({ plano: null });
   const nunca = await montar('A', { dono });
   const revogado = await montar('D', { dono });
+  const reparoSemInstalar = await montar('C', { dono }); // tela em reparo que nunca operou
   const { meusPontosDaConta } = require('../src/pontos/meus-pontos');
   const meus = await meusPontosDaConta(dono);
   const estado = (id) => meus.find((e) => e.tipo === 'ponto' && e.id === id)?.estado;
   assert.strictEqual(estado(nunca), 'aguardando_instalacao');
   assert.strictEqual(estado(revogado), 'em_manutencao', 'instalado não volta a "aguardando instalação"');
+  assert.strictEqual(
+    estado(reparoSemInstalar),
+    'aguardando_instalacao',
+    'nunca operou: instalação pendente, não reparo',
+  );
   const { situacaoDaConta } = require('../src/anunciantes/situacao');
   const ficha = await situacaoDaConta(dono);
   const texto = (id) => ficha.pontos.find((p) => p.id === id)?.statusTexto;
   assert.strictEqual(texto(nunca), 'Aguardando instalação');
   assert.strictEqual(texto(revogado), 'Temporariamente indisponível');
+  assert.strictEqual(texto(reparoSemInstalar), 'Aguardando instalação');
+});
+
+test('vínculo da hospedagem com o ponto: a FK que escapar da conferência (ponto apagado no meio) vira o 400 de ponto inválido, nunca 500', () => {
+  const { traduzirErroDoBanco } = require('../src/pontos/agenda');
+  const fk = Object.assign(new Error('viola a FK'), {
+    code: '23503',
+    constraint: 'pontos_moveis_hospedagens_local_ponto_id_fkey',
+  });
+  const e = traduzirErroDoBanco(fk);
+  assert.deepStrictEqual([e.status, e.message], [400, 'esse ponto não é um estabelecimento desta conta']);
+  const outra = Object.assign(new Error('outra FK'), { code: '23503', constraint: 'outra_fkey' });
+  assert.strictEqual(traduzirErroDoBanco(outra), outra, 'só a FK do vínculo');
 });
 
 test('item 15: a instalação fixa (1º sinal) tira o ponto de "aguardando" e o põe na escolha e no site', async () => {
@@ -442,6 +474,7 @@ test('alocação do Móvel na ficha: a ativa, senão a programada mais próxima 
     fim: rows[0].fim.toISOString(),
     motivoAlocacao: 'aguardando_instalacao',
     tela: { id: t2, codigo: formatarCodigoTela(t2) },
+    avisoEncerrar: false,
   });
   const ativa = await passagem({ rede: rede.id, tela: t3, conta: dono, ponto, estado: 'ativa', de: -1, ate: 24 });
   a = await alocacao();
@@ -455,6 +488,39 @@ test('alocação do Móvel na ficha: a ativa, senão a programada mais próxima 
   );
   const { rows: depois } = await pool.query('SELECT estado FROM pontos_moveis_hospedagens WHERE id = $1', [ativa]);
   assert.strictEqual(depois[0].estado, 'ativa', 'nada encerra sozinho');
+  assert.strictEqual(a.alocacao_movel.avisoEncerrar, true);
+  const doPonto = await require('../src/pontos/hospedagem').hospedagensDoPonto(ponto, pool, { doLocal: true });
+  const h = doPonto.find((x) => x.id === ativa);
+  assert.deepStrictEqual([h.pontoInstalado, h.instaladoDepois], [true, true], 'o compromisso avisa igual à ficha');
+});
+
+test('Móvel num ponto que JÁ estava instalado (evento, ativação comercial): nenhum aviso de encerrar — o aviso é da instalação que chega DEPOIS da alocação', async () => {
+  const dono = await novaConta();
+  const ponto = await montar('E', { dono }); // em operação antes da passagem
+  const rede = await novaRede();
+  const h = await passagem({
+    rede: rede.id,
+    tela: rede.telas[0],
+    conta: dono,
+    ponto,
+    estado: 'ativa',
+    de: -1,
+    ate: 24,
+  });
+  const a = projecao((await naFichaDoAdmin([ponto])).get(ponto));
+  assert.deepStrictEqual(
+    [a.ja_instalado, a.alocacao_movel.ref, a.alocacao_movel.avisoEncerrar, a.movel_a_encerrar],
+    [true, `h${h}`, false, false],
+  );
+  const doPonto = await require('../src/pontos/hospedagem').hospedagensDoPonto(ponto, pool, { doLocal: true });
+  const linha = doPonto.find((x) => x.id === h);
+  assert.deepStrictEqual([linha.pontoInstalado, linha.instaladoDepois], [true, false]);
+  // Nem quando o ponto ganha mais uma tela depois da alocação: a instalação
+  // dele é anterior — mais uma tela num ponto no ar não é "a instalação
+  // fixa chegou".
+  await instalarPlayer((await dispositivosRepo.criar(ponto, {})).id);
+  const depois = projecao((await naFichaDoAdmin([ponto])).get(ponto));
+  assert.strictEqual(depois.movel_a_encerrar, false);
 });
 
 test('PATCH /admin/pontos/:id: data prevista de instalação (válida, vazia → null, inválida 400) sem mexer em status nem playlist', async () => {

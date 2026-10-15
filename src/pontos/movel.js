@@ -264,9 +264,11 @@ function redePublica(m) {
 async function alocacoesVinculadas(pontoIds, db = pool) {
   const ids = [...new Set(pontoIds.map(Number))].filter((id) => Number.isInteger(id) && id > 0);
   if (!ids.length) return new Map();
+  const { primeiraInstalacaoDesdeSql } = require('./repository');
   const { rows } = await db.query(
     `SELECT DISTINCT ON (h.local_ponto_id) h.local_ponto_id, h.id, h.ponto_id, r.nome AS rede, h.estado, h.inicio,
-            h.fim, h.motivo_alocacao, h.dispositivo_id
+            h.fim, h.motivo_alocacao, h.dispositivo_id,
+            ${primeiraInstalacaoDesdeSql('h.local_ponto_id', 'h.criado_em')} AS instalado_depois
        FROM pontos_moveis_hospedagens h JOIN pontos r ON r.id = h.ponto_id
       WHERE h.local_ponto_id = ANY($1::int[])
         AND (h.estado = 'ativa' OR (h.estado = 'programada' AND h.fim > now()))
@@ -286,6 +288,9 @@ async function alocacoesVinculadas(pontoIds, db = pool) {
         fim: h.fim,
         motivoAlocacao: h.motivo_alocacao,
         tela: { id: h.dispositivo_id, codigo: formatarCodigoTela(h.dispositivo_id) },
+        // A instalação fixa chegou depois desta alocação (ativa ou
+        // programada): "encerre (ou cancele)" — nada encerra sozinho.
+        avisoEncerrar: Boolean(h.instalado_depois),
       },
     ]),
   );
@@ -301,8 +306,8 @@ async function alocacoesVinculadas(pontoIds, db = pool) {
 async function pontosAguardandoInstalacao() {
   const { aguardandoInstalacaoSql } = require('./repository');
   const { rows } = await pool.query(
-    `SELECT p.id, p.nome, p.cidade, p.uf, p.categoria_id, cat.nome AS categoria_nome, p.anunciante_id,
-            a.nome_empresa AS conta, p.instalacao_prevista_em
+    `SELECT p.id, p.nome, p.cidade, p.uf, p.categoria_id, cat.nome AS categoria_nome, p.categoria_livre, p.segmento,
+            p.anunciante_id, a.nome_empresa AS conta, p.instalacao_prevista_em
        FROM pontos p
        LEFT JOIN categorias cat ON cat.id = p.categoria_id
        LEFT JOIN anunciantes a ON a.id = p.anunciante_id
@@ -316,6 +321,9 @@ async function pontosAguardandoInstalacao() {
     cidade: p.cidade,
     uf: p.uf,
     categoria: p.categoria_id ? { id: p.categoria_id, nome: p.categoria_nome } : null,
+    // O ramo como a grade e a ficha mostram: a categoria, senão a categoria
+    // livre da candidatura, senão o segmento antigo.
+    segmento: p.categoria_nome || p.categoria_livre || p.segmento || null,
     contaId: p.anunciante_id,
     conta: p.conta,
     // 'AAAA-MM-DD' (o pool devolve `date` como texto) ou null.
