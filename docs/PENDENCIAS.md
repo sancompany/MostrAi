@@ -6220,3 +6220,26 @@ Ficou de fora, sem mexer:
       /anunciantes/:id/criativos`; `src/lib/limite-tentativas.js` já tem o
       balde por alvo) — ex.: 10 envios por hora; o upload do operador (conta
       própria) fica fora.
+
+## X. Aprovado não é disponível — ponto aguardando instalação, Móvel provisório e agenda (ADR-047, 14/10/2026)
+
+Construído (ADR-047): o ponto fixo só entra na escolha, no site e na
+contagem comercial depois que uma tela dele dá o 1º sinal; o aguardando
+aparece só no Admin (selo, contador, aba "Aguardando instalação" da agenda,
+data prevista); o Mostraí Móvel provisório num ponto aguardando é
+hospedagem na conta do dono, vinculada ao ponto, com o aviso "encerre a
+alocação" quando a instalação chega (nada encerra sozinho); cancelamento
+com motivo e operador; agenda do cliente com Histórico. Migration 123.
+
+- PI1 [ ] **Liberar a escolha real em ponto nunca instalado** (D2) — RUNBOOK
+      §6.5, logo depois que todas as instâncias estiverem no build desta
+      estação: backup, retrato, ensaio, `--aplicar`, conferência. Fecha com
+      a saída JSON do `--aplicar` registrada aqui.
+- PI2 [ ] **Excluir tela que já operou** (decisão do dono, se acontecer com
+      frequência): hoje a exclusão leva a prova do 1º sinal junto e o ponto
+      volta a "aguardando instalação" (limite em `CONSTRAINTS.md`). A saída
+      sem schema é recusar a exclusão dessa tela (409, "deixe-a Inativa"),
+      como já acontece com tela que tem exibição confirmada.
+- PI3 [ ] **Texto do card do Móvel** (decisão do dono, opcional): o card diz
+      "Próxima localização" e a agenda passou a dizer "Próximas passagens".
+      Uniformizar é uma linha (`htmlPontoMovelEscolha`) + os roteiros 50 e 53.

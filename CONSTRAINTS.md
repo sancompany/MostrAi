@@ -276,12 +276,16 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
     — fora do escopo desta estação).
 - **Ponto aguardando instalação e Mostraí Móvel provisório (ADR-047,
   14/10/2026):**
-  - "Vendável" é derivado do 1º sinal de alguma tela, não gravado. Ponto
-    que perde TODAS as telas (excluídas) volta a "aguardando instalação" e
-    sai da escolha; a escolha que já estava nele não é avisada sozinha — o
-    painel deixa de mostrá-la e o próximo salvar a apaga. limite: rodar de
-    novo `npm run liberar-escolhas-sem-instalacao` (RUNBOOK §6.5,
-    idempotente) quando isso acontecer; virar job se ficar frequente.
+  - "Vendável" é derivado do 1º sinal de alguma tela VIVA, não gravado: a
+    prova some com a tela excluída. Ponto que perde as telas que já deram o
+    1º sinal — todas, ou só elas, como na troca de TV em que a tela antiga
+    é excluída antes de a nova dar sinal — volta a "aguardando instalação"
+    e sai da escolha; a escolha que já estava nele não é avisada sozinha —
+    o painel deixa de mostrá-la e o próximo salvar a apaga. Na troca de TV,
+    deixar a tela antiga Inativa (em vez de excluí-la) mantém a prova.
+    limite: rodar de novo `npm run liberar-escolhas-sem-instalacao` (RUNBOOK
+    §6.5, idempotente) quando isso acontecer; recusar a exclusão de tela que
+    já operou (409, "deixe-a Inativa") se ficar frequente — decisão do dono.
   - O vínculo com o ponto fixo existe só na HOSPEDAGEM (`local_ponto_id`),
     não no evento (D4: Móvel em ponto aguardando é hospedagem). Evento num
     estabelecimento continua com o local em texto.

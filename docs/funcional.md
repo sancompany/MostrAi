@@ -381,9 +381,11 @@ Escrito por grupo, porque o padrão se repete.
   "Sem data definida", [Definir data]/[Alterar data], só a equipe vê —,
   **Mostraí Móvel** — a alocação vinculada: unidade, rede, período, estado
   e motivo; ou "Nenhuma alocação" com [Alocar Móvel] —, horário com [Editar
-  horário]); com o ponto já instalado e o Móvel ainda alocado, o aviso
-  "Instalação fixa concluída — encerre (ou cancele) a alocação do Mostraí
-  Móvel neste ponto" (nada encerra sozinho); **Passagens do Mostraí Móvel**
+  horário]); quando a instalação fixa chega DEPOIS da alocação do Móvel
+  (ainda programada ou em curso), o aviso "Instalação fixa concluída —
+  encerre (ou cancele) a alocação do Mostraí Móvel neste ponto" (nada
+  encerra sozinho; o Móvel num ponto que já estava instalado — um evento —
+  não avisa); **Passagens do Mostraí Móvel**
   (todas as que passaram pelo ponto, de qualquer rede; some quando não há
   nenhuma); **Endereço e localização**; **Capacidade de veiculação**
   recolhida. Ponto que recebeu o Móvel não pode ser excluído (409: deixe as
@@ -1365,9 +1367,11 @@ e é por isso que ele entra no numerador e nunca no denominador.
 > **SUPERADO em 14/10/2026 (ADR-047), só o parágrafo acima.** Aprovado não é
 > disponível: o ponto fixo que nunca deu o 1º sinal (nenhuma tela dele chegou
 > a operar) **não é escolhível**, não aparece no site nem na contagem
-> comercial, e a escolha antiga nele foi liberada com aviso à conta. O que já
-> foi instalado e está offline, em reparo ou com o Player revogado continua
-> escolhível ("temporariamente indisponível"). A compensação desta RN — base ×
+> comercial, e a escolha antiga nele é liberada com aviso à conta pelo passo
+> pós-deploy do RUNBOOK §6.5 (o script não roda sozinho). O que já
+> foi instalado continua escolhível: offline segue "Ativo" (falta de sinal é
+> alerta, não estado do ponto); em reparo ou com o Player revogado aparece
+> "temporariamente indisponível". A compensação desta RN — base ×
 > pontos do plano ÷ pontos cobertos, teto de um sexto da hora — continua
 > exatamente igual. Texto antigo mantido como histórico.
 
@@ -1786,7 +1790,10 @@ e-mail.
 **RN-63 — O anunciante escolhe os pontos; o próprio ponto é opcional.**
 *(Estação de distribuição, 27/09/2026.)* "Onde seu anúncio aparece" lista
 cada ponto da rede com localização, estado operacional, ramo e se está
-selecionado, e o contador "X de N pontos selecionados" (N =
+selecionado *(desde a ADR-047, 14/10/2026: só o ponto fixo VENDÁVEL — já
+instalado, alguma tela deu o 1º sinal — e as redes móveis; o aprovado que
+aguarda instalação não aparece, nem o próprio ponto da conta; o selo do card
+é "Ativo" ou "Temporariamente indisponível" — instalado, fora do ar agora)*, e o contador "X de N pontos selecionados" (N =
 `pontos_incluidos` do plano, do servidor). Desde 28/09/2026 (estação dos
 cards do cliente, ADR-029) cada ponto é um **card no molde do card de Rede >
 Pontos do admin**: foto da fachada (ou o placeholder oficial), nome com o

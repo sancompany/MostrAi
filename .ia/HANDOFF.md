@@ -21,9 +21,14 @@ mudou e não se desfaz sem contexto:
   por `pontos_moveis_hospedagens.local_ponto_id` (FK sem ON DELETE: excluir
   ponto com passagem → 409 em `deletar`). A obrigação, o POP e o saldo
   seguem da rede e da conta. A alocação vinculada sai de UMA função
-  (`movel.alocacoesVinculadas`), usada pela ficha e pela agenda. Instalado
-  com Móvel alocado → só aviso (`movel_a_encerrar`/`avisoEncerrar`, ambos
-  por `jaInstaladoSql`); nada encerra sozinho. Fim sempre obrigatório.
+  (`movel.alocacoesVinculadas`), usada pela ficha e pela agenda. Instalação
+  que chega DEPOIS da alocação → só aviso (`movel_a_encerrar`/
+  `avisoEncerrar`, ambos por `primeiraInstalacaoDesdeSql`: o 1º sinal mais
+  antigo do ponto ≥ criação da hospedagem); Móvel num ponto já instalado
+  (evento) não avisa; nada encerra sozinho. Fim sempre obrigatório.
+- O PUT da escolha não revela ponto em instalação de OUTRA conta (mesmo 400
+  do inexistente); o motivo "em instalação" só para o ponto que a conta já
+  conhece (o dela, ou escolhido antes).
 - **Motivo da alocação** (`motivo_alocacao`, lista fechada) e
   **cancelamento auditável** (`motivo_cancelamento` 1–300 + quem, em
   `encerrado_por_admin`; o 400 vem DEPOIS dos 409 de estado). O job
@@ -33,8 +38,9 @@ mudou e não se desfaz sem contexto:
   passagens / Histórico (10 encerradas, período real; cancelada nunca).
 - **D2 (dado real)**: `npm run liberar-escolhas-sem-instalacao` (ensaio) e
   `-- --aplicar` (RUNBOOK §6.5). Em produção havia 1 escolha num fixo
-  `a_instalar` sem tela. Rodar SÓ depois do deploy e do backup; conferir com
-  o retrato só-leitura (ids, contagens, md5 por conta).
+  `a_instalar` sem tela. Rodar logo depois que todas as instâncias estiverem
+  no build novo, com backup e o retrato só-leitura antes e depois (SQL no
+  RUNBOOK §6.5, passo 2); pendência PI1 em `docs/PENDENCIAS.md`.
 - Superadas (marcadas no lugar, não apagadas): RN-49 na parte "a_instalar
   conta como vaga", ADR-009 de 22/09 nas listas, P9 de 17/09, ADR-039 "só
   presente e futuro". `src/lib/pacing.js`: só o comentário (D6).

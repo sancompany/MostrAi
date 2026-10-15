@@ -1818,8 +1818,9 @@ decidiu (14/10/2026): **APROVADO não significa DISPONÍVEL**.
   "Ativar". Tela cadastrada não torna o ponto vendável. Ponto que já foi
   instalado e ficou offline, em reparo ou teve o Player revogado **não
   volta** a "aguardando instalação" (a revogação zera a chave, não o fato
-  histórico) — aparece como "temporariamente indisponível" e continua
-  escolhível como hoje.
+  histórico) e continua escolhível como hoje: offline segue "Ativo"
+  (falta de sinal é alerta, não estado do ponto); em reparo ou sem Player
+  aparece como "temporariamente indisponível".
 - A escolha que já existia em ponto nunca instalado é **liberada** (D2):
   script explícito pós-migration (`scripts/liberar-escolhas-sem-instalacao.js`),
   pela prova "nenhuma tela com 1º sinal" — nunca por id fixo, nunca só por
@@ -1840,7 +1841,9 @@ decidiu (14/10/2026): **APROVADO não significa DISPONÍVEL**.
   antes). "Sem data definida" existe só para o PONTO elegível (data prevista
   da instalação), nunca para uma hospedagem.
 - Instalação fixa concluída com Móvel ainda alocado: **nada encerra
-  sozinho**; o Admin vê o aviso "encerre a alocação"; históricos preservados.
+  sozinho**; o Admin vê o aviso "encerre a alocação" — só quando a primeira
+  instalação do ponto veio DEPOIS da alocação (o Móvel num ponto já
+  instalado, num evento, não é provisório); históricos preservados.
 - Cancelamento manual exige motivo (1 a 300 caracteres) e grava quem
   cancelou; o cancelado fica visível ao Admin e nunca aparece ao cliente
   como próxima passagem.

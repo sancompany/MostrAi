@@ -254,6 +254,20 @@ instâncias, uma antiga por alguns minutos) não precisa de nada: a linha que a
 antiga pegar volta pra fila e a nova manda na tentativa seguinte — só não
 dispare um comunicado no meio do deploy.
 
+**Reverter para antes da estação ADR-047 (migration 123, 14/10/2026):**
+reverter só o CÓDIGO, nunca `DROP` das colunas. A 123 é aditiva e o código
+antigo sobe contra o banco novo, mas: (a) ele volta a listar e aceitar na
+escolha o ponto aprovado que nunca foi instalado (RN-49 antiga); (b)
+excluir um ponto fixo que recebeu o Móvel dá 500 nele (a FK
+`local_ponto_id` é sem `ON DELETE`) — não exclua, nada se perde; (c) ele
+não limpa `local_ponto_id` ao trocar o local de uma hospedagem — não edite
+o local de hospedagem vinculada enquanto o código antigo estiver no ar. Ao
+voltar o código novo, rode o §6.5 de novo (ensaio primeiro). `DROP` das
+colunas apagaria a auditoria do cancelamento (motivo e quem) e o vínculo das
+passagens; se um dia for inevitável, apague na mesma transação a linha
+`123_instalacao_prevista_e_vinculo_movel.sql` de `schema_migrations`, senão
+o redeploy do código novo não reaplica a migration e quebra.
+
 **Migration não se reverte por redeploy.** As migrations são aditivas
 (`CONSTRAINTS.md`), então voltar o código sem voltar o banco costuma
 funcionar: a coluna nova fica lá, sem uso. Se a migration foi destrutiva — o
@@ -570,23 +584,52 @@ atualizações. Ele decide pela prova "nenhuma tela do ponto deu o 1º sinal"
 ponto já instalado — mesmo offline, em reparo ou com o Player revogado — e na
 rede móvel não é tocada. Não mexe em saldo, obrigação, cobrança nem crédito.
 
+**Quando:** logo depois que TODAS as instâncias do serviço estiverem no
+build novo (`/health` e o SHA do build conferidos) e antes de anunciar o
+deploy. Antes disso, uma instância antiga ainda aceitaria de volta a escolha
+liberada (RN-49 antiga); muito depois, o próximo "salvar" do painel novo
+apaga a escolha escondida SEM o aviso (o script passa a achar 0). Rodar
+fora desse intervalo não quebra nada — é o aviso que se perde.
+
 1. **Backup antes** (o passo apaga linhas): job `backup` no Northflank
    (§5) e conferir que a execução terminou com sucesso.
-2. **Ver o que sairia** (só leitura — a transação é desfeita):
+2. **Retrato antes** (só leitura): para cada conta que o ensaio do passo 3
+   listar, a contagem e o md5 das linhas de dinheiro e de entrega — guarde a
+   saída:
+   ```sql
+   BEGIN READ ONLY;
+   SELECT t, count(*), md5(COALESCE(string_agg(x, '|' ORDER BY x), ''))
+     FROM (SELECT 'assinaturas' t, a::text x FROM assinaturas a WHERE anunciante_id = :conta
+           UNION ALL SELECT 'cobrancas_confirmadas', c::text FROM cobrancas_confirmadas c WHERE anunciante_id = :conta
+           UNION ALL SELECT 'ciclos_contratados', c::text FROM ciclos_contratados c WHERE anunciante_id = :conta
+           UNION ALL SELECT 'obrigacoes_veiculacao', o::text FROM obrigacoes_veiculacao o WHERE anunciante_id = :conta
+           UNION ALL SELECT 'creditos_ledger', l::text FROM creditos_ledger l WHERE anunciante_id = :conta
+           UNION ALL SELECT 'saldo_hospedagem_lancamentos', s::text FROM saldo_hospedagem_lancamentos s WHERE conta_id = :conta
+           UNION ALL SELECT 'estornos', e::text FROM estornos e WHERE anunciante_id = :conta) r
+    GROUP BY t ORDER BY t;
+   ROLLBACK;
+   ```
+   (`obrigacoes_veiculacao` pode mudar sozinha entre os dois retratos se a
+   apuração da hora rodar no meio — compare a linha, não só o md5.)
+3. **Ver o que sairia** (só leitura — a transação é desfeita):
    `npm run liberar-escolhas-sem-instalacao` no container do serviço. A saída
    é JSON só com ids e contagens (`anunciante_id`, `ponto_id`, total).
    Conferir no Admin que cada ponto listado está mesmo "Aguardando
    instalação".
-3. **Aplicar**: `npm run liberar-escolhas-sem-instalacao -- --aplicar`. Apaga
+4. **Aplicar**: `npm run liberar-escolhas-sem-instalacao -- --aplicar`. Apaga
    exatamente os pares listados e grava, na mesma transação, a notificação
    `ESCOLHA_LIBERADA` de cada conta. Idempotente: rodar de novo encontra 0.
-4. **Conferir** (só leitura): a escolha saiu, a notificação existe, e a
-   conta consegue escolher outro ponto no lugar (o painel mostra a posição
-   livre). Saldo, obrigação, cobranças e créditos da conta iguais aos de
-   antes.
+   **Guarde a saída JSON**: é o único registro dos pares que saíram.
+5. **Conferir** (só leitura): a escolha saiu, a notificação existe, a conta
+   tem a posição livre (escolhidos < pontos do plano) e o retrato do passo 2,
+   refeito, é igual.
 
-Reverter: restaurar o backup do passo 1 (§5) — o script não tem desfazer,
-porque a escolha num ponto não instalado não deve voltar.
+Reverter (só se a liberação foi um erro): reinserir os pares da saída do
+passo 4 — `INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES
+(…) ON CONFLICT DO NOTHING` — e marcar como lida a `ESCOLHA_LIBERADA`
+correspondente. Nunca restaurar o backup inteiro por cima de produção para
+recuperar uma escolha: devolveria o banco de dinheiro ao instante do backup
+(§5). O backup do passo 1 serve para consulta, restaurado num banco à parte.
 
 ## 7. Incidente com dado pessoal
 

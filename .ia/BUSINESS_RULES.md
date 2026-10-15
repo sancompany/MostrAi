@@ -113,9 +113,10 @@ migration `064_playlist_hora_congelada.sql`.
   **SUPERADO em 14/10/2026 (ADR-047):** só é escolhível o ponto fixo
   **vendável** — em operação ou com alguma tela que já deu o 1º sinal
   (`fixoVendavelSql`). Ponto aprovado que nunca foi instalado não entra na
-  escolha, no site nem na contagem comercial; o já instalado que está
-  offline, em reparo ou com o Player revogado continua escolhível. A
-  compensação abaixo não muda.
+  escolha, no site nem na contagem comercial; o já instalado continua
+  escolhível — offline segue "Ativo" (alerta, não estado); em reparo ou com
+  o Player revogado, "Temporariamente indisponível". A compensação abaixo
+  não muda.
 - **Compensação**: enquanto a rede tiver menos pontos em operação do que o
   plano promete, o tempo dos pontos que faltam volta pros que veiculam:
   `segundos por hora em cada ponto = base × (pontos do plano ÷ pontos

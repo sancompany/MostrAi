@@ -243,7 +243,7 @@ Superfície institucional pública do Mostraí: 6 páginas HTML (`/index.html`, 
   · ← menu "Onde estamos?"
   · **cliente sabe:** Os rótulos são curtos mas claros. Pontos em `reparo` entram na lista e no total implícito mas não têm contador próprio, e nenhum texto diz isso.
 
-**pontos.page.js — grade de pontos (.ponto-card) + link do mapa** — Um card por ponto com badge de status (STATUS_LABEL local: ativo→"Ativo"/badge-ok, aguardando_instalacao→"Em construção"/badge-pendente, reparo→"Em reparo"/badge-err), nome e "cidade — endereço" escapados, e o link "📍 Ver no mapa" para google.com/maps/search…
+**pontos.page.js — grade de pontos (.ponto-card) + link do mapa** — Um card por ponto com badge de status (STATUS_LABEL local: em_operacao→"No ar"/badge-ok; a_instalar e aguardando_primeiro_sinal — que só chegam se o ponto já foi instalado, ADR-047 — →"Temporariamente fora do ar"/badge-pendente; em_reparo→"Em reparo"/badge-pendente; qualquer outro → "Temporariamente fora do ar"), nome e "cidade — endereço" escapados, e o link "📍 Ver no mapa" para google.com/maps/search…
   · `public/pontos.page.js` · rotas: `GET /pontos` · papéis: visitante anônimo
   · ← /pontos.html  → https://www.google.com/maps/search/?api=1&query=...
   · **cliente sabe:** "Em construção" e "Em reparo" aparecem como badge sem legenda; o lead da página explica só o primeiro ("Pontos em instalação entram na sua cobertura assim que forem ligados, sem você pagar nada a…
@@ -556,7 +556,7 @@ Papel PONTO (dono do comércio que cede a parede) no Mostraí. Caminho completo:
   · ← aba 'Opções de comodato' do admin  → radios de escolha em convite.page.js e modos.js
   · **cliente sabe:** Só dentro dos dois formulários que desenham os radios. Não existe página pública que liste as opções com preço — /comodato.html descreve as duas modalidades em prosa e remete 'aos valores exibidos no…
 
-**Vitrine pública 'Onde estamos'** — listarPublicos() devolve id, nome, cidade, endereco, status e categoria_nome dos pontos com status IN ('ativo','aguardando_instalacao','reparo') — nunca responsavel_contato. somaFluxoMensal() soma fluxo_estimado_mensal só dos ativos e devolve null só em zero (19/09/2026 — o piso de 1.000 pra exibir saiu, pedido do dono)…
+**Vitrine pública 'Onde estamos'** — listarPublicos() devolve id, nome, cidade, endereco, status e categoria_nome do ponto fixo VENDÁVEL (fixoVendavelSql: já deu o 1º sinal — ADR-047; o aprovado que nunca foi instalado não entra) e das redes móveis — nunca responsavel_contato. somaFluxoMensal() soma fluxo_estimado_mensal só dos ativos e devolve null só em zero (19/09/2026 — o piso de 1.000 pra exibir saiu, pedido do dono)…
   · `public/pontos.html`, `public/pontos.page.js`, `src/pontos/repository.js` · rotas: `GET /pontos`, `GET /pontos/fluxo` · papéis: público
   · ← menu público
   · **cliente sabe:** Não avisado. O nome e o endereço do comércio viram página pública indexável assim que o status sai de 'lead' — inclusive em 'aguardando_instalacao', ou seja, antes de qualquer tela existir no local.…
@@ -1391,7 +1391,7 @@ API do Mostraí — 112 declarações `router.<método>` em 12 `src/**/routes.js
   · `src/server.js:142`, `public/admin/index.page.js:288` · rotas: `/admin/logout` · papéis: publico
   · ← public/admin/index.page.js:288
 
-**GET /pontos** — Pontos ativos para a página "Onde estamos" (repo.listarPublicos).
+**GET /pontos** — Pontos fixos vendáveis (já instalados — ADR-047) e redes móveis para a página "Onde estamos" (repo.listarPublicos).
   · `src/pontos/routes.js:16`, `public/pontos.page.js:1` · rotas: `/pontos` · papéis: publico
   · ← public/pontos.page.js:1
 
@@ -2019,7 +2019,7 @@ Superfície informativa pública do Mostraí: 10 páginas HTML em `/home/user/Mo
   · ← index.html (2 CTAs) / MENU_PUBLICO 'Planos' / menu da conta logada (layout.js navConta)  → /anunciante/cadastro.html?plano=ID / /anunciante/painel.html?plano=ID
   · **cliente sabe:** Preço, frequência e ciclo ficam claros. Fica fora: limite de criativos, preço travado nos planos normais, imutabilidade do plano assinado, cancelamento, nota fiscal, atraso e arrependimento.
 
-**pontos.html — onde estamos** — RESPONDE: onde ficam as telas hoje (cards com nome, cidade, endereço e link para o Google Maps, montados em `pontos.page.js` a partir de `GET /pontos`), quantos pontos estão ativos, quantos em instalação, quantas cidades, e quantas pessoas por mês a rede…
+**pontos.html — onde estamos** — RESPONDE: onde ficam as telas hoje (cards com nome, cidade, endereço e link para o Google Maps, montados em `pontos.page.js` a partir de `GET /pontos`), quantos pontos estão ativos e quantas cidades (o número "em instalação" saiu com a ADR-047: o aprovado que nunca foi instalado não aparece nem conta), e quantas pessoas por mês a rede…
   · `public/pontos.html`, `public/pontos.page.js`, `src/pontos/repository.js` · rotas: `GET /pontos`, `GET /pontos/fluxo` · papéis: visitante, anunciante, ponto
   · ← MENU_PUBLICO 'Onde estamos?'  → /seja-um-ponto.html / Google Maps (link externo por ponto)
   · **cliente sabe:** O visitante vê a rede real e a prova social. Recebe uma promessa de não pagar por exibição não entregue que o produto não cumpre e que os Termos negam.
