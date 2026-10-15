@@ -387,8 +387,8 @@ const apiAnun = (caminho, metodo = 'GET', corpo) =>
   );
 const recusa = await apiAnun('/anunciantes/me/pontos', 'PUT', { pontos: [Number(REDE), Number(FIXO)] });
 check(
-  'o estabelecimento da passagem não é escolhível nem pela API (400 com o motivo)',
-  recusa.status === 400 && /em instalação/.test(recusa.json?.erro || ''),
+  'o estabelecimento da passagem não é escolhível nem pela API (400, sem revelar que ele aguarda instalação)',
+  recusa.status === 400 && /não existe na rede/.test(recusa.json?.erro || '') && !/instala/i.test(recusa.json?.erro || ''),
   JSON.stringify(recusa),
 );
 const disponiveis = JSON.stringify((await apiAnun('/anunciantes/me/pontos-disponiveis')).json);
@@ -480,7 +480,17 @@ check(
     );
   }),
 );
-check('1280: sem rolagem lateral com a agenda aberta', await semRolagemLateral(anun));
+check(
+  '1280: sem rolagem lateral com a agenda aberta — na página e dentro do diálogo',
+  (await semRolagemLateral(anun)) &&
+    (await dlg.evaluate(
+      (el) =>
+        el.scrollWidth <= el.clientWidth + 1 &&
+        [...el.querySelectorAll('.agenda-movel-item')].every(
+          (i) => i.getBoundingClientRect().right <= el.getBoundingClientRect().right + 0.5,
+        ),
+    )),
+);
 await shot(dlg, 'completa-1280');
 // Teclado: Esc fecha; o "Ver agenda" abre pelo Enter e o foco vai para o diálogo.
 await anun.keyboard.press('Escape');

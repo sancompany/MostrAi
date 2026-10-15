@@ -3669,7 +3669,9 @@ function tabelaAguardando(lista) {
         attrs: `data-aguardando-ponto="${l.pontoId}"`,
         celulas: [
           [`<a href="#rede/pontos/${l.pontoId}">${esc(l.nome)}</a>`],
-          [l.categoria ? esc(l.categoria.nome) : '<span class="u-dim">—</span>'],
+          // O ramo como a grade e a ficha mostram (categoria, senão a livre,
+          // senão o segmento) — decidido no servidor.
+          [l.segmento ? esc(l.segmento) : '<span class="u-dim">—</span>'],
           [esc(window.PONTO_MOVEL.cidade(l.cidade, l.uf)), 'class="u-nowrap"'],
           [l.contaId ? `<a href="#contas/contas/${l.contaId}">${esc(l.conta)}</a>` : naoInformado('Sem conta')],
           [esc(textoDaPrevisao(l.instalacaoPrevistaEm)), 'class="u-nowrap" data-previsao'],
@@ -5707,7 +5709,9 @@ async function carregarPassagens(alvo, pontoId) {
   if (!todas.length || !alvo.isConnected) return;
   alvo.querySelector('ul').innerHTML = todas
     .map((c) => {
-      const [rotulo, classe] = ESTADO_COMPROMISSO[c.estado] || [c.estado, 'badge-neutro'];
+      // O mesmo rótulo da linha "Mostraí Móvel" logo acima, pelo estado cru
+      // da hospedagem ("Programada", "Em andamento") — uma passagem, um nome.
+      const [rotulo, classe] = estadoCru(c.estadoOriginal || c.estado);
       const porque = porqueDoCompromisso(c, c.estado === 'cancelado');
       return `<li class="passagem" data-passagem="${esc(c.ref)}">
           <span class="passagem-linha"><span class="badge ${classe}">${rotulo}</span> ${esc(window.periodoComHora(c.inicio, c.fim))} · tela <b class="u-nowrap">${codigosDasTelas(c.telas)}</b></span>

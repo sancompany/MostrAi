@@ -421,7 +421,7 @@ check(
 check('ficha: link para a rede', (await admin.locator(`[data-movel-alocacao] a[href="#rede/pontos/${REDE}"]`).count()) === 1);
 check('cabeçalho: [Alocar Móvel] sumiu (já alocado)', !(await admin.locator('#pontoCabecalho [data-alocar-movel]').count()));
 await admin.waitForSelector('[data-passagens]:not([hidden])', { timeout: 10000 });
-check('passagens: a hospedagem programada, com o motivo', /Programado/.test(await texto('[data-passagens]')) && /Motivo: Aguardando instalação/.test(await texto('[data-passagens]')));
+check('passagens: a hospedagem programada (o mesmo rótulo da linha Mostraí Móvel), com o motivo', /Programada/.test(await texto('[data-passagens]')) && /Motivo: Aguardando instalação/.test(await texto('[data-passagens]')));
 // Termo físico + entrega → em andamento (a instalação fixa vai chegar com o
 // Móvel ATIVO no ponto).
 const termo = await apiAdmin(`/admin/pontos/${REDE}/hospedagens/${HP}/termo-fisico`, 'PUT', { assinado: true });
@@ -637,7 +637,7 @@ check(
 );
 check('Mostraí Móvel: a unidade em andamento continua na ficha', (await texto('[data-movel-alocacao]')).includes(codigo(M1)) && /Em andamento/.test(await texto('[data-movel-alocacao]')));
 await admin.waitForSelector('[data-passagens]:not([hidden])', { timeout: 10000 });
-check('passagens: a hospedagem "Agora"', /Agora/.test(await texto('[data-passagens]')));
+check('passagens: a hospedagem "Em andamento" (o mesmo rótulo da linha Mostraí Móvel)', /Em andamento/.test(await texto('[data-passagens]')));
 await shot(admin.locator('#conteudo'), 'ficha-instalada-aviso');
 await irAdmin(`#rede/pontos/${REDE}`, `[data-compromisso="h${HP}"]`);
 check(
@@ -674,9 +674,20 @@ await irAdmin('#visaogeral', '.status-resumo .status-contagem');
 check('390: Visão geral sem rolagem lateral', await semRolagemLateral(admin));
 await shot(admin.locator('.coluna-operacional'), 'visao-geral-390');
 await abrirAgenda();
+// A página não rola de lado E nada transborda dentro do modal: o <dialog>
+// fica na camada de cima e o documentElement não enxerga o que vaza nele.
+const semRolagemNoModal = () =>
+  modal().evaluate((dlg) =>
+    [...dlg.querySelectorAll('.modal-corpo, [data-agenda-corpo], .tabela-rolagem')].every(
+      (e) => e.scrollWidth <= e.clientWidth + 1,
+    ),
+  );
 for (const id of ['agora', 'proximos', 'aguardando', 'historico']) {
   await aba(id);
-  check(`390: agenda (${id}) sem rolagem lateral`, await semRolagemLateral(admin));
+  check(
+    `390: agenda (${id}) sem rolagem lateral — na página e dentro do modal`,
+    (await semRolagemLateral(admin)) && (await semRolagemNoModal()),
+  );
 }
 // No celular a linha empilha: Previsão, Móvel e a ação à vista, sem rolar a
 // tabela de lado (antes, a 390 px, só Ponto/Categoria/Cidade/Conta).
@@ -702,6 +713,12 @@ check(
     (await dentroDoModal('[data-agenda-aguardando] [data-previsao], [data-agenda-aguardando] [data-movel], [data-agenda-aguardando] [data-alocar-movel]')),
 );
 await shot(modal(), 'agenda-390');
+await aba('historico');
+check(
+  '390: Histórico — a linha da cancelada (motivo e quem) à vista, sem rolar a tabela de lado',
+  await dentroDoModal('[data-agenda-admin] td'),
+);
+await shot(modal(), 'agenda-historico-390');
 await modal().locator('[data-fechar]').last().click();
 await irAdmin(`#rede/pontos/${REDE}`, `[data-compromisso="h${HP}"]`);
 check('390: ficha da rede sem rolagem lateral', await semRolagemLateral(admin));

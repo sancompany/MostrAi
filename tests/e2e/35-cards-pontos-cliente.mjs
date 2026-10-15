@@ -619,6 +619,9 @@ for (const [nome, largura, altura, esperadas] of [
 console.log('== site "Onde estamos": mesma régua da escolha ==');
 {
   const ctx = await navegador.newContext({ viewport: { width: 1280, height: 900 } });
+  // O mapa do Google fica de fora, como no resto do roteiro: o teste não
+  // depende de rede externa.
+  await ctx.route(/google\.com\/maps/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: 'mapa' }));
   const s = await ctx.newPage();
   s.on('pageerror', (e) => erros.push(`[onde-estamos] pageerror: ${e.message}`));
   s.on('console', (m) => {

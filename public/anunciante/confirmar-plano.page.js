@@ -6,8 +6,9 @@ let ANUNCIANTE = null;
 // concentram nos pontos já ligados (o que não couber vai pro saldo de
 // veiculação). Quem chama decide se
 // mostra (ver limite de 10 pontos em montarConfirmacaoPedido).
-// `/pontos` só traz ponto já instalado (ADR-047) — por isso "na rede", não
-// "cadastrado": o aprovado que aguarda instalação não entra na conta.
+// `/pontos` só traz o fixo já instalado (ADR-047) e as redes móveis — por
+// isso "na rede", não "cadastrado": o aprovado que aguarda instalação não
+// entra na conta.
 function montarAvisoRede(plano, pontos) {
   const naRede = pontos.length;
   const veiculando = pontos.filter((p) => p.status === 'em_operacao').length;
