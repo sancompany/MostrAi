@@ -622,3 +622,24 @@ sem nada do outro lado para creditar.
   documento: com o runbook e sem falar com quem construiu, faz um deploy
   trivial, reverte, e acha a data de vencimento do domínio. Onde travar, o
   runbook está incompleto.
+
+---
+
+## 11. Trimundi (projeto hospedado nesta aplicação)
+
+A ticketeira Trimundi é outro projeto da San & Co. e mora neste repositório
+e neste serviço, com **banco próprio** — nunca o da Mostraí
+(`docs/trimundi/README.md`).
+
+**Hoje (09/11/2026) a Trimundi não tem código no ar.** A Etapa 0 é só
+documento. Nada nesta seção opera algo em produção.
+
+À medida que o código entrar, esta seção ganha, na mesma tarefa:
+- como ligar e desligar o módulo, que fica desligado sem o banco dele;
+- como aplicar as migrations dele;
+- backup e restauração do banco dele;
+- o que fazer se a chave de assinatura do QR vazar;
+- como desativar um operador às pressas.
+
+O que precisa existir antes de ligar em produção está em
+`docs/trimundi/pendencias.md`.

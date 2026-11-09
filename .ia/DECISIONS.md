@@ -1787,3 +1787,46 @@ nada. E o `/estornar` do San Checkout não alcança cobrança de assinatura
 - Janela contada da hora em que a Mostraí gravou, quando o PSP dá a hora.
 - Polling para "acelerar" a ativação: a demora (~110 s) é da Asaas.
 - Cancelar a assinatura junto com o estorno.
+
+## ADR-048 — A Trimundi mora na aplicação da Mostraí, com banco próprio (09/11/2026)
+
+> Numeração: o ADR-047 está na branch `claude/busy-noether-hheir2`, ainda
+> fora da `main`. Este pula para 048 para não colidir quando ela entrar.
+
+**Contexto.**
+- O dono pediu a fundação da Trimundi (ticketeira) dentro do Admin da
+  Mostraí:
+  - um item "Eventos" com cinco funções;
+  - a tela de login da Mostraí para os operadores de check-in;
+  - a rota pública `/ticket/:evento/:edicao` no mesmo domínio.
+- Pela skill `classificar`, a Trimundi é **projeto próprio** (os quatro
+  testes, em `docs/trimundi/specs/2026-11-09-trimundi-fundacao.md` §6). E
+  projeto tem banco próprio, sem exceção.
+
+**Decisão.**
+- **Módulo com banco próprio.** A Trimundi é um módulo desta aplicação
+  (`src/trimundi/`, `public/admin/trimundi.js`, `/admin/trimundi/*`,
+  `/ticket/*`), com banco próprio (`TRIMUNDI_DATABASE_URL`) e migrations
+  próprias (`src/trimundi/db/migrations/`, numeração própria).
+- **Desligado sem banco.** Sem o banco configurado, o módulo fica desligado:
+  as rotas dele respondem 503 e o login não procura operador.
+- **Uma rota da Mostraí muda.** É `POST /anunciantes/login`: um e-mail sem
+  conta da Mostraí pode ser de operador da Trimundi, que vai direto para
+  `/ticket/checkin`. Autorizado pelo dono, por ser mudança de autenticação.
+- **Prefixo `trimundi` em tudo**, porque dois nomes já têm dono na Mostraí:
+  - "eventos": a tabela de métrica, o canal `GET /admin/eventos`,
+    `public/eventos.js` e o atalho `#eventos`;
+  - "operador": `src/lib/operador.js`, que é quem opera o Admin.
+
+**Consequências.**
+- Documentos próprios em `docs/trimundi/`.
+- Exceção registrada nos dois `CONSTRAINTS.md`.
+- Até a decisão do serviço próprio, um pico de venda divide processo e
+  deploy com a Mostraí.
+
+**Não fazer sem o dono.**
+- Criar tabela da Trimundi no banco da Mostraí "para simplificar".
+- Ler tabela de um projeto a partir do outro: chama-se a função do módulo
+  dono do dado.
+- Pôr a API da Trimundi em `/admin/eventos*`.
+- Mudar o login da Mostraí além do caminho do operador.

@@ -1,6 +1,39 @@
 # Current Handoff
 
 ## Updated
+2026-11-09 — **Produção conferida estável + Trimundi, Etapa 0 (só
+documentos).** Branch `claude/beautiful-faraday-cjq1nt`, nascida da `main`
+(= produção = `f344882`); ela **não** contém a `busy-noether`.
+- **Produção, só leitura.** Nada foi alterado.
+  - Instâncias: 2 de pé desde 13/10, sem reinício e sem `uncaughtException`;
+    memória estável em ~13,6 %.
+  - Banco: 3 quedas pontuais de conexão nos processadores de fundo (25, 26
+    e 29/10), recuperadas sozinhas.
+  - Filas: webhooks, e-mail e pendências vazias.
+  - Jobs verdes: conciliação diária, backup de 08/11 (116 KB), apuração de
+    01/11.
+  - Certificado da Cloudflare válido até 28/01/2027.
+  - Nenhuma assinatura paga ativa.
+  - Telas: a do ponto 10 ficou desligada no horário de sexta e sábado
+    (problema físico); a do Móvel está parada desde 20/10 (esperado).
+- **`claude/busy-noether-hheir2`** segue com 34 commits fora da `main`
+  (ADR-047; migration 123, não aplicada em produção) e sem PR. Não misturar
+  com a Trimundi.
+- **Trimundi** (ticketeira, projeto próprio, hospedada aqui com banco
+  próprio, ADR-048). A Etapa 0 escreveu:
+  - `docs/trimundi/`: spec, CONSTRAINTS, funcional, modelo de dados, api,
+    inventário, pendências, próximas versões e README;
+  - a exceção e o limite no `CONSTRAINTS.md` da raiz;
+  - o `RUNBOOK.md` §11;
+  - os ponteiros no `CLAUDE.md` e no `AGENTS.md`.
+  
+  Nenhum código ainda.
+- **Próximo:** Etapa 1 (banco próprio, migrations, RLS, módulo desligado
+  sem configuração), depois de o dono confirmar D1 (métrica) e D2
+  (retenção) em `docs/trimundi/pendencias.md`. Etapas: spec §11.
+- **Não fazer:** merge na `main` sem autorização (publica em produção),
+  migration em produção, deploy.
+
 2026-10-13 — **Review-Master, Ciclo 1, lote 1: 1 CRÍTICO + 10 ALTOS + 1
 MÉDIO corrigidos** (migration 122, aditiva; branch
 `claude/busy-noether-hheir2`, 15 commits sobre `48d6030`; PR do lote 1 a
