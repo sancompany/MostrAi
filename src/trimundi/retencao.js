@@ -20,6 +20,8 @@ const PRAZOS_PROVISORIOS = Object.freeze({
   compradoresDiasAposPedido: 5 * 365,
   // Operador desativado: dias após a desativação.
   operadoresDiasAposDesativar: 182,
+  // E-mail enviado: endereço e corpo (o corpo leva o link do pedido).
+  emailsDiasAposEnvio: 90,
 });
 
 // O que venceria hoje pelos prazos provisórios — só conta, não muda nada.
@@ -35,8 +37,16 @@ async function vencidos(prazos = PRAZOS_PROVISORIOS) {
                             AND COALESCE(p.pago_em, p.criado_em) >= now() - make_interval(days => $2)))::int AS compradores,
        (SELECT count(*) FROM operadores o
          WHERE o.anonimizado_em IS NULL AND o.status = 'desativado'
-           AND o.desativado_em < now() - make_interval(days => $3))::int AS operadores`,
-    [prazos.participantesDiasAposEdicao, prazos.compradoresDiasAposPedido, prazos.operadoresDiasAposDesativar],
+           AND o.desativado_em < now() - make_interval(days => $3))::int AS operadores,
+       (SELECT count(*) FROM emails
+         WHERE status = 'enviado' AND texto <> '[removido]'
+           AND enviado_em < now() - make_interval(days => $4))::int AS emails`,
+    [
+      prazos.participantesDiasAposEdicao,
+      prazos.compradoresDiasAposPedido,
+      prazos.operadoresDiasAposDesativar,
+      prazos.emailsDiasAposEnvio,
+    ],
   );
   return rows[0];
 }
@@ -67,7 +77,18 @@ async function anonimizarVencidos({ confirmar = false, prazos = PRAZOS_PROVISORI
         WHERE anonimizado_em IS NULL AND status = 'desativado' AND desativado_em < now() - make_interval(days => $1)`,
       [prazos.operadoresDiasAposDesativar],
     );
-    const feito = { ensaio: false, participantes: p.rowCount, compradores: c.rowCount, operadores: o.rowCount };
+    const e = await cliente.query(
+      `UPDATE emails SET para = '[removido]', texto = '[removido]'
+        WHERE status = 'enviado' AND texto <> '[removido]' AND enviado_em < now() - make_interval(days => $1)`,
+      [prazos.emailsDiasAposEnvio],
+    );
+    const feito = {
+      ensaio: false,
+      participantes: p.rowCount,
+      compradores: c.rowCount,
+      operadores: o.rowCount,
+      emails: e.rowCount,
+    };
     await auditar(cliente, autor || { autor: 'retencao-manual' }, 'anonimizacao', 'retencao', null, feito);
     return feito;
   });
@@ -81,7 +102,7 @@ if (require.main === module) {
     .then(async (r) => {
       console.log(
         `trimundi: retenção (prazos PROVISÓRIOS) — ${r.ensaio ? 'ensaio, nada mudou' : 'anonimizado'}: ` +
-          `${r.participantes} participante(s), ${r.compradores} comprador(es), ${r.operadores} operador(es)`,
+          `${r.participantes} participante(s), ${r.compradores} comprador(es), ${r.operadores} operador(es), ${r.emails} e-mail(s)`,
       );
       await encerrar();
     })

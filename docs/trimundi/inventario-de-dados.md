@@ -30,7 +30,7 @@ advogado. Não é parecer jurídico.
 | Histórico do Admin: usuário do Admin e e-mail do Cloudflare Access de quem agiu | administrador | quem fez o quê | `auditoria` | — | 5 anos | não se apaga no prazo; o registro não carrega dado de participante | legítimo interesse |
 | Imagens da edição (banner e galeria) | administrador | divulgar a edição | `edicao_imagens` + armazenamento próprio | público (URL) | enquanto a edição existir | apagar objeto e linha | — (sem pessoa); com pessoa identificável, só com autorização de imagem dela |
 | Acesso à página do pedido: só o sha256 do token | sistema | abrir o pedido pelo link | `pedido_acessos` | — | junto do pedido | revogável (`revogado_em`) | execução de contrato |
-| Fila de e-mail: endereço, assunto e corpo (o corpo leva o link do pedido) | comprador | mandar o link dos ingressos | `emails` | provedor de e-mail (alias próprio, a criar) | **a definir** — proposta: limpar o corpo 90 dias após o envio (pendência de engenharia) | — | execução de contrato |
+| Fila de e-mail: endereço, assunto e corpo (o corpo leva o link do pedido) | comprador | mandar o link dos ingressos | `emails` | provedor de e-mail (alias próprio, a criar) | 90 dias após o envio (provisório, D2): endereço e corpo viram `[removido]` na retenção manual | — | execução de contrato |
 | Aviso de pagamento do Checkout (payload v2: valores, status, `chargeId`; sem documento do pagador) | San Checkout | confirmar, estornar, conciliar | `pagamento_eventos` | — | junto do pedido | — | execução de contrato; obrigação legal |
 | Eventos de medição (sem dado pessoal) | sistema | métrica (D1) | `metricas` | — | 2 anos | purga | legítimo interesse |
 | Log do servidor | sistema | operar e depurar | log do Northflank | Northflank | o do provedor | expira | legítimo interesse. CPF nunca vai para log; e-mail só mascarado (`ad***@…`) |
@@ -54,5 +54,7 @@ advogado. Não é parecer jurídico.
 - **Pedido do titular antes do prazo:** anonimiza na hora o que não tem
   guarda legal. O que tem (comprador com pagamento, até 5 anos) fica
   registrado com o motivo.
-- O fluxo do titular (canal, exportação, anonimização pelo Admin) é
-  pendência antes de dado real (`pendencias.md`).
+- **Pedido do titular:** Admin → Eventos → Participantes → **Pedido do
+  titular (LGPD)**: consulta por CPF, baixa os dados em JSON e anonimiza.
+  A auditoria guarda só um HMAC do CPF. O canal para o titular pedir
+  (alias de e-mail) ainda é pendência (`pendencias.md`).

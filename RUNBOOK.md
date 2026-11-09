@@ -658,7 +658,8 @@ usa com autorização do dono.
   servidor. Aviso que falha 6 vezes vira `morto` e aparece em Admin →
   Eventos → Participantes ("Precisa de você").
 - **Pedidos vencidos:** a cada 5 min viram `expirado`.
-- **Conciliação com o Checkout (uma vez por dia):**
+- **Conciliação com o Checkout:** roda sozinha a cada 6 h no processo
+  (só com o Checkout configurado). À mão:
   ```bash
   npm run trimundi:conciliar
   ```
@@ -680,6 +681,8 @@ usa com autorização do dono.
   conciliação (11.3); o fato entra pela mesma fila, sem duplicar.
 - **"Pago sem vaga":** o pagamento chegou depois da reserva e esgotou.
   Admin → pedido → **Reembolsar pedido**.
+- **Pedido do titular (LGPD):** Admin → Eventos → Participantes → **Pedido
+  do titular (LGPD)** → CPF → **Baixar os dados** e/ou **Anonimizar**.
 - **Backup e restauração:** pendentes até existir o banco de produção da
   Trimundi (`docs/trimundi/pendencias.md`).
 

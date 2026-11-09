@@ -47,8 +47,6 @@ funcionalidade está em `STATUS-IMPLEMENTACAO.md`.
 - [ ] **Sobra de lote encerrado** (documentada desde a Etapa 0): a cota não
   vendida do lote encerrado passa para o seguinte; no último lote, a vaga
   de reserva vencida volta para ele. Confirmar que é a regra comercial.
-- [ ] **Avisos "resolvidos" à mão** no Admin (hoje somem só quando a causa
-  some). Vale fazer agora?
 
 ## Antes de dado real (antes de usar em produção)
 
@@ -67,16 +65,17 @@ funcionalidade está em `STATUS-IMPLEMENTACAO.md`.
 
 ### Engenharia
 
-- [ ] Fluxo do titular: canal, exportação e anonimização por CPF pelo Admin
-  (a anonimização por prazo já existe em `retencao.js`).
+- [x] Exportação e anonimização por CPF pelo Admin (Participantes → **Pedido
+  do titular (LGPD)**). Falta o **canal** do titular (alias de e-mail).
+- [x] Limpeza do corpo e do endereço dos e-mails enviados depois de 90 dias
+  (provisório), na retenção manual.
 - [ ] Backup do banco da Trimundi: job no Northflank e uma restauração
   ensaiada (Lei 6).
 - [ ] Variáveis da Trimundi no Northflank (nomes em `.env.example`) e
   `npm run trimundi:migrate -- --producao-autorizada` no arranque — só com
   autorização.
-- [ ] Agendar `npm run trimundi:conciliar` uma vez por dia (API.md §4.3.6).
-- [ ] Limpar o corpo dos e-mails enviados (leva o link do pedido) depois de
-  um prazo — proposta de 90 dias (`inventario-de-dados.md`).
+- [x] Conciliação com o Checkout: roda sozinha a cada 6 h no processo,
+  quando o Checkout está configurado.
 - [x] Origem do armazenamento de imagens da Trimundi na CSP
   (`TRIMUNDI_SUPABASE_URL` em `src/server.js`).
 

@@ -32,7 +32,7 @@ credencial ou serviço que só o dono provê.
 
 | Etapa | Situação | Onde |
 |---|---|---|
-| 1 — Fundação | **feito** | `src/trimundi/{config,db,lib}`, migration `001_fundacao.sql` (30 tabelas, RLS em todas), trava contra o banco da Mostraí |
+| 1 — Fundação | **feito** | `src/trimundi/{config,db,lib}`, migrations `001_fundacao.sql` e `002_avisos_e_titular.sql` (31 tabelas, RLS em todas), trava contra o banco da Mostraí |
 | 2 — Admin "Eventos" (5 abas) | **feito** | `public/admin/trimundi.{js,css}`, rotas `src/trimundi/rotas/admin.js` |
 | 3 — Página pública `/ticket/:evento/:edição` | **feito** | `src/trimundi/paginas/edicao.html`, `public/ticket/edicao.page.js` |
 | 4 — Pedido e checkout | **feito**, Checkout real **depende de fora** | `pedidos.js`, `pagamentos.js`, `checkout/*` |
@@ -42,12 +42,12 @@ credencial ou serviço que só o dono provê.
 
 ## Funcionalidades e testes
 
-Testes: `tests/trimundi-*.test.js` — 6 arquivos, 74 casos, banco de teste
+Testes: `tests/trimundi-*.test.js` — 6 arquivos, 76 casos, banco de teste
 próprio (`<banco>_trimundi_teste`, criado pelo próprio teste).
 
 | Área | O que funciona | Teste |
 |---|---|---|
-| Fundação | banco próprio; migration idempotente com trava; RLS em toda tabela; histórico imutável (auditoria, métricas, termos, aceites, check-in, histórico do ingresso); trava contra o banco da Mostraí; produção sem segredo próprio não liga | `trimundi-fundacao` |
+| Fundação | banco próprio; migrations idempotentes com trava; RLS em toda tabela; histórico imutável (auditoria, métricas, termos, aceites, check-in, histórico do ingresso); trava contra o banco da Mostraí; produção sem segredo próprio não liga | `trimundi-fundacao` |
 | Módulo desligado | sem `TRIMUNDI_DATABASE_URL`: `/ticket/*` e Admin da Trimundi 503; login da Mostraí intacto | `trimundi-desligada` |
 | QR e códigos | `TM1.<edição>.<código>.<Ed25519>`, sem dado pessoal; qualquer alteração invalida; código curto `XXXX-XXXX` sem 0/O/1/I | `trimundi-fundacao` |
 | Estoque | lote vigente, virada automática, encerrado não reabre, sobra rola para o próximo, vaga devolvida no último lote volta para ele, pagamento tardio não vende acima | `trimundi-fundacao`, `trimundi-venda` |
@@ -59,7 +59,10 @@ próprio (`<banco>_trimundi_teste`, criado pelo próprio teste).
 | Entrega | página do pedido só com o token; QR só depois de pago; sem CPF na página; e-mail de confirmação enfileirado (nunca "enviado" sem provedor) | `trimundi-venda`, `trimundi-pagamento` |
 | Operador | e-mail da Mostraí não vira operador; ativação (mesma resposta para erro e desconhecido, 5 erros travam, vencido 410); login pela tela da Mostraí → `/ticket/checkin`; sessão não abre conta nem Admin; desativar e código novo derrubam a sessão na hora; conta da Mostraí criada depois vence | `trimundi-checkin` |
 | Check-in | QR e código digitado; válido → entrada; segunda leitura "já utilizado" com hora e operador; 6 leituras simultâneas → 1 entrada; forjado, outra edição, cancelado, bloqueado; permissão por edição (403) | `trimundi-checkin` |
-| Retenção (D2) | ensaio não muda nada; com confirmação anonimiza só o vencido e guarda o financeiro | `trimundi-fundacao` |
+| Retenção (D2) | ensaio não muda nada; com confirmação anonimiza só o vencido (participantes, compradores, operadores e o corpo dos e-mails enviados) e guarda o financeiro | `trimundi-fundacao` |
+| Pedido do titular (LGPD) | Admin consulta por CPF, baixa os dados em JSON e anonimiza o que não tem guarda legal; comprador com pagamento fica pelo prazo; auditoria sem o CPF | `trimundi-admin` |
+| Avisos | "Marcar como resolvido" com o que foi feito; um fato novo do mesmo tipo volta a aparecer | `trimundi-admin` |
+| Conciliação | roda sozinha a cada 6 h no processo, só com o Checkout configurado (e por `npm run trimundi:conciliar`) | `trimundi-pagamento` |
 
 Fluxo de ponta a ponta no navegador (Playwright, servidor local, banco
 `trimundi_dev`), sem erro de página:
@@ -75,10 +78,6 @@ Fluxo de ponta a ponta no navegador (Playwright, servidor local, banco
 
 ## Parcial
 
-- **Avisos do Admin** (sem vaga, valor divergente, pagamento duplicado,
-  reembolso a reenviar, chargeback) aparecem e levam ao pedido, mas não têm
-  "marcar como resolvido": somem quando a causa some (reembolso feito,
-  chargeback resolvido), não por clique.
 - **Pedido "pago sem vaga"** tem botão de reembolso; a devolução é pedida
   pelo Admin, não automática.
 - **Câmera:** testada no Chromium com vídeo falso (jsQR). Em iPhone real
@@ -100,7 +99,7 @@ Fluxo de ponta a ponta no navegador (Playwright, servidor local, banco
 ## Alterações no banco local
 
 - Banco `trimundi_dev` (desenvolvimento) criado e migrado com
-  `001_fundacao.sql`; contém só dado fictício do E2E.
+  `001_fundacao.sql` e `002_avisos_e_titular.sql`; contém só dado fictício do E2E.
 - Banco `mostrai_trimundi_teste` criado pelos testes.
 - **O banco da Mostraí não recebeu nenhuma tabela da Trimundi** (há teste
   que confere).
@@ -117,7 +116,7 @@ Fluxo de ponta a ponta no navegador (Playwright, servidor local, banco
 - `public/admin/index.page.js` e `index.html`: o item "Eventos".
 - `package.json`: `jsqr` passa de devDependency a dependency (servido em
   `/ticket/jsqr.js`); scripts `trimundi:*`.
-- Toda a bateria segue verde: 1169 testes (1095 da Mostraí, sem nenhum alterado, + 74 da Trimundi), lint e formato.
+- Toda a bateria segue verde: 1171 testes (1095 da Mostraí, sem nenhum alterado, + 76 da Trimundi), lint e formato.
 
 ## Como rodar localmente
 

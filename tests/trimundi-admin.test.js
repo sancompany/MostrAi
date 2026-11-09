@@ -479,3 +479,67 @@ test('pedido de teste pelo Admin (HTTP): sai com o link do pedido e o do pagamen
   assert.match(r.json.url, /^\/ticket\/pedido\//);
   assert.equal(r.json.pagamento.modo, 'checkout');
 });
+
+test('aviso marcado como resolvido some; um fato novo do mesmo tipo volta a aparecer', async () => {
+  const pronta = await apoio.edicaoPronta();
+  const p = await apoio.novoPedido(pronta, apoio.itensDe(pronta.tipo, 1));
+  await apoio.aplicarAviso(await apoio.aviso(p.pedido_id, 'confirmado', { valorComDesconto: 1 }));
+  const url = `/admin/trimundi/edicoes/${pronta.edicao.id}/avisos`;
+  const [aviso] = (await admin.get(url)).json;
+  assert.equal(aviso.tipo, 'valor_divergente');
+  assert.equal((await admin.post(`${url}/resolver`, { chave: aviso.chave })).status, 400, 'motivo obrigatório');
+  assert.equal((await admin.post(`${url}/resolver`, { chave: 'inventada', motivo: 'x' })).status, 404);
+  assert.equal(
+    (await admin.post(`${url}/resolver`, { chave: aviso.chave, motivo: 'conferido no Checkout' })).status,
+    200,
+  );
+  assert.deepEqual((await admin.get(url)).json, []);
+  await new Promise((r) => setTimeout(r, 5));
+  await apoio.aplicarAviso(await apoio.aviso(p.pedido_id, 'confirmado', { valorComDesconto: 2 }));
+  assert.equal((await admin.get(url)).json.length, 1, 'fato novo aparece');
+});
+
+test('pedido do titular (LGPD): exporta por CPF; anonimiza o participante e guarda o comprador com pagamento', async () => {
+  const pronta = await apoio.edicaoPronta();
+  const pessoa = apoio.pessoa('Titular');
+  const pago = await apoio.novoPedido(pronta, apoio.itensDe(pronta.tipo, 1), {
+    comprador: pessoa,
+    participantes: [pessoa],
+  });
+  await apoio.pagar(pago.pedido_id);
+  const exportado = await admin.post('/admin/trimundi/titular/consultar', { cpf: pessoa.cpf });
+  assert.equal(exportado.status, 200);
+  assert.equal(exportado.headers.get('cache-control'), 'no-store');
+  assert.equal(exportado.json.compradores.length, 1);
+  assert.equal(exportado.json.compradores[0].pedidos[0].status, 'pago');
+  assert.equal(exportado.json.participantes[0].nome, pessoa.nome);
+  assert.equal(
+    (await admin.post('/admin/trimundi/titular/anonimizar', { cpf: pessoa.cpf })).status,
+    400,
+    'motivo obrigatório',
+  );
+
+  const r = await admin.post('/admin/trimundi/titular/anonimizar', { cpf: pessoa.cpf, motivo: 'pedido do titular' });
+  assert.equal(r.status, 200);
+  assert.deepEqual(
+    { p: r.json.participantes, c: r.json.compradores, retidos: r.json.compradores_retidos },
+    { p: 1, c: 0, retidos: 1 },
+    'comprador com pagamento fica pelo prazo legal',
+  );
+  const depois = await admin.post('/admin/trimundi/titular/consultar', { cpf: pessoa.cpf });
+  assert.equal(depois.json.participantes.length, 0);
+  const { rows } = await consultar('SELECT status FROM ingressos WHERE pedido_id = $1', [pago.pedido_id]);
+  assert.equal(rows[0].status, 'valido', 'o ingresso continua valendo');
+  const { rows: aud } = await consultar(
+    "SELECT entidade_id, detalhe::text AS d FROM auditoria WHERE acao = 'titular_anonimizado' ORDER BY id DESC LIMIT 1",
+  );
+  assert.equal(aud[0].entidade_id.includes(pessoa.cpf), false, 'auditoria sem o CPF');
+  assert.equal(aud[0].d.includes(pessoa.cpf), false);
+
+  // Quem só tem pedido sem pagamento sai de vez.
+  const outro = apoio.pessoa('Desistente');
+  await apoio.novoPedido(pronta, apoio.itensDe(pronta.tipo, 1), { comprador: outro });
+  const r2 = await admin.post('/admin/trimundi/titular/anonimizar', { cpf: outro.cpf, motivo: 'pedido do titular' });
+  assert.equal(r2.json.compradores, 1);
+  assert.equal((await admin.post('/admin/trimundi/titular/consultar', { cpf: outro.cpf })).json.compradores.length, 0);
+});

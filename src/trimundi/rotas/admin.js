@@ -133,6 +133,19 @@ router.post('/admin/trimundi/edicoes/:id/pedido-teste', async (req, res) =>
   res.status(201).json(await require('../pedidos').criarTeste(id(req), req.body, autor(req))),
 );
 
+router.post('/admin/trimundi/edicoes/:id/avisos/resolver', async (req, res) =>
+  res.json(await participantes.resolverAviso(id(req), req.body, autor(req))),
+);
+
+// Pedido do titular (LGPD): CPF só no corpo (nunca na URL, que vai para log).
+router.post('/admin/trimundi/titular/consultar', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await require('../titular').exportar(req.body?.cpf));
+});
+router.post('/admin/trimundi/titular/anonimizar', async (req, res) =>
+  res.json(await require('../titular').anonimizar(req.body?.cpf, req.body?.motivo, autor(req))),
+);
+
 // Operadores (T5)
 router.get('/admin/trimundi/operadores', async (_req, res) => res.json(await operadores.listar()));
 router.post('/admin/trimundi/operadores', async (req, res) =>

@@ -87,6 +87,9 @@ pelo Cloudflare Access, que cobre `/admin`. Toda escrita grava o histórico
 | `POST /admin/trimundi/pedidos/:pedido/reembolsos` | `{ motivo, ingresso_id? }` → pede o estorno ao Checkout com a nossa chave; o ingresso fica bloqueado até o aviso. 409 se não pago ou nada a devolver; 502 se o Checkout recusar de vez |
 | `POST /admin/trimundi/reembolsos/:id/reenviar` | reenvia com a MESMA chave |
 | `POST /admin/trimundi/edicoes/:id/pedido-teste` | pedido de teste (RN-T19); 403 em produção |
+| `POST /admin/trimundi/edicoes/:id/avisos/resolver` | `{ chave, motivo }` → o aviso some (só ele; nada muda no pedido). Fato novo do mesmo tipo volta |
+| `POST /admin/trimundi/titular/consultar` | `{ cpf }` → tudo que a Trimundi guarda da pessoa (exportação, `no-store`). CPF só no corpo |
+| `POST /admin/trimundi/titular/anonimizar` | `{ cpf, motivo }` → anonimiza participante e comprador sem guarda legal; comprador com pagamento fica pelo prazo, informado na resposta |
 | `POST /admin/trimundi/edicoes/:id/cortesias` | `{ nome, cpf, email, categoria_id, beneficio_id, classificacao, chave }` → 201 com o ingresso. A mesma `chave` devolve o mesmo ingresso (RN-T20) |
 | `GET /admin/trimundi/ingressos/:id/qr` | `image/png`, ou `?formato=svg` (RN-T23) |
 | `POST /admin/trimundi/ingressos/:id/cancelar` | `{ motivo }`, só para cortesia → 409 para pago (RN-T21) |
@@ -199,7 +202,7 @@ URL base e webhook só dela.
   aviso de pagamento duplicado.
 - Status desconhecido → 200, ignorado.
 
-**Conciliação diária** (`npm run trimundi:conciliar`):
+**Conciliação** (a cada 6 h no processo, ou `npm run trimundi:conciliar`):
 `GET /api/checkout/cobranca/{contratanteId}/{pedidoId}` para todo pedido
 aguardando/expirado dos últimos 2 dias e todo pago com reembolso ainda
 aberto; o fato entra pela mesma fila dos avisos.

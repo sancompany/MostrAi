@@ -177,4 +177,6 @@ Os números de regra (RN-T…) são de `funcional.md`.
   idempotência; `ingresso_historico`, imutável.
 - `emails`: fila desacoplada do provedor (`aguardando_provedor` enquanto
   não há SMTP).
-- Ao todo, 30 tabelas no banco da Trimundi, todas com RLS ligado.
+- `avisos_resolvidos` (migration 002): aviso do Admin marcado como
+  resolvido; a chave inclui o momento do fato.
+- Ao todo, 31 tabelas no banco da Trimundi, todas com RLS ligado.

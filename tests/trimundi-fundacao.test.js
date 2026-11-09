@@ -80,7 +80,10 @@ test('em produção, sem segredo próprio, a Trimundi não liga; simulado e disc
 test('a migration roda de novo sem efeito (idempotente, com trava)', async () => {
   await Promise.all([migrar({ silencioso: true }), migrar({ silencioso: true })]);
   const { rows } = await consultar('SELECT count(*)::int AS n FROM schema_migrations');
-  assert.equal(rows[0].n, 1);
+  const arquivos = require('node:fs')
+    .readdirSync(require('node:path').join(__dirname, '../src/trimundi/db/migrations'))
+    .filter((f) => f.endsWith('.sql'));
+  assert.equal(rows[0].n, arquivos.length, 'uma linha por arquivo, nenhuma em dobro');
 });
 
 test('toda tabela tem RLS ligada (a API pública do Supabase não lê nada)', async () => {
@@ -280,6 +283,7 @@ test('retenção (D2): ensaio não muda nada; com confirmação, anonimiza só o
   // banco de teste pode vencer junto — por isso só se confere esta edição.
   const prazos = {
     participantesDiasAposEdicao: -1,
+    emailsDiasAposEnvio: 100000,
     compradoresDiasAposPedido: 100000,
     operadoresDiasAposDesativar: 100000,
   };
@@ -301,4 +305,5 @@ test('retenção (D2): ensaio não muda nada; com confirmação, anonimiza só o
   assert.equal(Number(rows[0].total_centavos), 5000, 'o financeiro fica');
   assert.equal(rows[0].status, 'pago');
   assert.equal(retencao.PRAZOS_PROVISORIOS.participantesDiasAposEdicao, 180);
+  assert.equal(retencao.PRAZOS_PROVISORIOS.emailsDiasAposEnvio, 90);
 });

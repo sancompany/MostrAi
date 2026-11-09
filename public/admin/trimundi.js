@@ -894,6 +894,7 @@
     el.innerHTML = `
       <div class="barra-pagina">${seletorEdicao(edicoes, ed, 'participantes')}
         <div class="tm-acoes">
+          <button type="button" class="btn ghost" id="tmTitular">Pedido do titular (LGPD)</button>
           ${estado.pedido_teste && !soLeitura ? `<button type="button" class="btn ghost" id="tmPedidoTeste" ${tipos.length ? '' : 'disabled'}>Pedido de teste</button>` : ''}
           ${soLeitura ? '' : `<button type="button" class="btn primary" id="tmCortesia" ${tipos.length ? '' : 'disabled title="Crie um ingresso antes da cortesia."'}>+ Emitir cortesia</button>`}
         </div></div>
@@ -912,7 +913,7 @@
       ${
         avisos.length
           ? `<section class="secao-pagina tm-avisos"><div class="secao-topo"><h3>Precisa de você</h3><span class="contagem">${avisos.length}</span></div>
-          <ul>${avisos.map((a) => `<li><b>${esc(a.texto || a.tipo)}</b> Pedido ${esc(a.pedido_codigo || '—')}${a.desde ? ` · ${esc(quando(a.desde))}` : ''} ${a.pedido_id ? `<button type="button" class="btn ghost mini" data-pedido="${esc(a.pedido_id)}">Abrir pedido</button>` : ''}</li>`).join('')}</ul></section>`
+          <ul>${avisos.map((a, n) => `<li><b>${esc(a.texto || a.tipo)}</b> Pedido ${esc(a.pedido_codigo || '—')}${a.desde ? ` · ${esc(quando(a.desde))}` : ''} ${a.pedido_id ? `<button type="button" class="btn ghost mini" data-pedido="${esc(a.pedido_id)}">Abrir pedido</button>` : ''} ${soLeitura ? '' : `<button type="button" class="btn ghost mini" data-resolver="${n}">Marcar como resolvido</button>`}</li>`).join('')}</ul></section>`
           : ''
       }
       <div class="tabela-caixa">
@@ -987,6 +988,98 @@
     );
     el.querySelector('#tmCortesia')?.addEventListener('click', () => modalCortesia(ed, tipos, beneficios, recarregar));
     el.querySelector('#tmPedidoTeste')?.addEventListener('click', () => modalPedidoTeste(ed, tipos, recarregar));
+    el.querySelector('#tmTitular').addEventListener('click', () => modalTitular(recarregar));
+    el.querySelectorAll('[data-resolver]').forEach((b) =>
+      b.addEventListener('click', () => modalResolverAviso(ed, avisos[Number(b.dataset.resolver)], recarregar)),
+    );
+  }
+
+  function modalResolverAviso(ed, aviso, depois) {
+    const { dlg, fechar } = abrirModal({
+      titulo: 'Marcar aviso como resolvido',
+      corpo: `<form id="tmFormResolver" novalidate><p>${esc(aviso.texto || aviso.tipo)} · Pedido ${esc(aviso.pedido_codigo || '—')}</p>
+        <p class="campo-ajuda">Só some o aviso: nada muda no pedido. Se o mesmo problema voltar a acontecer, ele aparece de novo.</p>
+        <div class="campo-grupo"><label for="tmResolverMotivo">O que foi feito</label><input id="tmResolverMotivo" name="motivo" maxlength="300" required></div>
+        <p class="form-msg" data-msg></p></form>`,
+      rodape:
+        '<button type="button" class="btn ghost" data-fechar>Voltar</button><button type="submit" form="tmFormResolver" class="btn primary">Marcar como resolvido</button>',
+    });
+    dlg.querySelector('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await travado(dlg.querySelector('[type="submit"]'), async () => {
+        const r = await escrever(`/edicoes/${ed.id}/avisos/resolver`, 'POST', {
+          chave: aviso.chave,
+          motivo: e.target.elements.motivo.value,
+        });
+        if (!r.ok) return erroNoModal(dlg, r.erro);
+        fechar();
+        toast('Aviso resolvido.');
+        depois();
+      });
+    });
+  }
+
+  // Pedido do titular (LGPD): consulta por CPF (exportação em JSON) e
+  // anonimização do que não tem guarda legal. O CPF vai só no corpo.
+  function modalTitular(depois) {
+    let ultimo = null;
+    const { dlg } = abrirModal({
+      titulo: 'Pedido do titular (LGPD)',
+      largo: true,
+      corpo: `<form id="tmFormTitular" novalidate>
+          <p class="campo-ajuda">Vale para todas as edições. Quem comprou e pagou fica guardado pelo prazo legal; o resto sai na hora.</p>
+          <div class="campos"><div class="campo-grupo"><label for="tmTitularCpf">CPF do titular</label><input id="tmTitularCpf" name="cpf" inputmode="numeric" maxlength="14" required></div></div>
+          <div class="tm-acoes"><button type="submit" class="btn ghost">Consultar</button></div>
+          <div data-resultado></div>
+          <p class="form-msg" data-msg></p></form>`,
+      rodape: '<button type="button" class="btn ghost" data-fechar>Fechar</button>',
+    });
+    const caixa = dlg.querySelector('[data-resultado]');
+    dlg.querySelector('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const cpf = e.target.elements.cpf.value;
+      await travado(e.submitter, async () => {
+        const r = await escrever('/titular/consultar', 'POST', { cpf });
+        if (!r.ok) return erroNoModal(dlg, r.erro);
+        ultimo = r.json;
+        const n = r.json.compradores.length + r.json.participantes.length;
+        caixa.innerHTML = n
+          ? `<p>${plural(r.json.compradores.length, 'cadastro de comprador', 'cadastros de comprador')} e ${plural(r.json.participantes.length, 'ingresso em nome dele', 'ingressos em nome dele')}.</p>
+            <div class="tm-acoes"><button type="button" class="btn ghost" data-baixar>Baixar os dados (JSON)</button></div>
+            <div class="campo-grupo"><label for="tmTitularMotivo">Motivo da anonimização</label><input id="tmTitularMotivo" maxlength="300" value="Pedido do titular"></div>
+            <div class="tm-acoes"><button type="button" class="btn perigo" data-anonimizar>Anonimizar</button></div>`
+          : '<p>Nada guardado com esse CPF.</p>';
+        caixa.querySelector('[data-baixar]')?.addEventListener('click', () => {
+          const url = URL.createObjectURL(new Blob([JSON.stringify(ultimo, null, 2)], { type: 'application/json' }));
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'dados-do-titular.json';
+          document.body.append(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        });
+        caixa.querySelector('[data-anonimizar]')?.addEventListener('click', async (ev) => {
+          const ok = await confirmarModal({
+            titulo: 'Anonimizar',
+            texto:
+              '<p>Apagar nome, CPF e e-mail desta pessoa de tudo que não tem guarda legal? Não dá para desfazer. Os ingressos continuam valendo pelo QR.</p>',
+            botao: 'Anonimizar',
+            perigo: true,
+          });
+          if (!ok) return;
+          await travado(ev.currentTarget, async () => {
+            const a = await escrever('/titular/anonimizar', 'POST', {
+              cpf,
+              motivo: caixa.querySelector('#tmTitularMotivo').value,
+            });
+            if (!a.ok) return erroNoModal(dlg, a.erro);
+            caixa.innerHTML = `<p class="form-msg ok">Feito: ${plural(a.json.participantes, 'ingresso anonimizado', 'ingressos anonimizados')}, ${plural(a.json.compradores, 'cadastro de comprador anonimizado', 'cadastros de comprador anonimizados')}${a.json.compradores_retidos ? `; ${plural(a.json.compradores_retidos, 'cadastro guardado', 'cadastros guardados')} pelo prazo legal (pagamento)` : ''}.</p>`;
+            depois();
+          });
+        });
+      });
+    });
   }
 
   function modalQr(id, codigo) {

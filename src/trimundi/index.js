@@ -41,8 +41,19 @@ function iniciarProcessos() {
     email.processar().catch(registrar('fila de e-mail'));
   }, 30000);
   const b = setInterval(() => pedidos.expirarVencidos().catch(registrar('expiração de pedidos')), 5 * 60000);
+  // Conciliação com o San Checkout a cada 6 h (API.md §4.3.6 pede ao menos
+  // uma vez por dia): acha pagamento ou estorno cujo aviso se perdeu. Só com
+  // o Checkout configurado; reaplicar não duplica nada (evento_id próprio).
+  const conciliar = () => {
+    if (!config.checkout().configurado) return;
+    require('./checkout/conciliar').conciliarPendentes().catch(registrar('conciliação'));
+  };
+  const c = setInterval(conciliar, 6 * 3600000);
+  const primeira = setTimeout(conciliar, 2 * 60000);
   a.unref();
   b.unref();
+  c.unref();
+  primeira.unref();
   setImmediate(() => pagamentos.processarFila().catch(registrar('fila de pagamento')));
 }
 

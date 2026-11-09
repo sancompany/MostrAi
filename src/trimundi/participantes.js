@@ -175,7 +175,8 @@ async function avisos(edicaoId) {
       `SELECT DISTINCT ON (pe.pedido_id, COALESCE(pe.resultado, pe.processamento)) pe.pedido_id,
               CASE WHEN pe.processamento = 'morto' THEN 'morto' ELSE pe.resultado END AS tipo, pe.recebido_em
          FROM pagamento_eventos pe JOIN pedidos p ON p.id = pe.pedido_id
-        WHERE p.edicao_id = $1 AND (pe.processamento = 'morto' OR pe.resultado IN ('valor_divergente', 'pagamento_duplicado', 'parcial_sem_pedido'))`,
+        WHERE p.edicao_id = $1 AND (pe.processamento = 'morto' OR pe.resultado IN ('valor_divergente', 'pagamento_duplicado', 'parcial_sem_pedido'))
+        ORDER BY pe.pedido_id, COALESCE(pe.resultado, pe.processamento), pe.recebido_em DESC`,
       [edicaoId],
     ),
     consultar(
@@ -204,11 +205,43 @@ async function avisos(edicaoId) {
     })),
     ...cb.map((x) => ({ tipo: 'chargeback', pedido_id: x.pedido_id, desde: x.recebido_em })),
   ];
-  return lista.map((a) => ({
-    ...a,
-    pedido_codigo: a.pedido_id?.slice(0, 8).toUpperCase(),
-    texto: TEXTO_AVISO[a.tipo],
-  }));
+  // A chave identifica o FATO (tipo, pedido, reembolso e quando): resolvido
+  // à mão some; um fato novo do mesmo tipo volta a aparecer.
+  const chaveDo = (a) =>
+    `${a.tipo}:${a.pedido_id || ''}:${a.reembolso_id || ''}:${a.desde ? new Date(a.desde).toISOString() : ''}`;
+  const { rows: resolvidos } = await consultar('SELECT chave FROM avisos_resolvidos WHERE edicao_id = $1', [edicaoId]);
+  const fechados = new Set(resolvidos.map((r) => r.chave));
+  return lista
+    .map((a) => ({
+      ...a,
+      chave: chaveDo(a),
+      pedido_codigo: a.pedido_id?.slice(0, 8).toUpperCase(),
+      texto: TEXTO_AVISO[a.tipo],
+    }))
+    .filter((a) => !fechados.has(a.chave));
+}
+
+// "Marcar como resolvido" (o Admin conferiu e tratou fora — no Checkout,
+// com o comprador). Só some o aviso; nada muda no pedido. Fica na auditoria.
+async function resolverAviso(edicaoId, dados, autor) {
+  const chave = v.texto(dados?.chave, { campo: 'o aviso', obrigatorio: true, max: 200 });
+  const motivo = v.texto(dados?.motivo, {
+    campo: 'o motivo',
+    obrigatorio: true,
+    max: 300,
+    mensagem: 'Diga o que foi feito.',
+  });
+  if (!(await avisos(edicaoId)).some((a) => a.chave === chave))
+    throw erro(404, 'aviso não encontrado (talvez já resolvido)');
+  return emTransacao(async (cliente) => {
+    await cliente.query(
+      `INSERT INTO avisos_resolvidos (edicao_id, chave, motivo, resolvido_por, resolvido_por_access)
+       VALUES ($1, $2, $3, $4, $5) ON CONFLICT (chave) DO NOTHING`,
+      [edicaoId, chave, motivo, autor?.autor || 'admin', autor?.autorAccess || null],
+    );
+    await auditar(cliente, autor, 'aviso_resolvido', 'edicao', edicaoId, { tipo: chave.split(':')[0] });
+    return { ok: true };
+  });
 }
 
 // QR de um ingresso para o Admin (Ver QR / Baixar QR). Cancelado não tem QR.
@@ -268,4 +301,4 @@ async function pedidoNoAdmin(pedidoId) {
   return { ...rows[0], codigo: id.slice(0, 8).toUpperCase(), itens, ingressos, reembolsos };
 }
 
-module.exports = { listar, resumo, avisos, qrDoIngresso, linkDoPedido, pedidoNoAdmin, FILTROS };
+module.exports = { listar, resumo, avisos, resolverAviso, qrDoIngresso, linkDoPedido, pedidoNoAdmin, FILTROS };
