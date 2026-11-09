@@ -1,16 +1,21 @@
-// Apoio dos testes da Trimundi. O banco é PRÓPRIO — `<banco da Mostraí>_trimundi_teste`,
-// no mesmo servidor de teste (o CI não muda: o usuário de teste é superusuário
-// e o banco nasce aqui). Ambiente fixo por arquivo, sem depender do .env
-// local: cada arquivo de teste roda no próprio processo.
+// Apoio dos testes da Trimundi. Mesmo desenho da produção: o banco de teste
+// da Mostraí, com a Trimundi no esquema próprio `trimundi` (nunca no
+// `public`). Ambiente fixo por arquivo, sem depender do .env local: cada
+// arquivo de teste roda no próprio processo.
 require('dotenv').config();
 const crypto = require('node:crypto');
-const { Client } = require('pg');
 
 const AMBIENTE = {
+  TRIMUNDI_ATIVA: '1',
+  TRIMUNDI_DATABASE_URL: '',
   TRIMUNDI_SEGREDO: 'segredo-de-teste-da-trimundi-0123456789abcdef',
   TRIMUNDI_ARMAZENAMENTO: '',
   TRIMUNDI_SUPABASE_URL: '',
   TRIMUNDI_EMAIL_FROM: '',
+  // Nunca um serviço real nos testes: sem e-mail nem Storage da Mostraí.
+  MOSTRAI_EMAIL_FROM: '',
+  SMTP_HOST: '',
+  SUPABASE_STORAGE_BUCKET: '',
   TRIMUNDI_EMAIL_CAPTURA: '',
   TRIMUNDI_PAGAMENTO_SIMULADO: '',
   TRIMUNDI_CHECKOUT_BASE_URL: 'https://checkout.teste.invalid',
@@ -24,31 +29,10 @@ process.env.ADMIN_USER ||= 'admin';
 process.env.ADMIN_PASSWORD ||= 'Admin12@teste';
 process.env.SESSION_SECRET ||= 'teste-trimundi';
 
-function urlDeTeste() {
-  const u = new URL(process.env.DATABASE_URL);
-  u.pathname = `/${decodeURIComponent(u.pathname.slice(1))}_trimundi_teste`;
-  return u.toString();
-}
-process.env.TRIMUNDI_DATABASE_URL = urlDeTeste();
-
 let preparado = null;
 function prepararBanco() {
-  if (!preparado) {
-    preparado = (async () => {
-      const nome = new URL(process.env.TRIMUNDI_DATABASE_URL).pathname.slice(1);
-      const admin = new Client({ connectionString: process.env.DATABASE_URL });
-      await admin.connect();
-      try {
-        await admin.query(`CREATE DATABASE "${nome.replace(/"/g, '')}"`);
-      } catch (err) {
-        // Outro arquivo de teste criou primeiro (rodam em paralelo).
-        if (err.code !== '42P04' && err.code !== '23505') throw err;
-      } finally {
-        await admin.end();
-      }
-      await require('../src/trimundi/db/migrate').migrar({ silencioso: true });
-    })();
-  }
+  // Os arquivos rodam em paralelo; o migrador tem trava própria.
+  if (!preparado) preparado = require('../src/trimundi/db/migrate').migrar({ silencioso: true });
   return preparado;
 }
 

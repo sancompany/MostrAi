@@ -535,7 +535,7 @@
               <td class="num">${num(l.reservados)}</td>
               <td class="num">${num(l.disponivel)}</td>
               <td>${esc(periodo(l))}</td>
-              <td>${selo(SITUACAO_LOTE[l.situacao] || ['badge-neutro', l.situacao])}${l.reaberto ? ' <span class="u-dim">(vaga devolvida)</span>' : ''}</td>
+              <td>${selo(SITUACAO_LOTE[l.situacao] || ['badge-neutro', l.situacao])}${l.situacao === 'esgotado' && !l.encerrado_em ? ' <span class="u-dim">(cheio só de reservas — reserva que vence devolve a vaga)</span>' : ''}</td>
               <td class="u-ta-r">${!soLeitura && !l.encerrado_em ? `<button type="button" class="btn perigo-sutil mini" data-encerrar-lote="${l.id}" data-numero="${l.numero}">Encerrar lote</button>` : ''}</td>
             </tr>`,
             )

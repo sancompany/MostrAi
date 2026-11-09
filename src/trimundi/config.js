@@ -5,8 +5,16 @@
 
 const producao = () => process.env.NODE_ENV === 'production';
 
+// Estrutura da Mostraí (decisão do dono, 09/11/2026): as tabelas da Trimundi
+// moram no MESMO banco da Mostraí, num esquema próprio (`trimundi`) — sem
+// custo novo e sem tocar nas tabelas da Mostraí (esquema `public`). Liga com
+// TRIMUNDI_ATIVA=1; TRIMUNDI_DATABASE_URL aponta outro banco, se um dia for
+// preciso separar de novo.
+const ESQUEMA = 'trimundi';
+
 function urlDoBanco() {
-  return process.env.TRIMUNDI_DATABASE_URL || '';
+  if (process.env.TRIMUNDI_DATABASE_URL) return process.env.TRIMUNDI_DATABASE_URL;
+  return process.env.TRIMUNDI_ATIVA === '1' ? process.env.DATABASE_URL || '' : '';
 }
 
 // host + porta + nome do banco, para comparar duas URLs sem olhar usuário/senha.
@@ -19,11 +27,13 @@ function identidadeDoBanco(url) {
   }
 }
 
-// Trava de segurança: a Trimundi nunca roda (nem migra) no banco da Mostraí.
-function mesmoBancoDaMostrai() {
-  const trimundi = identidadeDoBanco(urlDoBanco());
-  const mostrai = identidadeDoBanco(process.env.DATABASE_URL || '');
-  return Boolean(trimundi && mostrai && trimundi === mostrai);
+// O isolamento é por esquema (`SET search_path` em cada conexão), e isso só
+// se sustenta numa conexão de sessão. O pooler de TRANSAÇÃO do Supabase
+// (porta 6543) troca de conexão a cada transação e perderia o esquema: com
+// ele, a Trimundi não liga.
+function poolerDeTransacao() {
+  const id = identidadeDoBanco(urlDoBanco());
+  return Boolean(id && /:6543\//.test(id));
 }
 
 // Segredo-mestre: deriva as chaves do QR, dos códigos de ativação e dos
@@ -38,7 +48,7 @@ function segredoMestre() {
 }
 
 function configurada() {
-  return Boolean(urlDoBanco()) && Boolean(segredoMestre()) && !mesmoBancoDaMostrai();
+  return Boolean(urlDoBanco()) && Boolean(segredoMestre()) && !poolerDeTransacao();
 }
 
 // San Checkout: a Trimundi é contratante próprio (chave, URL base e webhook
@@ -59,8 +69,9 @@ function pagamentoSimulado() {
   return !producao() && process.env.TRIMUNDI_PAGAMENTO_SIMULADO === '1';
 }
 
-// Armazenamento das imagens da edição. 'supabase' é o de produção (projeto
-// próprio da Trimundi); 'local' grava em disco e só vale fora de produção.
+// Armazenamento das imagens da edição: o Storage da Mostraí (mesmo bucket,
+// pasta `trimundi/`), ou um próprio se TRIMUNDI_SUPABASE_* existir; 'local'
+// grava em disco e só vale fora de produção.
 function armazenamento() {
   const tipo = process.env.TRIMUNDI_ARMAZENAMENTO || '';
   if (tipo === 'local' && !producao()) {
@@ -72,20 +83,32 @@ function armazenamento() {
       url: process.env.TRIMUNDI_SUPABASE_URL,
       chave: process.env.TRIMUNDI_SUPABASE_SERVICE_ROLE_KEY,
       bucket: process.env.TRIMUNDI_STORAGE_BUCKET || 'trimundi',
+      prefixo: '',
+    };
+  }
+  if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.SUPABASE_STORAGE_BUCKET) {
+    return {
+      tipo: 'supabase',
+      url: process.env.SUPABASE_URL,
+      chave: process.env.SUPABASE_SERVICE_ROLE_KEY,
+      bucket: process.env.SUPABASE_STORAGE_BUCKET,
+      prefixo: 'trimundi/',
     };
   }
   return { tipo: null };
 }
 
-// E-mail próprio da Trimundi (um alias por projeto). Sem provedor, a mensagem
-// fica guardada como 'aguardando_provedor' — nunca finge que foi enviada.
+// E-mail: o da Mostraí (remetente MOSTRAI_EMAIL_FROM e o SMTP_* dela —
+// decisão do dono, 09/11/2026); TRIMUNDI_* sobrepõe, se um dia existir. Sem
+// provedor, a mensagem fica 'aguardando_provedor' — nunca finge que saiu.
 function email() {
-  const remetente = process.env.TRIMUNDI_EMAIL_FROM || '';
+  const de = (nome) => process.env[`TRIMUNDI_${nome}`] || process.env[nome] || '';
+  const remetente = process.env.TRIMUNDI_EMAIL_FROM || process.env.MOSTRAI_EMAIL_FROM || '';
   const smtp = {
-    host: process.env.TRIMUNDI_SMTP_HOST || '',
-    port: Number(process.env.TRIMUNDI_SMTP_PORT || 465),
-    user: process.env.TRIMUNDI_SMTP_USER || '',
-    pass: process.env.TRIMUNDI_SMTP_PASS || '',
+    host: de('SMTP_HOST'),
+    port: Number(de('SMTP_PORT') || 465),
+    user: de('SMTP_USER'),
+    pass: de('SMTP_PASS'),
   };
   const captura = !producao() ? process.env.TRIMUNDI_EMAIL_CAPTURA || '' : '';
   return {
@@ -101,10 +124,11 @@ function urlDoSite() {
 }
 
 module.exports = {
+  ESQUEMA,
   producao,
   urlDoBanco,
   identidadeDoBanco,
-  mesmoBancoDaMostrai,
+  poolerDeTransacao,
   segredoMestre,
   configurada,
   checkout,

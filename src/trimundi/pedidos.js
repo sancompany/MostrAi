@@ -174,7 +174,7 @@ async function montar(cliente, ed, pedido) {
   }
   if (vagas.length > MAX_INGRESSOS) throw erro(400, `No máximo ${MAX_INGRESSOS} ingressos por pedido.`);
   const total = linhas.reduce((s, l) => s + l.quantidade * l.preco_unitario_centavos, 0);
-  return { linhas, vagas, total, esgotados: alocador.esgotados(), catPorId, tiposOrdenados };
+  return { linhas, vagas, total, catPorId, tiposOrdenados };
 }
 
 async function termosVigentes(cliente, edicaoId) {
@@ -362,14 +362,6 @@ async function criar(corpo, contexto = {}) {
           ],
         );
       }
-    }
-    if (m.esgotados.length) {
-      const { rows: marcados } = await cliente.query(
-        `UPDATE lotes SET encerrado_em = now(), motivo_encerramento = 'esgotado'
-          WHERE id = ANY($1::bigint[]) AND encerrado_em IS NULL RETURNING id, criado_em`,
-        [m.esgotados],
-      );
-      for (const l of marcados) await medir(cliente, 'catalogo:lote_esgota', ed.id, { lote_id: l.id });
     }
     for (const t of termos) {
       await cliente.query(

@@ -206,6 +206,25 @@ test('pagamento depois da reserva vencida: emite se ainda cabe; se não cabe, pa
   assert.equal((await ingressosDo(tarde.pedido_id)).length, 2);
 });
 
+test('pagamento atrasado de lote encerrado não pega vaga do lote seguinte (sem sobra)', async () => {
+  const pronta = await apoio.edicaoPronta({
+    lotes: [
+      { preco_centavos: 5000, quantidade: 2 },
+      { preco_centavos: 8000, quantidade: 5 },
+    ],
+  });
+  const atrasado = await apoio.novoPedido(pronta, itensDe(pronta.tipo, 2));
+  await consultar("UPDATE pedidos SET reserva_expira_em = now() - interval '1 minute' WHERE id = $1", [
+    atrasado.pedido_id,
+  ]);
+  const { rows: lotes } = await consultar('SELECT id FROM lotes WHERE categoria_id = $1 ORDER BY ordem', [
+    pronta.tipo.id,
+  ]);
+  await catalogo.encerrarLote(lotes[0].id, apoio.AUTOR);
+  assert.equal(await apoio.pagar(atrasado.pedido_id), 'sem_vaga', 'o 2º lote tem vaga, mas é de outro lote');
+  assert.equal((await ingressosDo(atrasado.pedido_id)).length, 0);
+});
+
 test('combo: cada posição é um ingresso próprio, e o benefício não se repete', async () => {
   const pronta = await apoio.edicaoPronta();
   const b1 = await catalogo.criarBeneficio(pronta.edicao.id, { nome: 'Camarim' }, apoio.AUTOR);

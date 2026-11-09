@@ -2,8 +2,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const config = require('./config');
 
-// Onde ficam as imagens da edição. Produção: o Storage do projeto Supabase
-// PRÓPRIO da Trimundi (nunca o bucket da Mostraí). Desenvolvimento: disco
+// Onde ficam as imagens da edição. Produção: o Storage da Mostraí, na pasta
+// `trimundi/` do bucket dela (decisão do dono, 09/11/2026). Desenvolvimento: disco
 // local, servido em /ticket/arquivos. Sem nenhum dos dois, o envio responde
 // 503 "imagens não configuradas neste ambiente" (RN-T06). Os testes trocam o
 // adaptador por um em memória (`substituir`).
@@ -36,13 +36,15 @@ function supabase(c) {
   };
   return {
     tipo: 'supabase',
+    // No bucket da Mostraí, tudo da Trimundi fica sob `trimundi/`.
     async salvar(caminho, buffer, tipoMime) {
-      const { error } = await storage().upload(caminho, buffer, { contentType: tipoMime, upsert: false });
+      const alvo = `${c.prefixo || ''}${caminho}`;
+      const { error } = await storage().upload(alvo, buffer, { contentType: tipoMime, upsert: false });
       if (error) throw new Error(`falha ao salvar a imagem: ${error.message}`);
-      return storage().getPublicUrl(caminho).data.publicUrl;
+      return storage().getPublicUrl(alvo).data.publicUrl;
     },
     async remover(caminho) {
-      await storage().remove([caminho]);
+      await storage().remove([`${c.prefixo || ''}${caminho}`]);
     },
   };
 }

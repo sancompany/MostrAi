@@ -164,8 +164,6 @@ async function listarTipos(edicaoId, cliente = null) {
         reservados: l.reservados,
         disponivel: l.disponivel,
         situacao: l.situacao,
-        // Último lote que esgotou e recebeu de volta vaga de reserva vencida.
-        reaberto: Boolean(l.reaberto),
         encerrado_em: l.encerrado_em,
       })),
       disponivel_agora: c.ativo ? estado.disponivelAgora : 0,

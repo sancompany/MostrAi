@@ -34,30 +34,54 @@ function comAmbiente(valores, fn) {
   }
 }
 
-test('o banco da Trimundi é outro banco: as tabelas dela não existem no da Mostraí', async () => {
+test('a Trimundi mora no esquema `trimundi` do banco da Mostraí; o `public` não ganha nada', async () => {
   assert.equal(config.configurada(), true);
-  assert.notEqual(config.identidadeDoBanco(config.urlDoBanco()), config.identidadeDoBanco(process.env.DATABASE_URL));
+  assert.equal(config.identidadeDoBanco(config.urlDoBanco()), config.identidadeDoBanco(process.env.DATABASE_URL));
   const { rows: mostrai } = await poolMostrai.query(
-    "SELECT to_regclass('public.ingressos') AS a, to_regclass('public.operador_permissoes') AS b, to_regclass('public.checkins') AS c",
+    "SELECT to_regclass('public.ingressos') AS a, to_regclass('public.operador_permissoes') AS b, to_regclass('trimundi.ingressos')::text AS c",
   );
-  assert.deepEqual(mostrai[0], { a: null, b: null, c: null });
+  assert.deepEqual(mostrai[0], { a: null, b: null, c: 'trimundi.ingressos' });
   const { rows: trimundi } = await consultar(
-    "SELECT to_regclass('public.ingressos')::text AS a, (SELECT count(*) FROM schema_migrations WHERE filename = '001_fundacao.sql')::int AS m",
+    "SELECT current_schema() AS s, (SELECT count(*) FROM schema_migrations WHERE filename = '001_fundacao.sql')::int AS m",
   );
-  assert.equal(trimundi[0].a, 'ingressos');
-  assert.equal(trimundi[0].m, 1);
+  assert.deepEqual(trimundi[0], { s: 'trimundi', m: 1 });
+  // A tabela de controle da Mostraí continua sendo só dela.
+  const { rows: controle } = await poolMostrai.query(
+    "SELECT count(*)::int AS n FROM public.schema_migrations WHERE filename LIKE '%fundacao%'",
+  );
+  assert.equal(controle[0].n, 0);
+  // Toda tabela do esquema tem RLS; nenhuma do `public` foi mexida pela Trimundi.
+  const { rows: semRls } = await poolMostrai.query(
+    "SELECT count(*)::int AS n FROM pg_tables WHERE schemaname = 'trimundi' AND tablename <> 'schema_migrations' AND NOT rowsecurity",
+  );
+  assert.equal(semRls[0].n, 0);
 });
 
-test('trava: apontar a Trimundi para o banco da Mostraí desliga o módulo e a migration recusa', async () => {
-  const outraSenha = new URL(process.env.DATABASE_URL);
-  outraSenha.username = 'outro';
-  outraSenha.password = 'outra';
-  for (const url of [process.env.DATABASE_URL, outraSenha.toString()]) {
-    await comAmbiente({ TRIMUNDI_DATABASE_URL: url }, async () => {
-      assert.equal(config.mesmoBancoDaMostrai(), true);
-      assert.equal(config.configurada(), false);
-      await assert.rejects(migrar({ silencioso: true }), /banco da Mostraí/);
-    });
+test('o pooler de transação (porta 6543) desliga a Trimundi: o esquema por conexão não se sustentaria', () => {
+  const u = new URL(process.env.DATABASE_URL);
+  u.port = '6543';
+  comAmbiente({ TRIMUNDI_DATABASE_URL: u.toString() }, () => {
+    assert.equal(config.poolerDeTransacao(), true);
+    assert.equal(config.configurada(), false);
+  });
+  comAmbiente({ TRIMUNDI_ATIVA: '', TRIMUNDI_DATABASE_URL: '' }, () => {
+    assert.equal(config.configurada(), false, 'sem TRIMUNDI_ATIVA=1 o módulo fica desligado');
+  });
+});
+
+test('conexão que não consegue entrar no esquema é recusada (falha fechado)', async () => {
+  const { Pool } = require('pg');
+  const conexao = require('../src/trimundi/db/conexao');
+  const original = config.ESQUEMA;
+  // Um SET que o servidor recusa: a conexão não pode seguir no `public`.
+  const ClienteTrimundi = conexao.obterPool().options.Client;
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1, Client: ClienteTrimundi });
+  try {
+    config.ESQUEMA = 'esquema invalido';
+    await assert.rejects(pool.query('SELECT 1'), /syntax|sintaxe/);
+  } finally {
+    config.ESQUEMA = original;
+    await pool.end();
   }
 });
 
@@ -177,7 +201,7 @@ const lote = (id, ordem, quantidade, extra = {}) => ({
   ...extra,
 });
 
-test('estoque: o lote seguinte abre sozinho quando o vigente esgota', () => {
+test('estoque: lote cheio só de reservas deixa o seguinte vender, sem marca permanente', () => {
   const e = estadoDaCategoria([lote(1, 1, 10, { pagos: 6, reservados: 4 }), lote(2, 2, 20, { pagos: 1 })], agora);
   assert.deepEqual(
     e.lotes.map((l) => l.situacao),
@@ -185,26 +209,48 @@ test('estoque: o lote seguinte abre sozinho quando o vigente esgota', () => {
   );
   assert.equal(e.vigente.id, 2);
   assert.equal(e.disponivelAgora, 19);
-  assert.deepEqual(e.semMarca, [1], 'o esgotado sem marca é marcado pelo alocador');
+  assert.deepEqual(e.semMarca, [], 'só PAGOS completam um lote; reserva pode vencer');
 });
 
-test('estoque: lote encerrado não reabre e a sobra dele passa para o próximo', () => {
+test('estoque: reserva vencida devolve a vaga ao próprio lote, que volta a ser o vigente', () => {
+  // Antes: 6 pagos + 4 reservados no 1º. As 4 venceram: o 1º volta à venda.
+  const e = estadoDaCategoria([lote(1, 1, 10, { pagos: 6 }), lote(2, 2, 20, { pagos: 1 })], agora);
+  assert.deepEqual(
+    e.lotes.map((l) => l.situacao),
+    ['a_venda', 'aguardando_anterior'],
+  );
+  assert.equal(e.vigente.id, 1);
+  assert.equal(e.lotes[0].disponivel, 4);
+});
+
+test('estoque: lote completo por pagos recebe a marca; sem ela ainda, entra em semMarca', () => {
+  const e = estadoDaCategoria([lote(1, 1, 10, { pagos: 10 }), lote(2, 2, 5)], agora);
+  assert.deepEqual(e.semMarca, [1]);
+  assert.equal(e.vigente.id, 2);
+});
+
+test('estoque: o que não vendeu num lote encerrado NÃO passa para o próximo', () => {
   const e = estadoDaCategoria(
     [lote(1, 1, 10, { pagos: 7, encerrado_em: antes(1), motivo_encerramento: 'manual' }), lote(2, 2, 5)],
     agora,
   );
   assert.equal(e.lotes[0].situacao, 'encerrado');
-  assert.equal(e.lotes[1].efetiva, 8, '5 do lote + 3 que sobraram');
-  assert.equal(e.disponivelAgora, 8);
+  assert.equal(e.lotes[1].efetiva, 5, 'só a quantidade do próprio lote');
+  assert.equal(e.disponivelAgora, 5);
 });
 
-test('estoque: pagamento tardio aceito num lote fechado tira a vaga do lote seguinte', () => {
-  const e = estadoDaCategoria(
-    [lote(1, 1, 10, { pagos: 11, encerrado_em: antes(1), motivo_encerramento: 'esgotado' }), lote(2, 2, 5)],
+test('estoque: lote fechado não reabre — nem esgotado por pagos, nem à mão, nem pela data', () => {
+  const marca = { encerrado_em: antes(1), motivo_encerramento: 'esgotado' };
+  const e = estadoDaCategoria([lote(1, 1, 2, { pagos: 1, ...marca }), lote(2, 2, 3, { pagos: 2, ...marca })], agora);
+  assert.equal(e.disponivelAgora, 0);
+  assert.equal(e.vigente, null);
+  const manual = estadoDaCategoria(
+    [lote(1, 1, 3, { pagos: 1, encerrado_em: antes(1), motivo_encerramento: 'manual' })],
     agora,
   );
-  assert.equal(e.lotes[1].efetiva, 4, 'o vendido a mais no 1º lote sai do 2º');
-  assert.equal(e.disponivelAgora, 4);
+  assert.equal(manual.disponivelAgora, 0);
+  const porData = estadoDaCategoria([lote(1, 1, 3, { pagos: 1, fim_vendas: antes(1) })], agora);
+  assert.equal(porData.disponivelAgora, 0);
 });
 
 test('estoque: fim de vendas passado fecha o lote; início no futuro deixa a categoria agendada', () => {
@@ -218,9 +264,7 @@ test('estoque: fim de vendas passado fecha o lote; início no futuro deixa a cat
   );
   assert.equal(e.disponivelAgora, 0);
   assert.equal(e.proximoInicio.getTime(), depois(5).getTime());
-  // modelo-de-dados.md, "Disponibilidade": a cota não vendida do lote fechado
-  // rola para o seguinte — que abre, na data dele, com ela somada.
-  assert.equal(e.lotes[1].efetiva, 20);
+  assert.equal(e.lotes[1].efetiva, 10, 'sem sobra do lote fechado');
 });
 
 test('estoque: lote que começa no futuro não entra na cadeia do vigente', () => {
@@ -229,27 +273,7 @@ test('estoque: lote que começa no futuro não entra na cadeia do vigente', () =
   assert.equal(e.disponivelAgora, 3, 'o 2º lote só abre na data dele');
 });
 
-test('estoque: vaga que volta depois do último lote esgotado volta para ele (não some)', () => {
-  const esgotadoMarcado = { encerrado_em: antes(1), motivo_encerramento: 'esgotado' };
-  const e = estadoDaCategoria(
-    [lote(1, 1, 2, { pagos: 2, ...esgotadoMarcado }), lote(2, 2, 3, { pagos: 2, ...esgotadoMarcado })],
-    agora,
-  );
-  assert.equal(e.vigente.id, 2, 'a reserva do último lote venceu: a vaga volta para ele');
-  assert.equal(e.lotes[1].reaberto, true);
-  assert.equal(e.disponivelAgora, 1);
-  assert.equal(e.lotes[0].situacao, 'esgotado', 'lote anterior não reabre');
-
-  const manual = estadoDaCategoria(
-    [lote(1, 1, 3, { pagos: 1, encerrado_em: antes(1), motivo_encerramento: 'manual' })],
-    agora,
-  );
-  assert.equal(manual.disponivelAgora, 0, 'encerrado à mão continua encerrado');
-  const porData = estadoDaCategoria([lote(1, 1, 3, { pagos: 1, fim_vendas: antes(1), ...esgotadoMarcado })], agora);
-  assert.equal(porData.disponivelAgora, 0, 'fim das vendas passado continua encerrado');
-});
-
-test('alocador: divide o pedido entre lotes, marca os esgotados e recusa o que não cabe', () => {
+test('alocador: divide o pedido entre lotes e recusa o que não cabe', () => {
   const lotes = new Map([[1, [lote(1, 1, 2, { pagos: 1 }), lote(2, 2, 3)]]]);
   const a = criarAlocador(lotes, agora);
   const partes = a.tirar(1, 3, 'Pista');
@@ -260,7 +284,6 @@ test('alocador: divide o pedido entre lotes, marca os esgotados e recusa o que n
       [2, 2],
     ],
   );
-  assert.deepEqual(a.esgotados(), [1]);
   assert.equal(a.disponivel(1), 1);
   assert.throws(
     () => a.tirar(1, 2, 'Pista'),

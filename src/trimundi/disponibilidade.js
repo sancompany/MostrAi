@@ -1,4 +1,5 @@
 const { erro } = require('./lib/erros');
+const { medir } = require('./lib/registro');
 
 // Estoque da Trimundi (RN-T07, RN-T10 a RN-T12; docs/trimundi/modelo-de-dados.md,
 // "Disponibilidade"). Quem decide se há vaga é sempre o servidor, e toda
@@ -30,55 +31,36 @@ async function carregarLotes(cliente, categoriaIds) {
 }
 
 // Situação de cada lote de UM tipo de ingresso, em ordem. Função pura.
-//   esgotado / encerrado — fechado (não reabre); a sobra dele rola para o próximo
+// Regra do dono (09/11/2026): cada lote vende só a quantidade dele — o que
+// não vendeu num lote encerrado NÃO passa para o próximo.
+//   encerrado / esgotado — fechado à mão, pela data, ou esgotado por PAGOS
+//     (marca gravada na confirmação do pagamento); não reabre
+//   esgotado (sem marca) — tudo reservado por pedidos ainda não pagos: o
+//     próximo lote vende enquanto isso; reserva que vence devolve a vaga
+//     para ESTE lote (ele nunca fechou)
 //   a_venda — o vigente; aguardando_anterior — vem depois do vigente
-//   agendado — o primeiro não fechado ainda não começou (nada à venda agora)
+//   agendado — o primeiro aberto ainda não começou (nada à venda agora)
 function estadoDaCategoria(lotes, agora = new Date()) {
-  let sobra = 0;
   let achouVigente = false;
   const saida = [];
   for (const l of lotes) {
-    const efetiva = l.quantidade + sobra;
+    const efetiva = l.quantidade;
     const vendidos = l.pagos + l.reservados;
     const disponivel = Math.max(0, efetiva - vendidos);
     const porData = l.fim_vendas && new Date(l.fim_vendas) <= agora;
     const fechado = Boolean(l.encerrado_em) || Boolean(porData);
     let situacao;
-    if (fechado) {
-      situacao = l.motivo_encerramento === 'esgotado' ? 'esgotado' : 'encerrado';
-      // Sem piso em zero: um pagamento tardio aceito neste lote fechado
-      // (pagamentos.js#aindaCabe) tira a vaga do lote seguinte.
-      sobra = efetiva - vendidos;
-    } else if (achouVigente) {
-      situacao = 'aguardando_anterior';
-      sobra = 0;
-    } else if (l.inicio_vendas && new Date(l.inicio_vendas) > agora) {
+    if (fechado) situacao = l.motivo_encerramento === 'esgotado' ? 'esgotado' : 'encerrado';
+    else if (achouVigente) situacao = 'aguardando_anterior';
+    else if (l.inicio_vendas && new Date(l.inicio_vendas) > agora) {
       situacao = 'agendado';
       achouVigente = true;
-      sobra = 0;
-    } else if (disponivel === 0) {
-      // Esgotou sem a marca (ex.: quantidade reduzida): conta como esgotado e
-      // o próximo assume; o alocador grava a marca.
-      situacao = 'esgotado';
-      sobra = 0;
-    } else {
+    } else if (disponivel === 0) situacao = 'esgotado';
+    else {
       situacao = 'a_venda';
       achouVigente = true;
-      sobra = 0;
     }
     saida.push({ ...l, efetiva, vendidos, disponivel, situacao, fechado });
-  }
-  // Vaga que volta (reserva vencida) depois do ÚLTIMO lote não tem lote
-  // seguinte para onde rolar: volta para o próprio último lote, se ele fechou
-  // por esgotar (nunca se foi encerrado à mão ou pela data) e nada mais está
-  // à venda — senão a vaga sumiria do estoque para sempre.
-  const ultimo = saida[saida.length - 1];
-  const ultimoPorData = ultimo?.fim_vendas && new Date(ultimo.fim_vendas) <= agora;
-  if (!achouVigente && sobra > 0 && ultimo?.motivo_encerramento === 'esgotado' && !ultimoPorData) {
-    ultimo.situacao = 'a_venda';
-    ultimo.fechado = false;
-    ultimo.reaberto = true;
-    ultimo.disponivel = sobra;
   }
   // Cadeia vendável agora: o vigente e os seguintes que abrem sozinhos quando
   // ele esgotar (sem início no futuro e sem fim já passado).
@@ -99,9 +81,25 @@ function estadoDaCategoria(lotes, agora = new Date()) {
     cadeia,
     disponivelAgora: cadeia.reduce((s, l) => s + l.disponivel, 0),
     proximoInicio: iVigente < 0 ? (agendado?.inicio_vendas ?? null) : null,
-    // Lotes esgotados sem a marca: o alocador grava "esgotado" neles.
-    semMarca: saida.filter((l) => l.situacao === 'esgotado' && !l.encerrado_em).map((l) => l.id),
+    // Lotes completos por PAGOS ainda sem a marca: recebem "esgotado".
+    semMarca: saida.filter((l) => !l.fechado && l.pagos >= l.quantidade).map((l) => l.id),
   };
+}
+
+// Grava a marca "esgotado" nos lotes completos por pagos (depois de uma
+// confirmação de pagamento) e mede.
+async function marcarEsgotados(cliente, loteIds, edicaoId) {
+  if (!loteIds.length) return [];
+  const { rows } = await cliente.query(
+    `UPDATE lotes l SET encerrado_em = now(), motivo_encerramento = 'esgotado'
+      WHERE l.id = ANY($1::bigint[]) AND l.encerrado_em IS NULL
+        AND l.quantidade <= (SELECT count(*) FROM ingressos i JOIN pedidos p ON p.id = i.pedido_id
+                              WHERE i.lote_id = l.id AND p.status = 'pago' AND i.status <> 'cancelado')
+      RETURNING l.id`,
+    [loteIds],
+  );
+  for (const l of rows) await medir(cliente, 'catalogo:lote_esgota', edicaoId, { lote_id: l.id });
+  return rows.map((r) => r.id);
 }
 
 // Distribui vagas pelos lotes de cada tipo, na ordem da cadeia, com o estado
@@ -110,7 +108,6 @@ function criarAlocador(lotesPorCategoria, agora = new Date()) {
   const estados = new Map();
   const consumo = new Map();
   for (const [categoriaId, lotes] of lotesPorCategoria) estados.set(categoriaId, estadoDaCategoria(lotes, agora));
-  const esgotados = new Set();
   return {
     estado: (categoriaId) => estados.get(Number(categoriaId)),
     disponivel(categoriaId) {
@@ -122,21 +119,16 @@ function criarAlocador(lotesPorCategoria, agora = new Date()) {
     tirar(categoriaId, quantidade, rotulo) {
       const e = estados.get(Number(categoriaId));
       if (!e) throw erro(409, `${rotulo} não está à venda.`);
-      for (const id of e.semMarca) esgotados.add(id);
       const partes = [];
       let falta = quantidade;
       for (const l of e.cadeia) {
         if (!falta) break;
         const livre = Math.max(0, l.disponivel - (consumo.get(l.id) || 0));
-        if (!livre) {
-          esgotados.add(l.id);
-          continue;
-        }
+        if (!livre) continue;
         const n = Math.min(livre, falta);
         consumo.set(l.id, (consumo.get(l.id) || 0) + n);
         partes.push({ lote: l, quantidade: n });
         falta -= n;
-        if (n === livre) esgotados.add(l.id);
       }
       if (falta > 0) {
         const total = quantidade - falta + this.disponivel(categoriaId);
@@ -147,7 +139,6 @@ function criarAlocador(lotesPorCategoria, agora = new Date()) {
       }
       return partes;
     },
-    esgotados: () => [...esgotados],
   };
 }
 
@@ -215,6 +206,7 @@ function situacaoDoCombo(promo, itens, vendidos, alocador, agora = new Date()) {
 module.exports = {
   carregarLotes,
   estadoDaCategoria,
+  marcarEsgotados,
   criarAlocador,
   ocupacaoDaEdicao,
   combosVendidos,

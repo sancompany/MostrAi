@@ -2,7 +2,7 @@ const { consultar, emTransacao } = require('./db/conexao');
 const v = require('./lib/validacao');
 const { historicoDoIngresso, medir } = require('./lib/registro');
 const { emitirDoPedido } = require('./emissao');
-const { carregarLotes, criarAlocador, ocupacaoDaEdicao } = require('./disponibilidade');
+const { carregarLotes, estadoDaCategoria, marcarEsgotados, ocupacaoDaEdicao } = require('./disponibilidade');
 const config = require('./config');
 
 // Avisos de pagamento (RN-T18; API.md §4.3). Todo fato chega por aqui —
@@ -38,25 +38,40 @@ async function registrarEvento({ eventoId, provedor, payload }) {
 }
 
 // O pedido ainda cabe no estoque? (pagamento que chegou com a reserva já
-// vencida: confere por tipo de ingresso e na capacidade — nunca vende acima.)
+// vencida.) Confere LOTE A LOTE — o que não vendeu num lote não passa para
+// outro (regra do dono, 09/11/2026): o lote da reserva precisa estar aberto e
+// com vaga; e a capacidade da edição também. Nunca vende acima.
 async function aindaCabe(cliente, pedido) {
   const { rows: vagas } = await cliente.query(
-    'SELECT categoria_id, count(*)::int AS n FROM reservas WHERE pedido_id = $1 GROUP BY categoria_id',
+    'SELECT categoria_id, lote_id, count(*)::int AS n FROM reservas WHERE pedido_id = $1 GROUP BY categoria_id, lote_id',
     [pedido.id],
   );
-  const alocador = criarAlocador(
-    await carregarLotes(
-      cliente,
-      vagas.map((x) => Number(x.categoria_id)),
-    ),
-  );
-  for (const x of vagas) if (alocador.disponivel(x.categoria_id) < x.n) return false;
+  const porCategoria = await carregarLotes(cliente, [...new Set(vagas.map((x) => Number(x.categoria_id)))]);
+  for (const x of vagas) {
+    const e = estadoDaCategoria(porCategoria.get(Number(x.categoria_id)) || []);
+    const l = e.lotes.find((y) => Number(y.id) === Number(x.lote_id));
+    if (!l || l.fechado || l.disponivel < x.n) return false;
+  }
   const { rows: ed } = await cliente.query('SELECT capacidade FROM edicoes WHERE id = $1', [pedido.edicao_id]);
   if (ed[0].capacidade) {
     const total = vagas.reduce((s, x) => s + x.n, 0);
     if ((await ocupacaoDaEdicao(cliente, pedido.edicao_id)) + total > ed[0].capacidade) return false;
   }
   return true;
+}
+
+// Depois de emitir: os lotes deste pedido que ficaram completos por PAGOS
+// recebem a marca "esgotado" (e não reabrem mais).
+async function marcarLotesDoPedido(cliente, pedido) {
+  const { rows } = await cliente.query(
+    'SELECT DISTINCT lote_id FROM reservas WHERE pedido_id = $1 AND lote_id IS NOT NULL',
+    [pedido.id],
+  );
+  await marcarEsgotados(
+    cliente,
+    rows.map((r) => Number(r.lote_id)),
+    pedido.edicao_id,
+  );
 }
 
 async function avisarComprador(cliente, pedido) {
@@ -113,6 +128,7 @@ async function confirmar(cliente, pedido, p) {
   );
   pedido.status = 'pago';
   const emitidos = await emitirDoPedido(cliente, pedido, { autor: 'pagamento' });
+  await marcarLotesDoPedido(cliente, pedido);
   await medir(cliente, 'venda:pagamento_confirma', pedido.edicao_id, {
     pedido_id: pedido.id,
     total_centavos: Number(pedido.total_centavos),

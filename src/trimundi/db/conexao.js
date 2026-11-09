@@ -1,9 +1,9 @@
-const { Pool, types } = require('pg');
+const { Client, Pool, types } = require('pg');
 const config = require('../config');
 
-// Conexão com o banco PRÓPRIO da Trimundi — nunca o da Mostraí
-// (docs/trimundi/CONSTRAINTS.md). Criada só no primeiro uso: sem
-// TRIMUNDI_DATABASE_URL o módulo fica desligado e nada aqui roda.
+// Conexão da Trimundi: o banco da Mostraí, mas SÓ o esquema `trimundi` (toda
+// conexão deste pool começa com search_path = trimundi; o `public` da Mostraí
+// nem é visível pelo nome). Criada só no primeiro uso: desligada, nada roda.
 //
 // bigint volta como número (centavos e contagens) só NESTE pool: o parser é
 // por pool, então a Mostraí continua recebendo bigint como texto, como sempre.
@@ -13,6 +13,32 @@ const tipos = {
     return types.getTypeParser(oid, formato);
   },
 };
+
+// Isolamento que falha FECHADO: a conexão só é entregue ao pool depois de
+// entrar no esquema `trimundi` e de o servidor confirmar o search_path. Se o
+// SET falhar, a conexão é fechada e o erro sobe — nunca sobra uma conexão
+// olhando para o `public` da Mostraí (onde há tabelas com os mesmos nomes).
+class ClienteTrimundi extends Client {
+  connect(callback) {
+    const pronto = super.connect().then(async () => {
+      await super.query(`SET search_path TO ${config.ESQUEMA}`);
+      const { rows } = await super.query("SELECT current_setting('search_path') AS sp");
+      if (rows[0].sp !== config.ESQUEMA) throw new Error(`trimundi: conexão fora do esquema (${rows[0].sp})`);
+    });
+    const falhou = (err) => {
+      this.end().catch(() => {});
+      throw err;
+    };
+    if (callback) {
+      pronto.catch(falhou).then(
+        () => callback(null, this),
+        (err) => callback(err),
+      );
+      return undefined;
+    }
+    return pronto.catch(falhou);
+  }
+}
 
 class NaoConfigurada extends Error {
   constructor() {
@@ -33,9 +59,11 @@ function obterPool() {
     pool = new Pool({
       connectionString: url,
       ssl: local ? false : { rejectUnauthorized: false },
-      max: 5,
+      // Pouco: o pooler é o mesmo da Mostraí.
+      max: 3,
       connectionTimeoutMillis: 5000,
       types: tipos,
+      Client: ClienteTrimundi,
     });
     pool.on('error', (err) => console.error('trimundi: conexão ociosa caiu, o pool abre outra', err.message));
     pool.on('connect', (cliente) => cliente.on('error', (err) => console.error('trimundi: conexão caiu', err.message)));

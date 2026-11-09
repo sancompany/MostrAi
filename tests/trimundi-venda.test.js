@@ -255,13 +255,17 @@ test('capacidade da edição é teto para pedido e cortesia', async () => {
   );
 });
 
-test('última vaga: cinco pedidos ao mesmo tempo, só um reserva; o lote fica esgotado', async () => {
+test('última vaga: cinco pedidos ao mesmo tempo, só um reserva; o lote só ganha a marca quando é PAGO', async () => {
   const pronta = await apoio.edicaoPronta({ lotes: [{ preco_centavos: 5000, quantidade: 1 }] });
   const corpos = await Promise.all(Array.from({ length: 5 }, () => corpoDoPedido(pronta, tipos(pronta.tipo, 1))));
   const respostas = await Promise.all(corpos.map(({ corpo }) => apoio.cliente(srv).post('/ticket/api/pedidos', corpo)));
   assert.deepEqual(respostas.map((r) => r.status).sort(), [201, 409, 409, 409, 409]);
-  const { rows } = await consultar('SELECT motivo_encerramento FROM lotes WHERE categoria_id = $1', [pronta.tipo.id]);
-  assert.equal(rows[0].motivo_encerramento, 'esgotado');
+  const marca = async () =>
+    (await consultar('SELECT motivo_encerramento FROM lotes WHERE categoria_id = $1', [pronta.tipo.id])).rows[0]
+      .motivo_encerramento;
+  assert.equal(await marca(), null, 'só reservado: a reserva pode vencer e a vaga volta');
+  await apoio.pagar(respostas.find((r) => r.status === 201).json.pedido_id);
+  assert.equal(await marca(), 'esgotado');
   const { rows: m } = await consultar(
     "SELECT count(*)::int AS n FROM metricas WHERE nome = 'catalogo:lote_esgota' AND edicao_id = $1",
     [pronta.edicao.id],

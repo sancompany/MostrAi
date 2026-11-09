@@ -1,11 +1,12 @@
--- Trimundi — fundação. Banco PRÓPRIO da Trimundi, nunca o da Mostraí.
+-- Trimundi — fundação. Esquema `trimundi` no banco da Mostraí (o aplicador
+-- entra nele antes de rodar); nada aqui toca o esquema `public`.
 -- Contrato: docs/trimundi/modelo-de-dados.md. Dinheiro em centavos (bigint),
 -- tempo em timestamptz, identificador que sai do sistema sempre aleatório.
 -- Toda tabela nasce com RLS ligado e sem política (a API pública do Supabase
 -- não lê nada); o acesso é só pelo servidor.
 
 CREATE OR REPLACE FUNCTION trimundi_historico_imutavel() RETURNS trigger
-LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, trimundi AS $$
 BEGIN
   RAISE EXCEPTION '% é histórico e não muda', TG_TABLE_NAME USING ERRCODE = 'check_violation';
 END $$;
@@ -77,7 +78,7 @@ CREATE TABLE termos (
 CREATE UNIQUE INDEX ux_termos_vigente ON termos (edicao_id, tipo) WHERE vigente;
 
 CREATE OR REPLACE FUNCTION trimundi_termo_imutavel() RETURNS trigger
-LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, trimundi AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'versão de termo não se apaga' USING ERRCODE = 'check_violation';
@@ -484,7 +485,7 @@ CREATE INDEX ix_emails_fila ON emails (proxima_tentativa_em) WHERE status = 'na_
 DO $$
 DECLARE t record;
 BEGIN
-  FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'schema_migrations' LOOP
+  FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename <> 'schema_migrations' LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t.tablename);
   END LOOP;
 END $$;

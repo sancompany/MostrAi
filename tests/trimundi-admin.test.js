@@ -314,7 +314,7 @@ test('tipos e lotes: preço mínimo, até 10 lotes, nada abaixo do vendido, lote
   assert.equal(encerrado.status, 200);
   assert.equal(encerrado.json.vigente.preco_centavos, 7500, 'o seguinte assume na hora');
   assert.equal(encerrado.json.lotes[1].quantidade, 5);
-  assert.equal(encerrado.json.disponivel_agora, 11, '5 + 1 que sobrou do encerrado + 5 do 3º');
+  assert.equal(encerrado.json.disponivel_agora, 10, '5 + 5 do 3º: o que sobrou do encerrado não passa adiante');
   assert.equal((await admin.post(`/admin/trimundi/lotes/${l1.id}/encerrar`)).status, 409);
   const inativo = await admin.patch(`/admin/trimundi/tipos/${tipo.id}`, { ativo: false });
   assert.equal(inativo.json.disponivel_agora, 0);
