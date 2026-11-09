@@ -74,7 +74,11 @@ o pedido e simula a confirmação (RN-T19). O resultado aparece em T4 marcado
 | T5 | Adicionar operador | `/admin/#trimundi/operadores` | Administrador | operadores | + Adicionar operador; Editar; Gerar novo código; Desativar; Reativar | modais Operador, Código |
 | T6 | Ativar acesso | `/ticket/ativar` | Operador, sem sessão | formulário | Ativar acesso | T7 |
 | T7 | Entrar (existente) | `/anunciante/login.html` | Operador | a tela de login da Mostraí, sem mudança visual | Entrar | T8 |
-| T8 | Check-in (provisória) | `/ticket/checkin` | Operador com sessão | nome e edições do operador; aviso de que o check-in chega na próxima etapa | Sair | T7 |
+| T8 | Check-in | `/ticket/checkin` | Operador com sessão | nome, edição, contador de entradas, câmera e campo de código, resultado da leitura | Ler QR Code; Consultar; Confirmar entrada; Sair | T7 |
+| T9 | Edição (pública) | `/ticket/{evento}/{edição}` | Comprador | vitrine e compra | escolher; Continuar; Ir para o pagamento | Checkout → T10 |
+| T10 | Pedido | `/ticket/pedido/{id}?t=…` | Quem tem o link | pagamento e ingressos com QR | Pagar agora; Imprimir; Baixar QR | Checkout |
+| T11 | Recuperar ingressos | `/ticket/recuperar` | Comprador | formulário | Enviar o link | — |
+| T12 | Pagamento simulado | `/ticket/dev/pagamento/{id}` | Só desenvolvimento | resumo do pedido | Aprovar; Recusar | T10 |
 
 **Navegação:**
 - No menu do Admin há um item só, **Eventos**, que abre o módulo
@@ -177,22 +181,26 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     - **Aguardando o lote anterior**;
     - **Esgotado**;
     - **Encerrado** (por data ou à mão).
-- **RN-T11 Cota que sobra.** A vaga de lote encerrado que volta (reserva que
-  venceu sem pagamento) passa para o lote seguinte, no preço dele
-  (`modelo-de-dados.md`, "Disponibilidade"). Quem vê: T2 mostra o
-  disponível já somado.
+- **RN-T11 Cota que sobra.** O que não foi vendido do lote encerrado (por
+  data, à mão ou por esgotar — inclusive a vaga de reserva que venceu sem
+  pagamento) passa para o lote seguinte, no preço dele
+  (`modelo-de-dados.md`, "Disponibilidade"). No **último** lote, que não
+  tem seguinte, a vaga de reserva vencida volta para ele mesmo (só se ele
+  fechou por esgotar). Quem vê: T2 mostra o disponível já somado.
 - **RN-T12 Disponibilidade é do servidor.**
   - A reserva acontece numa transação que trava a edição (P-06).
   - Pedido que passaria da quantidade do lote, da quantidade do combo ou da
     capacidade → 409 "esgotado", nada é gravado.
   - O navegador nunca decide.
-- **RN-T13 Reserva e prazo.**
-  - A reserva dura 30 min desde a criação do pedido, e o pedido é pagável
-    por até 24 h (`expiraEm`).
-  - Confirmação que chega depois da reserva vencer emite se ainda couber na
-    capacidade. Se não couber, o pedido fica **pago sem vaga** e entra na
-    fila de devolução, que a fase do checkout mostra.
-  - Pedido não pago em 24 h fica **expirado**.
+- **RN-T13 Reserva e prazo** (revisto em 09/11/2026, estoque estrito).
+  - A reserva dura 30 min desde a criação do pedido, e o mesmo prazo vai
+    como `expiraEm` ao Checkout, que recusa cobrar depois dele.
+  - Confirmação que chega depois da reserva vencer emite se ainda couber no
+    tipo de ingresso e na capacidade. Se não couber, o pedido fica **pago
+    sem vaga** e vira aviso de devolução em T4.
+  - Pagamento recusado (cartão negado, antifraude) não encerra o pedido: a
+    reserva segue até vencer e o comprador pode tentar outro meio.
+  - Pedido não pago no prazo fica **expirado**.
 - **RN-T14 Limite por comprador.**
   - Conta os ingressos daquele tipo (pagos + reservados) do mesmo CPF de
     comprador na edição. Ingresso de combo e cortesia não contam (D-07).
@@ -211,10 +219,12 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     - preço total de R$ 5,00 a R$ 50.000,00;
     - quantidade de combos de 1 a 10.000;
     - validade opcional (de/até) e ativo ou inativo.
-  - Consome a capacidade da edição, não o lote nem o limite por comprador
-    (D-07).
-  - Gera um ingresso por posição, cada um com participante, código, QR e
-    benefícios (os do tipo mais o promocional da posição, P-04).
+  - **Regra do dono (09/11/2026):** consome o estoque real dos tipos que o
+    compõem (os lotes deles) e a capacidade da edição; nunca passa de
+    nenhum dos dois. Não conta no limite por comprador (D-07).
+  - Gera um ingresso por posição, cada um com participante, código, QR,
+    check-in e benefícios próprios: os do tipo mais o promocional da
+    posição, sem repetir o mesmo benefício (P-04).
   - O valor do combo se divide entre os ingressos em centavos (o resto vai
     no primeiro) e a soma bate com o preço do combo.
 - **RN-T17 Pedido.**
@@ -224,16 +234,22 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
   - Participante (nome, CPF e e-mail) obrigatório para cada ingresso.
   - Origem: venda ou teste.
 - **RN-T18 Confirmação de pagamento.**
-  - Só por evento conferido: webhook assinado ou consulta autenticada do
-    Checkout, na fase do checkout. Nesta versão, só o evento de teste.
+  - Só por evento conferido: webhook assinado (HMAC, janela de 300 s,
+    fechado na falha), a resposta do estorno ou a conciliação com o
+    Checkout. Em desenvolvimento, o pagamento simulado gera o mesmo aviso
+    assinado, marcado `simulado`.
   - Deduplica pelo `eventoId` e aplica uma vez.
   - O valor confirmado tem de bater com o total do pedido; divergente não
     emite e fica registrado com o motivo.
   - Emite os ingressos na mesma transação que passa o pedido a pago; o
     reenvio não emite de novo.
 - **RN-T19 Pedido de teste.**
-  - Só fora de produção: o script recusa rodar com `NODE_ENV=production`.
-  - Aparece em T4 como "Teste" e nunca entra em receita.
+  - Criado pelo Admin em T4 (**Pedido de teste**), pelo mesmo caminho do
+    comprador (estoque, reserva, pagamento, emissão); vale também em
+    edição em rascunho.
+  - Só fora de produção: a rota recusa com `NODE_ENV=production` (liberar
+    em produção é decisão do dono, `pendencias.md`).
+  - Aparece em T4 como "Teste" e nunca entra em receita nem métrica.
 - **RN-T20 Cortesia.**
   - Campos: nome de 2 a 120, CPF válido, e-mail válido, um tipo de
     ingresso da edição, benefício opcional e classificação (convidado,
@@ -264,8 +280,9 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
   - Código aleatório de 128 bits, único.
   - O QR é `TM1.<código da edição>.<código do ingresso>.<assinatura>`, com
     assinatura Ed25519 por edição. Sem CPF, nome nem e-mail.
-  - Nesta versão o QR só aparece no Admin (**Ver QR**, com **Baixar QR
-    (PNG)**).
+  - Aparece para o comprador na página do pedido (depois de pago) e no
+    Admin (**Ver QR**, com **Baixar QR (PNG)**). Ingresso cancelado não
+    tem QR.
 - **RN-T24 Operador.**
   - Nome de 2 a 120; e-mail válido e único entre operadores.
   - E-mail que já é conta da Mostraí → 409 (D-05).
@@ -473,13 +490,41 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
 
 - Desativado: "Este acesso foi desativado — fale com quem organiza o
   evento."
-- Banco da Trimundi fora do ar: "Não foi possível entrar agora — tente de
-  novo em alguns minutos."
+- Banco da Trimundi fora do ar: a tela responde como a Mostraí sempre
+  respondeu ("E-mail ou senha inválidos"), para o login dela não mudar nem
+  dizer se o e-mail é conta (revisto em 09/11/2026).
 
 ### T8
 
-- "Olá, {nome}." · "A tela de check-in chega na próxima etapa." ·
-  "Edições: {lista}" ou "Edições: todas" · **Sair**.
+- "Olá, {nome}." · seletor "Edição" · "Entradas: {n} de {total} ingressos"
+  · **Ler QR Code** / **Desligar câmera** · "Ou digite o código do
+  ingresso" · **Consultar** · **Sair**.
+- Resultado: "Ingresso válido" (com **Confirmar entrada** e **Cancelar**) ·
+  "Entrada registrada" · "Ingresso já utilizado" (com "Entrou em {data}, por
+  {operador}") · "Ingresso cancelado" · "Ingresso bloqueado" (com o motivo) ·
+  "Ingresso de outra edição" · "Ingresso inválido".
+- Câmera bloqueada: "A câmera foi bloqueada. Libere o uso da câmera para
+  este site nas configurações do navegador, ou digite o código."
+- Espaço do link de indicação reservado na tela, vazio até o mecanismo
+  existir (`proximas-versoes.md`).
+
+### Páginas do comprador (T9 a T12)
+
+- **T9 `/ticket/{evento}/{edição}`** — vitrine e compra: dados da edição,
+  ingressos e promoções com preço e lote (nunca o número em estoque),
+  quantidade, **Continuar**; depois, resumo da cotação, dados de quem
+  compra e de cada participante ("Este ingresso é meu"), regras para
+  aceitar e **Ir para o pagamento**. "Seus ingressos ficam reservados por
+  30 minutos para o pagamento."
+- **T10 `/ticket/pedido/{id}?t=…`** — situação do pedido, **Pagar agora**
+  com o tempo da reserva, e depois de pago um cartão por ingresso (QR,
+  código, participante, benefícios, situação), **Imprimir** e **Baixar
+  QR**. Sem o token, não abre.
+- **T11 `/ticket/recuperar`** — e-mail e CPF de quem comprou; resposta
+  sempre igual: "Se houver pedido pago com esses dados, o link vai para o
+  e-mail do comprador em alguns minutos."
+- **T12 `/ticket/dev/pagamento/{id}`** — só desenvolvimento: **Aprovar
+  pagamento** / **Recusar pagamento**.
 
 ### Módulo desligado
 

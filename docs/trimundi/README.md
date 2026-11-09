@@ -13,6 +13,7 @@ do plugin `san-co`. Esta pasta é a porta de entrada da Trimundi; o
 - `modelo-de-dados.md` — tabelas, travas e invariantes do banco próprio
 - `api.md` — o mapa das rotas
 - `inventario-de-dados.md` — que dado de pessoa existe aqui (LGPD)
+- `STATUS-IMPLEMENTACAO.md` — o que já funciona, com teste, e o que depende de fora
 - `pendencias.md` — o que falta, e o que só o dono faz
 - `proximas-versoes.md` — o que fica para depois
 - `erros/` — os erros vividos na Trimundi (a pasta nasce no primeiro)
@@ -24,25 +25,31 @@ Porte: produto externo, com cliente pagante · Dado: financeiro, documento
 **próprio**, nunca o da Mostraí.
 
 ## Estado na esteira
-Estação atual: **4 — Contratos**, aberta em 09/11/2026.
-- **1 Escopo, 2 Fronteiras e 3 Fundação:** escritas na Etapa 0. Fecham com
-  o commit dela e o CI verde, no PR da branch `claude/beautiful-faraday-cjq1nt`.
-  Evidência: o spec (1), o spec §6 (2), e o repositório com segredo fora do
-  código, o CI, este índice e o `RUNBOOK.md` §11 (3).
-- **Falta para fechar a 4:** D1 e D2 (`pendencias.md`) e as migrations do
-  banco próprio aplicadas em banco limpo (Etapa 1).
-- **Próxima:** 5 — Construção (Etapas 2 a 8), com esforço alto.
+Estação atual: **5 — Construção**, aberta e com o escopo da v1 construído em
+09/11/2026 (Etapas 1 a 6). Detalhe em `STATUS-IMPLEMENTACAO.md`.
+- **1 a 3:** fechadas com o commit `fc13b5c` (Etapa 0) e o CI verde.
+- **4 — Contratos:** fechada em 09/11/2026 — D1 e D2 aprovadas, migrations
+  aplicadas em banco limpo com o teste de RLS verde.
+- **5 — Construção:** código, telas e testes da v1 prontos na branch
+  `claude/beautiful-faraday-cjq1nt`. Falta a homologação do dono (aparelho
+  real, Checkout de teste) e as decisões de `pendencias.md`.
+- **Próxima:** 6 — Prontidão (banco, Storage, e-mail e contratante de
+  produção; backup; revisão jurídica) — só com autorização e custos
+  apresentados antes.
 
 ## Mapa de caminhos
-Os caminhos nascem nas etapas indicadas; antes disso, não existem.
-- **Código:** `src/trimundi/`, com banco em `src/trimundi/db/` e migrations
-  em `src/trimundi/db/migrations/` (Etapa 1).
+- **Código:** `src/trimundi/` — `index.js` (entrada), `rotas/` (admin,
+  operador, público), um arquivo por assunto (`eventos`, `catalogo`,
+  `promocoes`, `pedidos`, `pagamentos`, `emissao`, `reembolsos`,
+  `participantes`, `operadores`, `checkin`, `retencao`), `checkout/`
+  (contrato com o San Checkout), `lib/` (validação, códigos, QR, chaves).
+- **Banco:** `src/trimundi/db/` e migrations em `src/trimundi/db/migrations/`.
 - **Telas do Admin:** `public/admin/trimundi.js` e `trimundi.css`, no
-  módulo `trimundi` do menu, rótulo "Eventos" (Etapa 2).
-- **Páginas do operador:** `src/trimundi/paginas/`, com scripts em
-  `public/ticket/` (Etapa 7).
-- **Testes:** `tests/trimundi-*.test.js` (Etapa 1).
-- **Variáveis:** `.env.example`, bloco Trimundi (Etapa 1).
+  módulo `trimundi` do menu, rótulo "Eventos".
+- **Páginas públicas e do operador:** modelos em `src/trimundi/paginas/`,
+  scripts e estilo em `public/ticket/`.
+- **Testes:** `tests/trimundi-*.test.js` (banco de teste próprio).
+- **Variáveis:** `.env.example`, bloco Trimundi.
 
 ## Fronteira com a Mostraí
 - **Prefixo `trimundi`** em rota, arquivo e módulo. "Eventos", "operador" e
@@ -54,5 +61,6 @@ Os caminhos nascem nas etapas indicadas; antes disso, não existem.
   (`api.md`).
 
 ## Pendências que bloqueiam a esteira
-- D1 (métrica de sucesso) e D2 (prazos de retenção): confirmação do dono,
-  com proposta em `pendencias.md`.
+- Homologação do dono e as decisões abertas em `pendencias.md` ("Decisões
+  do dono desta execução").
+- Para produção: tudo de "Antes de dado real" em `pendencias.md`.

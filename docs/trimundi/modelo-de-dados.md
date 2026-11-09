@@ -69,7 +69,8 @@ Os números de regra (RN-T…) são de `funcional.md`.
 - **`pedidos`**
   - `id` (UUID), `edicao_id`, `comprador_id`, `origem` (`venda`, `teste`), `total_centavos`.
   - `status`: `aguardando_pagamento`, `pago`, `cancelado`, `expirado`, `estornado`, `pago_sem_vaga`.
-  - Prazos: `reserva_expira_em` (criação + 30 min) e `expira_em` (criação + 24 h).
+  - Prazo: `reserva_expira_em` (criação + 30 min), que também vai como
+    `expiraEm` ao Checkout (revisto em 09/11/2026: sem o teto de 24 h).
   - `chave_idempotencia` (única), `criado_em`, `pago_em`, `encerrado_em`.
 - **`pedido_itens`**
   - `id`, `pedido_id`, `lote_id` **ou** `promocao_id` (um dos dois, nunca os dois), `quantidade`, `preco_unitario_centavos` (congelado na criação), `total_centavos`, `ordem`.
@@ -143,12 +144,37 @@ Os números de regra (RN-T…) são de `funcional.md`.
 
 - **vendidos(lote)** = ingressos não cancelados do lote + vagas de pedidos
   `aguardando_pagamento` com `reserva_expira_em` no futuro.
-- **sobra(lote k)** = se o lote k está encerrado, o maior entre zero e
-  disponível(k); senão, zero.
-- **disponível(lote k)** = quantidade(k) + sobra(k − 1) − vendidos(k). É a
-  cota não paga rolando para o próximo (RN-T11).
-- **disponível(combo)** = quantidade do combo − (combos com ingresso não
-  cancelado + combos reservados vivos).
+- **sobra(lote k)** = se o lote k está encerrado, quantidade(k) +
+  sobra(k − 1) − vendidos(k), **sem piso em zero** (revisto em 09/11/2026):
+  um pagamento tardio aceito num lote já fechado tira a vaga do seguinte,
+  e o tipo nunca vende acima da soma dos lotes. Senão, zero.
+- **disponível(lote k)** = quantidade(k) + sobra(k − 1) − vendidos(k), no
+  mínimo zero. É a cota não paga rolando para o próximo (RN-T11).
+- **Último lote:** a sobra que passaria do último lote volta para ele, se
+  ele fechou por esgotar (não à mão nem por data) e nada mais está à venda
+  — senão a vaga de uma reserva vencida sumiria do estoque.
+- Implementação: `src/trimundi/disponibilidade.js#estadoDaCategoria`
+  (função pura, com teste).
+- **disponível(combo)** = quantidade do combo − (combos pagos + combos
+  reservados vivos), e cada combo ainda tira dos lotes dos tipos que o
+  compõem (regra do dono, 09/11/2026): sem vaga no tipo, o combo esgota.
 - **ocupação(edição)** = ingressos não cancelados (pagos, de combo e
   cortesias) + posições reservadas vivas (lotes e combos). Se há
   capacidade, a ocupação nunca passa dela (RN-T07).
+
+## Acrescentado na construção (09/11/2026)
+
+- `pedidos.pagamento_recusado_em`: última tentativa recusada; o pedido
+  segue aguardando até a reserva vencer.
+- `reservas`: uma linha por vaga do pedido (tipo, lote, posição no combo,
+  participante, valor em centavos); o ingresso aponta para a reserva
+  (`ingressos.reserva_id` único → emissão idempotente).
+- `pedido_acessos`: só o sha256 do token da página do pedido (origem
+  compra, e-mail ou suporte).
+- `pagamento_eventos`: a inbox dos avisos (evento único por `evento_id`,
+  processamento com novas tentativas e estado `morto`).
+- `reembolsos`: um por pedido de devolução, com a nossa chave de
+  idempotência; `ingresso_historico`, imutável.
+- `emails`: fila desacoplada do provedor (`aguardando_provedor` enquanto
+  não há SMTP).
+- Ao todo, 30 tabelas no banco da Trimundi, todas com RLS ligado.

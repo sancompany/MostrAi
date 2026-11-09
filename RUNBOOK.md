@@ -631,15 +631,57 @@ A ticketeira Trimundi é outro projeto da San & Co. e mora neste repositório
 e neste serviço, com **banco próprio** — nunca o da Mostraí
 (`docs/trimundi/README.md`).
 
-**Hoje (09/11/2026) a Trimundi não tem código no ar.** A Etapa 0 é só
-documento. Nada nesta seção opera algo em produção.
+**Hoje (09/11/2026) a Trimundi tem código na branch
+`claude/beautiful-faraday-cjq1nt`, mas nada dela está em produção.** Sem
+`TRIMUNDI_DATABASE_URL`, o módulo fica desligado: `/ticket/*` e
+`/admin/trimundi/*` respondem 503 e o login da Mostraí não procura operador.
+Estado de cada parte: `docs/trimundi/STATUS-IMPLEMENTACAO.md`.
 
-À medida que o código entrar, esta seção ganha, na mesma tarefa:
-- como ligar e desligar o módulo, que fica desligado sem o banco dele;
-- como aplicar as migrations dele;
-- backup e restauração do banco dele;
-- o que fazer se a chave de assinatura do QR vazar;
-- como desativar um operador às pressas.
+### 11.1 Ligar e desligar
+- **Ligar:** `TRIMUNDI_DATABASE_URL` (banco PRÓPRIO) e `TRIMUNDI_SEGREDO`
+  (32+ caracteres; obrigatório em produção). Os nomes estão no
+  `.env.example`, bloco Trimundi. O servidor recusa se a URL for a do banco
+  da Mostraí.
+- **Desligar às pressas:** apagar `TRIMUNDI_DATABASE_URL` e reiniciar
+  (reinício de produção só com autorização do dono). A Mostraí segue igual.
+
+### 11.2 Migrations
+```bash
+npm run trimundi:migrate
+```
+Aplica `src/trimundi/db/migrations/*.sql` no banco da Trimundi, uma vez
+cada, com trava. Em produção recusa sem `--producao-autorizada`, que só se
+usa com autorização do dono.
+
+### 11.3 Rotina
+- **Fila de avisos de pagamento e de e-mail:** a cada 30 s, no processo do
+  servidor. Aviso que falha 6 vezes vira `morto` e aparece em Admin →
+  Eventos → Participantes ("Precisa de você").
+- **Pedidos vencidos:** a cada 5 min viram `expirado`.
+- **Conciliação com o Checkout (uma vez por dia):**
+  ```bash
+  npm run trimundi:conciliar
+  ```
+- **Retenção (D2):** nunca automática. Prazos provisórios até a revisão
+  jurídica. Ensaio (não muda nada):
+  ```bash
+  npm run trimundi:retencao
+  ```
+  Anonimizar de verdade exige `-- --confirmar` e autorização do dono.
+
+### 11.4 Incidentes
+- **Operador perdeu o aparelho ou saiu:** Admin → Eventos → Adicionar
+  operador → **Desativar**. A sessão cai na requisição seguinte.
+- **`TRIMUNDI_SEGREDO` vazou:** quem tem o segredo forja QR. Trocar o
+  segredo invalida TODOS os QR emitidos: avisar os compradores e reenviar
+  os links dos pedidos (Admin → pedido → **Gerar link do pedido**) antes
+  do evento. A troca é decisão do dono.
+- **Pagamento confirmado no Checkout e o pedido aqui não mudou:** rodar a
+  conciliação (11.3); o fato entra pela mesma fila, sem duplicar.
+- **"Pago sem vaga":** o pagamento chegou depois da reserva e esgotou.
+  Admin → pedido → **Reembolsar pedido**.
+- **Backup e restauração:** pendentes até existir o banco de produção da
+  Trimundi (`docs/trimundi/pendencias.md`).
 
 O que precisa existir antes de ligar em produção está em
 `docs/trimundi/pendencias.md`.

@@ -11,13 +11,16 @@ Em desenvolvimento e testes, um banco local separado. **Nesta versão nenhum
 dado real entra:** cortesia só com dado de teste até os itens "Antes de dado
 real" de `pendencias.md` estarem feitos.
 
-**Prazos de retenção:** são a proposta **D2**, que aguarda o dono e a
-revisão de um advogado. Não é parecer jurídico.
+**Prazos de retenção:** D2 aprovada pelo dono em 09/11/2026 **com
+ressalva**: a estrutura existe (`src/trimundi/retencao.js`) com os prazos
+abaixo como **provisórios**, e nada é anonimizado sozinho — só por comando
+manual com `--confirmar`. Os prazos definitivos esperam a revisão de um
+advogado. Não é parecer jurídico.
 
 | Dado | De quem | Para quê | Tabela | Quem mais recebe | Retenção (D2) | Como sai | Base legal |
 |---|---|---|---|---|---|---|---|
 | Nome, CPF, e-mail e telefone do comprador | quem paga (fase do checkout) | cobrança, nota fiscal, estorno, contestação | `compradores` | San Checkout e Asaas (pagador do pedido) | 5 anos após o pagamento | anonimização: apaga nome, CPF, e-mail e telefone e mantém o pedido com o id | execução de contrato; obrigação legal (fiscal) |
-| Nome, CPF e e-mail do participante | quem usa o ingresso (pode não ser o comprador) | identificar o titular do ingresso na entrada; mandar o ingresso (futuro) | `participantes` | — nesta versão | 180 dias após o fim da edição | anonimização: o ingresso e o check-in ficam, sem pessoa | execução de contrato (ingresso pago); legítimo interesse — controle de acesso (cortesia). A confirmar com advogado |
+| Nome, CPF e e-mail do participante | quem usa o ingresso (pode não ser o comprador) | identificar o titular do ingresso na entrada (a portaria vê o nome, nunca o CPF; o QR não leva nenhum dos dois) | `participantes` | — (o e-mail do ingresso vai para o comprador) | 180 dias após o fim da edição | anonimização: o ingresso e o check-in ficam, sem pessoa | execução de contrato (ingresso pago); legítimo interesse — controle de acesso (cortesia). A confirmar com advogado |
 | Classificação da cortesia (convidado, equipe, patrocinador, promocional) | administrador | separar cortesia de venda; medir | `cortesias` | — | como o ingresso | fica (não identifica pessoa) | legítimo interesse |
 | Nome, e-mail e hash da senha do operador; último acesso | operador | acesso ao check-in | `operadores` | — | enquanto ativo; desativado, 6 meses | anonimização | execução de contrato (relação com o organizador) |
 | Código de ativação (só o HMAC, nunca o código) | gerado pelo Admin | primeiro acesso do operador | `operadores.codigo_hash` | — | 72 h ou até o uso | apagado ao ativar ou ao gerar outro | execução de contrato |
@@ -26,6 +29,9 @@ revisão de um advogado. Não é parecer jurídico.
 | Aceite dos termos: versão, hash do texto, IP, navegador, data | comprador (fase do checkout) | prova do que foi aceito | `aceites` | — | junto do pedido: 5 anos | anonimização junto do pedido | exercício regular de direitos |
 | Histórico do Admin: usuário do Admin e e-mail do Cloudflare Access de quem agiu | administrador | quem fez o quê | `auditoria` | — | 5 anos | não se apaga no prazo; o registro não carrega dado de participante | legítimo interesse |
 | Imagens da edição (banner e galeria) | administrador | divulgar a edição | `edicao_imagens` + armazenamento próprio | público (URL) | enquanto a edição existir | apagar objeto e linha | — (sem pessoa); com pessoa identificável, só com autorização de imagem dela |
+| Acesso à página do pedido: só o sha256 do token | sistema | abrir o pedido pelo link | `pedido_acessos` | — | junto do pedido | revogável (`revogado_em`) | execução de contrato |
+| Fila de e-mail: endereço, assunto e corpo (o corpo leva o link do pedido) | comprador | mandar o link dos ingressos | `emails` | provedor de e-mail (alias próprio, a criar) | **a definir** — proposta: limpar o corpo 90 dias após o envio (pendência de engenharia) | — | execução de contrato |
+| Aviso de pagamento do Checkout (payload v2: valores, status, `chargeId`; sem documento do pagador) | San Checkout | confirmar, estornar, conciliar | `pagamento_eventos` | — | junto do pedido | — | execução de contrato; obrigação legal |
 | Eventos de medição (sem dado pessoal) | sistema | métrica (D1) | `metricas` | — | 2 anos | purga | legítimo interesse |
 | Log do servidor | sistema | operar e depurar | log do Northflank | Northflank | o do provedor | expira | legítimo interesse. CPF nunca vai para log; e-mail só mascarado (`ad***@…`) |
 

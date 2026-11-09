@@ -150,7 +150,9 @@ Os quatro concordam: **projeto**, com banco próprio.
 - Reserva de 30 min. Disponibilidade = pagos + reservas vivas. Capacidade
   da edição como trava rígida. A cota não paga de lote encerrado rola para o
   lote seguinte (decisão 3).
-- `expiraEm` de 24 h como teto do pedido (decisão 30).
+- `expiraEm` de 24 h como teto do pedido (decisão 30). **Revisto na
+  construção (09/11/2026):** `expiraEm` = fim da reserva (30 min), para o
+  estoque nunca passar da quantidade.
 - Cortesia conta na capacidade, não no lote (decisão 24).
 - QR assinado, pronto para check-in offline (decisão 7).
 - Boleto fora (decisão 8). O `expiraEm` já desliga o boleto (API.md §4.1.2).
@@ -252,3 +254,22 @@ Revisado em 09/11/2026:
 | 8 | revisão, teste no navegador e PR |
 
 O andamento fica em `../pendencias.md`.
+
+## Decisões da construção (09/11/2026)
+
+Tomadas na execução contínua das Etapas 1 a 7, com o pedido do dono de
+09/11/2026 ("EXECUÇÃO CONTÍNUA DO TRIMUNDI"):
+
+- **D1 e D2 aprovadas** (D2 com ressalva: prazos provisórios, nada
+  automático) — `pendencias.md`.
+- **Combo consome o estoque real** dos tipos que o compõem e a capacidade;
+  cada posição é um ingresso individual (regra do dono, substitui D-07 no
+  que diz respeito ao lote).
+- **Reserva = `expiraEm` = 30 min** (acima).
+- **Recusa de cartão não encerra o pedido** (API.md §4.3.3: "não será pago"
+  é da cobrança, não do pedido).
+- **Login da Mostraí com a Trimundi fora do ar** responde o 401 de sempre,
+  não 503 (não muda a Mostraí nem revela conta).
+- **Pedido de teste** criado pelo Admin, só fora de produção (RN-T19).
+- **Sobra do último lote:** a vaga de reserva vencida volta para ele.
+- **jsQR** passa a dependência de produção, servido pelo próprio site (CSP).

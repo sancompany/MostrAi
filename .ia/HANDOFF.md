@@ -1,6 +1,21 @@
 # Current Handoff
 
 ## Updated
+2026-11-09 (tarde) — **Trimundi, Etapas 1 a 6 construídas e testadas;
+Etapa 7 (homologação do dono) aberta.** Mesma branch
+`claude/beautiful-faraday-cjq1nt`, PR #137 em rascunho, nada em produção.
+- Estado de cada parte, riscos e como rodar: `docs/trimundi/STATUS-IMPLEMENTACAO.md`.
+- Decisões que só o dono toma: `docs/trimundi/pendencias.md`, "Decisões do
+  dono desta execução" (pedido de teste em produção, taxas no reembolso
+  total, prazos de D2, sobra de lote, avisos resolvidos à mão).
+- Não desfazer sem contexto: reserva = `expiraEm` = 30 min; combo consome o
+  estoque do tipo; recusa de cartão não encerra o pedido; login da Mostraí
+  com a Trimundi fora do ar responde o 401 de sempre; `jsqr` é dependência
+  de produção (servido em `/ticket/jsqr.js`).
+- Testes: `tests/trimundi-*.test.js`, banco de teste próprio criado pelo
+  teste. Rodar a bateria com o `.env` exportado (o pool da Mostraí não lê o
+  `.env` sozinho).
+
 2026-11-09 — **Produção conferida estável + Trimundi, Etapa 0 (só
 documentos).** Branch `claude/beautiful-faraday-cjq1nt`, nascida da `main`
 (= produção = `f344882`); ela **não** contém a `busy-noether`.
