@@ -230,7 +230,11 @@ test('limite por comprador conta os pedidos anteriores do mesmo CPF', async () =
   const c = apoio.cliente(srv);
   const comprador = apoio.pessoa('Comprador');
   const a = await corpoDoPedido(pronta, tipos(pronta.tipo, 2), { comprador });
-  assert.equal((await c.post('/ticket/api/pedidos', a.corpo)).status, 201);
+  const primeiro = await c.post('/ticket/api/pedidos', a.corpo);
+  assert.equal(primeiro.status, 201);
+  // Pago: a conta pode abrir outro pedido (só um aguardando por vez), e o
+  // limite conta o que ela já tem.
+  await pagar(primeiro.json.pedido_id);
   const b = await corpoDoPedido(pronta, tipos(pronta.tipo, 1), {
     comprador: { ...apoio.pessoa('Outro'), cpf: comprador.cpf },
   });

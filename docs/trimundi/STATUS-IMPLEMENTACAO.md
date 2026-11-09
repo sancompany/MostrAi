@@ -11,9 +11,12 @@ credencial ou serviço que só o dono provê.
 
 ## Escopo simplificado (pedido do dono, 09/11/2026)
 
-Feito na branch, em seis commits locais (nada enviado ao GitHub, nada em
-produção). Cada item tem teste automatizado; a suíte inteira (Mostraí +
-Trimundi) passa.
+Feito na branch, em commits locais (nada enviado ao GitHub, nada em
+produção). Cada item tem teste automatizado; `npm run check` (Mostraí +
+Trimundi) passa. Migrations conferidas num banco limpo; restauração só da
+Trimundi ensaiada; fluxo completo conferido no navegador com o pagamento
+SIMULADO. **Nenhum serviço externo real foi testado** (Checkout, e-mail,
+Storage, celular): isso é a homologação de `pendencias.md`.
 
 | Parte | Estado | Onde | Teste |
 |---|---|---|---|
@@ -24,6 +27,8 @@ Trimundi) passa.
 | Benefício por lote com quantidade; entrega única na portaria | feito | `emissao.js`, `catalogo.js`, `checkin.js` | `trimundi-beneficios` |
 | Indicação (link, conversão paga, recompensa por campanha, entrega no Admin) | feito | `indicacao.js`, aba Indicação | `trimundi-indicacao` |
 | Login próprio do operador (`/ticket/entrar`); login da Mostraí restaurado | feito | `rotas/operador.js` | `trimundi-checkin` |
+| Um pedido aguardando pagamento por conta e edição (sem reter estoque) | feito | `pedidos.js` | `trimundi-conta` |
+| Página de erro e 404 próprias em `/ticket` | feito | `index.js`, `paginas/erro.html` | `trimundi-identidade` |
 | E-mail real, Storage real, Checkout real, celular real | **depende de fora** | — | dublês nos testes |
 
 ## Decisões aplicadas nesta execução

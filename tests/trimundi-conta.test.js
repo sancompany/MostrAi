@@ -204,3 +204,35 @@ test('as páginas da conta abrem e não citam a Mostraí', async () => {
     assert.doesNotMatch(html, /mostra[ií]/i);
   }
 });
+
+test('um pedido aguardando pagamento por conta e edição: o segundo volta com o link do primeiro', async () => {
+  const pronta = await apoio.edicaoPronta();
+  const p = apoio.pessoa('Compradora');
+  const c = apoio.cliente(srv, { cookie: await apoio.entrarCliente(srv, p) });
+  const corpo = async () => {
+    const cot = await c.post('/ticket/api/cotacao', {
+      evento: pronta.slugEvento,
+      edicao: pronta.slugEdicao,
+      itens: apoio.itensDe(pronta.tipo, 1),
+    });
+    return {
+      evento: pronta.slugEvento,
+      edicao: pronta.slugEdicao,
+      itens: apoio.itensDe(pronta.tipo, 1),
+      participantes: [{ conta: true }],
+      aceite: { aceito: true, termos: cot.json.termos.map((t) => t.id) },
+      chave: apoio.chave(),
+    };
+  };
+  const primeiro = await c.post('/ticket/api/pedidos', await corpo());
+  assert.equal(primeiro.status, 201);
+  const segundo = await c.post('/ticket/api/pedidos', await corpo());
+  assert.equal(segundo.status, 409);
+  assert.equal(segundo.json.codigo, 'pedido_pendente');
+  assert.match(segundo.json.url, new RegExp(`^/ticket/pedido/${primeiro.json.pedido_id}\\?t=`));
+  const t = new URL(segundo.json.url, srv.base).searchParams.get('t');
+  assert.equal((await c.get(`/ticket/api/pedidos/${primeiro.json.pedido_id}?t=${encodeURIComponent(t)}`)).status, 200);
+  // Pago o primeiro, a conta pode comprar de novo.
+  await apoio.pagar(primeiro.json.pedido_id);
+  assert.equal((await c.post('/ticket/api/pedidos', await corpo())).status, 201);
+});

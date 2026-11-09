@@ -53,3 +53,17 @@ test('o e-mail sai com a logo e o nome da Trimundi no corpo, e o texto é escapa
   assert.match(corpo, /<a href="https:\/\/site\.teste\.invalid\/ticket\/pedido\/1\?t=a&amp;b=c"/);
   assert.doesNotMatch(corpo, /mostra[ií]/i);
 });
+
+test('endereço que não existe em /ticket mostra a página da Trimundi, não a da Mostraí', async () => {
+  const r = await fetch(`${srv.base}/ticket/nao/existe/mesmo`);
+  assert.equal(r.status, 404);
+  const html = await r.text();
+  assert.match(html, /Trimundi/);
+  assert.doesNotMatch(html, /mostra[ií]/i);
+  const api = await fetch(`${srv.base}/ticket/api/nada`);
+  assert.equal(api.status, 404);
+  assert.deepEqual(await api.json(), { erro: 'não encontrado' });
+  const css = await fetch(`${srv.base}/ticket/ticket.css`);
+  assert.equal(css.status, 200, 'os arquivos estáticos continuam servidos');
+  await css.text();
+});

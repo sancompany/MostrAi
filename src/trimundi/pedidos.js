@@ -280,7 +280,7 @@ async function criar(corpo, contexto = {}) {
   if (corpo?.aceite?.aceito !== true) throw erro(400, 'É preciso aceitar os termos para continuar.');
   const termosAceitos = new Set((Array.isArray(corpo?.aceite?.termos) ? corpo.aceite.termos : []).map(Number));
 
-  return emTransacao(async (cliente) => {
+  const r = await emTransacao(async (cliente) => {
     const achada = await edicaoPorEndereco(cliente, corpo?.evento, corpo?.edicao);
     if (!achada) throw erro(404, 'evento não encontrado');
     const ed = await travarEdicao(cliente, achada.id);
@@ -298,6 +298,16 @@ async function criar(corpo, contexto = {}) {
       return { pedido_id: existente[0].id, token: tk, repetido: true, pagamento: linkDePagamento(existente[0].id, tk) };
     }
     conferirVenda(ed, origem);
+    // Um pedido aguardando pagamento por conta e edição: ninguém segura o
+    // estoque abrindo vários pedidos. O que está aberto volta com o link.
+    if (origem === 'venda') {
+      const { rows: aberto } = await cliente.query(
+        `SELECT id FROM pedidos WHERE edicao_id = $1 AND cliente_id = $2 AND status = 'aguardando_pagamento'
+            AND reserva_expira_em > now() LIMIT 1`,
+        [ed.id, contexto.cliente.id],
+      );
+      if (aberto[0]) return { pedidoPendente: aberto[0].id };
+    }
     const m = await montar(cliente, ed, pedido);
     if (participantes.length !== m.vagas.length) {
       throw erro(400, 'Preencha os dados de cada participante.', { codigo: 'participantes' });
@@ -420,6 +430,16 @@ async function criar(corpo, contexto = {}) {
       pagamento: linkDePagamento(pedidoId, tk),
     };
   });
+  // Pedido aberto da mesma conta (acima): o link sai numa transação própria
+  // — dentro da que recusou, ele seria desfeito junto.
+  if (r.pedidoPendente) {
+    const tk = await emTransacao((cliente) => novoAcesso(cliente, r.pedidoPendente, 'compra'));
+    throw erro(409, 'Você já tem um pedido aguardando pagamento nesta edição — pague ou espere a reserva vencer.', {
+      codigo: 'pedido_pendente',
+      url: `/ticket/pedido/${r.pedidoPendente}?t=${encodeURIComponent(tk)}`,
+    });
+  }
+  return r;
 }
 
 // Pedido de teste pelo Admin: mesmo caminho do comprador (estoque, reserva,

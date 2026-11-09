@@ -692,8 +692,15 @@ usa com autorização do dono.
 - **Backup e restauração:** o backup da Mostraí (banco inteiro) já leva o
   esquema `trimundi`. Para voltar só a Trimundi, sem mexer na Mostraí:
   ```bash
-  pg_restore --schema=trimundi --clean --if-exists -d "$DATABASE_URL" backup.dump
+  psql "$DATABASE_URL" -c "CREATE SCHEMA IF NOT EXISTS trimundi"
   ```
+  ```bash
+  pg_restore --schema=trimundi --clean --if-exists --no-owner -d "$DATABASE_URL" backup.dump
+  ```
+  O primeiro comando é necessário: `--schema` não recria o esquema, e sem
+  ele a restauração falha inteira. Ensaiado em 09/11/2026 num banco de
+  teste: ingressos, tabelas e RLS voltaram iguais, e repetir por cima
+  também funciona.
   Restaurar o banco inteiro volta as duas no tempo — decisão do dono.
 - **Operador sem acesso:** `/ticket/entrar` é o login dele (nunca a tela da
   Mostraí). Esqueceu a senha: Admin → Adicionar operador → **Gerar novo

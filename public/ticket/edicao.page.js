@@ -568,6 +568,11 @@
         mostrarEscolha({ aviso: err.message });
         return;
       }
+      if (err.codigo === 'pedido_pendente' && /^\/ticket\/pedido\/[0-9a-f-]+\?t=[A-Za-z0-9_%-]+$/.test(err.url || '')) {
+        erro.replaceChildren(err.message, ' ', el('a', { href: err.url, text: 'Ver o pedido' }));
+        erro.scrollIntoView({ block: 'center' });
+        return;
+      }
       if (err.codigo === 'conta') {
         try {
           sessionStorage.setItem(CARRINHO, JSON.stringify([...qtd]));
