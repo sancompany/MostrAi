@@ -268,6 +268,7 @@ async function painel(c) {
   return {
     conta: { nome: c.nome, email: c.email, cpf: mascararCpf(c.cpf) },
     ingressos,
+    indicacao: await require('./indicacao').andamentoDoCliente(c.id),
   };
 }
 

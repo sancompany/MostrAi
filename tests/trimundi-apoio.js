@@ -248,6 +248,7 @@ async function novoPedido(pronta, itens, extra = {}) {
     participantes: extra.participantes || cot.vagas.map(() => pessoa('Participante')),
     aceite: { aceito: true, termos: cot.termos.map((t) => t.id) },
     chave: extra.chave || chave(),
+    ...(extra.indicacao ? { indicacao: extra.indicacao } : {}),
   };
   const conta = await contaDe(corpo.comprador);
   const r = await pedidos.criar(corpo, { ip: '100.64.0.1', userAgent: 'teste', cliente: conta });

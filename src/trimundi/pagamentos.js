@@ -256,6 +256,14 @@ async function aplicar(cliente, ev) {
   await cliente.query('SELECT 1 FROM edicoes WHERE id = $1 FOR UPDATE', [base[0].edicao_id]);
   const { rows } = await cliente.query('SELECT * FROM pedidos WHERE id = $1 FOR UPDATE', [pedidoId]);
   const pedido = rows[0];
+  const resultado = await aplicarAoPedido(cliente, pedido, p, ev);
+  // A indicação segue o estado do pedido (pago conta; reembolso, contestação
+  // ou baixa desfeita tiram a conversão).
+  await require('./indicacao').revisarPedido(cliente, pedido.id);
+  return resultado;
+}
+
+async function aplicarAoPedido(cliente, pedido, p, ev) {
   switch (p.status) {
     case 'confirmado':
       return confirmar(cliente, pedido, p);

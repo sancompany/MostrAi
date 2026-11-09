@@ -11,6 +11,7 @@ const emissao = require('../emissao');
 const participantes = require('../participantes');
 const operadores = require('../operadores');
 const reembolsos = require('../reembolsos');
+const indicacao = require('../indicacao');
 
 // Admin da Trimundi — `/admin/trimundi/*` (api.md). O server.js já exige a
 // sessão do Admin em todo /admin, e o Cloudflare Access fica na frente; a
@@ -147,6 +148,23 @@ router.post('/admin/trimundi/titular/anonimizar', async (req, res) =>
 );
 
 // Operadores (T5)
+// Indicação: campanhas por edição, quem indicou e a entrega da recompensa.
+router.get('/admin/trimundi/edicoes/:id/campanhas', async (req, res) =>
+  res.json(await indicacao.listarCampanhas(id(req))),
+);
+router.post('/admin/trimundi/edicoes/:id/campanhas', async (req, res) =>
+  res.status(201).json(await indicacao.criarCampanha(id(req), req.body, autorDaRequisicao(req))),
+);
+router.patch('/admin/trimundi/campanhas/:id', async (req, res) =>
+  res.json(await indicacao.atualizarCampanha(id(req), req.body, autorDaRequisicao(req))),
+);
+router.get('/admin/trimundi/campanhas/:id/indicadores', async (req, res) =>
+  res.json(await indicacao.indicadoresDaCampanha(id(req))),
+);
+router.post('/admin/trimundi/recompensas/:id/entregar', async (req, res) =>
+  res.json(await indicacao.entregarRecompensa(id(req), autorDaRequisicao(req))),
+);
+
 router.get('/admin/trimundi/operadores', async (_req, res) => res.json(await operadores.listar()));
 router.post('/admin/trimundi/operadores', async (req, res) =>
   res.status(201).json(await operadores.criar(req.body, autor(req))),

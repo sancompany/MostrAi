@@ -68,9 +68,20 @@
       limparResultado();
       atualizarContador();
     });
-    if (operador.indicacao?.url) {
+    // Link de indicação do operador (quando o Admin habilita): um por campanha.
+    if (operador.indicacao?.campanhas?.length) {
       const aside = $('indicacao');
-      aside.replaceChildren(el('a', { href: operador.indicacao.url, text: operador.indicacao.texto || 'Indicação' }));
+      aside.replaceChildren(
+        ...operador.indicacao.campanhas.map((c) =>
+          el(
+            'p',
+            {},
+            `${c.evento}: `,
+            el('a', { href: c.link, text: 'meu link de indicação' }),
+            ` · ${c.conversoes} indicação(ões) paga(s)`,
+          ),
+        ),
+      );
       aside.classList.remove('oculto');
     }
     $('painel').classList.remove('oculto');

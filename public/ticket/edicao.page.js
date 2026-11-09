@@ -21,6 +21,25 @@
   const GUARDADO = 'trimundi:pedido-em-andamento';
   // Carrinho guardado enquanto a pessoa entra ou cria a conta (volta aqui).
   const CARRINHO = `trimundi:carrinho:${evento}/${edicao}`.toLowerCase();
+  // Link de indicação (?ind=CÓDIGO): guardado por 30 dias para esta edição e
+  // enviado no pedido. Quem decide se vale é o servidor.
+  const INDICACAO = `trimundi:indicacao:${evento}/${edicao}`.toLowerCase();
+  (() => {
+    const ind = new URLSearchParams(window.location.search).get('ind');
+    try {
+      if (ind && /^[A-Za-z2-9]{8}$/.test(ind)) {
+        localStorage.setItem(INDICACAO, JSON.stringify({ c: ind.toUpperCase(), ate: Date.now() + 30 * 86400000 }));
+      }
+    } catch {}
+  })();
+  function codigoDeIndicacao() {
+    try {
+      const g = JSON.parse(localStorage.getItem(INDICACAO) || 'null');
+      return g && g.ate > Date.now() ? g.c : null;
+    } catch {
+      return null;
+    }
+  }
 
   async function carregar() {
     try {
@@ -516,6 +535,7 @@
       participantes: cotacao.vagas.map((_, i) => (ehMeu(form, i) ? { conta: true } : ler(form, `p${i}-`))),
       aceite: { aceito: true, termos: cotacao.termos.map((t) => t.id) },
       chave,
+      indicacao: codigoDeIndicacao(),
     };
     try {
       const r = await enviando(botao, 'Reservando...', () => api('/ticket/api/pedidos', { metodo: 'POST', corpo }));

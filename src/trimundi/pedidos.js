@@ -6,6 +6,7 @@ const { medir } = require('./lib/registro');
 const { conteudoDoQr, qrDataUrl } = require('./lib/qr');
 const config = require('./config');
 const { travarEdicao } = require('./eventos');
+const { indicadorDoCodigo } = require('./indicacao');
 const {
   carregarLotes,
   criarAlocador,
@@ -338,9 +339,20 @@ async function criar(corpo, contexto = {}) {
       [comprador.nome, comprador.cpf, comprador.email, comprador.telefone],
     );
     const { rows: ped } = await cliente.query(
-      `INSERT INTO pedidos (edicao_id, comprador_id, cliente_id, origem, total_centavos, reserva_expira_em, chave_idempotencia)
-       VALUES ($1, $2, $3, $4, $5, now() + make_interval(mins => $6), $7) RETURNING id, reserva_expira_em`,
-      [ed.id, comp[0].id, contexto.cliente?.id || null, origem, m.total, RESERVA_MINUTOS, chave],
+      `INSERT INTO pedidos (edicao_id, comprador_id, cliente_id, origem, total_centavos, reserva_expira_em,
+          chave_idempotencia, indicador_id)
+       VALUES ($1, $2, $3, $4, $5, now() + make_interval(mins => $6), $7, $8) RETURNING id, reserva_expira_em`,
+      [
+        ed.id,
+        comp[0].id,
+        contexto.cliente?.id || null,
+        origem,
+        m.total,
+        RESERVA_MINUTOS,
+        chave,
+        // Quem indicou (link ?ind=): código inválido ou da própria pessoa não conta.
+        origem === 'venda' ? await indicadorDoCodigo(cliente, corpo?.indicacao, contexto.cliente.id) : null,
+      ],
     );
     const pedidoId = ped[0].id;
     let vaga = 0;

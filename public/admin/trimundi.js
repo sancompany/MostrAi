@@ -1,9 +1,10 @@
 // Trimundi — Admin → Eventos (ADR-048; docs/trimundi/funcional.md, T1 a T5).
 //
-// Um item só no menu, "Eventos", com as cinco abas: Criar evento (lista e
-// ficha da edição), Criar ingressos (tipos e lotes), Criar promoção
+// Um item só no menu, "Eventos", com as abas: Criar evento (lista e ficha
+// da edição), Criar ingressos (tipos, lotes e benefícios), Criar promoção
 // (combos), Participantes (ingressos emitidos, cortesias, pedidos,
-// reembolsos e os números da edição) e Adicionar operador (check-in).
+// reembolsos e os números da edição), Adicionar operador (check-in) e
+// Indicação (campanhas e recompensas).
 //
 // Arquivo próprio, carregado ANTES de index.page.js (o mesmo arranjo de
 // comunicados.js): o módulo `trimundi` de lá chama as funções daqui, e as
@@ -1475,6 +1476,7 @@
                 `<label class="tm-marcar"><input type="checkbox" name="edicao" value="${e.id}" ${escolhidas.has(e.id) ? 'checked' : ''}> ${esc(nomeDaEdicao(e))}</label>`,
             )
             .join('')}</div>
+          ${alternar({ nome: 'indicacao', marcado: Boolean(op?.indicacao_habilitada), texto: 'Link de indicação próprio (aparece na tela de check-in)' })}
           <p class="form-msg" data-msg></p></form>`,
       rodape: `<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="tmFormOperador" class="btn primary">${op ? 'Salvar' : 'Adicionar e gerar código'}</button>`,
     });
@@ -1491,8 +1493,17 @@
           : [...form.querySelectorAll('[name="edicao"]:checked')].map((c) => Number(c.value));
       await travado(dlg.querySelector('[type="submit"]'), async () => {
         const r = op
-          ? await escrever(`/operadores/${op.id}`, 'PATCH', { nome: f.nome.value, edicoes: edicoesSel })
-          : await escrever('/operadores', 'POST', { nome: f.nome.value, email: f.email.value, edicoes: edicoesSel });
+          ? await escrever(`/operadores/${op.id}`, 'PATCH', {
+              nome: f.nome.value,
+              edicoes: edicoesSel,
+              indicacao_habilitada: f.indicacao.checked,
+            })
+          : await escrever('/operadores', 'POST', {
+              nome: f.nome.value,
+              email: f.email.value,
+              edicoes: edicoesSel,
+              indicacao_habilitada: f.indicacao.checked,
+            });
         if (!r.ok) return erroNoModal(dlg, r.erro);
         fechar();
         if (op) toast('Operador salvo.');
@@ -1505,6 +1516,144 @@
     });
   }
 
+  // =========================================================== Indicação
+  // Campanha da edição (recompensa, quantas existem, quantas indicações valem
+  // uma, limite por pessoa), quem indicou e a entrega da recompensa.
+  async function renderIndicacao(el, resto) {
+    const edicoes = await lerOuAvisar(el, () => pegar(`${R}/edicoes`));
+    if (!edicoes) return;
+    const ed = escolherEdicao(edicoes, resto);
+    if (!ed) {
+      el.innerHTML = semEdicao();
+      return ligarSemEdicao(el);
+    }
+    const campanhas = await pegar(`${R}/edicoes/${ed.id}/campanhas`);
+    const ativa = campanhas.find((c) => c.ativo);
+    const indicadores = ativa ? await pegar(`${R}/campanhas/${ativa.id}/indicadores`) : [];
+    const criterio = (c) =>
+      `${c.indicacoes_por_recompensa === 1 ? 'Cada indicação paga' : `A cada ${c.indicacoes_por_recompensa} indicações pagas`} = 1 ${esc(c.recompensa)}${c.limite_por_indicador ? ` · até ${c.limite_por_indicador} por pessoa` : ''}`;
+    el.innerHTML = `
+      <div class="barra-pagina">${seletorEdicao(edicoes, ed, 'indicacao')}
+        <button type="button" class="btn primary" id="tmNovaCampanha">+ Criar campanha</button></div>
+      <p class="campo-ajuda">Cada cliente tem um link próprio na conta (e o operador habilitado, na tela de check-in). Conta o pedido pago de quem chegou pelo link — uma vez por pessoa; reembolso ou contestação tiram a indicação. A recompensa sai enquanto houver.</p>
+      ${
+        campanhas.length
+          ? `<div class="tabela-caixa"><div class="rolagem"><table>
+          <thead><tr><th>Campanha</th><th>Critério</th><th class="num">Indicações</th><th class="num">Concedidas</th><th class="num">Entregues</th><th>Período</th><th>Situação</th><th></th></tr></thead>
+          <tbody>${campanhas
+            .map(
+              (c) => `<tr>
+              <td><b>${esc(c.nome)}</b></td><td>${criterio(c)}</td>
+              <td class="num">${num(c.conversoes)}</td>
+              <td class="num">${num(c.concedidas)} de ${num(c.quantidade)}</td>
+              <td class="num">${num(c.entregues)}</td>
+              <td>${c.inicio || c.fim ? `${esc(quando(c.inicio) || 'já')} → ${esc(quando(c.fim) || 'sem fim')}` : '—'}</td>
+              <td>${c.ativo ? selo(['badge-ok', 'Ativa']) : selo(['badge-neutro', 'Inativa'])}</td>
+              <td class="u-ta-r"><button type="button" class="btn ghost mini" data-editar-campanha="${c.id}">Editar</button></td>
+            </tr>`,
+            )
+            .join('')}</tbody></table></div></div>`
+          : vazio('Nenhuma campanha nesta edição.', 'Ex.: 50 copos personalizados, 1 a cada 3 indicações pagas.')
+      }
+      ${
+        ativa
+          ? `<h3>Quem indicou — ${esc(ativa.nome)}</h3>${
+              indicadores.length
+                ? `<div class="tabela-caixa"><div class="rolagem"><table>
+              <thead><tr><th>Nome</th><th>Tipo</th><th>Código</th><th class="num">Indicações pagas</th><th>Recompensas</th></tr></thead>
+              <tbody>${indicadores
+                .map(
+                  (
+                    i,
+                  ) => `<tr><td>${esc(i.nome)}</td><td>${i.tipo === 'operador' ? 'Operador' : 'Cliente'}</td><td><code>${esc(i.codigo)}</code></td>
+                  <td class="num">${num(i.conversoes)}</td>
+                  <td>${
+                    i.recompensas.length
+                      ? i.recompensas
+                          .map((r) =>
+                            r.status === 'entregue'
+                              ? `<span class="badge badge-ok">entregue ${esc(quando(r.entregue_em))}</span>`
+                              : `<button type="button" class="btn ghost mini" data-entregar="${r.id}">Marcar entregue</button>`,
+                          )
+                          .join(' ')
+                      : '<span class="u-dim">ainda não</span>'
+                  }</td></tr>`,
+                )
+                .join('')}</tbody></table></div></div>`
+                : '<p class="u-dim">Ninguém converteu ainda.</p>'
+            }`
+          : ''
+      }`;
+    ligarSeletor(el);
+    const recarregar = () => renderIndicacao(el, String(ed.id));
+    el.querySelector('#tmNovaCampanha').addEventListener('click', () => modalCampanha(ed, null, recarregar));
+    el.querySelectorAll('[data-editar-campanha]').forEach((b) =>
+      b.addEventListener('click', () =>
+        modalCampanha(
+          ed,
+          campanhas.find((c) => c.id === Number(b.dataset.editarCampanha)),
+          recarregar,
+        ),
+      ),
+    );
+    el.querySelectorAll('[data-entregar]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const r = await escrever(`/recompensas/${b.dataset.entregar}/entregar`, 'POST', {});
+        if (!r.ok) return toast(r.erro, 'err');
+        toast('Recompensa marcada como entregue.');
+        recarregar();
+      }),
+    );
+  }
+
+  function modalCampanha(ed, c, depois) {
+    const { dlg, fechar } = abrirModal({
+      titulo: c ? 'Editar campanha' : 'Nova campanha de indicação',
+      corpo: `<form id="tmFormCampanha" novalidate>
+          <div class="campos">
+            <div class="campo-grupo"><label for="tmCampNome">Nome</label><input id="tmCampNome" name="nome" maxlength="80" value="${esc(c?.nome ?? '')}" required placeholder="Ex.: Indique e ganhe"></div>
+            <div class="campo-grupo"><label for="tmCampRec">Recompensa</label><input id="tmCampRec" name="recompensa" maxlength="80" value="${esc(c?.recompensa ?? '')}" required placeholder="Ex.: Copo personalizado"></div>
+          </div>
+          <div class="campos">
+            <div class="campo-grupo"><label for="tmCampQtd">Quantas existem</label><input id="tmCampQtd" name="quantidade" type="number" min="1" max="100000" value="${c?.quantidade ?? ''}" required></div>
+            <div class="campo-grupo"><label for="tmCampN">Indicações pagas por recompensa</label><input id="tmCampN" name="n" type="number" min="1" max="100" value="${c?.indicacoes_por_recompensa ?? 1}" required></div>
+            <div class="campo-grupo"><label for="tmCampLim">Limite por pessoa (opcional)</label><input id="tmCampLim" name="limite" type="number" min="1" max="1000" value="${c?.limite_por_indicador ?? ''}"></div>
+          </div>
+          <div class="campos">
+            <div class="campo-grupo"><label for="tmCampIni">Início (opcional)</label><input id="tmCampIni" name="inicio" type="datetime-local" value="${paraCampoData(c?.inicio)}"></div>
+            <div class="campo-grupo"><label for="tmCampFim">Fim (opcional)</label><input id="tmCampFim" name="fim" type="datetime-local" value="${paraCampoData(c?.fim)}"></div>
+          </div>
+          ${alternar({ nome: 'ativo', marcado: c ? c.ativo : true, texto: 'Ativa (uma por edição)' })}
+          <p class="form-msg" data-msg></p></form>`,
+      rodape:
+        '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="tmFormCampanha" class="btn primary">Salvar campanha</button>',
+    });
+    dlg.querySelector('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target.elements;
+      const corpo = {
+        nome: f.nome.value,
+        recompensa: f.recompensa.value,
+        quantidade: f.quantidade.value,
+        indicacoes_por_recompensa: f.n.value,
+        limite_por_indicador: f.limite.value === '' ? null : f.limite.value,
+        inicio: doCampoData(f.inicio.value),
+        fim: doCampoData(f.fim.value),
+        ativo: f.ativo.checked,
+      };
+      await travado(dlg.querySelector('[type="submit"]'), async () => {
+        const r = c
+          ? await escrever(`/campanhas/${c.id}`, 'PATCH', corpo)
+          : await escrever(`/edicoes/${ed.id}/campanhas`, 'POST', corpo);
+        if (!r.ok) return erroNoModal(dlg, r.erro);
+        fechar();
+        toast('Campanha salva.');
+        depois();
+      });
+    });
+  }
+
+  window.renderTrimundiIndicacao = renderIndicacao;
   window.renderTrimundiEventos = renderEventos;
   window.renderTrimundiIngressos = renderIngressos;
   window.renderTrimundiPromocoes = renderPromocoes;

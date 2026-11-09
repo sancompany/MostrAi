@@ -677,3 +677,22 @@ details.termo .texto {
   background: var(--marca-clara);
   font-size: 0.9rem;
 }
+
+/* Indicação na conta do cliente. */
+.indicacao + .indicacao {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--linha);
+}
+
+.link-indicacao {
+  width: 100%;
+  margin: 0.25rem 0 0.5rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--linha);
+  border-radius: 10px;
+  background: var(--fundo);
+  color: var(--texto);
+  font: inherit;
+  font-size: 0.85rem;
+}

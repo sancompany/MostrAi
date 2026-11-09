@@ -290,9 +290,55 @@
     );
   }
 
-  // Preenchida pela etapa de indicação (S5): link e andamento por campanha.
-  function secaoIndicacao() {
-    return null;
+  // Indicação: o link de cada campanha ativa e o andamento (sem pontos nem
+  // níveis — só quantas indicações pagas e o que já ganhou).
+  function secaoIndicacao(ind) {
+    if (!ind.campanhas.length) return null;
+    return el(
+      'section',
+      { class: 'cartao' },
+      el('h2', { text: 'Indique e ganhe' }),
+      ind.campanhas.map((c) => {
+        const copiar = el('button', { class: 'btn mini', type: 'button', text: 'Copiar link' });
+        copiar.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(c.link);
+            copiar.textContent = 'Copiado';
+          } catch {
+            copiar.textContent = 'Selecione e copie';
+          }
+        });
+        const regra =
+          c.indicacoes_por_recompensa === 1
+            ? `Cada amigo que comprar pelo seu link vale 1 ${c.recompensa}.`
+            : `A cada ${c.indicacoes_por_recompensa} amigos que comprarem pelo seu link, 1 ${c.recompensa}.`;
+        const andamento = [
+          `${c.conversoes} ${c.conversoes === 1 ? 'indicação paga' : 'indicações pagas'}`,
+          c.recompensas_a_retirar ? `${c.recompensas_a_retirar} para retirar` : null,
+          c.recompensas_entregues ? `${c.recompensas_entregues} já retirada(s)` : null,
+          c.faltam_para_proxima && c.restam_na_campanha ? `faltam ${c.faltam_para_proxima} para a próxima` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ');
+        return el(
+          'div',
+          { class: 'indicacao' },
+          el('div', { class: 'discreto', text: c.evento }),
+          el('p', { text: regra }),
+          el('input', {
+            class: 'link-indicacao',
+            readonly: true,
+            value: c.link,
+            'aria-label': 'Seu link de indicação',
+          }),
+          copiar,
+          el('p', { class: 'discreto', text: andamento }),
+          c.restam_na_campanha
+            ? null
+            : el('p', { class: 'mensagem alerta', text: 'As recompensas desta campanha acabaram.' }),
+        );
+      }),
+    );
   }
 
   const rota = location.pathname.replace(/\/+$/, '');

@@ -70,9 +70,9 @@ async function criar(dados, autor) {
     const { rows: ja } = await cliente.query('SELECT 1 FROM operadores WHERE email_normalizado = $1', [email]);
     if (ja.length) throw erro(409, 'Já existe um operador com este e-mail.');
     const { rows } = await cliente.query(
-      `INSERT INTO operadores (nome, email, email_normalizado, codigo_hash, codigo_expira_em)
-       VALUES ($1, $2, $2, $3, now() + make_interval(hours => $4)) RETURNING id`,
-      [nome, email, hashDoCodigo(codigo), VALIDADE_CODIGO_H],
+      `INSERT INTO operadores (nome, email, email_normalizado, codigo_hash, codigo_expira_em, indicacao_habilitada)
+       VALUES ($1, $2, $2, $3, now() + make_interval(hours => $4), $5) RETURNING id`,
+      [nome, email, hashDoCodigo(codigo), VALIDADE_CODIGO_H, v.booleano(dados?.indicacao_habilitada, false)],
     );
     await gravarPermissoes(cliente, rows[0].id, ids, autor);
     await auditar(cliente, autor, 'operador_criado', 'operador', rows[0].id, { edicoes: ids ?? 'todas' });
@@ -84,6 +84,7 @@ async function obter(id, cliente = null) {
   const q = cliente ? (s, p) => cliente.query(s, p) : consultar;
   const { rows } = await q(
     `SELECT o.id, o.nome, o.email, o.status, o.ativado_em, o.desativado_em, o.ultimo_acesso_em, o.codigo_expira_em,
+            o.indicacao_habilitada,
             COALESCE(json_agg(json_build_object('edicao_id', op.edicao_id, 'nome', CASE WHEN ed.id IS NULL THEN NULL ELSE ev.nome || ' — ' || ed.nome END))
                      FILTER (WHERE op.id IS NOT NULL), '[]') AS permissoes
        FROM operadores o
@@ -107,6 +108,8 @@ function formatar(o) {
     ativado_em: o.ativado_em,
     ultimo_acesso_em: o.ultimo_acesso_em,
     codigo_expira_em: o.status === 'aguardando_ativacao' ? o.codigo_expira_em : null,
+    // Link de indicação próprio na tela de check-in, quando o Admin habilita.
+    indicacao_habilitada: o.indicacao_habilitada,
     edicoes: todas ? 'todas' : o.permissoes.map((p) => ({ id: p.edicao_id, nome: p.nome })),
   };
 }
@@ -136,6 +139,13 @@ async function atualizar(id, dados, autor) {
     if (Object.hasOwn(dados || {}, 'edicoes')) {
       await gravarPermissoes(cliente, id, await conferirEdicoes(cliente, dados.edicoes), autor);
       campos.push('edicoes');
+    }
+    if (Object.hasOwn(dados || {}, 'indicacao_habilitada')) {
+      await cliente.query('UPDATE operadores SET indicacao_habilitada = $2 WHERE id = $1', [
+        id,
+        v.booleano(dados.indicacao_habilitada, false),
+      ]);
+      campos.push('indicacao_habilitada');
     }
     await auditar(cliente, autor, 'operador_alterado', 'operador', id, { campos });
     return obter(id, cliente);

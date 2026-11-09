@@ -68,9 +68,8 @@ router.get('/ticket/api/operador', exigirOperador, async (req, res) => {
   res.json({
     nome: req.operador.nome,
     edicoes: edicoes.map((e) => ({ id: e.id, nome: `${e.evento} — ${e.nome}`, inicio_em: e.inicio_em })),
-    // Espaço do link de indicação na tela de check-in (pedido do dono,
-    // 09/11/2026): o mecanismo ainda não está definido — proximas-versoes.md.
-    indicacao: null,
+    // Link de indicação do operador, quando o Admin habilita.
+    indicacao: await require('../indicacao').andamentoDoOperador(req.operador.id),
   });
 });
 
