@@ -667,3 +667,13 @@ details.termo .texto {
     break-inside: avoid;
   }
 }
+
+/* Benefício do lote (ex.: "Direito a: copão personalizado"). */
+.beneficio-lote {
+  margin: 0.4rem 0 0;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--linha);
+  border-radius: 10px;
+  background: var(--marca-clara);
+  font-size: 0.9rem;
+}

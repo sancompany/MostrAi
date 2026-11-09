@@ -91,6 +91,12 @@ router.post('/ticket/api/checkin/confirmar', exigirOperador, ritmo, async (req, 
   );
 });
 
+router.post('/ticket/api/checkin/beneficio', exigirOperador, ritmo, async (req, res) => {
+  res.json(
+    await checkin.resgatarBeneficio(req.operador, req.body?.edicao_id, req.body?.ingresso_id, req.body?.beneficio_id),
+  );
+});
+
 router.get('/ticket/api/checkin/contador', exigirOperador, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(await checkin.contador(req.operador, req.query.edicao));

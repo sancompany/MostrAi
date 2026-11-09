@@ -166,6 +166,24 @@
               t.vendas_ate ? ` · vendas até ${dataHora(t.vendas_ate)}` : '',
             ])
           : el('span', { class: `selo ${t.situacao === 'esgotado' ? 'erro' : 'alerta'}`, text: situacao }),
+        aVenda && t.disponibilidade
+          ? el('span', {
+              class: `selo${t.disponibilidade.startsWith('Últimas') ? ' alerta' : ''}`,
+              text: t.disponibilidade,
+            })
+          : null,
+        aVenda && t.proximo_lote
+          ? el('p', {
+              class: 'detalhe',
+              text: `Próximo: ${t.proximo_lote.lote} · ${moeda(t.proximo_lote.preco_centavos)}`,
+            })
+          : null,
+        aVenda && t.beneficio_do_lote
+          ? el('p', { class: 'beneficio-lote' }, [
+              el('strong', { text: `Direito a: ${t.beneficio_do_lote.nome}` }),
+              t.beneficio_do_lote.restam ? ` · restam ${t.beneficio_do_lote.restam}` : '',
+            ])
+          : null,
         t.limite_por_comprador
           ? el('p', { class: 'detalhe', text: `Até ${t.limite_por_comprador} por comprador.` })
           : null,

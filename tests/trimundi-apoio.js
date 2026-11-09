@@ -58,7 +58,9 @@ async function encerrar() {
 
 // IP próprio por arquivo (o limitador da Mostraí conta por IP e o banco de
 // teste é compartilhado entre arquivos que rodam ao mesmo tempo).
-const REDE = `198.${18 + Math.floor(Math.random() * 2)}.${Math.floor(Math.random() * 250)}`;
+// Faixa só da Trimundi (100.64.0.0/10, CGNAT): a 198.18/15 é dos testes de
+// limite da Mostraí, e um login certo daqui zeraria o balde deles.
+const REDE = `100.${64 + Math.floor(Math.random() * 64)}.${Math.floor(Math.random() * 250)}`;
 let proximoIp = 1;
 const novoIp = () => `${REDE}.${(proximoIp++ % 250) + 1}`;
 
@@ -78,6 +80,31 @@ async function entrarAdmin(srv) {
   await r.json();
   return cookiesDe(r);
 }
+
+// Operador ativo e já logado (cookie). O login do operador é por uma rota
+// só (ver S6); este é o único lugar dos testes que sabe qual.
+const SENHA_OPERADOR = 'Portaria12@teste';
+async function operadorLogado(srv, edicoes = 'todas') {
+  const operadores = require('../src/trimundi/operadores');
+  const email = `operador.${sufixo()}@exemplo.com`;
+  const { operador, codigo } = await operadores.criar({ nome: `Operador ${sufixo()}`, email, edicoes }, AUTOR);
+  const ip = novoIp();
+  const pedirJson = async (caminho, corpo) => {
+    const r = await fetch(`${srv.base}${caminho}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': ip },
+      body: JSON.stringify(corpo),
+    });
+    const json = await r.json().catch(() => null);
+    return { r, json };
+  };
+  const at = await pedirJson('/ticket/api/ativar', { email, codigo, senha: SENHA_OPERADOR });
+  if (!at.r.ok) throw new Error(`ativação falhou: ${at.r.status}`);
+  const login = await pedirJson(ROTA_LOGIN_OPERADOR, { email, senha: SENHA_OPERADOR });
+  if (!login.r.ok) throw new Error(`login do operador falhou: ${login.r.status}`);
+  return { ...operador, email, cookie: cookiesDe(login.r) };
+}
+const ROTA_LOGIN_OPERADOR = '/anunciantes/login';
 
 // Cliente HTTP mínimo: JSON, cookie e IP.
 function cliente(srv, { cookie = '', ip = novoIp() } = {}) {
@@ -223,7 +250,7 @@ async function novoPedido(pronta, itens, extra = {}) {
     chave: extra.chave || chave(),
   };
   const conta = await contaDe(corpo.comprador);
-  const r = await pedidos.criar(corpo, { ip: '198.18.0.1', userAgent: 'teste', cliente: conta });
+  const r = await pedidos.criar(corpo, { ip: '100.64.0.1', userAgent: 'teste', cliente: conta });
   return { ...r, corpo, cot };
 }
 
@@ -320,6 +347,8 @@ module.exports = {
   pessoa,
   AUTOR,
   SENHA_CONTA,
+  SENHA_OPERADOR,
+  operadorLogado,
   contaDe,
   entrarCliente,
   edicaoPronta,

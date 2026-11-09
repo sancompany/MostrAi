@@ -113,14 +113,7 @@
           text: `${i.categoria}${i.promocao ? ` · promoção ${i.promocao}` : ''}${i.cortesia ? ' · cortesia' : ''} · ${i.codigo_curto}`,
         }),
       );
-      if (i.beneficios?.length)
-        linhas.push(
-          el(
-            'ul',
-            { class: 'chips' },
-            i.beneficios.map((b) => el('li', { class: 'chip', text: b })),
-          ),
-        );
+      if (i.beneficios?.length) linhas.push(listaDeBeneficios(i, r.resultado));
       if (r.resultado === 'ja_utilizado' && i.utilizado_em) {
         linhas.push(
           el('p', {
@@ -145,6 +138,39 @@
     caixa.replaceChildren(...linhas);
     caixa.focus();
     avisar(r.resultado);
+  }
+
+  // Benefícios do ingresso com a entrega na hora (uma vez só, registrada).
+  function listaDeBeneficios(i, resultado) {
+    const podeEntregar = ['valido', 'entrada_registrada', 'ja_utilizado'].includes(resultado);
+    return el(
+      'ul',
+      { class: 'beneficios' },
+      i.beneficios.map((b) => {
+        const item = el('li', { class: 'chip', text: b.nome });
+        if (b.resgatado_em) {
+          item.append(` — entregue ${dataCurta(b.resgatado_em)}${b.resgatado_por ? ` por ${b.resgatado_por}` : ''}`);
+        } else if (podeEntregar) {
+          const botao = el('button', { class: 'btn mini', type: 'button', text: 'Entregar' });
+          botao.addEventListener('click', async () => {
+            try {
+              const r = await enviando(botao, 'Registrando...', () =>
+                chamar('/ticket/api/checkin/beneficio', {
+                  metodo: 'POST',
+                  corpo: { edicao_id: edicaoAtual(), ingresso_id: i.id, beneficio_id: b.id },
+                }),
+              );
+              b.resgatado_em = r.resgatado_em;
+              botao.replaceWith(` — ${r.resultado === 'ja_resgatado' ? 'já tinha sido entregue' : 'entregue agora'}`);
+            } catch (err) {
+              $('msgCamera').textContent = err.message;
+            }
+          });
+          item.append(' ', botao);
+        }
+        return item;
+      }),
+    );
   }
 
   async function consultar(entrada) {
@@ -175,7 +201,9 @@
       );
       mostrarResultado(r);
       atualizarContador();
-      if (r.resultado === 'entrada_registrada' && lendo) setTimeout(proximo, 1800);
+      // Com benefício a entregar, a tela fica parada até o operador seguir.
+      const pendente = r.ingresso?.beneficios?.some((b) => !b.resgatado_em);
+      if (r.resultado === 'entrada_registrada' && lendo && !pendente) setTimeout(proximo, 1800);
     } catch (err) {
       $('msgCamera').textContent = err.message;
     }

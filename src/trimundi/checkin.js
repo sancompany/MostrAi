@@ -58,7 +58,9 @@ async function detalhes(cliente, ingresso) {
   const { rows } = await cliente.query(
     `SELECT i.id, i.codigo_curto, i.origem, i.status, i.motivo_status, pa.nome AS participante, c.nome AS categoria,
             pr.nome AS promocao,
-            COALESCE((SELECT json_agg(ib.nome ORDER BY ib.nome) FROM ingresso_beneficios ib WHERE ib.ingresso_id = i.id), '[]') AS beneficios,
+            COALESCE((SELECT json_agg(json_build_object('id', ib.beneficio_id, 'nome', ib.nome, 'resgatado_em', ib.resgatado_em,
+                        'resgatado_por', (SELECT nome FROM operadores WHERE 'operador:' || operadores.id = ib.resgatado_por))
+                        ORDER BY ib.nome) FROM ingresso_beneficios ib WHERE ib.ingresso_id = i.id), '[]') AS beneficios,
             ck.registrado_em AS utilizado_em, op.nome AS utilizado_por
        FROM ingressos i JOIN participantes pa ON pa.id = i.participante_id JOIN categorias c ON c.id = i.categoria_id
        LEFT JOIN promocoes pr ON pr.id = i.promocao_id
@@ -137,6 +139,34 @@ async function confirmar(operador, edicaoId, ingressoId, { aparelho = null, lido
   });
 }
 
+// Entrega do benefício do ingresso (ex.: copão): uma vez só. A linha do
+// benefício é travada; o segundo operador no mesmo instante vê "já entregue".
+async function resgatarBeneficio(operador, edicaoId, ingressoId, beneficioId) {
+  const ed = await permitida(operador, v.id(edicaoId, 'edição'));
+  const id = v.id(ingressoId, 'ingresso');
+  const bid = v.id(beneficioId, 'benefício');
+  return emTransacao(async (cliente) => {
+    const { rows } = await cliente.query(
+      `SELECT ib.*, i.edicao_id, i.status FROM ingresso_beneficios ib JOIN ingressos i ON i.id = ib.ingresso_id
+        WHERE ib.ingresso_id = $1 AND ib.beneficio_id = $2 FOR UPDATE OF ib`,
+      [id, bid],
+    );
+    const b = rows[0];
+    if (!b || Number(b.edicao_id) !== Number(ed.id)) throw erro(404, 'Este ingresso não tem esse benefício.');
+    if (b.status !== 'valido') throw erro(409, 'Ingresso cancelado ou bloqueado: o benefício não pode ser entregue.');
+    if (b.resgatado_em) {
+      return { resultado: 'ja_resgatado', mensagem: `${b.nome}: já entregue`, resgatado_em: b.resgatado_em };
+    }
+    const { rows: ok } = await cliente.query(
+      `UPDATE ingresso_beneficios SET resgatado_em = now(), resgatado_por = $3
+        WHERE ingresso_id = $1 AND beneficio_id = $2 AND resgatado_em IS NULL RETURNING resgatado_em`,
+      [id, bid, `operador:${operador.id}`],
+    );
+    await medir(cliente, 'acesso:beneficio_resgata', ed.id, { beneficio_id: bid });
+    return { resultado: 'resgatado', mensagem: `${b.nome}: entregue`, resgatado_em: ok[0].resgatado_em };
+  });
+}
+
 // Contador da portaria: entradas registradas e ingressos válidos da edição.
 async function contador(operador, edicaoId) {
   const ed = await permitida(operador, v.id(edicaoId, 'edição'));
@@ -148,4 +178,4 @@ async function contador(operador, edicaoId) {
   return rows[0];
 }
 
-module.exports = { consultarIngresso, confirmar, contador, RESULTADOS };
+module.exports = { consultarIngresso, confirmar, contador, resgatarBeneficio, RESULTADOS };

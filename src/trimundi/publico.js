@@ -70,6 +70,8 @@ async function edicaoPublica(evento, edicao) {
     tipos: tipos.map((t) => {
       const situacao = vendaAberta ? situacaoDoTipo(t) : 'indisponivel';
       const vigente = t.lotes.find((l) => l.situacao === 'a_venda');
+      const seguinte = vigente ? t.lotes.find((l) => l.numero > vigente.numero && !l.encerrado_em) : null;
+      const brinde = vigente?.beneficio;
       return {
         id: t.id,
         nome: t.nome,
@@ -79,6 +81,19 @@ async function edicaoPublica(evento, edicao) {
         situacao_rotulo: SITUACAO_TIPO[situacao],
         preco_centavos: vigente?.preco_centavos ?? null,
         lote: vigente ? `${vigente.numero}º lote` : null,
+        proximo_lote: seguinte ? { lote: `${seguinte.numero}º lote`, preco_centavos: seguinte.preco_centavos } : null,
+        // Benefício do lote vigente, enquanto houver (ex.: copão personalizado).
+        beneficio_do_lote:
+          brinde?.ativo && (brinde.restam === null || brinde.restam > 0)
+            ? { nome: brinde.nome, restam: brinde.restam !== null && brinde.restam <= 50 ? brinde.restam : null }
+            : null,
+        // Disponibilidade sem expor o estoque inteiro: "últimas N" perto do fim.
+        disponibilidade:
+          situacao === 'a_venda'
+            ? t.disponivel_agora <= 20
+              ? `Últimas ${t.disponivel_agora}`
+              : 'Disponível'
+            : SITUACAO_TIPO[situacao],
         vendas_ate: vigente?.fim_vendas ?? null,
         proximo_inicio: t.proximo_inicio,
         // Quanto dá para escolher: o menor entre o limite por comprador, o

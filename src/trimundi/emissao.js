@@ -22,21 +22,38 @@ async function codigoCurtoLivre(cliente, edicaoId) {
   throw new Error('não foi possível sortear um código curto livre');
 }
 
-// Benefícios do ingresso: os do tipo + o extra (promoção ou cortesia), sem
-// repetir o mesmo benefício (o do tipo vence a origem). Cópia do nome no
-// momento da emissão (RN-T15).
-async function gravarBeneficios(cliente, ingressoId, categoriaId, extraId, origemExtra) {
+// Benefícios do ingresso: os do tipo, o do LOTE e o extra (promoção ou
+// cortesia), sem repetir o mesmo benefício. Benefício com quantidade só vai
+// enquanto houver: a linha do benefício é travada e o que já foi dado (em
+// ingresso não cancelado) é contado antes — nunca passa do estoque. Cópia do
+// nome no momento da emissão (RN-T15).
+async function gravarBeneficios(cliente, ingressoId, categoriaId, extraId, origemExtra, loteId = null) {
   const { rows } = await cliente.query(
     `SELECT b.id, b.nome FROM categoria_beneficios cb JOIN beneficios b ON b.id = cb.beneficio_id
       WHERE cb.categoria_id = $1 AND b.ativo`,
     [categoriaId],
   );
   const lista = rows.map((b) => ({ ...b, origem: 'categoria' }));
-  if (extraId && !lista.some((b) => Number(b.id) === Number(extraId))) {
-    const { rows: extra } = await cliente.query('SELECT id, nome FROM beneficios WHERE id = $1', [extraId]);
-    if (extra[0]) lista.push({ ...extra[0], origem: origemExtra });
+  const somar = async (id, origem) => {
+    if (!id || lista.some((b) => Number(b.id) === Number(id))) return;
+    const { rows: extra } = await cliente.query('SELECT id, nome FROM beneficios WHERE id = $1 AND ativo', [id]);
+    if (extra[0]) lista.push({ ...extra[0], origem });
+  };
+  if (loteId) {
+    const { rows: l } = await cliente.query('SELECT beneficio_id FROM lotes WHERE id = $1', [loteId]);
+    await somar(l[0]?.beneficio_id, 'lote');
   }
+  await somar(extraId, origemExtra);
   for (const b of lista) {
+    const { rows: trava } = await cliente.query('SELECT quantidade FROM beneficios WHERE id = $1 FOR UPDATE', [b.id]);
+    if (trava[0]?.quantidade) {
+      const { rows: dados } = await cliente.query(
+        `SELECT count(*)::int AS n FROM ingresso_beneficios ib JOIN ingressos i ON i.id = ib.ingresso_id
+          WHERE ib.beneficio_id = $1 AND (i.status <> 'cancelado' OR ib.resgatado_em IS NOT NULL)`,
+        [b.id],
+      );
+      if (dados[0].n >= trava[0].quantidade) continue;
+    }
     await cliente.query(
       'INSERT INTO ingresso_beneficios (ingresso_id, beneficio_id, nome, origem) VALUES ($1, $2, $3, $4)',
       [ingressoId, b.id, b.nome, b.origem],
@@ -79,7 +96,7 @@ async function emitirDoPedido(cliente, pedido, { autor = 'pagamento' } = {}) {
     );
     if (!rows[0]) continue;
     const ingressoId = rows[0].id;
-    await gravarBeneficios(cliente, ingressoId, r.categoria_id, r.beneficio_promocional, 'promocao');
+    await gravarBeneficios(cliente, ingressoId, r.categoria_id, r.beneficio_promocional, 'promocao', r.lote_id);
     await historicoDoIngresso(cliente, ingressoId, 'emitido', { autor });
     await medir(cliente, 'emissao:ingresso_emite', pedido.edicao_id, {
       origem: 'pago',

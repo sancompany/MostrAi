@@ -524,7 +524,7 @@
         <p class="u-dim">${t.limite_por_comprador ? `Até ${t.limite_por_comprador} por comprador. ` : ''}${t.beneficios.length ? `Benefícios: ${t.beneficios.map((b) => esc(b.nome)).join(', ')}.` : ''}
           Disponível agora: <b>${num(t.disponivel_agora)}</b>.</p>
         <div class="tabela-caixa"><div class="rolagem"><table>
-          <thead><tr><th>Lote</th><th class="num">Preço</th><th class="num">Quantidade</th><th class="num">Vendidos</th><th class="num">Reservados</th><th class="num">Disponíveis</th><th>Período</th><th>Situação</th><th></th></tr></thead>
+          <thead><tr><th>Lote</th><th class="num">Preço</th><th class="num">Quantidade</th><th class="num">Vendidos</th><th class="num">Reservados</th><th class="num">Disponíveis</th><th>Benefício</th><th>Período</th><th>Situação</th><th></th></tr></thead>
           <tbody>${t.lotes
             .map(
               (l) => `<tr>
@@ -534,6 +534,7 @@
               <td class="num">${num(l.pagos)}</td>
               <td class="num">${num(l.reservados)}</td>
               <td class="num">${num(l.disponivel)}</td>
+              <td>${l.beneficio ? `${esc(l.beneficio.nome)}${l.beneficio.restam !== null ? ` <span class="u-dim">(restam ${num(l.beneficio.restam)})</span>` : ''}` : '—'}</td>
               <td>${esc(periodo(l))}</td>
               <td>${selo(SITUACAO_LOTE[l.situacao] || ['badge-neutro', l.situacao])}${l.situacao === 'esgotado' && !l.encerrado_em ? ' <span class="u-dim">(cheio só de reservas — reserva que vence devolve a vaga)</span>' : ''}</td>
               <td class="u-ta-r">${!soLeitura && !l.encerrado_em ? `<button type="button" class="btn perigo-sutil mini" data-encerrar-lote="${l.id}" data-numero="${l.numero}">Encerrar lote</button>` : ''}</td>
@@ -545,13 +546,22 @@
       <div class="barra-pagina">${seletorEdicao(edicoes, ed, 'ingressos')}
         ${soLeitura ? '' : '<button type="button" class="btn primary" id="tmNovoTipo">+ Criar ingresso</button>'}</div>
       ${soLeitura ? '<p class="form-msg">Edição encerrada fica só para consulta.</p>' : ''}
-      <p class="u-dim tm-beneficios">Benefícios desta edição: ${beneficios.length ? beneficios.map((b) => `<span class="badge badge-neutro">${esc(b.nome)}</span>`).join(' ') : 'nenhum ainda.'}
+      <p class="u-dim tm-beneficios">Benefícios desta edição: ${beneficios.length ? beneficios.map((b) => `${soLeitura ? '' : `<button type="button" class="btn ghost mini" data-editar-beneficio="${b.id}" title="Editar benefício">`}<span class="badge badge-neutro">${esc(b.nome)}</span> <span class="u-dim">${b.quantidade ? `${num(b.concedidos)}/${num(b.quantidade)} dados` : `${num(b.concedidos)} dados, sem limite`} · ${num(b.resgatados)} entregues</span>${soLeitura ? '' : '</button>'}`).join(' ') : 'nenhum ainda.'}
         ${soLeitura ? '' : '<button type="button" class="btn ghost mini" id="tmNovoBeneficio">+ Novo benefício</button>'}</p>
       ${tipos.length ? tipos.map(cartao).join('') : vazio('Nenhum ingresso nesta edição ainda.', 'Cada ingresso tem de 1 a 10 lotes, com preço e quantidade.')}`;
     ligarSeletor(el);
     const recarregar = () => renderIngressos(el, String(ed.id));
     el.querySelector('#tmNovoTipo')?.addEventListener('click', () => modalTipo(ed, null, beneficios, recarregar));
     el.querySelector('#tmNovoBeneficio')?.addEventListener('click', () => modalBeneficio(ed, recarregar));
+    el.querySelectorAll('[data-editar-beneficio]').forEach((b) =>
+      b.addEventListener('click', () =>
+        modalBeneficio(
+          ed,
+          recarregar,
+          beneficios.find((x) => x.id === Number(b.dataset.editarBeneficio)),
+        ),
+      ),
+    );
     el.querySelectorAll('[data-editar-tipo]').forEach((b) =>
       b.addEventListener('click', () =>
         modalTipo(
@@ -579,12 +589,15 @@
     );
   }
 
-  function modalBeneficio(ed, depois) {
+  function modalBeneficio(ed, depois, atual = null) {
     const { dlg, fechar } = abrirModal({
-      titulo: 'Novo benefício',
+      titulo: atual ? 'Editar benefício' : 'Novo benefício',
       corpo: `<form id="tmFormBeneficio" novalidate>
-          <div class="campo-grupo"><label for="tmBenNome">Nome</label><input id="tmBenNome" name="nome" maxlength="60" required></div>
-          <div class="campo-grupo"><label for="tmBenDesc">Descrição (opcional)</label><input id="tmBenDesc" name="descricao" maxlength="300"></div>
+          <div class="campo-grupo"><label for="tmBenNome">Nome</label><input id="tmBenNome" name="nome" maxlength="60" value="${esc(atual?.nome ?? '')}" required placeholder="Ex.: Copão personalizado"></div>
+          <div class="campo-grupo"><label for="tmBenDesc">Descrição (opcional)</label><input id="tmBenDesc" name="descricao" maxlength="300" value="${esc(atual?.descricao ?? '')}"></div>
+          <div class="campo-grupo"><label for="tmBenQtd">Quantidade disponível (vazio = sem limite)</label><input id="tmBenQtd" name="quantidade" type="number" min="1" max="100000" value="${atual?.quantidade ?? ''}"></div>
+          <p class="campo-ajuda">Quem compra recebe o benefício enquanto houver; ingresso cancelado devolve a unidade. A entrega é registrada no check-in, uma vez só.</p>
+          ${atual ? alternar({ nome: 'ativo', marcado: atual.ativo, texto: 'Ativo' }) : ''}
           <p class="form-msg" data-msg></p></form>`,
       rodape:
         '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="tmFormBeneficio" class="btn primary">Salvar benefício</button>',
@@ -593,10 +606,15 @@
       e.preventDefault();
       await travado(dlg.querySelector('[type="submit"]'), async () => {
         const f = e.target.elements;
-        const r = await escrever(`/edicoes/${ed.id}/beneficios`, 'POST', {
+        const corpo = {
           nome: f.nome.value,
           descricao: f.descricao.value,
-        });
+          quantidade: f.quantidade.value === '' ? null : f.quantidade.value,
+          ...(atual ? { ativo: f.ativo.checked } : {}),
+        };
+        const r = atual
+          ? await escrever(`/beneficios/${atual.id}`, 'PATCH', corpo)
+          : await escrever(`/edicoes/${ed.id}/beneficios`, 'POST', corpo);
         if (!r.ok) return erroNoModal(dlg, r.erro);
         fechar();
         toast('Benefício salvo.');
@@ -605,13 +623,18 @@
     });
   }
 
-  function linhaLote(l = {}, travar = false) {
+  function linhaLote(l = {}, travar = false, beneficios = []) {
     const t = travar ? 'disabled' : '';
+    const escolhido = Number(l.beneficio?.id || l.beneficio_id || 0);
     return `<div class="tm-lote" ${l.id ? `data-id="${l.id}"` : ''}>
       <div class="campo-grupo"><label>Preço (R$)</label><input name="preco" inputmode="decimal" value="${reais(l.preco_centavos)}" ${t}></div>
       <div class="campo-grupo"><label>Quantidade</label><input name="quantidade" type="number" min="1" max="100000" value="${l.quantidade ?? ''}" ${t}></div>
       <div class="campo-grupo"><label>Início das vendas</label><input name="inicio" type="datetime-local" value="${paraCampoData(l.inicio_vendas)}" ${t}></div>
       <div class="campo-grupo"><label>Fim das vendas</label><input name="fim" type="datetime-local" value="${paraCampoData(l.fim_vendas)}" ${t}></div>
+      <div class="campo-grupo"><label>Benefício do lote</label><select name="beneficio_lote" ${t}><option value="">Nenhum</option>${beneficios
+        .filter((b) => b.ativo || Number(b.id) === escolhido)
+        .map((b) => `<option value="${b.id}" ${Number(b.id) === escolhido ? 'selected' : ''}>${esc(b.nome)}</option>`)
+        .join('')}</select></div>
       ${travar ? '<span class="u-dim tm-lote-nota">encerrado</span>' : '<button type="button" class="btn perigo-sutil mini" data-tirar-lote aria-label="Tirar este lote">×</button>'}
     </div>`;
   }
@@ -641,9 +664,9 @@
           <div class="tm-lista-marcar" data-beneficios>${listaBeneficios(beneficios)}</div>
           <button type="button" class="btn ghost mini" data-novo-beneficio>+ Novo benefício</button>
           <p class="campo-rotulo">Lotes</p>
-          <div data-lotes>${(tipo?.lotes?.length ? tipo.lotes : [{}]).map((l) => linhaLote(l, Boolean(l.encerrado_em))).join('')}</div>
+          <div data-lotes>${(tipo?.lotes?.length ? tipo.lotes : [{}]).map((l) => linhaLote(l, Boolean(l.encerrado_em), beneficios)).join('')}</div>
           <button type="button" class="btn ghost mini" data-mais-lote>+ Adicionar lote</button>
-          <p class="campo-ajuda">De 1 a 10 lotes. O próximo lote abre sozinho quando o anterior esgota ou encerra; a sobra do encerrado passa para ele.</p>
+          <p class="campo-ajuda">De 1 a 10 lotes. Cada lote vende só a quantidade dele: o próximo abre sozinho quando o anterior esgota ou encerra, e o que não vendeu no encerrado não passa para ele.</p>
           <p class="form-msg" data-msg></p>
         </form>`,
       rodape:
@@ -652,7 +675,7 @@
     const lotes = dlg.querySelector('[data-lotes]');
     dlg.querySelector('[data-mais-lote]').addEventListener('click', () => {
       if (lotes.children.length >= 10) return erroNoModal(dlg, 'Cada ingresso tem de 1 a 10 lotes.');
-      lotes.insertAdjacentHTML('beforeend', linhaLote());
+      lotes.insertAdjacentHTML('beforeend', linhaLote({}, false, beneficios));
     });
     lotes.addEventListener('click', (e) => {
       if (e.target.closest('[data-tirar-lote]') && lotes.children.length > 1) e.target.closest('.tm-lote').remove();
@@ -677,6 +700,7 @@
           quantidade: linha.querySelector('[name="quantidade"]').value,
           inicio_vendas: doCampoData(linha.querySelector('[name="inicio"]').value),
           fim_vendas: doCampoData(linha.querySelector('[name="fim"]').value),
+          beneficio_id: linha.querySelector('[name="beneficio_lote"]').value || null,
         });
       }
       const corpo = {

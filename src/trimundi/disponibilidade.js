@@ -10,7 +10,7 @@ const { medir } = require('./lib/registro');
 // Vendidos de cada lote = vagas de pedido pago com ingresso não cancelado +
 // vagas de pedido aguardando pagamento com a reserva ainda viva.
 const SQL_LOTES = `
-  SELECT l.id, l.categoria_id, l.ordem, l.preco_centavos, l.quantidade, l.inicio_vendas, l.fim_vendas,
+  SELECT l.id, l.categoria_id, l.ordem, l.preco_centavos, l.quantidade, l.inicio_vendas, l.fim_vendas, l.beneficio_id,
          l.encerrado_em, l.motivo_encerramento,
          COALESCE(SUM(CASE WHEN p.status = 'pago' AND i.id IS NOT NULL AND i.status <> 'cancelado' THEN 1 ELSE 0 END), 0)::int AS pagos,
          COALESCE(SUM(CASE WHEN p.status = 'aguardando_pagamento' AND p.reserva_expira_em > now() THEN 1 ELSE 0 END), 0)::int AS reservados
