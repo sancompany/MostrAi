@@ -18,6 +18,14 @@ do plugin `san-co`. Esta pasta é a porta de entrada da Trimundi; o
 - `proximas-versoes.md` — o que fica para depois
 - `erros/` — os erros vividos na Trimundi (a pasta nasce no primeiro)
 
+## Marca e eventos (decisão do dono, 09/11/2026)
+- **Os eventos são da Mostraí.** Para o público (página do evento, pedido,
+  recuperar ingressos, check-in, e-mail), a marca é **Mostraí**. Trimundi é
+  só o nome interno do módulo (código, banco e documentos).
+- **Eventos são criados no site**, pelo Admin (Eventos → Criar evento): nome,
+  banner, imagens, ingressos. TREEMUNDO é um evento, não uma empresa; nenhum
+  evento vem pronto no código.
+
 ## Classificação
 Porte: produto externo, com cliente pagante · Dado: financeiro, documento
 (CPF), senha (operador) · Vida útil: anos → **rigor no topo da escala**.

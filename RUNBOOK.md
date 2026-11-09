@@ -681,9 +681,6 @@ usa com autorização do dono.
   conciliação (11.3); o fato entra pela mesma fila, sem duplicar.
 - **"Pago sem vaga":** o pagamento chegou depois da reserva e esgotou.
   Admin → pedido → **Reembolsar pedido**.
-- **Carregar a TREEMUNDO (só fora de produção):**
-  `npm run trimundi:exemplo -- --banner <png> --publicar`, com os dados
-  de `docs/trimundi/exemplos/treemundo-edition01.json`.
 - **Pedido do titular (LGPD):** Admin → Eventos → Participantes → **Pedido
   do titular (LGPD)** → CPF → **Baixar os dados** e/ou **Anonimizar**.
 - **Backup e restauração:** pendentes até existir o banco de produção da

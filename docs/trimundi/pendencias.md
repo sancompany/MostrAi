@@ -33,21 +33,11 @@ funcionalidade está em `STATUS-IMPLEMENTACAO.md`.
 - [ ] 7 — Homologação: testes, regressão e E2E local feitos; falta a
   homologação do dono (abaixo) e o teste em aparelho real.
 
-## Dados reais da TREEMUNDO / EDITION01
+## Primeiro evento
 
-- [ ] Trocar os valores de demonstração de
-  `docs/trimundi/exemplos/treemundo-edition01.json` pelos reais e rodar
-  `npm run trimundi:exemplo -- --publicar`. Faltam:
-  - data e horário de início e término;
-  - local completo (nome, endereço, CEP);
-  - capacidade;
-  - tipos de ingresso, com preço, quantidade e período de cada lote, e
-    limite por comprador;
-  - benefícios;
-  - combos;
-  - meia-entrada (cota e forma de compra);
-  - regulamento e termos revisados;
-  - banner e imagens.
+- [ ] Criar a TREEMUNDO / EDITION01 pelo Admin (Eventos → Criar evento):
+  dados, textos, banner, imagens, ingressos e combos. É trabalho do dono,
+  no site, não do código.
 
 ## Decisões do dono desta execução
 

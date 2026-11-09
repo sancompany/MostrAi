@@ -94,7 +94,7 @@ router.post('/ticket/api/recuperar', limiteTentativasPorAlvo(alvoDaRecuperacao),
     ok: true,
     mensagem: ativo
       ? 'Se houver pedido pago com esses dados, o link vai para o e-mail do comprador em alguns minutos.'
-      : 'Se houver pedido pago com esses dados, o link fica pronto para envio — o e-mail da Trimundi ainda não está ativo; fale com a organização do evento.',
+      : 'Se houver pedido pago com esses dados, o link fica pronto para envio — o envio de e-mails dos ingressos ainda não está ativo; fale com a organização do evento.',
   });
 });
 

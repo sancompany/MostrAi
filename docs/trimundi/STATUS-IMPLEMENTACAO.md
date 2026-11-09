@@ -42,7 +42,7 @@ credencial ou serviço que só o dono provê.
 
 ## Funcionalidades e testes
 
-Testes: `tests/trimundi-*.test.js` — 6 arquivos, 77 casos, banco de teste
+Testes: `tests/trimundi-*.test.js` — 6 arquivos, 76 casos, banco de teste
 próprio (`<banco>_trimundi_teste`, criado pelo próprio teste).
 
 | Área | O que funciona | Teste |
@@ -76,29 +76,16 @@ Fluxo de ponta a ponta no navegador (Playwright, servidor local, banco
 6. o Admin desativa o operador e a leitura seguinte manda para o login;
 7. o resumo da edição mostra 4 pagos, 2 entradas e R$ 190,00.
 
-## TREEMUNDO / EDITION01
+## Eventos e marca
 
-A edição está pronta para carregar inteira, com um comando, a partir de
-`docs/trimundi/exemplos/treemundo-edition01.json`. O comando é idempotente:
-rodar de novo atualiza a edição em vez de duplicar.
-- **Carrega:** evento, edição, textos, benefícios, Pista (3 lotes), VIP
-  (2 lotes), o "Combo Amigos" e, opcionalmente, o banner, publicando no
-  fim.
-- **Restrições:** só fora de produção; lote de ingresso já criado não muda
-  por aqui (muda pelo Admin).
+Para o público a marca é **Mostraí** (os eventos são dela); Trimundi é o
+nome interno do módulo.
 
-```bash
-npm run trimundi:exemplo -- --banner caminho/do/banner.png --publicar
-```
 
-**Os valores do arquivo são DEMONSTRAÇÃO** (lista em `_a_confirmar`): data,
-local, capacidade, preços, quantidades, benefícios, combo, textos (com
-revisão jurídica) e banner. Com os dados reais, é trocar o arquivo e rodar
-de novo. Conferido no navegador:
-- Admin: as cinco abas e a ficha;
-- página `/ticket/treemundo/EDITION01`, no computador e no celular;
-- pedido de teste pago;
-- check-in: válido, entrada registrada e "já utilizado".
+Os eventos são da Mostraí e são criados por quem administra, pelo Admin
+(Eventos → Criar evento): nome, endereço, data, local, textos, banner,
+imagens, ingressos, lotes e combos. Nenhum evento vem pronto no código.
+TREEMUNDO / EDITION01 é o primeiro evento a ser criado assim.
 
 ## Parcial
 
@@ -140,7 +127,7 @@ de novo. Conferido no navegador:
 - `public/admin/index.page.js` e `index.html`: o item "Eventos".
 - `package.json`: `jsqr` passa de devDependency a dependency (servido em
   `/ticket/jsqr.js`); scripts `trimundi:*`.
-- Toda a bateria segue verde: 1172 testes (1095 da Mostraí, sem nenhum alterado, + 77 da Trimundi), lint e formato.
+- Toda a bateria segue verde: 1171 testes (1095 da Mostraí, sem nenhum alterado, + 76 da Trimundi), lint e formato.
 
 ## Como rodar localmente
 

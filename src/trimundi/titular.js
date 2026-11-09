@@ -39,7 +39,7 @@ async function exportar(cpfBruto) {
   );
   return {
     gerado_em: new Date().toISOString(),
-    controlador: 'Trimundi (San & Co.)',
+    controlador: 'Mostraí (San & Co.)',
     compradores: compradores.map(({ id, ...c }) => c),
     participantes,
   };

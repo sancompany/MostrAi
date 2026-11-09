@@ -10,7 +10,8 @@ class ErroTrimundi extends Error {
 
 const erro = (status, mensagem, extra) => new ErroTrimundi(status, mensagem, extra);
 
-const MENSAGEM_NAO_CONFIGURADA = 'a Trimundi não está configurada neste ambiente';
+// Vai para o público (/ticket/*): fala da venda de ingressos, não do módulo.
+const MENSAGEM_NAO_CONFIGURADA = 'a venda de ingressos não está configurada neste ambiente';
 
 // Middleware de erro dos routers da Trimundi: regra vira resposta com a
 // mensagem; módulo desligado vira 503; o resto segue para o handler global

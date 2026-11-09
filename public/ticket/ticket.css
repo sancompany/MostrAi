@@ -1,5 +1,6 @@
-/* Trimundi — páginas públicas (/ticket/*). Estilo próprio, sem o layout da
-   Mostraí: a vitrine é do evento. Celular primeiro; sem fonte externa (CSP). */
+/* Páginas de ingresso da Mostraí (/ticket/*; módulo interno Trimundi). Os
+   eventos são da Mostraí: marca e laranja dela; a vitrine destaca o evento.
+   Celular primeiro; sem fonte externa (CSP). */
 
 :root {
   --fundo: #f6f5f9;
@@ -7,9 +8,9 @@
   --texto: #18161f;
   --suave: #5b5768;
   --linha: #e3e0ea;
-  --marca: #5b21b6;
-  --marca-forte: #4c1d95;
-  --marca-clara: #ede9fe;
+  --marca: #c2570a;
+  --marca-forte: #9a4408;
+  --marca-clara: #ffedd5;
   --ok: #047857;
   --ok-fundo: #d1fae5;
   --alerta: #92400e;
@@ -28,9 +29,9 @@
     --texto: #f2f0f7;
     --suave: #b3aec2;
     --linha: #2f2c39;
-    --marca: #a78bfa;
-    --marca-forte: #c4b5fd;
-    --marca-clara: #2e2348;
+    --marca: #ff9a4d;
+    --marca-forte: #ffb77f;
+    --marca-clara: #3a2412;
     --ok: #34d399;
     --ok-fundo: #0f2e25;
     --alerta: #fbbf24;
@@ -109,10 +110,24 @@ p {
 }
 
 .marca {
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  color: var(--marca);
+  display: inline-flex;
+  align-items: center;
   text-decoration: none;
+}
+
+.marca img {
+  height: 26px;
+  width: auto;
+}
+
+@media (prefers-color-scheme: dark) {
+  .marca img {
+    filter: brightness(0) invert(1);
+  }
+}
+
+.topo .discreto {
+  margin-left: auto;
 }
 
 .pagina {
@@ -353,7 +368,7 @@ p {
 
 @media (prefers-color-scheme: dark) {
   .btn.primario {
-    color: #160f26;
+    color: #1f1206;
   }
 }
 
