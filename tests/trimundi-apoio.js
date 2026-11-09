@@ -89,6 +89,9 @@ async function entrarAdmin(srv) {
     body: JSON.stringify({ usuario: process.env.ADMIN_USER, senha: process.env.ADMIN_PASSWORD }),
   });
   if (!r.ok) throw new Error(`login do admin falhou: ${r.status}`);
+  // Ler o corpo antes de usar o cookie: a resposta só termina depois de a
+  // sessão estar gravada (express-session).
+  await r.json();
   return cookiesDe(r);
 }
 

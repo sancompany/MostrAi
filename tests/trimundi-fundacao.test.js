@@ -307,3 +307,33 @@ test('retenção (D2): ensaio não muda nada; com confirmação, anonimiza só o
   assert.equal(retencao.PRAZOS_PROVISORIOS.participantesDiasAposEdicao, 180);
   assert.equal(retencao.PRAZOS_PROVISORIOS.emailsDiasAposEnvio, 90);
 });
+
+test('carga da TREEMUNDO (exemplo): cria a edição completa e rodar de novo não duplica nada', async () => {
+  const { carregar, PADRAO } = require('../src/trimundi/exemplo');
+  const dados = JSON.parse(require('node:fs').readFileSync(PADRAO, 'utf8'));
+  // Endereço próprio deste teste (o banco de teste é compartilhado).
+  dados.evento.slug = `treemundo-${apoio.sufixo()}`;
+  const primeira = await carregar(dados, { publicar: true });
+  assert.equal(primeira.endereco, `/ticket/${dados.evento.slug}/EDITION01`);
+  const segunda = await carregar(dados, { publicar: true });
+  assert.equal(segunda.edicao_id, primeira.edicao_id);
+  const { rows } = await consultar(
+    `SELECT (SELECT count(*) FROM categorias WHERE edicao_id = $1)::int AS tipos,
+            (SELECT count(*) FROM lotes l JOIN categorias c ON c.id = l.categoria_id WHERE c.edicao_id = $1)::int AS lotes,
+            (SELECT count(*) FROM promocoes WHERE edicao_id = $1)::int AS promocoes,
+            (SELECT count(*) FROM beneficios WHERE edicao_id = $1)::int AS beneficios,
+            (SELECT count(*) FROM termos WHERE edicao_id = $1)::int AS termos,
+            (SELECT status FROM edicoes WHERE id = $1) AS status`,
+    [primeira.edicao_id],
+  );
+  assert.deepEqual(rows[0], { tipos: 2, lotes: 5, promocoes: 1, beneficios: 3, termos: 3, status: 'publicado' });
+  const vitrine = await require('../src/trimundi/publico').edicaoPublica(dados.evento.slug, 'EDITION01');
+  assert.deepEqual(
+    vitrine.tipos.map((t) => [t.nome, t.preco_centavos, t.situacao]),
+    [
+      ['Pista', 8000, 'a_venda'],
+      ['VIP', 20000, 'a_venda'],
+    ],
+  );
+  assert.equal(vitrine.combos[0].situacao, 'a_venda');
+});

@@ -66,6 +66,9 @@ test('o Admin da Trimundi responde 503 com sessão e 401 sem', async () => {
     body: JSON.stringify({ usuario: process.env.ADMIN_USER, senha: process.env.ADMIN_PASSWORD }),
   });
   assert.equal(login.status, 200);
+  // O express-session só termina a resposta depois de gravar a sessão:
+  // usar o cookie antes de ler o corpo inteiro é corrida (o navegador espera).
+  await login.json();
   const cookie = login.headers
     .getSetCookie()
     .map((c) => c.split(';')[0])

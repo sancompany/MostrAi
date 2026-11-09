@@ -1,0 +1,77 @@
+{
+  "_leia": "Dados da TREEMUNDO / EDITION01 carregados por `npm run trimundi:exemplo` (só fora de produção). Os campos em `_a_confirmar` são DEMONSTRAÇÃO: troque pelos reais e rode de novo — o carregador atualiza o que já existe.",
+  "_a_confirmar": [
+    "edicao.descricao",
+    "edicao.inicio_em",
+    "edicao.fim_em",
+    "edicao.local",
+    "edicao.capacidade",
+    "edicao.textos (revisão jurídica)",
+    "beneficios",
+    "tipos (preços, quantidades, períodos e limites)",
+    "promocoes",
+    "banner e galeria"
+  ],
+  "evento": { "nome": "TREEMUNDO", "slug": "treemundo" },
+  "edicao": {
+    "nome": "EDITION01",
+    "slug": "EDITION01",
+    "descricao": "A primeira edição da TREEMUNDO: uma noite de música eletrônica ao ar livre, com line-up a ser anunciado.\nAbertura dos portões às 21h. Evento para maiores de 18 anos.",
+    "inicio_em": "2026-12-19T22:00:00-03:00",
+    "fim_em": "2026-12-20T05:00:00-03:00",
+    "classificacao_etaria": "18",
+    "capacidade": 600,
+    "local": {
+      "nome": "Local a confirmar",
+      "cep": null,
+      "logradouro": null,
+      "numero": null,
+      "complemento": null,
+      "bairro": null,
+      "cidade": "Matão",
+      "uf": "SP"
+    },
+    "textos": {
+      "regras_entrada": "1. Entrada permitida somente para maiores de 18 anos, com documento oficial com foto (original ou digital oficial).\n2. Cada ingresso é individual e vale para uma entrada. Apresente o QR Code do seu ingresso na portaria; se o QR não ler, a equipe digita o código do ingresso.\n3. O ingresso já utilizado não dá direito a nova entrada.\n4. Não é permitida a entrada com bebidas, alimentos, objetos cortantes, fogos de artifício ou qualquer item que a organização considere perigoso.\n5. A organização pode revistar pertences na entrada, nos termos da lei.\n6. Pulseiras e benefícios (como área VIP ou open bar) valem só para o ingresso que os inclui.",
+      "condicoes_especiais": "Meia-entrada: nos termos da Lei 12.933/2013, com apresentação do documento que comprova o direito na entrada. A cota e a forma de compra da meia-entrada serão informadas pela organização.",
+      "termos_compra": "1. Ao comprar, você declara que leu e aceita o regulamento e as condições de entrada desta edição.\n2. O ingresso é nominal: o nome e o CPF de quem vai usar cada ingresso são informados na compra. O QR Code não leva esses dados.\n3. O pagamento é processado pelo San Checkout. A reserva dos ingressos vale por 30 minutos; sem pagamento nesse prazo, os ingressos voltam à venda.\n4. Direito de arrependimento: compras feitas pela internet podem ser canceladas em até 7 dias da compra, desde que antes do evento (Código de Defesa do Consumidor, art. 49).\n5. Em caso de cancelamento do evento pela organização, o valor pago é devolvido pelo mesmo meio de pagamento.\n6. Guarde o link do seu pedido: ele dá acesso aos seus ingressos. Perdeu? Recupere em /ticket/recuperar com o e-mail e o CPF de quem comprou."
+    }
+  },
+  "beneficios": [
+    { "nome": "Área VIP", "descricao": "Acesso à área VIP." },
+    { "nome": "Open bar", "descricao": "Bebidas não alcoólicas e alcoólicas selecionadas, durante o evento." },
+    { "nome": "Copo exclusivo", "descricao": "Copo personalizado da edição." }
+  ],
+  "tipos": [
+    {
+      "nome": "Pista",
+      "descricao": "Acesso à pista.",
+      "limite_por_comprador": null,
+      "beneficios": [],
+      "lotes": [
+        { "preco_centavos": 8000, "quantidade": 150 },
+        { "preco_centavos": 10000, "quantidade": 200 },
+        { "preco_centavos": 12000, "quantidade": 150 }
+      ]
+    },
+    {
+      "nome": "VIP",
+      "descricao": "Acesso à pista e à área VIP, com open bar.",
+      "limite_por_comprador": 4,
+      "beneficios": ["Área VIP", "Open bar"],
+      "lotes": [
+        { "preco_centavos": 20000, "quantidade": 50 },
+        { "preco_centavos": 25000, "quantidade": 50 }
+      ]
+    }
+  ],
+  "promocoes": [
+    {
+      "nome": "Combo Amigos",
+      "descricao": "Quatro ingressos de Pista, cada um com um copo exclusivo.",
+      "preco_total_centavos": 28000,
+      "quantidade": 30,
+      "itens": [{ "tipo": "Pista", "quantidade": 4, "beneficio": "Copo exclusivo" }]
+    }
+  ]
+}

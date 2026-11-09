@@ -181,3 +181,12 @@
   letter-spacing: 0.1em;
   margin: 6px 0 12px;
 }
+
+.tm-alternar {
+  margin-top: 6px;
+}
+
+.tm-ficha textarea {
+  font: inherit;
+  font-size: 0.88rem;
+}

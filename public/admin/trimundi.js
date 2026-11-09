@@ -155,7 +155,7 @@
     return edicoes.find((e) => e.id === id) || edicoes.find((e) => e.status !== 'encerrado') || edicoes[0] || null;
   }
   function seletorEdicao(edicoes, atual, aba) {
-    return `<div class="tm-seletor campo-grupo">
+    return `<div class="tm-seletor campo-grupo painel-form">
       <label for="tmEdicao">Edição</label>
       <select id="tmEdicao" data-aba="${aba}">
         ${edicoes.map((e) => `<option value="${e.id}" ${e.id === atual.id ? 'selected' : ''}>${esc(nomeDaEdicao(e))}${e.status === 'encerrado' ? ' (encerrada)' : ''}</option>`).join('')}
@@ -252,7 +252,7 @@
       ${window.migalha([{ rotulo: 'Eventos', href: '#trimundi/eventos' }, { rotulo: ed ? nomeDaEdicao(ed) : 'Novo evento' }])}
       ${ed ? `<p class="tm-status">${selo(STATUS_EDICAO[ed.status])} <span class="u-dim">Endereço público:</span> <code>${v(ed.endereco_publico)}</code>${ed.status !== 'rascunho' ? ` · <a href="${v(ed.endereco_publico)}" target="_blank" rel="noopener">abrir a página</a>` : ''}</p>` : ''}
       ${so_leitura ? '<p class="form-msg">Edição encerrada fica só para consulta.</p>' : ''}
-      <form id="tmFicha" class="tm-ficha" novalidate>
+      <form id="tmFicha" class="tm-ficha painel-form" novalidate>
         <fieldset ${so_leitura ? 'disabled' : ''}>
           <section class="secao-pagina">
             <div class="secao-topo"><h3>Evento</h3></div>
@@ -282,7 +282,7 @@
             <div class="campo-grupo"><label for="tmDescricao">Descrição</label><textarea id="tmDescricao" name="descricao" rows="4" maxlength="5000">${v(ed?.descricao)}</textarea></div>
             <div class="campos">
               <div class="campo-grupo"><label for="tmInicio">Data e horário</label><input id="tmInicio" name="inicio" type="datetime-local" value="${paraCampoData(ed?.inicio_em)}">
-                ${alternar({ nome: 'semData', marcado: ed ? !ed.inicio_em : false, texto: 'A definir' })}</div>
+                <div class="tm-alternar">${alternar({ nome: 'semData', marcado: ed ? !ed.inicio_em : false, texto: 'A definir' })}</div></div>
               <div class="campo-grupo"><label for="tmFim">Término (opcional)</label><input id="tmFim" name="fim" type="datetime-local" value="${paraCampoData(ed?.fim_em)}"></div>
               <div class="campo-grupo"><label for="tmClass">Classificação etária</label><select id="tmClass" name="classificacao">${CLASSIFICACOES.map(([k, r]) => `<option value="${k}" ${String(ed?.classificacao_etaria ?? '') === k ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
               <div class="campo-grupo"><label for="tmCap">Capacidade do local (opcional)</label><input id="tmCap" name="capacidade" type="number" min="1" max="1000000" value="${v(ed?.capacidade)}"></div>
