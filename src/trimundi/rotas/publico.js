@@ -136,7 +136,7 @@ router.get('/ticket/:evento/:edicao', async (req, res, next) => {
     ? meta.imagem.startsWith('http')
       ? meta.imagem
       : `${site}${meta.imagem}`
-    : `${site}/img/og-image.png`;
+    : `${site}/ticket/img/trimundi-logo-256.png`;
   paginas.enviar(res, 'edicao', {
     titulo: meta.titulo,
     descricao: meta.descricao || `Ingressos para ${meta.titulo}.`,

@@ -1,16 +1,16 @@
-/* Páginas de ingresso da Mostraí (/ticket/*; módulo interno Trimundi). Os
-   eventos são da Mostraí: marca e laranja dela; a vitrine destaca o evento.
-   Celular primeiro; sem fonte externa (CSP). */
+/* Trimundi (/ticket/*): identidade própria — o cromado da logo sobre grafite,
+   sem nenhum elemento da Mostraí. Celular primeiro; sem fonte externa (CSP). */
 
 :root {
-  --fundo: #f6f5f9;
+  --fundo: #f3f4f6;
   --cartao: #ffffff;
-  --texto: #18161f;
-  --suave: #5b5768;
-  --linha: #e3e0ea;
-  --marca: #c2570a;
-  --marca-forte: #9a4408;
-  --marca-clara: #ffedd5;
+  --texto: #0d0f13;
+  --suave: #565d6b;
+  --linha: #dcdfe5;
+  --marca: #2a313c;
+  --marca-forte: #0d0f13;
+  --marca-clara: #e7eaef;
+  --sobre-marca: #ffffff;
   --ok: #047857;
   --ok-fundo: #d1fae5;
   --alerta: #92400e;
@@ -18,20 +18,21 @@
   --erro: #b91c1c;
   --erro-fundo: #fee2e2;
   --raio: 14px;
-  --sombra: 0 1px 2px rgb(24 22 31 / 6%), 0 4px 16px rgb(24 22 31 / 6%);
+  --sombra: 0 1px 2px rgb(13 15 19 / 6%), 0 4px 16px rgb(13 15 19 / 7%);
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --fundo: #121016;
-    --cartao: #1c1a23;
-    --texto: #f2f0f7;
-    --suave: #b3aec2;
-    --linha: #2f2c39;
-    --marca: #ff9a4d;
-    --marca-forte: #ffb77f;
-    --marca-clara: #3a2412;
+    --fundo: #0a0b0e;
+    --cartao: #14161b;
+    --texto: #eef1f5;
+    --suave: #a4acb9;
+    --linha: #272b33;
+    --marca: #c9d2df;
+    --marca-forte: #f4f7fb;
+    --marca-clara: #1d2129;
+    --sobre-marca: #0a0b0e;
     --ok: #34d399;
     --ok-fundo: #0f2e25;
     --alerta: #fbbf24;
@@ -115,15 +116,18 @@ p {
   text-decoration: none;
 }
 
-.marca img {
-  height: 26px;
-  width: auto;
+.marca {
+  gap: 0.55rem;
+  color: var(--texto);
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  .marca img {
-    filter: brightness(0) invert(1);
-  }
+.marca img {
+  height: 36px;
+  width: 36px;
 }
 
 .topo .discreto {
@@ -363,13 +367,7 @@ p {
 .btn.primario {
   background: var(--marca);
   border-color: var(--marca);
-  color: #fff;
-}
-
-@media (prefers-color-scheme: dark) {
-  .btn.primario {
-    color: #1f1206;
-  }
+  color: var(--sobre-marca);
 }
 
 .btn.grande {

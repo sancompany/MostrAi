@@ -2,9 +2,9 @@ const fs = require('node:fs/promises');
 const config = require('./config');
 const { consultar } = require('./db/conexao');
 
-// Fila de e-mail da Trimundi, desacoplada do provedor. Sem provedor
-// configurado (alias próprio da Trimundi ainda não existe — pendencias.md),
-// a mensagem fica 'aguardando_provedor': guardada, nunca dada como enviada.
+// Fila de e-mail da Trimundi, desacoplada do provedor (o SMTP da Mostraí, ou
+// um próprio via TRIMUNDI_SMTP_*). Sem provedor, a mensagem fica
+// 'aguardando_provedor': guardada, nunca dada como enviada.
 // Em desenvolvimento, TRIMUNDI_EMAIL_CAPTURA grava cada envio como linha
 // JSON num arquivo, no lugar do SMTP.
 
@@ -15,6 +15,33 @@ async function enfileirar(cliente, { chave, tipo, para, assunto, texto }) {
      ON CONFLICT (chave) DO NOTHING`,
     [chave, tipo, para, assunto, texto, status],
   );
+}
+
+// Versão HTML do e-mail (o texto continua indo junto): a logo e o nome da
+// Trimundi no corpo, o resto é o mesmo texto, com os endereços clicáveis. O
+// remetente é o da Mostraí (decisão do dono, 09/11/2026); o corpo é só
+// Trimundi. A logo vem do próprio site (URL absoluta).
+const esc = (t) =>
+  String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+function html(texto) {
+  const logo = `${config.urlDoSite()}/ticket/img/trimundi-logo-256.png`;
+  const corpo = String(texto)
+    .split(/\n{2,}/)
+    .map(
+      (p) =>
+        `<p style="margin:0 0 16px">${esc(p)
+          .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" style="color:#2a313c">$1</a>')
+          .replace(/\n/g, '<br>')}</p>`,
+    )
+    .join('');
+  return `<!doctype html><html lang="pt-BR"><body style="margin:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#0d0f13">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 12px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:14px;padding:28px">
+<tr><td align="center" style="padding-bottom:20px"><img src="${esc(logo)}" width="96" height="96" alt="Trimundi" style="display:block;border:0;background:#0a0b0e;border-radius:50%">
+<div style="margin-top:10px;font-weight:700;letter-spacing:4px;font-size:13px">TRIMUNDI</div></td></tr>
+<tr><td style="font-size:15px;line-height:1.5">${corpo}</td></tr>
+</table></td></tr></table></body></html>`;
 }
 
 let transporte = null;
@@ -50,10 +77,16 @@ async function processar(limite = 10) {
       if (c.captura) {
         await fs.appendFile(
           c.captura,
-          `${JSON.stringify({ para: m.para, assunto: m.assunto, texto: m.texto, tipo: m.tipo })}\n`,
+          `${JSON.stringify({ para: m.para, assunto: m.assunto, texto: m.texto, html: html(m.texto), tipo: m.tipo })}\n`,
         );
       } else {
-        await obterTransporte(c).sendMail({ from: c.remetente, to: m.para, subject: m.assunto, text: m.texto });
+        await obterTransporte(c).sendMail({
+          from: c.remetente,
+          to: m.para,
+          subject: m.assunto,
+          text: m.texto,
+          html: html(m.texto),
+        });
       }
       await consultar("UPDATE emails SET status = 'enviado', enviado_em = now(), ultimo_erro = NULL WHERE id = $1", [
         m.id,
@@ -72,4 +105,4 @@ async function processar(limite = 10) {
   return rows.length;
 }
 
-module.exports = { enfileirar, processar };
+module.exports = { enfileirar, processar, html };
