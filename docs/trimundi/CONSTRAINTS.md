@@ -9,10 +9,20 @@ assumidos. O que se quer para depois não mora aqui: mora em
 - **Cobrança própria.** Pagamento é sempre pelo San Checkout, como
   contratante próprio da Trimundi (skill `checkout`). Dado de cartão nunca
   passa pela Trimundi.
-- **Dado da Trimundi no banco da Mostraí, ou dado da Mostraí no banco da
-  Trimundi.** Banco próprio, sem exceção (skill `classificar`). Se um lado
-  precisa de algo do outro, chama a função do módulo dono do dado, nunca a
-  tabela dele.
+- **Tabela da Trimundi no `public`, ou da Mostraí no `trimundi`.** A
+  Trimundi mora no banco da Mostraí, mas só no esquema `trimundi` (decisão
+  do dono, 09/11/2026 — exceção registrada abaixo). A conexão dela só entra
+  no pool depois de o servidor confirmar o esquema; o migrador confere de
+  novo antes de cada arquivo. Se um lado precisa de algo do outro, chama a
+  função do módulo dono do dado, nunca a tabela dele.
+- **Elemento da Mostraí na experiência da Trimundi.** Páginas públicas,
+  conta do cliente, login do operador e e-mail usam a marca Trimundi; nenhum
+  link leva ao site da Mostraí (teste `trimundi-identidade`). O e-mail sai
+  pelo remetente da Mostraí, com a logo e o nome Trimundi no corpo (decisão
+  do dono).
+- **Cadastro público de operador.** Só o Admin cria operador.
+- **Gamificação.** Indicação é link, rastreio e recompensa — sem níveis,
+  pontos ou ranking.
 - **Segredo no navegador ou no repositório.** A chave do contratante, o
   segredo de assinatura do QR e a conexão do banco moram só em variável de
   ambiente do servidor. O repositório é público.
@@ -71,25 +81,27 @@ Do banco:
 - **Reserva serializada por edição** (P-06). Toda criação de pedido trava a
   linha da edição: simples e correto, mas uma edição vende um pedido por
   vez. Medir quantos pedidos por segundo cabem antes da venda pública.
-- **Login compartilhado** (D-05). O operador entra pela tela da Mostraí, e
-  o servidor só procura operador quando o e-mail não é de nenhuma conta da
-  Mostraí. Um e-mail que já é conta da Mostraí não vira operador. Se alguém
-  criar conta na Mostraí depois com o e-mail de um operador, a conta vence e
-  o operador para de entrar: o Admin vê "acesso bloqueado pela conta da
-  Mostraí" na lista e cadastra outro e-mail.
-- **Tentativa de login e sessão do operador ficam no banco da Mostraí.** O
-  limitador (`tentativas_acesso`) e a sessão (`session`) são da aplicação.
-  Lá só existem a chave HMAC do e-mail e o id do operador, sem nome nem
-  e-mail em claro. É o único dado da Trimundi fora do banco dela, e é
+- **Login próprio** (substitui o D-05, 09/11/2026). O operador entra em
+  `/ticket/entrar` e o cliente em `/ticket/conta`; a tela de login da
+  Mostraí não conhece nenhum dos dois e voltou a ser exatamente a da `main`.
+- **Tentativa de login e sessão ficam no `public`.** O limitador
+  (`tentativas_acesso`) e a sessão (`session`) são da aplicação. Lá só
+  existem a chave HMAC do e-mail e o id do operador ou do cliente, sem nome
+  nem e-mail em claro. É o único dado da Trimundi fora do esquema dela, e é
   pseudônimo.
+- **Uma conexão de sessão.** O esquema é posto por conexão (`SET
+  search_path`), então a Trimundi só liga com o pooler de SESSÃO (5432);
+  com o de transação (6543) o módulo fica desligado.
 - **O administrador é um usuário só**, o mesmo da Mostraí. O histórico
   registra também o e-mail do Cloudflare Access, que é por pessoa.
-- **Sem e-mail próprio ainda.** O acesso do operador nasce por código
-  mostrado no Admin (P-01), e o ingresso não é enviado por e-mail nesta
-  versão.
+- **E-mail da Mostraí** (decisão do dono). Confirmação de conta, senha e
+  ingressos saem pelo SMTP e remetente da Mostraí: dividem a cota e a
+  reputação de envio dela. O acesso do operador nasce por código mostrado no
+  Admin (P-01).
 
 ## Exceções registradas
 
 | Regra | Exceção | Sai quando |
 |---|---|---|
-| um projeto por repositório e por serviço (skill `leis`, "A pasta-mãe"; skill `classificar`, teste da entrega) | a Trimundi mora no repositório e na aplicação da Mostraí, por decisão do dono (09/11/2026, D-01). A fronteira fica no código: prefixo `trimundi`, banco próprio, documentos próprios | venda pública com volume que peça serviço próprio, ou a Mostraí ser entregue a terceiro |
+| um projeto por repositório e por serviço (skill `leis`, "A pasta-mãe"; skill `classificar`, teste da entrega) | a Trimundi mora no repositório e na aplicação da Mostraí, por decisão do dono (09/11/2026, D-01). A fronteira fica no código: prefixo `trimundi`, esquema próprio, documentos próprios | venda pública com volume que peça serviço próprio, ou a Mostraí ser entregue a terceiro |
+| banco próprio por projeto (skill `classificar`) | a Trimundi usa o banco da Mostraí, no esquema `trimundi`, por decisão do dono (09/11/2026: "banco e imagens utiliza a própria estrutura da Mostraí"). Isolamento lógico: esquema próprio, conexão que falha fechado, sem FK cruzada, RLS em toda tabela, API pública do Supabase sem acesso ao esquema. Backup: o da Mostraí cobre; restaurar só a Trimundi com `pg_restore -n trimundi` | o mesmo gatilho da linha acima; separar é apontar `TRIMUNDI_DATABASE_URL` para outro banco (o mesmo esquema), sem mudar código |

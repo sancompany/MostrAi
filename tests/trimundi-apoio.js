@@ -104,7 +104,7 @@ async function operadorLogado(srv, edicoes = 'todas') {
   if (!login.r.ok) throw new Error(`login do operador falhou: ${login.r.status}`);
   return { ...operador, email, cookie: cookiesDe(login.r) };
 }
-const ROTA_LOGIN_OPERADOR = '/anunciantes/login';
+const ROTA_LOGIN_OPERADOR = '/ticket/api/operador/entrar';
 
 // Cliente HTTP mínimo: JSON, cookie e IP.
 function cliente(srv, { cookie = '', ip = novoIp() } = {}) {

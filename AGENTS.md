@@ -12,7 +12,8 @@ entre eles — o que substitui "lembrar da conversa anterior".
 3. Leia `.ia/PROJECT_STATE.md` (o que está pronto, quebrado, ou pela metade).
 4. Siga `.ia/AGENT_PROTOCOL.md` (como investigar, modificar e encerrar a sessão).
 5. Se a tarefa é da **Trimundi** (a ticketeira hospedada neste repositório,
-   com banco próprio), leia também `docs/trimundi/README.md`.
+   no esquema próprio `trimundi` do banco da Mostraí), leia também
+   `docs/trimundi/README.md`.
 
 Este projeto também é governado pelas leis internas da San & Co. (`CLAUDE.md`,
 `CONSTRAINTS.md`) — isso continua valendo e não é substituído pela `.ia/`. A

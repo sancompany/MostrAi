@@ -56,8 +56,8 @@ function origemDe(url) {
 }
 const ORIGEM_STORAGE = origemDe(process.env.SUPABASE_URL);
 const MIDIA = ["'self'", ORIGEM_STORAGE].filter(Boolean);
-// Imagens das edições da Trimundi: Storage do projeto Supabase PRÓPRIO dela
-// (docs/trimundi/CONSTRAINTS.md) — origem também lida do ambiente.
+// Imagens das edições da Trimundi: em geral o mesmo Storage da Mostraí (pasta
+// `trimundi/`); um Storage próprio dela, se TRIMUNDI_SUPABASE_URL existir.
 const ORIGEM_STORAGE_TRIMUNDI = origemDe(process.env.TRIMUNDI_SUPABASE_URL);
 
 const CSP = [
@@ -244,7 +244,7 @@ app.use(require('./conta/financeiro'));
 app.use(require('./comunicados/routes'));
 // Trimundi (ticketeira, projeto próprio hospedado aqui — ADR-048): Admin em
 // /admin/trimundi/* (já atrás do requireAdminSession acima) e público em
-// /ticket/*. Sem o banco próprio configurado, responde 503 e nada mais roda.
+// /ticket/*. Desligada (sem TRIMUNDI_ATIVA=1), responde 503 e nada mais roda.
 app.use(require('./trimundi').router);
 
 // Quem pediu página e quem pediu dado recebem coisas diferentes: navegador
@@ -336,7 +336,7 @@ if (require.main === module) {
     // benefício da hospedagem), a cada 5 min.
     require('./pontos/hospedagem').iniciarJob();
     // Trimundi: fila de avisos de pagamento, e-mail e pedidos vencidos — só
-    // com o banco próprio configurado.
+    // com ela ligada (esquema `trimundi` do banco da Mostraí, ADR-049).
     require('./trimundi').iniciarProcessos();
   });
 }

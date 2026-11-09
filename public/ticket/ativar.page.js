@@ -1,5 +1,5 @@
 // Trimundi — ativação do operador de check-in (T6, /ticket/ativar): e-mail,
-// código de ativação e senha nova. Depois, o login é pela tela da Mostraí.
+// código de ativação e senha nova. Depois, o login é em /ticket/entrar.
 (() => {
   const { api, enviando } = window.trimundi;
   const form = document.getElementById('formAtivar');

@@ -9,8 +9,9 @@ const config = require('./config');
 const crypto = require('node:crypto');
 
 // Operadores de check-in (T5, T6; RN-T24 a RN-T28). Só a permissão de
-// check-in existe. A conta da Mostraí vence: e-mail que já é conta lá não
-// vira operador (D-05). Revogação imediata: desativar ou gerar código novo
+// check-in existe. Só o Admin cria operador (não há cadastro público); o
+// login é o da Trimundi (/ticket/entrar), separado da Mostraí (decisão do
+// dono, 09/11/2026). Revogação imediata: desativar ou gerar código novo
 // sobe a `sessao_versao`, e a sessão antiga cai na requisição seguinte.
 
 const VALIDADE_CODIGO_H = 72;
@@ -27,11 +28,6 @@ const normalizarCodigo = (c) =>
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '');
 const hashDoCodigo = (codigo) => hmac('ativacao-operador', normalizarCodigo(codigo));
-
-async function contaDaMostrai(email) {
-  const repo = require('../anunciantes/repository');
-  return Boolean(await repo.buscarPorEmailComSenha(email));
-}
 
 async function conferirEdicoes(cliente, edicoes) {
   if (edicoes === 'todas' || edicoes === undefined || edicoes === null) return null;
@@ -61,9 +57,6 @@ async function criar(dados, autor) {
     mensagem: 'Informe o nome do operador.',
   });
   const email = v.email(dados?.email);
-  if (await contaDaMostrai(email)) {
-    throw erro(409, 'Este e-mail já é de uma conta da Mostraí — use outro para o operador.');
-  }
   const codigo = gerarCodigo();
   return emTransacao(async (cliente) => {
     const ids = await conferirEdicoes(cliente, dados?.edicoes);
@@ -118,10 +111,7 @@ async function listar() {
   const { rows } = await consultar('SELECT id FROM operadores WHERE anonimizado_em IS NULL ORDER BY criado_em DESC');
   const lista = [];
   for (const r of rows) {
-    const o = await obter(r.id);
-    // Conta da Mostraí criada depois com o mesmo e-mail: a conta vence no login.
-    o.bloqueado_pela_mostrai = o.status === 'ativo' && (await contaDaMostrai(o.email).catch(() => false));
-    lista.push(o);
+    lista.push(await obter(r.id));
   }
   return lista;
 }
@@ -232,8 +222,8 @@ async function ativar(dados) {
   });
 }
 
-// Login pela tela da Mostraí (RN-T27): null = não é operador (ou senha
-// errada) e a Mostraí responde como sempre respondeu.
+// Login do operador (/ticket/entrar): null = e-mail ou senha errados (a
+// mesma resposta nos dois casos).
 async function autenticar(email, senha) {
   const e = String(email ?? '')
     .trim()

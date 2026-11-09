@@ -26,7 +26,7 @@
     invalido: 'Ingresso inválido',
   };
 
-  const sessaoAcabou = () => window.location.replace('/anunciante/login.html');
+  const sessaoAcabou = () => window.location.replace('/ticket/entrar');
 
   async function chamar(caminho, opcoes) {
     try {
@@ -341,7 +341,7 @@
     desligarCamera();
     clearInterval(contadorTimer);
     await api('/ticket/api/sair', { metodo: 'POST', corpo: {} }).catch(() => {});
-    window.location.replace('/anunciante/login.html');
+    window.location.replace('/ticket/entrar');
   });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && lendo) desligarCamera();

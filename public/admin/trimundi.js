@@ -1366,7 +1366,7 @@
     el.innerHTML = `
       <div class="barra-pagina"><p class="barra-pagina-texto">${operadores.length ? plural(operadores.length, 'operador', 'operadores') : ''}</p>
         <button type="button" class="btn primary" id="tmNovoOperador">+ Adicionar operador</button></div>
-      <p class="campo-ajuda">O operador ativa o acesso em <code>/ticket/ativar</code> e entra pela tela de login da Mostraí; a sessão dele só abre o check-in.</p>
+      <p class="campo-ajuda">O operador ativa o acesso em <code>/ticket/ativar</code> e entra em <code>/ticket/entrar</code> (login próprio da Trimundi); a sessão dele só abre o check-in.</p>
       ${
         operadores.length
           ? `<div class="tabela-caixa"><div class="rolagem"><table>
@@ -1375,7 +1375,7 @@
             .map(
               (o) => `<tr>
               <td><b>${esc(o.nome)}</b></td><td>${esc(o.email)}</td><td>${edicoesTexto(o)}</td>
-              <td>${o.bloqueado_pela_mostrai ? selo(['badge-err', 'Acesso bloqueado pela conta da Mostraí']) : selo(SITUACAO_OPERADOR[o.status])}
+              <td>${selo(SITUACAO_OPERADOR[o.status])}${o.indicacao_habilitada ? ' <span class="badge badge-neutro">indicação</span>' : ''}
                 ${o.status === 'aguardando_ativacao' && o.codigo_expira_em ? `<br><span class="u-dim">código vale até ${esc(quando(o.codigo_expira_em))}</span>` : ''}</td>
               <td>${esc(quando(o.ultimo_acesso_em) || '—')}</td>
               <td class="u-ta-r">

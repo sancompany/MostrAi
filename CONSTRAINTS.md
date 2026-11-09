@@ -144,9 +144,10 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
   Aceito para este porte.
 - **Este repositório e esta aplicação hospedam a Trimundi** (ticketeira,
   projeto próprio da San & Co.), por decisão do dono em 09/11/2026. Ela
-  entra como um item "Eventos" no Admin, usa a tela de login daqui para os
-  operadores dela e tem as rotas `/ticket/*`. **Os dados da Trimundi ficam
-  em banco próprio, nunca neste.** Custo assumido: um pico de venda de
+  entra como um item "Eventos" no Admin e tem as rotas `/ticket/*`, com
+  marca e login próprios. **Os dados da Trimundi ficam no esquema próprio
+  `trimundi` deste banco, nunca no `public`** (decisão do dono, 09/11/2026);
+  a conexão dela falha fechado fora do esquema. Custo assumido: um pico de
   ingressos divide o processo (0,5 vCPU, 1 GB) e o deploy com a Mostraí; o
   serviço próprio se decide antes da venda pública. Regras, limites e a
   exceção completa: `docs/trimundi/CONSTRAINTS.md`.
@@ -293,4 +294,4 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
 | 6 (backup) | Supabase gratuito sem backup automático | plano Pro |
 | 4/seguranca-san (Access) | `/admin` protegido por senha própria, não por Access | domínio no Cloudflare e Access configurado |
 | 6 (RLS) | autorização só na aplicação, sem RLS no banco | decisão do dono na Estação 4 — ver `CLAUDE.md` |
-| `classificar` / `leis` (um projeto por repositório e serviço) | a Trimundi mora neste repositório e nesta aplicação, com banco próprio (09/11/2026) | venda pública com volume que peça serviço próprio, ou a Mostraí ser entregue a terceiro — detalhe em `docs/trimundi/CONSTRAINTS.md` |
+| `classificar` / `leis` (um projeto por repositório e serviço; banco próprio por projeto) | a Trimundi mora neste repositório, nesta aplicação e neste banco, no esquema `trimundi` (09/11/2026) | venda pública com volume que peça serviço próprio, ou a Mostraí ser entregue a terceiro — detalhe em `docs/trimundi/CONSTRAINTS.md` |

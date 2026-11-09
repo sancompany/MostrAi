@@ -1,6 +1,20 @@
 # Current Handoff
 
 ## Updated
+2026-11-09 (noite) — **Trimundi, escopo simplificado pelo dono, em 6
+commits LOCAIS (sem push, sem PR atualizado, nada em produção)** na branch
+`claude/beautiful-faraday-cjq1nt`: esquema `trimundi` no banco da Mostraí
+(ADR-049), lote sem sobra, identidade Trimundi (logo), conta do cliente,
+benefício por lote, indicação, login próprio do operador. Suíte inteira
+verde. Estado: `docs/trimundi/STATUS-IMPLEMENTACAO.md`, "Escopo
+simplificado". O dono pediu para revisar antes de push/merge/deploy.
+- Não desfazer sem contexto: conexão da Trimundi falha fechado fora do
+  esquema; testes da Trimundi usam IP 100.64/10 (a 198.18/15 é dos testes de
+  limite da Mostraí); a compra exige conta confirmada.
+- Rodar a bateria com o ambiente do CI exportado (DATABASE_URL do usuário
+  `mostrai`, NODE_ENV=test); sem NODE_ENV=test o LISTEN do SSE prende o
+  processo de teste.
+
 2026-11-09 (tarde) — **Trimundi, Etapas 1 a 6 construídas e testadas;
 Etapa 7 (homologação do dono) aberta.** Mesma branch
 `claude/beautiful-faraday-cjq1nt`, PR #137 em rascunho, nada em produção.

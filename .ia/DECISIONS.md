@@ -1830,3 +1830,37 @@ nada. E o `/estornar` do San Checkout não alcança cobrança de assinatura
   dono do dado.
 - Pôr a API da Trimundi em `/admin/eventos*`.
 - Mudar o login da Mostraí além do caminho do operador.
+
+## ADR-049 — Trimundi no banco da Mostraí, em esquema próprio; marca e logins próprios (09/11/2026)
+
+Substitui, da ADR-048, o "banco próprio" e o login de operador pela tela da
+Mostraí. O resto da ADR-048 (módulo nesta aplicação, prefixo `trimundi`,
+documentos próprios, sem tabela cruzada) continua.
+
+**Contexto.** O dono decidiu: "banco e imagens utiliza a própria estrutura
+da Mostraí", "use o e-mail da Mostraí", e depois simplificou o escopo —
+experiência da Trimundi completamente independente da Mostraí (marca,
+páginas, login de operador), conta de cliente com e-mail confirmado,
+benefício por lote e indicação simples. Esquema `trimundi` no PostgreSQL
+compartilhado foi a forma escolhida por ele de manter a separação lógica.
+
+**Decisão.**
+- Tabelas da Trimundi no esquema `trimundi` do banco da Mostraí, nunca no
+  `public`. Conexão do pool da Trimundi só é entregue depois de `SET
+  search_path` e da conferência do servidor (falha fechado); o migrador
+  confere `current_schema()` antes de cada arquivo; pooler de transação
+  (6543) desliga o módulo; `anon`/`authenticated` sem acesso ao esquema; RLS
+  em toda tabela. `TRIMUNDI_DATABASE_URL` continua como saída para outro
+  banco, sem mudar código.
+- Imagens no bucket da Mostraí sob `trimundi/`; e-mail pelo SMTP/remetente
+  da Mostraí, com a logo e o nome Trimundi no corpo.
+- Login do operador em `/ticket/entrar` e do cliente em `/ticket/conta`;
+  `POST /anunciantes/login` volta a ser o da `main`.
+- Exceção registrada em `CONSTRAINTS.md` (raiz) e
+  `docs/trimundi/CONSTRAINTS.md` ("banco próprio por projeto").
+
+**Não fazer sem falar com o dono.**
+- Pôr tabela da Trimundi no `public` ou ler tabela da Mostraí a partir dela.
+- Tirar a conferência do esquema da conexão ("simplificar" o pool).
+- Usar o pooler de transação para a Trimundi.
+- Pôr de volta qualquer elemento ou link da Mostraí nas telas públicas.

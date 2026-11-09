@@ -628,29 +628,35 @@ sem nada do outro lado para creditar.
 ## 11. Trimundi (projeto hospedado nesta aplicação)
 
 A ticketeira Trimundi é outro projeto da San & Co. e mora neste repositório
-e neste serviço, com **banco próprio** — nunca o da Mostraí
-(`docs/trimundi/README.md`).
+e neste serviço. Os dados dela ficam no banco da Mostraí, no **esquema
+próprio `trimundi`** (nunca no `public`) — `docs/trimundi/README.md`.
 
 **Hoje (09/11/2026) a Trimundi tem código na branch
 `claude/beautiful-faraday-cjq1nt`, mas nada dela está em produção.** Sem
-`TRIMUNDI_DATABASE_URL`, o módulo fica desligado: `/ticket/*` e
-`/admin/trimundi/*` respondem 503 e o login da Mostraí não procura operador.
+`TRIMUNDI_ATIVA=1`, o módulo fica desligado: `/ticket/*` e
+`/admin/trimundi/*` respondem 503. O login da Mostraí não conhece a
+Trimundi (operador e cliente entram nas telas dela).
 Estado de cada parte: `docs/trimundi/STATUS-IMPLEMENTACAO.md`.
 
 ### 11.1 Ligar e desligar
-- **Ligar:** `TRIMUNDI_DATABASE_URL` (banco PRÓPRIO) e `TRIMUNDI_SEGREDO`
-  (32+ caracteres; obrigatório em produção). Os nomes estão no
-  `.env.example`, bloco Trimundi. O servidor recusa se a URL for a do banco
-  da Mostraí.
-- **Desligar às pressas:** apagar `TRIMUNDI_DATABASE_URL` e reiniciar
-  (reinício de produção só com autorização do dono). A Mostraí segue igual.
+- **Ligar:** `TRIMUNDI_ATIVA=1` e `TRIMUNDI_SEGREDO` (32+ caracteres;
+  obrigatório em produção), mais `TRIMUNDI_CHECKOUT_*`. Usa o
+  `DATABASE_URL` da Mostraí, que precisa ser o pooler de SESSÃO (5432): com
+  o de transação (6543) o módulo não liga. Imagens e e-mail usam o
+  `SUPABASE_*` e o `SMTP_*`/`MOSTRAI_EMAIL_FROM` da Mostraí. Os nomes estão
+  no `.env.example`, bloco Trimundi.
+- **Desligar às pressas:** apagar `TRIMUNDI_ATIVA` e reiniciar (reinício de
+  produção só com autorização do dono). A Mostraí segue igual; as tabelas
+  da Trimundi ficam paradas no esquema dela.
 
 ### 11.2 Migrations
 ```bash
 npm run trimundi:migrate
 ```
-Aplica `src/trimundi/db/migrations/*.sql` no banco da Trimundi, uma vez
-cada, com trava. Em produção recusa sem `--producao-autorizada`, que só se
+Cria o esquema `trimundi` (se não existir), tira o acesso de `anon` e
+`authenticated` a ele e aplica `src/trimundi/db/migrations/*.sql` dentro do
+esquema, uma vez cada, com trava própria (872027; a da Mostraí é 872026).
+Antes de cada arquivo confere que a conexão está no esquema. Em produção recusa sem `--producao-autorizada`, que só se
 usa com autorização do dono.
 
 ### 11.3 Rotina
@@ -683,8 +689,18 @@ usa com autorização do dono.
   Admin → pedido → **Reembolsar pedido**.
 - **Pedido do titular (LGPD):** Admin → Eventos → Participantes → **Pedido
   do titular (LGPD)** → CPF → **Baixar os dados** e/ou **Anonimizar**.
-- **Backup e restauração:** pendentes até existir o banco de produção da
-  Trimundi (`docs/trimundi/pendencias.md`).
+- **Backup e restauração:** o backup da Mostraí (banco inteiro) já leva o
+  esquema `trimundi`. Para voltar só a Trimundi, sem mexer na Mostraí:
+  ```bash
+  pg_restore --schema=trimundi --clean --if-exists -d "$DATABASE_URL" backup.dump
+  ```
+  Restaurar o banco inteiro volta as duas no tempo — decisão do dono.
+- **Operador sem acesso:** `/ticket/entrar` é o login dele (nunca a tela da
+  Mostraí). Esqueceu a senha: Admin → Adicionar operador → **Gerar novo
+  código** e ele ativa de novo em `/ticket/ativar`.
+- **Cliente não recebeu a confirmação:** na tela de entrar ele pede de novo
+  ("Reenviar o link"). Sem e-mail ativo no ambiente, a mensagem fica na fila
+  como `aguardando_provedor`.
 
 O que precisa existir antes de ligar em produção está em
 `docs/trimundi/pendencias.md`.

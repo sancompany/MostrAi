@@ -98,12 +98,26 @@ pelo Cloudflare Access, que cobre `/admin`. Toda escrita grava o histórico
 
 | Método e rota | O que faz |
 |---|---|
-| `GET /admin/trimundi/operadores` | lista, com a marca "bloqueado pela conta da Mostraí" (RN-T24) |
-| `POST /admin/trimundi/operadores` | `{ nome, email, edicoes: 'todas' \| [ids] }` → 201 `{ operador, codigo }`. O código só aparece nesta resposta |
-| `PATCH /admin/trimundi/operadores/:id` | altera nome e edições |
+| `GET /admin/trimundi/operadores` | lista (com `indicacao_habilitada`) |
+| `POST /admin/trimundi/operadores` | `{ nome, email, edicoes: 'todas' \| [ids], indicacao_habilitada? }` → 201 `{ operador, codigo }`. O código só aparece nesta resposta |
+| `PATCH /admin/trimundi/operadores/:id` | altera nome, edições e `indicacao_habilitada` |
 | `POST /admin/trimundi/operadores/:id/codigo` | gera código novo → `{ codigo }` (RN-T25) |
 | `POST /admin/trimundi/operadores/:id/desativar` | desativa |
 | `POST /admin/trimundi/operadores/:id/reativar` | volta a ativo (ou a aguardando ativação, se nunca ativou) |
+
+### Indicação
+
+| Método e rota | O que faz |
+|---|---|
+| `GET /admin/trimundi/edicoes/:id/campanhas` | campanhas da edição, com indicações válidas, recompensas concedidas e entregues |
+| `POST /admin/trimundi/edicoes/:id/campanhas` | `{ nome, recompensa, quantidade, indicacoes_por_recompensa, limite_por_indicador?, inicio?, fim?, ativo? }` → 201. 409 se já houver outra ativa na edição |
+| `PATCH /admin/trimundi/campanhas/:id` | altera; a quantidade não fica abaixo do concedido (409) |
+| `GET /admin/trimundi/campanhas/:id/indicadores` | quem indicou: nome, tipo, código, indicações pagas e recompensas (sem CPF nem e-mail) |
+| `POST /admin/trimundi/recompensas/:id/entregar` | marca entregue (uma vez; a segunda é 409) |
+
+Benefício (em "Benefícios" acima) ganhou `quantidade` (vazio = sem limite) e
+devolve `concedidos`, `resgatados` e `restam`; cada lote aceita
+`beneficio_id`.
 
 ## Operador — `/ticket/*`
 
@@ -115,12 +129,15 @@ scripts das páginas ficam em `public/ticket/`.
 | Método e rota | Quem | O que faz |
 |---|---|---|
 | `GET /ticket/ativar` | sem sessão | página T6 |
+| `GET /ticket/entrar` | sem sessão | login do operador (próprio da Trimundi) |
+| `POST /ticket/api/operador/entrar` | sem sessão | `{ email, senha }` → 200 `{ ok, destino: '/ticket/checkin' }` e sessão nova; 401 igual com ou sem operador; 403 desativado. Limitador por IP e e-mail |
 | `POST /ticket/api/ativar` | sem sessão | `{ email, codigo, senha }` → 200 `{ ok: true }`. Limitador por IP e por e-mail (RN-T26); 400, 410 ou 429 |
-| `GET /ticket/checkin` | sessão de operador | página T8. Sem sessão de operador → 302 para `/anunciante/login.html` |
-| `GET /ticket/api/operador` | sessão de operador | `{ nome, edicoes: 'todas' \| [{ id, nome }] }`. Sem sessão ou operador desativado → 401 (RN-T28) |
+| `GET /ticket/checkin` | sessão de operador | página T8. Sem sessão de operador → 302 para `/ticket/entrar` |
+| `GET /ticket/api/operador` | sessão de operador | `{ nome, edicoes, indicacao }` (`indicacao` = link e andamento quando o Admin habilita; senão `null`). Sem sessão ou operador desativado → 401 (RN-T28) |
 | `POST /ticket/api/sair` | sessão de operador | encerra a sessão → 200 |
 | `POST /ticket/api/checkin/consultar` | sessão de operador | `{ edicao_id, entrada }` (texto do QR ou código curto) → `{ resultado, mensagem, ingresso? }`; 403 sem permissão na edição. Não registra nada |
 | `POST /ticket/api/checkin/confirmar` | sessão de operador | `{ edicao_id, ingresso_id, lido_em? }` → `entrada_registrada` ou o motivo da recusa; entrada única por ingresso (índice no banco + trava da linha) |
+| `POST /ticket/api/checkin/beneficio` | sessão de operador | `{ edicao_id, ingresso_id, beneficio_id }` → `resgatado` ou `ja_resgatado` (uma entrega por benefício); 404 sem o benefício, 409 ingresso cancelado ou bloqueado |
 | `GET /ticket/api/checkin/contador?edicao=` | sessão de operador | `{ entradas, ingressos }` |
 | `GET /ticket/jsqr.js` | público | leitor de QR para navegador sem BarcodeDetector (CSP só aceita script do site) |
 
@@ -129,32 +146,35 @@ scripts das páginas ficam em `public/ticket/`.
 | Método e rota | O que faz |
 |---|---|
 | `GET /ticket/:evento/:edicao` | página T9 (404 em rascunho), com título e imagem para compartilhamento |
-| `GET /ticket/api/edicoes/:evento/:edicao` | vitrine: dados, textos vigentes, tipos (preço e lote do vigente, situação, quantidade máxima) e combos — nunca o número em estoque |
+| `GET /ticket/api/edicoes/:evento/:edicao` | vitrine: dados, textos vigentes, tipos (preço e lote do vigente, próximo lote, `disponibilidade` — "Disponível" ou "Últimas N" —, `beneficio_do_lote` com o que resta, quantidade máxima) e combos |
 | `POST /ticket/api/cotacao` | `{ evento, edicao, itens }` → itens com preço por lote, total, vagas (uma por ingresso) e os ids dos termos vigentes. Não reserva |
-| `POST /ticket/api/pedidos` | `{ evento, edicao, itens, comprador, participantes[], aceite: { aceito, termos[] }, chave }` → 201 `{ pedido_id, token, url, pagamento, reserva_expira_em }`; a mesma chave → 200 com o mesmo pedido. 409 `esgotado`, `limite` ou `termos` |
+| `POST /ticket/api/pedidos` | **exige conta logada e confirmada** (401 `conta`). `{ evento, edicao, itens, participantes[] (ou `{ conta: true }` = "é meu"), aceite: { aceito, termos[] }, chave, indicacao? }` → 201 `{ pedido_id, token, url, pagamento, reserva_expira_em }`; o comprador vem da conta, nunca do corpo; a mesma chave, da mesma conta → 200 com o mesmo pedido (de outra conta → 409). 409 `esgotado`, `limite` ou `termos` |
 | `GET /ticket/api/pedidos/:id` | com `X-Pedido-Token` (ou `?t=`): pedido, pagamento e ingressos com QR; 404 sem token válido |
 | `GET /ticket/pedido/:id` | página T10 |
 | `POST /ticket/api/recuperar` | `{ email, cpf }` → resposta sempre igual; o link vai para o e-mail do comprador |
 | `GET /ticket/recuperar` | página T11 |
 | `GET /ticket/dev/pagamento/:id`, `POST /ticket/api/dev/pagamento/:id` | só com `TRIMUNDI_PAGAMENTO_SIMULADO=1` fora de produção (404 no resto) |
 
-## A única rota da Mostraí que muda
+## Conta do cliente — `/ticket/conta`
 
-`POST /anunciantes/login` — RN-T27; autorizado pelo dono em 09/11/2026 (é
-mudança de autenticação).
-- **Conta da Mostraí:** nada muda — mesma resposta, mensagens, limitador e
-  sessão.
-- **E-mail sem conta da Mostraí:**
-  - operador ativo com a senha certa → 200
-    `{ "operador": true, "destino": "/ticket/checkin" }` e sessão nova com
-    `trimundiOperadorId`;
-  - operador desativado com a senha certa → 403 com o texto de §6 (T7);
-  - qualquer outro caso → o mesmo 401 de hoje;
-  - banco da Trimundi fora do ar → o mesmo 401 de hoje (revisto em
-    09/11/2026: o login da Mostraí não muda e não diz se o e-mail é conta).
-- **Trimundi não configurada:** o login nem procura operador.
-- **A tela** (`public/anunciante/login.page.js`) segue o `destino` só quando
-  ele é caminho do próprio site em `/ticket/` (sem redirecionamento aberto).
+| Método e rota | O que faz |
+|---|---|
+| `GET /ticket/conta`, `/ticket/conta/confirmar`, `/esqueci`, `/redefinir` | uma página: entrar, criar conta, confirmar e-mail, recuperar senha e "minha conta" |
+| `POST /ticket/api/conta/cadastro` | `{ nome, cpf, email, senha }` → 201 com a mesma mensagem exista ou não conta com o e-mail (a existente não muda e o dono dela é avisado); 409 `cpf_em_uso` se o CPF é de outra conta |
+| `POST /ticket/api/conta/confirmar` | `{ token }` (vem no fragmento `#t=` do link) → abre sessão; uso único, 48 h |
+| `POST /ticket/api/conta/reenviar` | `{ email }` → resposta sempre igual |
+| `POST /ticket/api/conta/entrar` | `{ email, senha }` → sessão nova; 401 igual com ou sem conta; 403 `nao_confirmado` |
+| `POST /ticket/api/conta/sair` | sai da conta |
+| `POST /ticket/api/conta/esqueci` | `{ email }` → resposta sempre igual; link de 60 min |
+| `POST /ticket/api/conta/redefinir` | `{ token, senha }` → senha nova, sessões antigas caem |
+| `GET /ticket/api/conta/sessao` | `{ logado, nome, email }` (a página do evento sabe se pede login) |
+| `GET /ticket/api/conta` | conta (CPF mascarado), ingressos pagos com QR e benefícios, e a indicação (`codigo` e, por campanha ativa, link e andamento) |
+
+## Rotas da Mostraí
+
+Nenhuma muda. `POST /anunciantes/login` voltou a ser o da `main` (o login
+de operador e o de cliente são da Trimundi, acima). Da Mostraí, só o Admin
+ganhou a aba Eventos.
 
 ## QR
 

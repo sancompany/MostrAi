@@ -9,6 +9,23 @@ tem teste automatizado · **parcial** = feito com limite declarado ·
 **depende de fora** = estrutura, contrato e teste com dublê prontos; falta
 credencial ou serviço que só o dono provê.
 
+## Escopo simplificado (pedido do dono, 09/11/2026)
+
+Feito na branch, em seis commits locais (nada enviado ao GitHub, nada em
+produção). Cada item tem teste automatizado; a suíte inteira (Mostraí +
+Trimundi) passa.
+
+| Parte | Estado | Onde | Teste |
+|---|---|---|---|
+| Esquema `trimundi` no banco da Mostraí, conexão que falha fechado, migrador que confere o esquema, pooler de transação recusado | feito | `db/conexao.js`, `db/migrate.js`, `config.js` | `trimundi-fundacao` |
+| Lote sem sobra (o que não vendeu não passa adiante; pagamento atrasado confere o próprio lote; marca "esgotado" só por pagos) | feito | `disponibilidade.js`, `pagamentos.js` | `trimundi-fundacao`, `-venda`, `-pagamento` |
+| Identidade Trimundi (logo, cores, nenhum elemento ou link da Mostraí; e-mail com a logo no corpo) | feito | `public/ticket/`, `paginas/`, `email.js` | `trimundi-identidade` |
+| Conta do cliente (nome, CPF, e-mail, senha; e-mail confirmado; compra exige conta; minha conta com ingressos e QR) | feito | `clientes.js`, `rotas/conta.js`, `conta.page.js` | `trimundi-conta` |
+| Benefício por lote com quantidade; entrega única na portaria | feito | `emissao.js`, `catalogo.js`, `checkin.js` | `trimundi-beneficios` |
+| Indicação (link, conversão paga, recompensa por campanha, entrega no Admin) | feito | `indicacao.js`, aba Indicação | `trimundi-indicacao` |
+| Login próprio do operador (`/ticket/entrar`); login da Mostraí restaurado | feito | `rotas/operador.js` | `trimundi-checkin` |
+| E-mail real, Storage real, Checkout real, celular real | **depende de fora** | — | dublês nos testes |
+
 ## Decisões aplicadas nesta execução
 
 - **D1 (aprovada):** o resumo da edição traz ingressos pagos, cortesias,

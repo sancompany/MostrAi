@@ -696,3 +696,12 @@ details.termo .texto {
   font: inherit;
   font-size: 0.85rem;
 }
+
+/* Benefícios na portaria, com o botão "Entregar". */
+.beneficios {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}

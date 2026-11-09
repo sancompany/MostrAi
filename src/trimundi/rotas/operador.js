@@ -1,5 +1,6 @@
 const express = require('express');
 const { limiteTentativasPorAlvo, descontarAcerto } = require('../../lib/limite-tentativas');
+const { gerarHash, conferirHash } = require('../../lib/senha');
 const { tratarErros, erro } = require('../lib/erros');
 const config = require('../config');
 const paginas = require('../paginas');
@@ -8,7 +9,8 @@ const checkin = require('../checkin');
 
 // Área do operador de check-in (T6, T8; RN-T26 a RN-T28). A sessão do
 // operador é conferida no banco a cada requisição (revogação imediata) e só
-// abre /ticket/*: nenhuma rota de conta da Mostraí nem do Admin a aceita.
+// abre /ticket/*: nenhuma rota de conta da Mostraí nem do Admin a aceita. O
+// login é próprio da Trimundi (/ticket/entrar), sem passar pela Mostraí.
 
 const router = express.Router();
 
@@ -34,6 +36,33 @@ function ritmo(req, res, next) {
 }
 
 router.get('/ticket/ativar', (_req, res) => paginas.enviar(res, 'ativar'));
+router.get('/ticket/entrar', (_req, res) => paginas.enviar(res, 'entrar', {}, { cache: 'no-store' }));
+
+// Senha conferida mesmo sem operador: o tempo não diz se o e-mail existe.
+let hashFalso = null;
+router.post(
+  '/ticket/api/operador/entrar',
+  limiteTentativasPorAlvo((req) =>
+    String(req.body?.email ?? '')
+      .trim()
+      .toLowerCase(),
+  ),
+  async (req, res) => {
+    if (!config.configurada()) throw erro(503, 'a Trimundi não está configurada neste ambiente');
+    const r = await operadores.autenticar(req.body?.email, req.body?.senha);
+    if (!r) {
+      hashFalso ||= await gerarHash('trimundi-operador-que-nao-existe');
+      await conferirHash(String(req.body?.senha ?? ''), hashFalso);
+      throw erro(401, 'E-mail ou senha incorretos.');
+    }
+    if (r.desativado) throw erro(403, 'Este acesso foi desativado — fale com quem organiza o evento.');
+    await descontarAcerto(req, res).catch(() => {});
+    await new Promise((resolve, reject) => req.session.regenerate((err) => (err ? reject(err) : resolve())));
+    req.session.trimundiOperadorId = r.id;
+    req.session.trimundiOperadorVersao = r.versao;
+    res.json({ ok: true, destino: '/ticket/checkin' });
+  },
+);
 
 // Leitor de QR para navegador sem BarcodeDetector (Safari): jsQR, servido
 // daqui — a CSP só aceita script deste site. Licença Apache-2.0.
@@ -56,7 +85,7 @@ router.post('/ticket/api/ativar', limiteTentativasPorAlvo(alvoDaAtivacao), async
 
 router.get('/ticket/checkin', async (req, res) => {
   const op = config.configurada() ? await operadores.daSessao(req) : null;
-  if (!op) return res.redirect(302, '/anunciante/login.html');
+  if (!op) return res.redirect(302, '/ticket/entrar');
   // A câmera só nesta página (o resto do site segue com camera=()).
   res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), interest-cohort=()');
   paginas.enviar(res, 'checkin', {}, { cache: 'no-store' });

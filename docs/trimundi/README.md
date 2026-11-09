@@ -18,19 +18,26 @@ do plugin `san-co`. Esta pasta é a porta de entrada da Trimundi; o
 - `proximas-versoes.md` — o que fica para depois
 - `erros/` — os erros vividos na Trimundi (a pasta nasce no primeiro)
 
-## Marca e eventos (decisão do dono, 09/11/2026)
-- **Os eventos são da Mostraí.** Para o público (página do evento, pedido,
-  recuperar ingressos, check-in, e-mail), a marca é **Mostraí**. Trimundi é
-  só o nome interno do módulo (código, banco e documentos).
-- **Eventos são criados no site**, pelo Admin (Eventos → Criar evento): nome,
-  banner, imagens, ingressos. TREEMUNDO é um evento, não uma empresa; nenhum
-  evento vem pronto no código.
+## Escopo e marca (decisões do dono, 09/11/2026 — escopo simplificado)
+- **Marca Trimundi, experiência independente.** A logo enviada pelo dono
+  (`public/ticket/img/`) é a marca oficial; nenhuma página pública, conta
+  ou login de operador leva à Mostraí. O Admin continua no `/admin` dela.
+- **O que existe, e só isso:** página do evento (banner, data, local,
+  descrição, card com lotes, preço, disponibilidade e benefício, botão de
+  compra); conta do cliente (nome, CPF, e-mail, senha; e-mail confirmado
+  antes de comprar; ingressos, QR e link de indicação); benefício por lote
+  com quantidade e entrega única na portaria; indicação (link, conversão
+  paga, recompensa por campanha); operadores criados só pelo Admin, com
+  login próprio e check-in.
+- **Eventos são criados no site**, pelo Admin (Eventos → Criar evento). TREEMUNDO
+  é um evento, não uma empresa; nenhum evento vem pronto no código.
 
 ## Classificação
 Porte: produto externo, com cliente pagante · Dado: financeiro, documento
-(CPF), senha (operador) · Vida útil: anos → **rigor no topo da escala**.
-É projeto, não estrutura (os quatro testes estão no spec, §6). O banco é
-**próprio**, nunca o da Mostraí.
+(CPF), senha (operador e cliente) · Vida útil: anos → **rigor no topo da
+escala**. É projeto, não estrutura (os quatro testes estão no spec, §6). Os
+dados ficam no **esquema `trimundi`** do banco da Mostraí, nunca no `public`
+(exceção registrada em `CONSTRAINTS.md`).
 
 ## Estado na esteira
 Estação atual: **5 — Construção**, aberta e com o escopo da v1 construído em
@@ -47,16 +54,18 @@ Estação atual: **5 — Construção**, aberta e com o escopo da v1 construído
 
 ## Mapa de caminhos
 - **Código:** `src/trimundi/` — `index.js` (entrada), `rotas/` (admin,
-  operador, público), um arquivo por assunto (`eventos`, `catalogo`,
+  operador, conta, público), um arquivo por assunto (`eventos`, `catalogo`,
   `promocoes`, `pedidos`, `pagamentos`, `emissao`, `reembolsos`,
-  `participantes`, `operadores`, `checkin`, `retencao`), `checkout/`
+  `participantes`, `operadores`, `checkin`, `clientes`, `indicacao`,
+  `retencao`), `checkout/`
   (contrato com o San Checkout), `lib/` (validação, códigos, QR, chaves).
 - **Banco:** `src/trimundi/db/` e migrations em `src/trimundi/db/migrations/`.
 - **Telas do Admin:** `public/admin/trimundi.js` e `trimundi.css`, no
   módulo `trimundi` do menu, rótulo "Eventos".
 - **Páginas públicas e do operador:** modelos em `src/trimundi/paginas/`,
   scripts e estilo em `public/ticket/`.
-- **Testes:** `tests/trimundi-*.test.js` (banco de teste próprio).
+- **Testes:** `tests/trimundi-*.test.js` (esquema `trimundi` do banco de
+  teste da Mostraí, faixa de IP própria 100.64/10).
 - **Variáveis:** `.env.example`, bloco Trimundi.
 
 ## Fronteira com a Mostraí
@@ -65,8 +74,9 @@ Estação atual: **5 — Construção**, aberta e com o escopo da v1 construído
   `api.md`).
 - **Nada de tabela cruzada.** Um lado só chama a função do módulo dono do
   dado.
-- **A única rota da Mostraí que muda** é `POST /anunciantes/login`
-  (`api.md`).
+- **Nenhuma rota da Mostraí muda.** O login de operador (`/ticket/entrar`)
+  e o de cliente (`/ticket/conta`) são da Trimundi; `POST /anunciantes/login`
+  voltou a ser o da `main`. Da Mostraí, só a aba "Eventos" do Admin.
 
 ## Pendências que bloqueiam a esteira
 - Homologação do dono e as decisões abertas em `pendencias.md` ("Decisões

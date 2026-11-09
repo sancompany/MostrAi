@@ -10,10 +10,11 @@ const { conteudoDoQr } = require('../src/trimundi/lib/qr');
 const poolMostrai = require('../src/db/pool');
 const { gerarHash } = require('../src/lib/senha');
 
-// Trimundi, Etapa 6 — operador de check-in (D-05, RN-T24 a RN-T28): entra
-// pela tela de login da Mostraí e vai para /ticket/checkin; a sessão dele só
-// abre /ticket; desativar ou gerar código novo derruba a sessão na hora; a
-// conta da Mostraí sempre vence. Check-in: o servidor decide (assinatura,
+// Trimundi, Etapa 6 — operador de check-in (RN-T24 a RN-T28): criado só pelo
+// Admin, entra pelo login PRÓPRIO da Trimundi (/ticket/entrar, decisão do
+// dono de 09/11/2026) e vai para /ticket/checkin; a sessão dele só abre
+// /ticket; desativar ou gerar código novo derruba a sessão na hora. O login
+// da Mostraí não conhece operador. Check-in: o servidor decide (assinatura,
 // edição, status) e a entrada é única por ingresso, mesmo com leituras
 // simultâneas.
 
@@ -45,7 +46,7 @@ async function operadorAtivo(edicoes = 'todas', { senha = SENHA } = {}) {
 
 async function entrar(email, senha) {
   const c = apoio.cliente(srv);
-  const r = await c.post('/anunciantes/login', { email, senha });
+  const r = await c.post('/ticket/api/operador/entrar', { email, senha });
   return { ...r, sessao: apoio.cliente(srv, { cookie: r.cookies }) };
 }
 
@@ -72,13 +73,17 @@ async function ingressoPago(pronta) {
   return { ...rows[0], qr: conteudoDoQr(rows[0].codigo_publico, rows[0].codigo), pedido: p };
 }
 
-test('e-mail que já é conta da Mostraí não vira operador (a conta vence)', async () => {
+test('o login da Mostraí não abre operador, e o da Trimundi não abre conta da Mostraí', async () => {
+  const op = await operadorAtivo();
+  const naMostrai = await apoio.cliente(srv).post('/anunciantes/login', { email: op.email, senha: op.senha });
+  assert.equal(naMostrai.status, 401, 'a tela da Mostraí segue só dela');
+  assert.equal(naMostrai.json.operador, undefined);
   const email = emailNovo();
   await contaMostrai(email, 'Conta12@teste');
-  await assert.rejects(
-    operadores.criar({ nome: 'Fulano', email: email.toUpperCase(), edicoes: 'todas' }, apoio.AUTOR),
-    (err) => err.status === 409 && /conta da Mostraí/.test(err.message),
-  );
+  assert.equal((await entrar(email, 'Conta12@teste')).status, 401, 'conta da Mostraí não é operador');
+  // E-mail igual nos dois lados não se mistura: cada login olha o seu.
+  const { operador } = await operadores.criar({ nome: 'Mesmo e-mail', email, edicoes: 'todas' }, apoio.AUTOR);
+  assert.ok(operador.id);
 });
 
 test('ativação: mesma resposta para e-mail desconhecido e código errado; 5 erros travam; vencido é 410', async () => {
@@ -125,15 +130,20 @@ test('ativação: mesma resposta para e-mail desconhecido e código errado; 5 er
   assert.ok(rows[0].senha_hash && !rows[0].senha_hash.includes(SENHA), 'só o hash da senha');
 });
 
-test('login pela tela da Mostraí: o operador vai para /ticket/checkin e a sessão só abre /ticket', async () => {
+test('login próprio: o operador vai para /ticket/checkin e a sessão só abre /ticket', async () => {
   const op = await operadorAtivo();
   const errado = await entrar(op.email, 'Errada12@teste');
+  const ninguem = await entrar(emailNovo(), 'Errada12@teste');
   assert.equal(errado.status, 401);
-  assert.deepEqual(errado.json, { erro: 'e-mail ou senha inválidos' }, 'mesma resposta da Mostraí');
+  assert.deepEqual(errado.json, ninguem.json, 'mesma resposta com ou sem operador');
+
+  const pagina0 = await apoio.cliente(srv).get('/ticket/entrar');
+  assert.equal(pagina0.status, 200);
+  assert.doesNotMatch(pagina0.texto, /mostra[ií]/i);
 
   const { status, json, sessao } = await entrar(op.email.toUpperCase(), op.senha);
   assert.equal(status, 200);
-  assert.deepEqual(json, { operador: true, destino: '/ticket/checkin' });
+  assert.deepEqual(json, { ok: true, destino: '/ticket/checkin' });
 
   const pagina = await sessao.get('/ticket/checkin');
   assert.equal(pagina.status, 200);
@@ -142,29 +152,18 @@ test('login pela tela da Mostraí: o operador vai para /ticket/checkin e a sess�
   const eu = await sessao.get('/ticket/api/operador');
   assert.equal(eu.status, 200);
   assert.equal(eu.json.nome, op.nome);
-  assert.equal(eu.json.indicacao, null, 'espaço do link de indicação reservado, ainda sem mecanismo');
+  assert.equal(eu.json.indicacao, null, 'sem indicação habilitada pelo Admin, sem link');
 
   assert.equal((await sessao.get('/anunciantes/me')).status, 401, 'operador não é conta da Mostraí');
   assert.equal((await sessao.get('/admin/trimundi/estado')).status, 401, 'operador não entra no Admin');
 
   const anonimo = await apoio.cliente(srv).get('/ticket/checkin');
   assert.equal(anonimo.status, 302);
-  assert.equal(anonimo.headers.get('location'), '/anunciante/login.html');
+  assert.equal(anonimo.headers.get('location'), '/ticket/entrar');
   assert.equal((await apoio.cliente(srv).get('/ticket/api/operador')).status, 401);
 
   assert.equal((await sessao.post('/ticket/api/sair')).status, 200);
   assert.equal((await sessao.get('/ticket/api/operador')).status, 401);
-});
-
-test('conta da Mostraí criada depois com o mesmo e-mail: o login é da conta, e o Admin vê o conflito', async () => {
-  const op = await operadorAtivo();
-  await contaMostrai(op.email, 'Conta12@teste');
-  assert.equal((await entrar(op.email, op.senha)).status, 401, 'a senha do operador não abre a conta');
-  const conta = await entrar(op.email, 'Conta12@teste');
-  assert.equal(conta.status, 200);
-  assert.equal(conta.json.operador, undefined, 'é o login normal da Mostraí');
-  const lista = await operadores.listar();
-  assert.equal(lista.find((o) => o.id === op.id).bloqueado_pela_mostrai, true);
 });
 
 test('desativar derruba a sessão na hora; o login avisa; reativar devolve o acesso', async () => {

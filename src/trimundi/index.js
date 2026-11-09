@@ -4,13 +4,13 @@ const config = require('./config');
 const { MENSAGEM_NAO_CONFIGURADA } = require('./lib/erros');
 
 // Ponto de entrada da Trimundi na aplicação da Mostraí (ADR-048). Monta as
-// rotas e, no processo principal, os trabalhos de fundo. Sem o banco
-// próprio configurado, nada roda: as rotas respondem 503 e o login da
-// Mostraí não procura operador.
+// rotas e, no processo principal, os trabalhos de fundo. Desligada,
+// nada roda: as rotas respondem 503 (o login da Mostraí não conhece a
+// Trimundi).
 
 const router = express.Router();
 
-// Desligada (sem banco próprio): todo /ticket responde 503 — página para
+// Desligada: todo /ticket responde 503 — página para
 // quem pediu página, JSON para a API. O Admin tem a trava dele (rotas/admin.js).
 router.use('/ticket', (req, res, next) => {
   if (config.configurada()) return next();
@@ -28,7 +28,7 @@ function registrar(nome) {
 
 function iniciarProcessos() {
   if (!config.configurada()) {
-    console.log('trimundi: desligada (sem banco próprio configurado)');
+    console.log('trimundi: desligada (TRIMUNDI_ATIVA vazio)');
     return;
   }
   const pagamentos = require('./pagamentos');

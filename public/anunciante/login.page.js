@@ -52,13 +52,6 @@ form.addEventListener('submit', async (e) => {
       botaoEntrar.disabled = false;
       return;
     }
-    // Operador de check-in da Trimundi: o servidor diz para onde ir — só
-    // caminho deste site em /ticket/ (sem redirecionamento aberto).
-    const corpo = await r.json().catch(() => ({}));
-    if (corpo.operador && /^\/ticket\/[a-z0-9/_-]*$/.test(corpo.destino || '')) {
-      window.location.href = corpo.destino;
-      return;
-    }
     const params = new URLSearchParams(window.location.search);
     const plano = params.get('plano');
     // `voltar`: só uma página deste site (caminho relativo .html, nunca
