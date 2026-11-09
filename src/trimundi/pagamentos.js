@@ -90,7 +90,7 @@ async function avisarComprador(cliente, pedido) {
     tipo: 'pedido_confirmado',
     para: d.email,
     assunto: `Seus ingressos — ${d.evento} ${d.edicao}`,
-    texto: `Pagamento confirmado.\n\nSeus ingressos de ${d.evento} — ${d.edicao} estão neste link:\n${link}\n\nCada ingresso tem o próprio QR Code. Guarde este link: ele dá acesso aos ingressos do pedido.`,
+    texto: `Pagamento confirmado.\n\nSeus ingressos de ${d.evento} — ${d.edicao} estão neste link:\n${link}\n\nCada ingresso tem o próprio QR Code. Eles também ficam na sua conta: ${config.urlDoSite()}/ticket/conta`,
   });
 }
 

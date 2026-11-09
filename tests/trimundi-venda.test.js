@@ -197,10 +197,19 @@ test('pedido: sem aceite, sem participante, CPF inválido e termos mudados são 
 
   const cpfRuim = await c.post('/ticket/api/pedidos', {
     ...corpo,
-    comprador: { ...corpo.comprador, cpf: '11111111111' },
+    participantes: [{ ...corpo.participantes[0], cpf: '11111111111' }, corpo.participantes[1]],
   });
   assert.equal(cpfRuim.status, 400);
-  assert.match(cpfRuim.json.erro, /CPF do comprador inválido/);
+  assert.match(cpfRuim.json.erro, /CPF do participante 1 inválido/);
+
+  // Sem conta logada não há compra; o corpo não escolhe quem compra.
+  const semConta = await fetch(`${srv.base}/ticket/api/pedidos`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': apoio.novoIp() },
+    body: JSON.stringify(corpo),
+  });
+  assert.equal(semConta.status, 401);
+  assert.equal((await semConta.json()).codigo, 'conta');
 
   await eventos.atualizarEdicao(pronta.edicao.id, { textos: { termos_compra: 'Termos novos.' } }, apoio.AUTOR);
   const mudou = await c.post('/ticket/api/pedidos', corpo);

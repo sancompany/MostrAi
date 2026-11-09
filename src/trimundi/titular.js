@@ -37,8 +37,13 @@ async function exportar(cpfBruto) {
       WHERE pa.cpf = $1 ORDER BY pa.criado_em`,
     [cpf],
   );
+  const { rows: contas } = await consultar(
+    'SELECT nome, email, criado_em, email_confirmado_em, ultimo_acesso_em FROM clientes WHERE cpf = $1',
+    [cpf],
+  );
   return {
     gerado_em: new Date().toISOString(),
+    contas,
     controlador: 'Trimundi (San & Co.)',
     compradores: compradores.map(({ id, ...c }) => c),
     participantes,
@@ -56,7 +61,8 @@ async function anonimizar(cpfBruto, motivoBruto, autor) {
   return emTransacao(async (cliente) => {
     const { rows: emailsDe } = await cliente.query(
       `SELECT email FROM participantes WHERE cpf = $1 AND email IS NOT NULL
-       UNION SELECT email FROM compradores WHERE cpf = $1 AND email IS NOT NULL`,
+       UNION SELECT email FROM compradores WHERE cpf = $1 AND email IS NOT NULL
+       UNION SELECT email FROM clientes WHERE cpf = $1 AND email IS NOT NULL`,
       [cpf],
     );
     const p = await cliente.query(
@@ -75,6 +81,20 @@ async function anonimizar(cpfBruto, motivoBruto, autor) {
         WHERE cpf = $1 AND anonimizado_em IS NULL AND NOT (id = ANY($2::bigint[]))`,
       [cpf, retidos.map((r) => r.id)],
     );
+    // A conta de acesso sai sempre (o que tem guarda legal é o comprador de
+    // cada pedido, acima): sem nome, CPF, e-mail nem senha; links anulados.
+    const conta = await cliente.query(
+      `UPDATE clientes SET nome = NULL, cpf = NULL, email = NULL, senha_hash = NULL, anonimizado_em = now(),
+              sessao_versao = sessao_versao + 1, atualizado_em = now()
+        WHERE cpf = $1 AND anonimizado_em IS NULL RETURNING id`,
+      [cpf],
+    );
+    if (conta.rows.length) {
+      await cliente.query(
+        'UPDATE cliente_tokens SET usado_em = now() WHERE cliente_id = ANY($1::bigint[]) AND usado_em IS NULL',
+        [conta.rows.map((r) => r.id)],
+      );
+    }
     // E-mails para quem saiu (o comprador retido segue recebendo o necessário).
     const { rows: aindaUsados } = await cliente.query('SELECT email FROM compradores WHERE cpf = $1', [cpf]);
     const manter = new Set(aindaUsados.map((r) => r.email));
@@ -89,6 +109,7 @@ async function anonimizar(cpfBruto, motivoBruto, autor) {
       participantes: p.rowCount,
       compradores: c.rowCount,
       compradores_retidos: retidos.length,
+      contas: conta.rows.length,
       emails: m.rowCount,
       retencao: retidos.length
         ? 'comprador com pagamento: guardado pelo prazo legal (fiscal e de defesa), sem uso para outro fim'

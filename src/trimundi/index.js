@@ -19,6 +19,7 @@ router.use('/ticket', (req, res, next) => {
 });
 router.use(require('./rotas/admin').router);
 router.use(require('./rotas/operador').router);
+router.use(require('./rotas/conta').router);
 router.use(require('./rotas/publico').router);
 
 function registrar(nome) {

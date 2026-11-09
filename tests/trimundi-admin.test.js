@@ -513,6 +513,8 @@ test('pedido do titular (LGPD): exporta por CPF; anonimiza o participante e guar
   assert.equal(exportado.json.compradores.length, 1);
   assert.equal(exportado.json.compradores[0].pedidos[0].status, 'pago');
   assert.equal(exportado.json.participantes[0].nome, pessoa.nome);
+  assert.equal(exportado.json.contas.length, 1, 'a conta de acesso entra na exportação');
+  assert.equal(exportado.json.contas[0].email, pessoa.email);
   assert.equal(
     (await admin.post('/admin/trimundi/titular/anonimizar', { cpf: pessoa.cpf })).status,
     400,
@@ -526,6 +528,11 @@ test('pedido do titular (LGPD): exporta por CPF; anonimiza o participante e guar
     { p: 1, c: 0, retidos: 1 },
     'comprador com pagamento fica pelo prazo legal',
   );
+  assert.equal(r.json.contas, 1, 'a conta de acesso sai sempre');
+  const login = await apoio
+    .cliente(srv)
+    .post('/ticket/api/conta/entrar', { email: pessoa.email, senha: apoio.SENHA_CONTA });
+  assert.equal(login.status, 401, 'conta anonimizada não entra mais');
   const depois = await admin.post('/admin/trimundi/titular/consultar', { cpf: pessoa.cpf });
   assert.equal(depois.json.participantes.length, 0);
   const { rows } = await consultar('SELECT status FROM ingressos WHERE pedido_id = $1', [pago.pedido_id]);

@@ -82,12 +82,18 @@ async function entrarAdmin(srv) {
 // Cliente HTTP mínimo: JSON, cookie e IP.
 function cliente(srv, { cookie = '', ip = novoIp() } = {}) {
   const pedir = async (metodo, caminho, corpo, extra = {}) => {
+    // Atalho dos testes de venda: pedido sem cookie entra antes na conta do
+    // `comprador` do corpo (a compra exige conta logada).
+    let cookieDaVez = cookie;
+    if (!cookie && metodo === 'POST' && caminho === '/ticket/api/pedidos' && corpo?.comprador) {
+      cookieDaVez = await entrarCliente(srv, corpo.comprador, ip);
+    }
     const r = await fetch(`${srv.base}${caminho}`, {
       method: metodo,
       redirect: 'manual',
       headers: {
         ...(corpo !== undefined ? { 'content-type': 'application/json' } : {}),
-        ...(cookie ? { cookie } : {}),
+        ...(cookieDaVez ? { cookie: cookieDaVez } : {}),
         'x-forwarded-for': ip,
         ...extra,
       },
@@ -140,6 +146,40 @@ const pessoa = (rotulo = 'Pessoa') => ({
 
 const AUTOR = { autor: 'teste', autorAccess: null };
 
+// Conta de cliente JÁ confirmada para a pessoa (a compra exige conta). O
+// mesmo CPF devolve a mesma conta; a senha é sempre SENHA_CONTA.
+const SENHA_CONTA = 'Conta12@teste';
+let hashDaSenha = null;
+async function contaDe(p) {
+  const { consultar } = require('../src/trimundi/db/conexao');
+  const cpfLimpo = String(p.cpf).replace(/\D/g, '');
+  const achada = await consultar(
+    'SELECT id, nome, cpf, email FROM clientes WHERE cpf = $1 AND anonimizado_em IS NULL',
+    [cpfLimpo],
+  );
+  if (achada.rows[0]) return achada.rows[0];
+  hashDaSenha ||= await require('../src/lib/senha').gerarHash(SENHA_CONTA);
+  const { rows } = await consultar(
+    `INSERT INTO clientes (nome, cpf, email, senha_hash, email_confirmado_em)
+     VALUES ($1, $2, $3, $4, now()) RETURNING id, nome, cpf, email`,
+    [p.nome, cpfLimpo, String(p.email).toLowerCase(), hashDaSenha],
+  );
+  return rows[0];
+}
+
+// Cookie de sessão de cliente logado (pela rota de login de verdade).
+async function entrarCliente(srv, p, ip = novoIp()) {
+  const c = await contaDe(p);
+  const r = await fetch(`${srv.base}/ticket/api/conta/entrar`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': ip },
+    body: JSON.stringify({ email: c.email, senha: SENHA_CONTA }),
+  });
+  if (!r.ok) throw new Error(`login do cliente falhou: ${r.status}`);
+  await r.json();
+  return cookiesDe(r);
+}
+
 // Edição publicada com um tipo de ingresso (e lotes) — atalho pelos serviços.
 async function edicaoPronta({
   lotes = [{ preco_centavos: 5000, quantidade: 10 }],
@@ -182,7 +222,8 @@ async function novoPedido(pronta, itens, extra = {}) {
     aceite: { aceito: true, termos: cot.termos.map((t) => t.id) },
     chave: extra.chave || chave(),
   };
-  const r = await pedidos.criar(corpo, { ip: '198.18.0.1', userAgent: 'teste' });
+  const conta = await contaDe(corpo.comprador);
+  const r = await pedidos.criar(corpo, { ip: '198.18.0.1', userAgent: 'teste', cliente: conta });
   return { ...r, corpo, cot };
 }
 
@@ -278,6 +319,9 @@ module.exports = {
   cpf,
   pessoa,
   AUTOR,
+  SENHA_CONTA,
+  contaDe,
+  entrarCliente,
   edicaoPronta,
   novoPedido,
   itensDe,

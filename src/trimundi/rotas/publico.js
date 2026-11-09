@@ -10,6 +10,7 @@ const armazenamento = require('../armazenamento');
 const contrato = require('../checkout/contrato');
 const webhook = require('../checkout/webhook');
 const { consultar, emTransacao } = require('../db/conexao');
+const { exigirCliente } = require('./conta');
 
 // Rotas públicas da Trimundi — `/ticket/*` (api.md). Toda rota que faz
 // trabalho com dado do comprador passa pelo limitador da Mostraí (IP e,
@@ -46,8 +47,12 @@ router.post('/ticket/api/cotacao', limiteTentativas, async (req, res) => {
   res.json(cotacao);
 });
 
-router.post('/ticket/api/pedidos', limiteTentativas, async (req, res) => {
-  const r = await pedidos.criar(req.body, { ip: ipDo(req), userAgent: req.get('user-agent') });
+router.post('/ticket/api/pedidos', limiteTentativas, exigirCliente, async (req, res) => {
+  const r = await pedidos.criar(req.body, {
+    ip: ipDo(req),
+    userAgent: req.get('user-agent'),
+    cliente: req.clienteTrimundi,
+  });
   await acertou(req, res);
   res
     .status(r.repetido ? 200 : 201)

@@ -69,6 +69,9 @@ const RESERVADOS = new Set([
   'recuperar',
   'dev',
   'arquivos',
+  'conta',
+  'img',
+  'i',
 ]);
 
 function slugEvento(valor) {

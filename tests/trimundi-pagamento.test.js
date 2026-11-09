@@ -441,9 +441,7 @@ test('reembolso só de pedido pago, e nunca acima do que falta devolver', async 
 // --------------------------------------------- o que o Checkout chama aqui
 test('GET /pedido do Checkout: exige a chave da Trimundi e responde no formato do contrato', async () => {
   const pronta = await apoio.edicaoPronta();
-  const p = await apoio.novoPedido(pronta, itensDe(pronta.tipo, 2), {
-    comprador: { ...apoio.pessoa('Comprador'), telefone: '(16) 99999-0000' },
-  });
+  const p = await apoio.novoPedido(pronta, itensDe(pronta.tipo, 2));
   const c = apoio.cliente(srv);
   const caminho = `/ticket/api/checkout/pedido/${p.pedido_id}`;
   const chave = { 'x-checkout-key': process.env.TRIMUNDI_CHECKOUT_KEY };
@@ -462,7 +460,8 @@ test('GET /pedido do Checkout: exige a chave da Trimundi e responde no formato d
   assert.equal(r.json.valorComDesconto, 100);
   assert.equal(r.json.desconto, 0);
   assert.equal(r.json.pagador.documento, p.corpo.comprador.cpf);
-  assert.equal(r.json.pagador.telefone, '16999990000');
+  assert.equal(r.json.pagador.telefone, undefined, 'a conta não pede telefone; o Checkout pede se precisar');
+  assert.equal(r.json.pagador.email, p.corpo.comprador.email);
   assert.match(r.json.descricao, /^Evento [0-9a-f]+ — Edição 01$/);
   const expira = new Date(r.json.expiraEm).getTime() - Date.now();
   assert.ok(expira > 29 * 60000 && expira <= 30 * 60000, 'expiraEm = fim da reserva (30 min)');

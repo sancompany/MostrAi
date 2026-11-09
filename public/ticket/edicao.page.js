@@ -3,13 +3,14 @@
 // ida para o pagamento. Quem decide preço, lote e estoque é o servidor
 // (cotação e pedido); esta página só mostra e envia.
 (() => {
-  const { el, moeda, dataHora, hora, api, novaChave, mascaraCpf, cpfValido, formatarTelefone, enviando } =
-    window.trimundi;
+  const { el, moeda, dataHora, hora, api, novaChave, mascaraCpf, cpfValido, enviando } = window.trimundi;
   const main = document.getElementById('conteudo');
   const [, , evento, edicao] = window.location.pathname.split('/').map(decodeURIComponent);
   const qtd = new Map();
   let dados = null;
   let chave = null;
+  let conta = null;
+  let voltouDaConta = false;
 
   const CLASSIFICACAO = { livre: 'Livre', 10: '10 anos', 12: '12 anos', 14: '14 anos', 16: '16 anos', 18: '18 anos' };
   const TEXTOS = [
@@ -18,6 +19,8 @@
     ['termos_compra', 'Termos e condições de compra'],
   ];
   const GUARDADO = 'trimundi:pedido-em-andamento';
+  // Carrinho guardado enquanto a pessoa entra ou cria a conta (volta aqui).
+  const CARRINHO = `trimundi:carrinho:${evento}/${edicao}`.toLowerCase();
 
   async function carregar() {
     try {
@@ -34,7 +37,13 @@
       );
       return;
     }
-    document.title = `${dados.evento.nome} — ${dados.edicao.nome} · Ingressos`;
+    document.title = `${dados.evento.nome} — ${dados.edicao.nome} · Trimundi`;
+    try {
+      const guardado = JSON.parse(sessionStorage.getItem(CARRINHO) || 'null');
+      sessionStorage.removeItem(CARRINHO);
+      if (Array.isArray(guardado)) for (const [k, n] of guardado) if (Number(n) > 0) qtd.set(String(k), Number(n));
+      voltouDaConta = qtd.size > 0;
+    } catch {}
     // Quantidade escolhida que não cabe mais (esgotou) volta para o máximo.
     for (const [k, n] of qtd) {
       const item = itemDaChave(k);
@@ -42,6 +51,11 @@
       else qtd.set(k, Math.min(n, item.max_quantidade));
     }
     mostrarEscolha();
+    // Voltou de entrar na conta com o carrinho guardado: segue para os dados.
+    if (voltouDaConta && qtd.size) {
+      voltouDaConta = false;
+      cotar();
+    }
   }
 
   const itemDaChave = (k) => {
@@ -277,8 +291,18 @@
       .map(([k, n]) => ({ promocao_id: Number(k.slice(2)), quantidade: n })),
   });
 
+  // A compra é pela conta (com e-mail confirmado): sem sessão, guarda o
+  // carrinho e vai entrar/criar a conta; a conta traz de volta para cá.
   async function cotar(e) {
     const botao = e?.currentTarget;
+    conta = await api('/ticket/api/conta/sessao').catch(() => ({ logado: false }));
+    if (!conta.logado) {
+      try {
+        sessionStorage.setItem(CARRINHO, JSON.stringify([...qtd]));
+      } catch {}
+      window.location.assign(`/ticket/conta?volta=${encodeURIComponent(window.location.pathname)}`);
+      return;
+    }
     try {
       const cotacao = await enviando(botao || document.createElement('button'), 'Conferindo...', () =>
         api('/ticket/api/cotacao', { metodo: 'POST', corpo: { evento, edicao, itens: itensDoCarrinho() } }),
@@ -304,13 +328,9 @@
     ]);
   }
 
-  function pessoa(prefixo, { telefone = false } = {}) {
+  function pessoa(prefixo) {
     const bloco = el('div', { class: 'grade-2' }, [
-      campo('Nome completo', `${prefixo}nome`, {
-        autocomplete: prefixo === 'c-' ? 'name' : 'off',
-        maxlength: 120,
-        required: true,
-      }),
+      campo('Nome completo', `${prefixo}nome`, { autocomplete: 'off', maxlength: 120, required: true }),
       campo('CPF', `${prefixo}cpf`, {
         inputmode: 'numeric',
         autocomplete: 'off',
@@ -318,25 +338,9 @@
         required: true,
         placeholder: '000.000.000-00',
       }),
-      campo('E-mail', `${prefixo}email`, {
-        type: 'email',
-        autocomplete: prefixo === 'c-' ? 'email' : 'off',
-        maxlength: 200,
-        required: true,
-      }),
-      telefone
-        ? campo('Celular com DDD', `${prefixo}telefone`, {
-            type: 'tel',
-            inputmode: 'tel',
-            autocomplete: 'tel',
-            maxlength: 16,
-            placeholder: '(16) 99999-9999',
-          })
-        : null,
+      campo('E-mail', `${prefixo}email`, { type: 'email', autocomplete: 'off', maxlength: 200, required: true }),
     ]);
     for (const i of bloco.querySelectorAll('input[name$="cpf"]')) mascaraCpf(i);
-    for (const i of bloco.querySelectorAll('input[type="tel"]'))
-      i.addEventListener('blur', () => (i.value = formatarTelefone(i.value)));
     return bloco;
   }
 
@@ -378,9 +382,9 @@
       el('p', { class: 'discreto', text: 'As taxas do meio de pagamento, se houver, aparecem na tela de pagamento.' }),
     ]);
 
-    const comprador = el('fieldset', {}, [
-      el('legend', { text: 'Seus dados (quem compra)' }),
-      pessoa('c-', { telefone: true }),
+    const comprador = el('p', { class: 'discreto' }, [
+      `Comprando como ${conta.nome} (${conta.email}). `,
+      el('a', { href: `/ticket/conta?volta=${encodeURIComponent(window.location.pathname)}`, text: 'Não é você?' }),
     ]);
     const participantes = cotacao.vagas.map((vaga, i) => {
       const titulo = `Ingresso ${vaga.numero} · ${vaga.categoria_nome}${vaga.combo_nome ? ` (promoção ${vaga.combo_nome})` : ''}`;
@@ -390,9 +394,10 @@
               el('input', {
                 type: 'checkbox',
                 name: 'sou-eu',
-                onchange: (ev) => copiarComprador(ev.currentTarget.checked),
+                checked: true,
+                onchange: (ev) => usarMinhaConta(ev.currentTarget.checked),
               }),
-              'Este ingresso é meu (usar os meus dados)',
+              'Este ingresso é meu (usar os dados da minha conta)',
             ])
           : null;
       return el('fieldset', { dataset: { vaga: String(i) } }, [
@@ -446,16 +451,14 @@
       enviarPedido(form, cotacao, pagar, erro);
     });
     main.replaceChildren(resumo, form);
+    usarMinhaConta(true);
     if (aviso) erro.scrollIntoView({ block: 'center' });
   }
 
-  function copiarComprador(marcado) {
-    const form = document.getElementById('formPedido');
-    for (const k of ['nome', 'cpf', 'email']) {
-      const destino = form.elements[`p0-${k}`];
-      destino.value = marcado ? form.elements[`c-${k}`].value : '';
-      destino.readOnly = marcado;
-    }
+  // "Este ingresso é meu": o servidor preenche com os dados da conta.
+  function usarMinhaConta(marcado) {
+    const bloco = document.querySelector('fieldset[data-vaga="0"] .grade-2');
+    bloco.hidden = marcado;
   }
 
   const ler = (form, prefixo) => ({
@@ -463,11 +466,13 @@
     cpf: form.elements[`${prefixo}cpf`].value,
     email: form.elements[`${prefixo}email`].value.trim(),
   });
+  const ehMeu = (form, i) => i === 0 && form.elements['sou-eu']?.checked;
 
   function conferir(form, cotacao) {
-    if (form.elements['sou-eu']?.checked) copiarComprador(true);
-    const pessoas = [['c-', 'Seus dados'], ...cotacao.vagas.map((_, i) => [`p${i}-`, `Ingresso ${i + 1}`])];
-    for (const [p, rotulo] of pessoas) {
+    for (const [i] of cotacao.vagas.entries()) {
+      if (ehMeu(form, i)) continue;
+      const p = `p${i}-`;
+      const rotulo = `Ingresso ${i + 1}`;
       const d = ler(form, p);
       if (d.nome.length < 2) return [form.elements[`${p}nome`], `${rotulo}: informe o nome completo.`];
       if (!cpfValido(d.cpf)) return [form.elements[`${p}cpf`], `${rotulo}: CPF inválido — confira os números.`];
@@ -490,8 +495,7 @@
       evento,
       edicao,
       itens: itensDoCarrinho(),
-      comprador: { ...ler(form, 'c-'), telefone: form.elements['c-telefone'].value },
-      participantes: cotacao.vagas.map((_, i) => ler(form, `p${i}-`)),
+      participantes: cotacao.vagas.map((_, i) => (ehMeu(form, i) ? { conta: true } : ler(form, `p${i}-`))),
       aceite: { aceito: true, termos: cotacao.termos.map((t) => t.id) },
       chave,
     };
@@ -524,6 +528,13 @@
         chave = null;
         await carregar();
         mostrarEscolha({ aviso: err.message });
+        return;
+      }
+      if (err.codigo === 'conta') {
+        try {
+          sessionStorage.setItem(CARRINHO, JSON.stringify([...qtd]));
+        } catch {}
+        window.location.assign(`/ticket/conta?volta=${encodeURIComponent(window.location.pathname)}`);
         return;
       }
       erro.textContent = err.message;

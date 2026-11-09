@@ -261,24 +261,37 @@ async function novoAcesso(cliente, pedidoId, origem) {
   return tk;
 }
 
+// Venda: o comprador é a conta logada, com e-mail confirmado (decisão do
+// dono, 09/11/2026) — nome, CPF e e-mail vêm dela, nunca do corpo. Só o
+// pedido de teste do Admin traz o comprador no corpo.
 async function criar(corpo, contexto = {}) {
   const pedido = lerItens(corpo?.itens);
-  const comprador = {
-    ...lerPessoa(corpo?.comprador, 'do comprador'),
-    telefone: v.telefone(corpo?.comprador?.telefone),
-  };
+  const origem = contexto.origem === 'teste' ? 'teste' : 'venda';
+  if (origem === 'venda' && !contexto.cliente?.id) {
+    throw erro(401, 'Entre na sua conta para comprar.', { codigo: 'conta' });
+  }
+  const comprador =
+    origem === 'venda'
+      ? { nome: contexto.cliente.nome, cpf: contexto.cliente.cpf, email: contexto.cliente.email, telefone: null }
+      : { ...lerPessoa(corpo?.comprador, 'do comprador'), telefone: v.telefone(corpo?.comprador?.telefone) };
   const participantes = Array.isArray(corpo?.participantes) ? corpo.participantes : [];
   const chave = v.chave(corpo?.chave);
   if (corpo?.aceite?.aceito !== true) throw erro(400, 'É preciso aceitar os termos para continuar.');
   const termosAceitos = new Set((Array.isArray(corpo?.aceite?.termos) ? corpo.aceite.termos : []).map(Number));
-  const origem = contexto.origem === 'teste' ? 'teste' : 'venda';
 
   return emTransacao(async (cliente) => {
     const achada = await edicaoPorEndereco(cliente, corpo?.evento, corpo?.edicao);
     if (!achada) throw erro(404, 'evento não encontrado');
     const ed = await travarEdicao(cliente, achada.id);
     ed.evento_nome = achada.evento_nome;
-    const { rows: existente } = await cliente.query('SELECT id FROM pedidos WHERE chave_idempotencia = $1', [chave]);
+    const { rows: existente } = await cliente.query(
+      'SELECT id, cliente_id FROM pedidos WHERE chave_idempotencia = $1',
+      [chave],
+    );
+    // A chave repetida só devolve o pedido para a MESMA conta que o criou.
+    if (existente[0] && origem === 'venda' && Number(existente[0].cliente_id) !== Number(contexto.cliente.id)) {
+      throw erro(409, 'Este pedido já foi enviado de outra conta — recarregue a página.');
+    }
     if (existente[0]) {
       const tk = await novoAcesso(cliente, existente[0].id, 'compra');
       return { pedido_id: existente[0].id, token: tk, repetido: true, pagamento: linkDePagamento(existente[0].id, tk) };
@@ -288,7 +301,12 @@ async function criar(corpo, contexto = {}) {
     if (participantes.length !== m.vagas.length) {
       throw erro(400, 'Preencha os dados de cada participante.', { codigo: 'participantes' });
     }
-    const pessoas = participantes.map((p, i) => lerPessoa(p, `do participante ${i + 1}`));
+    // `{ conta: true }`: o ingresso é de quem compra — os dados vêm da conta.
+    const pessoas = participantes.map((p, i) =>
+      p?.conta === true && origem === 'venda'
+        ? { nome: comprador.nome, cpf: comprador.cpf, email: comprador.email }
+        : lerPessoa(p, `do participante ${i + 1}`),
+    );
 
     const termos = await termosVigentes(cliente, ed.id);
     if (termos.length !== termosAceitos.size || termos.some((t) => !termosAceitos.has(Number(t.id)))) {
@@ -320,9 +338,9 @@ async function criar(corpo, contexto = {}) {
       [comprador.nome, comprador.cpf, comprador.email, comprador.telefone],
     );
     const { rows: ped } = await cliente.query(
-      `INSERT INTO pedidos (edicao_id, comprador_id, origem, total_centavos, reserva_expira_em, chave_idempotencia)
-       VALUES ($1, $2, $3, $4, now() + make_interval(mins => $5), $6) RETURNING id, reserva_expira_em`,
-      [ed.id, comp[0].id, origem, m.total, RESERVA_MINUTOS, chave],
+      `INSERT INTO pedidos (edicao_id, comprador_id, cliente_id, origem, total_centavos, reserva_expira_em, chave_idempotencia)
+       VALUES ($1, $2, $3, $4, $5, now() + make_interval(mins => $6), $7) RETURNING id, reserva_expira_em`,
+      [ed.id, comp[0].id, contexto.cliente?.id || null, origem, m.total, RESERVA_MINUTOS, chave],
     );
     const pedidoId = ped[0].id;
     let vaga = 0;
