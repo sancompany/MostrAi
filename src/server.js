@@ -56,6 +56,9 @@ function origemDe(url) {
 }
 const ORIGEM_STORAGE = origemDe(process.env.SUPABASE_URL);
 const MIDIA = ["'self'", ORIGEM_STORAGE].filter(Boolean);
+// Imagens das edições da Trimundi: Storage do projeto Supabase PRÓPRIO dela
+// (docs/trimundi/CONSTRAINTS.md) — origem também lida do ambiente.
+const ORIGEM_STORAGE_TRIMUNDI = origemDe(process.env.TRIMUNDI_SUPABASE_URL);
 
 const CSP = [
   "default-src 'self'",
@@ -63,7 +66,7 @@ const CSP = [
   "style-src 'self'",
   "font-src 'self'",
   // data: para as imagens embutidas; o Storage serve os criativos.
-  `img-src 'self' data: ${MIDIA.slice(1).join(' ')}`.trim(),
+  `img-src 'self' data: ${[...MIDIA.slice(1), ORIGEM_STORAGE_TRIMUNDI].filter(Boolean).join(' ')}`.trim(),
   // blob: é a prévia local do vídeo antes do upload (admin, URL.createObjectURL).
   `media-src ${MIDIA.join(' ')} blob:`,
   // viacep preenche endereço no cadastro; o Storage serve mídia pras prévias.
@@ -239,6 +242,10 @@ app.use(require('./conta/modos').router);
 app.use(require('./conta/ponto-admin').router);
 app.use(require('./conta/financeiro'));
 app.use(require('./comunicados/routes'));
+// Trimundi (ticketeira, projeto próprio hospedado aqui — ADR-048): Admin em
+// /admin/trimundi/* (já atrás do requireAdminSession acima) e público em
+// /ticket/*. Sem o banco próprio configurado, responde 503 e nada mais roda.
+app.use(require('./trimundi').router);
 
 // Quem pediu página e quem pediu dado recebem coisas diferentes: navegador
 // manda `Accept: text/html` e merece uma tela; `fetch` do painel espera JSON e
@@ -328,6 +335,9 @@ if (require.main === module) {
     // previsto sem ninguém encerrar são encerrados pelo sistema (com o
     // benefício da hospedagem), a cada 5 min.
     require('./pontos/hospedagem').iniciarJob();
+    // Trimundi: fila de avisos de pagamento, e-mail e pedidos vencidos — só
+    // com o banco próprio configurado.
+    require('./trimundi').iniciarProcessos();
   });
 }
 

@@ -315,6 +315,10 @@ const alvoDoLogin = (req) => repo.normalizarEmail(req.body?.email);
 router.post('/anunciantes/login', limiteTentativasPorAlvo(alvoDoLogin), async (req, res) => {
   const { email, senha } = req.body;
   const anunciante = await repo.buscarPorEmailComSenha(email);
+  // Trimundi (D-05, autorizado pelo dono em 09/11/2026): e-mail que NÃO é de
+  // nenhuma conta da Mostraí pode ser de operador de check-in, que vai para
+  // /ticket/checkin. Conta da Mostraí nunca passa por aqui: segue igual.
+  if (!anunciante && (await require('../trimundi/acesso').entrarComoOperador(req, res, email, senha))) return;
   if (!anunciante || !(await repo.validarSenha(anunciante, senha))) {
     return res.status(401).json({ erro: 'e-mail ou senha inválidos' });
   }

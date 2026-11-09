@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pagamento simulado · Trimundi (desenvolvimento)</title>
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="/ticket/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/ticket/ticket.css">
+</head>
+<body>
+  <header class="topo">
+    <span class="marca">Trimundi</span>
+    <span class="selo alerta">Desenvolvimento</span>
+  </header>
+
+  <main class="pagina estreita">
+    <h1>Pagamento simulado</h1>
+    <p class="mensagem alerta">Esta tela só existe no ambiente de desenvolvimento. Nenhum dinheiro passa por aqui: ela manda o mesmo aviso assinado que o San Checkout mandaria, marcado como simulado.</p>
+    <section class="cartao" id="resumo"><p class="carregando">Carregando...</p></section>
+    <p class="mensagem" id="msg" role="status" aria-live="polite"></p>
+    <div class="acoes">
+      <button class="btn primario" type="button" id="aprovar">Aprovar pagamento</button>
+      <button class="btn" type="button" id="recusar">Recusar pagamento</button>
+    </div>
+  </main>
+
+  <script src="/ticket/comum.js"></script>
+  <script src="/ticket/simulador.page.js"></script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{{titulo}} · Ingressos</title>
+  <meta name="description" content="{{descricao}}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Trimundi">
+  <meta property="og:title" content="{{titulo}}">
+  <meta property="og:description" content="{{descricao}}">
+  <meta property="og:url" content="{{url}}">
+  <meta property="og:image" content="{{imagem}}">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="canonical" href="{{url}}">
+  <link rel="icon" href="/ticket/favicon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#5b21b6">
+  <link rel="stylesheet" href="/ticket/ticket.css">
+</head>
+<body>
+  <header class="topo">
+    <span class="marca">Trimundi</span>
+    <a class="discreto" href="/ticket/recuperar">Já comprei</a>
+  </header>
+
+  <main id="conteudo" class="pagina" aria-live="polite">
+    <p class="carregando">Carregando...</p>
+  </main>
+
+  <footer class="rodape">
+    <p>Ingressos vendidos pela Trimundi. O pagamento é feito no San Checkout, em ambiente seguro.</p>
+    <p>Dúvidas sobre o evento: fale com quem organiza. Perdeu o link dos ingressos? <a href="/ticket/recuperar">Recupere aqui</a>.</p>
+  </footer>
+
+  <script src="/ticket/comum.js"></script>
+  <script src="/ticket/edicao.page.js"></script>
+</body>
+</html>

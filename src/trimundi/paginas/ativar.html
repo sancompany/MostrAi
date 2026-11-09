@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ativar acesso de operador · Trimundi</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="/ticket/favicon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#5b21b6">
+  <link rel="stylesheet" href="/ticket/ticket.css">
+</head>
+<body>
+  <header class="topo">
+    <span class="marca">Trimundi</span>
+  </header>
+
+  <main class="pagina estreita">
+    <h1>Ativar acesso de operador</h1>
+    <section id="painelForm">
+      <p>Use o e-mail cadastrado por quem organiza o evento e o código de ativação que você recebeu.</p>
+      <form class="cartao" id="formAtivar" novalidate>
+        <div class="campo">
+          <label for="email">E-mail</label>
+          <input id="email" name="email" type="email" autocomplete="username" maxlength="200" required>
+        </div>
+        <div class="campo">
+          <label for="codigo">Código de ativação</label>
+          <input id="codigo" name="codigo" autocomplete="one-time-code" autocapitalize="characters" maxlength="9" placeholder="XXXX-XXXX" required>
+        </div>
+        <div class="campo">
+          <label for="senha">Senha nova</label>
+          <input id="senha" name="senha" type="password" autocomplete="new-password" maxlength="200" required aria-describedby="regraSenha">
+          <p class="discreto" id="regraSenha">No mínimo 8 caracteres, com maiúscula, minúscula, número e símbolo.</p>
+        </div>
+        <div class="campo">
+          <label for="senha2">Repita a senha</label>
+          <input id="senha2" name="senha2" type="password" autocomplete="new-password" maxlength="200" required>
+        </div>
+        <p class="mensagem" id="msg" role="status" aria-live="polite"></p>
+        <button class="btn primario grande" type="submit">Ativar acesso</button>
+      </form>
+    </section>
+    <section id="painelOk" class="cartao oculto">
+      <p class="mensagem ok">Acesso ativado. Agora entre com seu e-mail e a senha nova.</p>
+      <a class="btn primario grande" href="/anunciante/login.html">Entrar</a>
+    </section>
+  </main>
+
+  <script src="/ticket/comum.js"></script>
+  <script src="/ticket/ativar.page.js"></script>
+</body>
+</html>

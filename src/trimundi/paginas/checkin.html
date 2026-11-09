@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Check-in · Trimundi</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="/ticket/favicon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#5b21b6">
+  <link rel="stylesheet" href="/ticket/ticket.css">
+</head>
+<body class="checkin">
+  <header class="topo">
+    <span class="marca">Trimundi · Check-in</span>
+    <button class="btn" type="button" id="sair">Sair</button>
+  </header>
+
+  <main class="pagina estreita" id="conteudo">
+    <p class="carregando" id="carregando">Carregando...</p>
+
+    <section id="painel" class="oculto">
+      <p id="ola"></p>
+      <div class="campo">
+        <label for="edicao">Edição</label>
+        <select id="edicao"></select>
+      </div>
+      <p class="contador" id="contador" aria-live="polite"></p>
+
+      <!-- O resultado fica acima da câmera: no celular, aparece sem rolar. -->
+      <section id="resultado" class="resultado oculto" aria-live="assertive" tabindex="-1"></section>
+
+      <div id="leitor" class="cartao">
+        <div class="camera oculto" id="camera">
+          <video id="video" playsinline muted></video>
+          <div class="mira" aria-hidden="true"></div>
+        </div>
+        <div class="acoes">
+          <button class="btn primario grande" type="button" id="ligarCamera">Ler QR Code</button>
+          <button class="btn oculto" type="button" id="desligarCamera">Desligar câmera</button>
+        </div>
+        <form id="formCodigo" novalidate>
+          <label for="codigo">Ou digite o código do ingresso</label>
+          <div class="acoes">
+            <input id="codigo" name="codigo" autocomplete="off" autocapitalize="characters" maxlength="9" placeholder="XXXX-XXXX">
+            <button class="btn" type="submit">Consultar</button>
+          </div>
+        </form>
+        <p class="mensagem" id="msgCamera" role="status"></p>
+      </div>
+
+      <!-- Espaço do link de indicação (pedido do dono, 09/11/2026): aparece
+           quando o mecanismo for definido — docs/trimundi/proximas-versoes.md. -->
+      <aside id="indicacao" class="cartao oculto" aria-label="Indicação"></aside>
+    </section>
+
+    <section id="semEdicao" class="cartao oculto">
+      <p>Nenhuma edição está liberada para o seu acesso agora. Fale com quem organiza o evento.</p>
+    </section>
+    <section id="falha" class="cartao oculto">
+      <p>Não foi possível carregar agora.</p>
+      <button class="btn" type="button" id="tentarDeNovo">Tentar novamente</button>
+    </section>
+  </main>
+
+  <script src="/ticket/comum.js"></script>
+  <script src="/ticket/checkin.page.js"></script>
+</body>
+</html>
