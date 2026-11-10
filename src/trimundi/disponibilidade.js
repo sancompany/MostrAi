@@ -189,6 +189,24 @@ async function compradosPorCpf(cliente, edicaoId, cpf, categoriaIds) {
   return new Map(rows.map((r) => [Number(r.categoria_id), r.n]));
 }
 
+// Ingressos do CPF na EDIÇÃO, de todos os tipos e combos (limite da edição,
+// `edicoes.limite_por_cpf`): pagos não cancelados + reservados vivos. Outro
+// evento nunca entra na conta.
+async function ingressosDoCpfNaEdicao(cliente, edicaoId, cpf) {
+  const { rows } = await cliente.query(
+    `SELECT count(*)::int AS n
+       FROM reservas r
+       JOIN pedidos p ON p.id = r.pedido_id
+       JOIN compradores c ON c.id = p.comprador_id
+       LEFT JOIN ingressos i ON i.reserva_id = r.id
+      WHERE p.edicao_id = $1 AND c.cpf = $2
+        AND ((p.status = 'pago' AND i.id IS NOT NULL AND i.status <> 'cancelado')
+          OR (p.status = 'aguardando_pagamento' AND p.reserva_expira_em > now()))`,
+    [edicaoId, cpf],
+  );
+  return rows[0].n;
+}
+
 // Situação de um combo para a vitrine e para o Admin.
 function situacaoDoCombo(promo, itens, vendidos, alocador, agora = new Date()) {
   if (!promo.ativo) return 'inativa';
@@ -211,5 +229,6 @@ module.exports = {
   ocupacaoDaEdicao,
   combosVendidos,
   compradosPorCpf,
+  ingressosDoCpfNaEdicao,
   situacaoDoCombo,
 };

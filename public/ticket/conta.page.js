@@ -96,12 +96,12 @@
   }
 
   // ---- entrar
-  function telaEntrar(aviso = null) {
+  function telaEntrar(aviso = null, emailSugerido = '') {
     const m = mensagem();
     const form = el(
       'form',
       { class: 'cartao', novalidate: true },
-      campo('E-mail', 'email', { type: 'email', autocomplete: 'email', maxlength: 200 }),
+      campo('E-mail', 'email', { type: 'email', autocomplete: 'email', maxlength: 200, value: emailSugerido }),
       campo('Senha', 'senha', { type: 'password', autocomplete: 'current-password', maxlength: 200 }),
       m,
       el('button', { class: 'btn primario grande', type: 'submit', text: 'Entrar' }),
@@ -167,6 +167,11 @@
       el('div', { class: 'campo' }, el('label', { for: 'cpf', text: 'CPF' }), cpf),
       campo('E-mail', 'email', { type: 'email', autocomplete: 'email', maxlength: 200 }),
       campo('Senha', 'senha', { type: 'password', autocomplete: 'new-password', maxlength: 200 }),
+      campo('Confirme a senha', 'senha_confirmacao', {
+        type: 'password',
+        autocomplete: 'new-password',
+        maxlength: 200,
+      }),
       el('p', { class: 'discreto', text: SENHA }),
       ...caixasDeAceite(),
       m,
@@ -180,12 +185,15 @@
         cpf: digitos(f.cpf.value),
         email: f.email.value.trim(),
         senha: f.senha.value,
+        senha_confirmacao: f.senha_confirmacao.value,
         maioridade: f.maioridade.checked,
         aceite_termos: f.aceite_termos.checked,
       };
       if (dados.nome.length < 2) return avisar(m, 'erro', 'Informe seu nome completo.');
       if (!cpfValido(dados.cpf)) return avisar(m, 'erro', 'CPF inválido — confira os números.');
       if (!emailOk(dados.email)) return avisar(m, 'erro', 'Informe um e-mail válido.');
+      if (dados.senha !== dados.senha_confirmacao)
+        return avisar(m, 'erro', 'A confirmação da senha não confere — digite a mesma senha nos dois campos.');
       if (!dados.maioridade) return avisar(m, 'erro', 'A conta é só para maiores de 18 anos.');
       if (!dados.aceite_termos) return avisar(m, 'erro', 'Aceite os Termos de Uso e a Política de Privacidade.');
       try {
@@ -203,6 +211,18 @@
         );
       } catch (err) {
         avisar(m, 'erro', err.message);
+        // Já tem conta (e-mail ou CPF): leva ao login, com o e-mail digitado.
+        if (err.codigo === 'email_em_uso' || err.codigo === 'cpf_em_uso') {
+          m.append(
+            ' ',
+            el('button', {
+              class: 'btn mini',
+              type: 'button',
+              text: 'Entrar na minha conta',
+              onclick: () => telaEntrar(null, err.codigo === 'email_em_uso' ? dados.email : ''),
+            }),
+          );
+        }
       }
     });
     trocar(

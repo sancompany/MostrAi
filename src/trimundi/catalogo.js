@@ -165,7 +165,7 @@ async function listarTipos(edicaoId, cliente = null) {
   // Em sequência: com `cliente` (transação) é uma conexão só.
   const lotes = await carregarLotes(db, ids);
   const { rows: benef } = await q(
-    `SELECT cb.categoria_id, b.id, b.nome FROM categoria_beneficios cb JOIN beneficios b ON b.id = cb.beneficio_id
+    `SELECT cb.categoria_id, b.id, b.nome, b.quantidade FROM categoria_beneficios cb JOIN beneficios b ON b.id = cb.beneficio_id
       WHERE cb.categoria_id = ANY($1::bigint[]) ORDER BY b.nome`,
     [ids],
   );
@@ -180,7 +180,9 @@ async function listarTipos(edicaoId, cliente = null) {
       descricao: c.descricao,
       limite_por_comprador: c.limite_por_comprador,
       ativo: c.ativo,
-      beneficios: benef.filter((b) => Number(b.categoria_id) === Number(c.id)).map((b) => ({ id: b.id, nome: b.nome })),
+      beneficios: benef
+        .filter((b) => Number(b.categoria_id) === Number(c.id))
+        .map((b) => ({ id: b.id, nome: b.nome, limitado: Boolean(b.quantidade) })),
       lotes: estado.lotes.map((l, i) => ({
         id: l.id,
         numero: i + 1,

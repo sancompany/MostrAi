@@ -73,6 +73,15 @@ function lerEdicao(e = {}, { parcial = false } = {}) {
       obrigatorio: false,
     });
   }
+  // Ingressos por CPF nesta edição (todos os tipos e combos somados).
+  if (tem('limite_por_cpf')) {
+    out.limite_por_cpf = v.inteiro(e.limite_por_cpf, {
+      campo: 'o limite de ingressos por CPF',
+      min: 1,
+      max: 100,
+      obrigatorio: false,
+    });
+  }
   if (e.textos !== undefined) {
     if (typeof e.textos !== 'object' || e.textos === null) throw erro(400, 'textos inválidos');
     out.textos = {};
@@ -160,8 +169,8 @@ async function criarEdicao(corpo, autor) {
     const l = e.local || {};
     const { rows } = await cliente.query(
       `INSERT INTO edicoes (evento_id, nome, slug, codigo_publico, descricao, inicio_em, fim_em, local_nome,
-         cep, logradouro, numero, complemento, bairro, cidade, uf, classificacao_etaria, capacidade)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+         cep, logradouro, numero, complemento, bairro, cidade, uf, classificacao_etaria, capacidade, limite_por_cpf)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
       [
         eventoId,
         e.nome,
@@ -174,6 +183,7 @@ async function criarEdicao(corpo, autor) {
         ...COLUNAS_LOCAL.map((c) => l[c] || null),
         e.classificacao_etaria ?? null,
         e.capacidade ?? null,
+        e.limite_por_cpf ?? null,
       ],
     );
     const edicaoId = rows[0].id;
@@ -231,6 +241,7 @@ function formatarEdicao(ed, termos = [], imagens = [], eventoPublicado = false) 
       : null,
     classificacao_etaria: ed.classificacao_etaria,
     capacidade: ed.capacidade,
+    limite_por_cpf: ed.limite_por_cpf,
     status: ed.status,
     publicado_em: ed.publicado_em,
     encerrado_em: ed.encerrado_em,
@@ -325,7 +336,16 @@ async function atualizarEdicao(id, corpo, autor) {
       }
     }
     const sets = {};
-    for (const k of ['nome', 'slug', 'descricao', 'inicio_em', 'fim_em', 'classificacao_etaria', 'capacidade']) {
+    for (const k of [
+      'nome',
+      'slug',
+      'descricao',
+      'inicio_em',
+      'fim_em',
+      'classificacao_etaria',
+      'capacidade',
+      'limite_por_cpf',
+    ]) {
       if (e[k] !== undefined) sets[k] = e[k];
     }
     if (e.local !== undefined) {

@@ -287,6 +287,7 @@
               <div class="campo-grupo"><label for="tmFim">Término (opcional)</label><input id="tmFim" name="fim" type="datetime-local" value="${paraCampoData(ed?.fim_em)}"></div>
               <div class="campo-grupo"><label for="tmClass">Classificação etária</label><select id="tmClass" name="classificacao">${CLASSIFICACOES.map(([k, r]) => `<option value="${k}" ${String(ed?.classificacao_etaria ?? '') === k ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
               <div class="campo-grupo"><label for="tmCap">Capacidade do local (opcional)</label><input id="tmCap" name="capacidade" type="number" min="1" max="1000000" value="${v(ed?.capacidade)}"></div>
+              <div class="campo-grupo"><label for="tmLimCpf">Ingressos por CPF nesta edição (opcional)</label><input id="tmLimCpf" name="limite_por_cpf" type="number" min="1" max="100" value="${v(ed?.limite_por_cpf)}"></div>
             </div>
           </section>
           <section class="secao-pagina">
@@ -352,6 +353,7 @@
         fim_em: doCampoData(f.fim.value),
         classificacao_etaria: f.classificacao.value || null,
         capacidade: f.capacidade.value === '' ? null : f.capacidade.value,
+        limite_por_cpf: f.limite_por_cpf.value === '' ? null : f.limite_por_cpf.value,
         local: f.semLocal.checked
           ? null
           : {

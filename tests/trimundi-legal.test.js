@@ -25,6 +25,7 @@ test('cadastro exige maioridade e o aceite dos Termos e da Política; o aceite f
   const semIdade = await c.post('/ticket/api/conta/cadastro', {
     ...apoio.pessoa('A'),
     senha: SENHA,
+    senha_confirmacao: SENHA,
     aceite_termos: true,
   });
   assert.equal(semIdade.status, 400);
@@ -32,6 +33,7 @@ test('cadastro exige maioridade e o aceite dos Termos e da Política; o aceite f
   const semAceite = await c.post('/ticket/api/conta/cadastro', {
     ...apoio.pessoa('B'),
     senha: SENHA,
+    senha_confirmacao: SENHA,
     maioridade: true,
   });
   assert.equal(semAceite.status, 400);
@@ -39,6 +41,7 @@ test('cadastro exige maioridade e o aceite dos Termos e da Política; o aceite f
   const texto = await c.post('/ticket/api/conta/cadastro', {
     ...apoio.pessoa('C'),
     senha: SENHA,
+    senha_confirmacao: SENHA,
     maioridade: 'sim',
     aceite_termos: 'sim',
   });
@@ -47,7 +50,7 @@ test('cadastro exige maioridade e o aceite dos Termos e da Política; o aceite f
   const p = apoio.pessoa('D');
   const ok = await c.post(
     '/ticket/api/conta/cadastro',
-    { ...p, senha: SENHA, maioridade: true, aceite_termos: true },
+    { ...p, senha: SENHA, senha_confirmacao: SENHA, maioridade: true, aceite_termos: true },
     { 'user-agent': 'navegador-de-teste' },
   );
   assert.equal(ok.status, 201);

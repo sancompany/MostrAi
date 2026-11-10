@@ -37,11 +37,27 @@ function lerAceite(d) {
 
 const textoCurto = (t, n) => (t ? String(t).slice(0, n) : null);
 
+// Uma conta TICK por CPF e por e-mail (pedido do dono, 10/11/2026). As
+// mensagens dizem qual dos dois já existe e mandam para o login. O banco
+// garante a regra (índices únicos `ux_clientes_cpf` e `ux_clientes_email`);
+// o servidor só traduz.
+const EMAIL_EM_USO = 'Este e-mail já possui uma conta. Entre na sua conta.';
+const CPF_EM_USO = 'Este CPF já possui uma conta vinculada. Entre na sua conta.';
+const emUso = (qual) =>
+  qual === 'email'
+    ? erro(409, EMAIL_EM_USO, { codigo: 'email_em_uso', entrar: '/ticket/conta' })
+    : erro(409, CPF_EM_USO, { codigo: 'cpf_em_uso', entrar: '/ticket/conta' });
+
 function lerCadastro(d) {
   lerAceite(d);
   const senha = String(d?.senha ?? '');
   const regra = conferirSenha(senha);
   if (regra) throw erro(400, regra);
+  if (String(d?.senha_confirmacao ?? '') !== senha) {
+    throw erro(400, 'A confirmação da senha não confere — digite a mesma senha nos dois campos.', {
+      codigo: 'senha_confirmacao',
+    });
+  }
   return {
     nome: v.texto(d?.nome, {
       campo: 'o nome',
@@ -87,35 +103,16 @@ async function cadastrar(dados, contexto = {}) {
   const d = lerCadastro(dados);
   const hash = await gerarHash(d.senha);
   return emTransacao(async (cliente) => {
-    // Serializa cadastros do mesmo CPF/e-mail (dois cliques ao mesmo tempo).
-    await cliente.query('SELECT pg_advisory_xact_lock(872028, hashtext($1))', [d.cpf]);
+    // Serializa cadastros do mesmo CPF e do mesmo e-mail (dois cliques, duas
+    // abas ao mesmo tempo). Sempre na mesma ordem: CPF, depois e-mail.
+    await cliente.query('SELECT pg_advisory_xact_lock(872028, hashtext($1))', [`cpf:${d.cpf}`]);
+    await cliente.query('SELECT pg_advisory_xact_lock(872028, hashtext($1))', [`email:${d.email}`]);
     const { rows } = await cliente.query(
-      'SELECT * FROM clientes WHERE anonimizado_em IS NULL AND (email = $1 OR cpf = $2)',
+      'SELECT email, cpf FROM clientes WHERE anonimizado_em IS NULL AND (email = $1 OR cpf = $2)',
       [d.email, d.cpf],
     );
-    const mesmoEmail = rows.find((r) => r.email === d.email);
-    const mesmoCpf = rows.find((r) => r.cpf === d.cpf);
-    if (mesmoCpf && mesmoCpf.email !== d.email) {
-      throw erro(409, 'Este CPF já tem conta na TICK. Entre com o e-mail dela ou recupere a senha.', {
-        codigo: 'cpf_em_uso',
-      });
-    }
-    if (mesmoEmail) {
-      // Conta existente: nada muda nela (nem a senha). Quem não confirmou
-      // recebe o link de novo; quem já confirmou recebe o aviso.
-      if (mesmoEmail.email_confirmado_em) {
-        await email.enfileirar(cliente, {
-          chave: `conta_existente:${mesmoEmail.id}:${Date.now()}`,
-          tipo: 'conta_existente',
-          para: mesmoEmail.email,
-          assunto: 'Você já tem conta na TICK',
-          texto: `Alguém tentou criar uma conta com este e-mail, que já tem conta na TICK.\n\nPara entrar: ${site()}/ticket/conta\nEsqueceu a senha? Recupere em ${site()}/ticket/conta/esqueci\n\nSe não foi você, ignore este e-mail.`,
-        });
-      } else {
-        await enviarConfirmacao(cliente, mesmoEmail);
-      }
-      return { email: d.email };
-    }
+    if (rows.some((r) => r.email === d.email)) throw emUso('email');
+    if (rows.some((r) => r.cpf === d.cpf)) throw emUso('cpf');
     const { rows: novo } = await cliente.query(
       `INSERT INTO clientes (nome, cpf, email, senha_hash, termos_versao, termos_aceitos_em, maioridade_declarada_em,
           aceite_ip, aceite_user_agent)
@@ -125,6 +122,12 @@ async function cadastrar(dados, contexto = {}) {
     await enviarConfirmacao(cliente, novo[0]);
     await medir(cliente, 'conta:cadastro', null, {});
     return { email: d.email };
+  }).catch((err) => {
+    // Última linha de defesa: o índice único do banco barrou (corrida que
+    // escapou das travas). Mesma mensagem de sempre, nunca o erro cru.
+    if (err?.code === '23505' && /ux_clientes_email/.test(err.constraint || '')) throw emUso('email');
+    if (err?.code === '23505' && /ux_clientes_cpf/.test(err.constraint || '')) throw emUso('cpf');
+    throw err;
   });
 }
 

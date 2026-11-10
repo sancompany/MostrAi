@@ -802,3 +802,11 @@ details.termo .texto {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* "Benefício disponível enquanto durar o estoque." */
+.aviso-estoque {
+  display: block;
+  margin: 0.25rem 0 0;
+  color: var(--suave);
+  font-size: 0.85rem;
+}

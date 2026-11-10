@@ -77,6 +77,10 @@
     }
   }
 
+  // Benefício com quantidade: a unidade só é separada quando o pagamento
+  // confirma, então a página avisa antes da compra (pedido do dono, 10/11/2026).
+  const AVISO_ESTOQUE = 'Benefício disponível enquanto durar o estoque.';
+
   // Evento com classificação etária (não livre): o pedido pede a declaração.
   const exigeIdade = () =>
     Boolean(dados?.edicao?.classificacao_etaria && dados.edicao.classificacao_etaria !== 'livre');
@@ -205,6 +209,7 @@
           ? el('p', { class: 'beneficio-lote' }, [
               el('strong', { text: `Direito a: ${t.beneficio_do_lote.nome}` }),
               t.beneficio_do_lote.restam ? ` · restam ${t.beneficio_do_lote.restam}` : '',
+              t.beneficio_do_lote.limitado ? el('span', { class: 'aviso-estoque', text: AVISO_ESTOQUE }) : null,
             ])
           : null,
         t.limite_por_comprador
@@ -217,6 +222,7 @@
               t.beneficios.map((b) => el('li', { class: 'chip', text: b })),
             )
           : null,
+        t.beneficios_limitados ? el('p', { class: 'aviso-estoque', text: AVISO_ESTOQUE }) : null,
       ]),
       aVenda ? seletor(`t:${t.id}`, t) : null,
     ]);
@@ -244,6 +250,7 @@
       el('div', {}, [
         el('div', { class: 'nome', text: c.nome }),
         el('p', { class: 'detalhe', text: composicao }),
+        c.ingressos.some((i) => i.beneficio_limitado) ? el('p', { class: 'aviso-estoque', text: AVISO_ESTOQUE }) : null,
         c.descricao ? el('p', { class: 'detalhe', text: c.descricao }) : null,
         aVenda
           ? el('p', { class: 'detalhe' }, [
@@ -312,7 +319,9 @@
             el('small', {
               text: n
                 ? 'O total final aparece na próxima etapa.'
-                : `Até ${dados.max_ingressos_por_pedido} ingressos por pedido.`,
+                : dados.limite_por_cpf
+                  ? `Até ${dados.limite_por_cpf} ingressos por CPF neste evento.`
+                  : `Até ${dados.max_ingressos_por_pedido} ingressos por pedido.`,
             }),
           ]),
           continuar,
