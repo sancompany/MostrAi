@@ -118,6 +118,7 @@ pelo Cloudflare Access, que cobre `/admin`. Toda escrita grava o histórico
 | `GET /admin/trimundi/edicoes/:id/ranking` | ranking da edição: `[{ posicao, nome, categoria (comprador\|operador), pessoas, compras, ingressos }]` — só conversões confirmadas |
 | `GET /admin/trimundi/edicoes/:id/ranking.csv` | o mesmo em CSV (`;`, UTF-8 com BOM), sem CPF, e-mail nem código; nome com cara de fórmula ganha apóstrofo |
 | `GET /admin/trimundi/edicoes/:id/compradores/:cliente` | ficha do comprador na edição: conta (CPF mascarado), compra, pedidos, quem indicou, link e pessoas indicadas com totais |
+| `GET /admin/trimundi/edicoes/:id/checkin/conflitos` | leituras sem internet que o servidor recusou ao sincronizar (já tinha entrada, cancelado ou bloqueado depois do pacote), com a entrada que valeu |
 | `POST /admin/trimundi/clientes/:id/cpf` | CPF inteiro de um comprador; fica na auditoria (`cpf_consultado`) |
 
 Benefício (em "Benefícios" acima) ganhou `quantidade` (vazio = sem limite) e
@@ -139,6 +140,8 @@ scripts das páginas ficam em `public/ticket/`.
 | `POST /ticket/api/ativar` | sem sessão | `{ email, codigo, senha }` → 200 `{ ok: true }`. Limitador por IP e por e-mail (RN-T26); 400, 410 ou 429 |
 | `GET /ticket/checkin` | sessão de operador | página T8. Sem sessão de operador → 302 para `/ticket/entrar` |
 | `GET /ticket/api/operador` | sessão de operador | `{ nome, edicoes, indicacao }` (`indicacao` = `{ codigo, links[] das edições autorizadas, campanhas[] }`; todo operador tem). Sem sessão ou operador desativado → 401 (RN-T28) |
+| `GET /ticket/api/checkin/pacote?edicao=` | sessão de operador da edição | pacote para o check-in sem internet: `{ versao, gerado_em, edicao: { id, nome, codigo_publico, classificacao_etaria }, chave_publica (Ed25519, SPKI base64url), ingressos: [{ i, h: sha256(código), c: sha256(código público:código curto), s: situação, u: já entrou, t: tipo, n: primeiro nome }] }` — sem CPF, e-mail nem código em claro. Outra edição → 403 |
+| `POST /ticket/api/checkin/sincronizar` | sessão de operador da edição | `{ edicao_id, aparelho_id, registros: [{ registro_id (uuid), ingresso_id, lido_em }] }` (até 500) → `{ resultados: [{ registro_id, resultado: aceito \| conflito \| recusado \| invalido, motivo, entrada? }] }`. Idempotente pelo `registro_id`; a entrada aceita segue única por ingresso |
 | `POST /ticket/api/sair` | sessão de operador | encerra a sessão → 200 |
 | `POST /ticket/api/checkin/consultar` | sessão de operador | `{ edicao_id, entrada }` (texto do QR ou código curto) → `{ resultado, mensagem, ingresso? }`; 403 sem permissão na edição. Não registra nada |
 | `POST /ticket/api/checkin/confirmar` | sessão de operador | `{ edicao_id, ingresso_id, lido_em? }` → `entrada_registrada` ou o motivo da recusa; entrada única por ingresso (índice no banco + trava da linha) |

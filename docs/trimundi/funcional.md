@@ -358,6 +358,27 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     conversão: nada é concedido sem campanha ativa.
   - CPF mascarado em toda lista e ficha; o inteiro só pelo botão do Admin,
     auditado. Ranking e CSV: nome, categoria e números.
+- **RN-T33 Check-in sem internet** (10/11/2026).
+  - O operador baixa o pacote da edição com internet ("Baixar para usar sem
+    internet"; com internet, ele se atualiza sozinho a cada 5 min). O pacote
+    tem, por ingresso, o hash do código, a situação, se já entrou, o tipo e o
+    primeiro nome — e a chave pública da edição. Sai do aparelho ao sair da
+    conta.
+  - Sem internet, o aparelho confere o QR (formato, edição, assinatura
+    Ed25519 quando o navegador suporta, hash no pacote), a situação e o uso
+    (no pacote ou neste aparelho). Código fora do pacote: "Não está nos dados
+    baixados" — não liberar. Benefícios só com internet.
+  - Cada entrada liberada fica no aparelho com id próprio e sobe quando a
+    conexão volta (sozinha, ou "Sincronizar agora"). Sair da conta com
+    entrada não enviada é bloqueado.
+  - O servidor confere de novo; a entrada aceita segue única. A que chega
+    depois de outra (outro aparelho, ou online) ou de ingresso cancelado ou
+    bloqueado depois do pacote fica recusada e aparece em Participantes →
+    "Conflitos do check-in sem internet".
+  - Limite: dois aparelhos sem internet não se falam — os dois podem deixar
+    a mesma pessoa entrar. Isso é detectado, não impedido.
+  - Instalável como app (PWA): manifest e service worker próprios do
+    check-in; a casca da página abre sem internet.
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.

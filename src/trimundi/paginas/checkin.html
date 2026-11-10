@@ -7,6 +7,12 @@
   <meta name="robots" content="noindex, nofollow">
   <link rel="icon" href="/ticket/img/trimundi-icone.png" sizes="64x64" type="image/png">
   <meta name="theme-color" content="#0a0b0e">
+  <!-- Instalável como app no celular (PWA): só o check-in. -->
+  <link rel="manifest" href="/ticket/checkin.webmanifest">
+  <link rel="apple-touch-icon" href="/ticket/img/tick-app-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="TICK Check-in">
   <link rel="stylesheet" href="/ticket/ticket.css">
 </head>
 <body class="checkin">
@@ -48,6 +54,11 @@
         <p class="mensagem" id="msgCamera" role="status"></p>
       </div>
 
+      <!-- Sem internet: dados baixados, entradas a enviar e conflitos. Fica
+           abaixo do leitor (o resultado aparece sem rolar); o contador, no
+           topo, já diz quando está sem internet. -->
+      <section id="offline" class="cartao offline oculto" aria-label="Sem internet" aria-live="polite"></section>
+
       <!-- Link de indicação do operador na edição escolhida (checkin.page.js). -->
       <aside id="indicacao" class="cartao oculto" aria-label="Indicação"></aside>
     </section>
@@ -66,6 +77,7 @@
   </footer>
 
   <script src="/ticket/comum.js"></script>
+  <script src="/ticket/checkin-offline.js"></script>
   <script src="/ticket/checkin.page.js"></script>
 </body>
 </html>
