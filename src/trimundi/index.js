@@ -11,7 +11,7 @@ const router = express.Router();
 
 // Desligada: todo /ticket responde 503 — página para
 // quem pediu página, JSON para a API. O Admin tem a trava dele (rotas/admin.js).
-router.use('/ticket', (req, res, next) => {
+const desligada = (req, res, next) => {
   if (config.configurada()) return next();
   if (req.path.startsWith('/api/')) return res.status(503).json({ erro: MENSAGEM_NAO_CONFIGURADA });
   // Página da própria Trimundi (a 500.html é da Mostraí).
@@ -21,14 +21,16 @@ router.use('/ticket', (req, res, next) => {
     { titulo: 'Ingressos indisponíveis agora', texto: 'Voltamos em instantes. Tente de novo em alguns minutos.' },
     { status: 503, cache: 'no-store' },
   );
-});
+};
+router.use('/ticket', desligada);
+router.use('/tic', desligada);
 router.use(require('./rotas/admin').router);
 router.use(require('./rotas/operador').router);
 router.use(require('./rotas/conta').router);
 router.use(require('./rotas/publico').router);
 // Endereço que não existe em /ticket: 404 com a cara da Trimundi (os
 // arquivos estáticos de public/ticket já foram servidos antes deste router).
-router.use('/ticket', (req, res) => {
+const naoEncontrado = (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ erro: 'não encontrado' });
   return require('./paginas').enviar(
     res,
@@ -36,7 +38,9 @@ router.use('/ticket', (req, res) => {
     { titulo: 'Página não encontrada', texto: 'Confira o endereço com quem organiza o evento.' },
     { status: 404 },
   );
-});
+};
+router.use('/ticket', naoEncontrado);
+router.use('/tic', naoEncontrado);
 
 function registrar(nome) {
   return (err) => console.error(`trimundi: ${nome}:`, err.message);

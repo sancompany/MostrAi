@@ -39,6 +39,9 @@
     ['/', 'Home'],
     ['/planos.html', 'Planos'],
     ['/pontos.html', 'Onde estamos?'],
+    // Ingressos: leva à TICK, a ticketeira, com conta e visual próprios
+    // (pedido do dono, 10/11/2026). De lá não há volta para a Mostraí.
+    ['/tic/eventos', 'Eventos'],
     ['/contato.html', 'Contato'],
   ];
 

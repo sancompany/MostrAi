@@ -720,3 +720,85 @@ details.termo .texto {
 [hidden] {
   display: none !important;
 }
+
+/* Home da TICK (/tic/eventos): busca e cards de evento. */
+.busca-eventos {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.5rem 0 1.25rem;
+}
+
+.busca-eventos input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--linha);
+  border-radius: 10px;
+  background: var(--cartao);
+  color: var(--texto);
+  font: inherit;
+}
+
+.lista-eventos {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.cartao-evento {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+  background: var(--cartao);
+  box-shadow: var(--sombra);
+  color: var(--texto);
+  text-decoration: none;
+}
+
+.cartao-evento:hover,
+.cartao-evento:focus-visible {
+  border-color: var(--marca);
+}
+
+.cartao-evento-banner {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: var(--marca-clara);
+}
+
+.cartao-evento-corpo {
+  padding: 0.85rem 1rem 1rem;
+}
+
+.cartao-evento-corpo h2 {
+  margin: 0.1rem 0 0.4rem;
+  font-size: 1.15rem;
+}
+
+.cartao-evento-corpo .detalhe {
+  margin: 0.15rem 0;
+  color: var(--suave);
+}
+
+.cartao-evento-selos {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+
+.vazio-lista {
+  color: var(--suave);
+  padding: 2rem 0;
+}
+
+.visualmente-oculto {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

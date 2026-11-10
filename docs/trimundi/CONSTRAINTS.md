@@ -15,6 +15,9 @@ assumidos. O que se quer para depois não mora aqui: mora em
   no pool depois de o servidor confirmar o esquema; o migrador confere de
   novo antes de cada arquivo. Se um lado precisa de algo do outro, chama a
   função do módulo dono do dado, nunca a tabela dele.
+- **Elemento da Mostraí na experiência da TICK** (nome público da
+  Trimundi). A única ponte é de ida: o item "Eventos" do menu público da
+  Mostraí leva a `/tic/eventos` (pedido do dono, 10/11/2026).
 - **Elemento da Mostraí na experiência da Trimundi.** Páginas públicas,
   conta do cliente, login do operador e e-mail usam a marca Trimundi; nenhum
   link leva ao site da Mostraí (teste `trimundi-identidade`). O e-mail sai

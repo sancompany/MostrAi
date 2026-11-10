@@ -35,6 +35,14 @@ router.use('/ticket/arquivos', (req, res, next) => {
   return estaticoLocal.servir(req, res, next);
 });
 
+// --- Home pública da TICK (/tic/eventos) e a lista de eventos dela
+router.get('/tic', (_req, res) => res.redirect(302, '/tic/eventos'));
+router.get('/tic/eventos', (_req, res) => paginas.enviar(res, 'eventos', { url: `${config.urlDoSite()}/tic/eventos` }));
+router.get('/ticket/api/vitrine', async (req, res) => {
+  res.set('Cache-Control', 'no-cache');
+  res.json({ eventos: await require('../vitrine').listarEventos({ busca: req.query.q }) });
+});
+
 // --- API da vitrine e do pedido
 router.get('/ticket/api/edicoes/:evento/:edicao', async (req, res) => {
   res.set('Cache-Control', 'no-cache');

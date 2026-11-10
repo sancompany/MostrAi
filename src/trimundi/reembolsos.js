@@ -100,7 +100,7 @@ async function enviarAoCheckout(reembolsoId) {
   } catch (err) {
     if (err.naoConfigurado) {
       await falhar(r, 'San Checkout não configurado para a Trimundi');
-      throw erro(503, 'O pagamento da Trimundi não está configurado neste ambiente.');
+      throw erro(503, 'O pagamento da TICK não está configurado neste ambiente.');
     }
     // Rede: fica 'solicitado' para reenviar com a mesma chave.
     await consultar('UPDATE reembolsos SET ultimo_erro = $2, atualizado_em = now() WHERE id = $1', [

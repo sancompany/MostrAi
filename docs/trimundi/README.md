@@ -18,6 +18,19 @@ do plugin `san-co`. Esta pasta é a porta de entrada da Trimundi; o
 - `proximas-versoes.md` — o que fica para depois
 - `erros/` — os erros vividos na Trimundi (a pasta nasce no primeiro)
 
+## Nome público e entrada (decisão do dono, 10/11/2026)
+- **TICK** é o nome público da ticketeira. "Trimundi" segue só como nome
+  interno (código, esquema `trimundi`, arquivos).
+- **Entrada:** `/tic/eventos` (home com os eventos publicados, busca e
+  cards). O item "Eventos" do menu público da Mostraí leva para lá; da TICK
+  não há link de volta.
+- **Páginas de venda** continuam em `/ticket/<evento>/<edição>` (e todo o
+  resto em `/ticket/*`): o San Checkout já está cadastrado com esses
+  endereços, e mudá-los quebraria pagamento e webhook.
+- **Contas separadas:** a conta TICK (comprador e operador) tem cookie
+  próprio, `tick.sid`, que só viaja para `/ticket`. Entrar ou sair de uma
+  conta não mexe na outra.
+
 ## Escopo e marca (decisões do dono, 09/11/2026 — escopo simplificado)
 - **Marca Trimundi, experiência independente.** A logo enviada pelo dono
   (`public/ticket/img/`) é a marca oficial; nenhuma página pública, conta

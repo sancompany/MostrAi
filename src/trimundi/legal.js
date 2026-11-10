@@ -3,7 +3,8 @@
 // a anterior aceita de novo antes da próxima compra (as versões antigas
 // ficam no histórico do git). O contato é o canal do titular.
 
-const VERSAO = '1.0';
+// 1.1: o nome público passa a ser TICK (pedido do dono, 10/11/2026).
+const VERSAO = '1.1';
 const VIGENCIA = '10/11/2026';
 
 function contato() {
