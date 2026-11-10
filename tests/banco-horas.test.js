@@ -49,6 +49,43 @@ async function saldoDeTeste(anuncianteId, mesReferencia, segundos) {
   );
 }
 
+// Tela própria deste arquivo, criada uma vez e apagada no fim. Os testes de
+// apuração e liquidação pegavam `SELECT id FROM dispositivos LIMIT 1` — a
+// tela de OUTRO arquivo, que roda em paralelo e se limpa com
+// `DELETE FROM exibicoes_contador WHERE dispositivo_id IN (...)`, sem olhar a
+// conta: a linha deste teste sumia antes da apuração e o déficit dava 0 (CI
+// da main, 10/11/2026). E, com o banco ainda sem tela nenhuma, o teste se
+// pulava calado. Sem player instalado (`provisionado_em` nulo), esta tela não
+// gera obrigação de hora sem sinal; fora do sorteio, nenhuma conta de outro
+// arquivo cai nela.
+let telaPropria = null;
+async function telaDoArquivo() {
+  if (!telaPropria) {
+    const ponto = await pontosRepo.criar({
+      nome: `Ponto Banco Apuração ${randomUUID()}`,
+      endereco: 'Rua A, 1',
+      cidade: 'Matão',
+      uf: 'SP',
+      cep: '15990000',
+      segmento: 'Teste',
+      responsavel_nome: 'Fulano',
+      responsavel_contato: '16999990000',
+    });
+    await tirarDoSorteio(ponto.id);
+    const tela = await dispositivosRepo.criar(ponto.id, { apelido: `Banco apuração ${randomUUID()}` });
+    telaPropria = { id: tela.id, pontoId: ponto.id };
+  }
+  return telaPropria.id;
+}
+
+test.after(async () => {
+  if (!telaPropria) return;
+  await pool.query('DELETE FROM execucoes_confirmadas WHERE dispositivo_id = $1', [telaPropria.id]);
+  await pool.query('DELETE FROM exibicoes_contador WHERE dispositivo_id = $1', [telaPropria.id]);
+  await pool.query('DELETE FROM dispositivos WHERE id = $1', [telaPropria.id]);
+  await pool.query('DELETE FROM pontos WHERE id = $1', [telaPropria.pontoId]);
+});
+
 async function mesAnterior() {
   const { rows } = await pool.query(
     `SELECT to_char(date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') - interval '1 month', 'YYYY-MM') AS mes,
@@ -59,8 +96,7 @@ async function mesAnterior() {
 }
 
 test('apuração da mesma competência duas vezes não duplica o saldo', async () => {
-  const { rows: dispositivo } = await pool.query('SELECT id FROM dispositivos LIMIT 1');
-  if (!dispositivo.length) return;
+  const telaId = await telaDoArquivo();
   const id = await contaDeTeste();
   try {
     const { meio } = await mesAnterior();
@@ -68,7 +104,7 @@ test('apuração da mesma competência duas vezes não duplica o saldo', async (
       `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas,
                                        vezes_confirmadas, segundos_obrigacao, duracao_segundos, minutos_abertos)
        VALUES ($1, $2, $3, 6, 6, 2, 120, 20, 60)`,
-      [id, dispositivo[0].id, meio],
+      [id, telaId, meio],
     );
     const primeira = await apurarMes({ apenasContas: [id] });
     assert.strictEqual(primeira.novasLinhas, 1);
@@ -142,10 +178,7 @@ test('saldosAtivos traz a idade da linha MAIS ANTIGA ainda ativa, não da mais n
 });
 
 test('apurarMes: saldo = obrigação − entrega CONFIRMADA; programada que não tocou não entrega', async () => {
-  // Sem dispositivo nenhum no banco de teste, pula: é falta de fixture,
-  // não bug real (exibicoes_contador exige um dispositivo_id válido).
-  const { rows: dispositivo } = await pool.query('SELECT id FROM dispositivos LIMIT 1');
-  if (!dispositivo.length) return;
+  const telaId = await telaDoArquivo();
   const id = await contaDeTeste();
   try {
     const { meio } = await mesAnterior();
@@ -155,7 +188,7 @@ test('apurarMes: saldo = obrigação − entrega CONFIRMADA; programada que não
       `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_confirmadas,
                                        vezes_pedidas, segundos_obrigacao, duracao_segundos, minutos_abertos)
        VALUES ($1, $2, $3, 4, 1, 5, 100, 20, 60)`,
-      [id, dispositivo[0].id, meio],
+      [id, telaId, meio],
     );
     const resultado = await apurarMes({ apenasContas: [id] });
     assert.strictEqual(resultado.anunciantesComDeficit, 1);
@@ -167,15 +200,14 @@ test('apurarMes: saldo = obrigação − entrega CONFIRMADA; programada que não
 });
 
 test('apurarMes: linha anterior à migration 100 (sem obrigação gravada) usa pedidas × duração de reserva', async () => {
-  const { rows: dispositivo } = await pool.query('SELECT id FROM dispositivos LIMIT 1');
-  if (!dispositivo.length) return;
+  const telaId = await telaDoArquivo();
   const id = await contaDeTeste();
   try {
     const { meio } = await mesAnterior();
     await pool.query(
       `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_confirmadas, vezes_pedidas)
        VALUES ($1, $2, $3, 4, 1, 5)`,
-      [id, dispositivo[0].id, meio],
+      [id, telaId, meio],
     );
     await apurarMes({ apenasContas: [id] });
     // Sem peça aprovada: 20 s (DURACAO_PADRAO). 5 × 20 − 1 × 20 = 80 s.
@@ -277,8 +309,7 @@ async function inicioDoMesEmMatao() {
 }
 
 test('apuração: mês de Matão (não UTC) e exibição do banco não conta como entrega do mês', async () => {
-  const { rows: dispositivo } = await pool.query('SELECT id FROM dispositivos LIMIT 1');
-  if (!dispositivo.length) return;
+  const telaId = await telaDoArquivo();
   const id = await contaDeTeste();
   try {
     const inicio = await inicioDoMesEmMatao();
@@ -290,14 +321,14 @@ test('apuração: mês de Matão (não UTC) e exibição do banco não conta com
       `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas, vezes_banco,
                                        vezes_confirmadas, segundos_obrigacao, duracao_segundos, minutos_abertos)
        VALUES ($1, $2, $3, 6, 4, 2, 3, 80, 20, 60)`,
-      [id, dispositivo[0].id, new Date(inicio.getTime() - 2 * 3600 * 1000)],
+      [id, telaId, new Date(inicio.getTime() - 2 * 3600 * 1000)],
     );
     // 00h do dia 1 em Matão: já é o mês corrente — fora da apuração.
     await pool.query(
       `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas,
                                        segundos_obrigacao, duracao_segundos, minutos_abertos)
        VALUES ($1, $2, $3, 0, 9, 180, 20, 60)`,
-      [id, dispositivo[0].id, inicio],
+      [id, telaId, inicio],
     );
 
     const simulado = await apurarMes({ apenasContas: [id], simular: true });
@@ -318,8 +349,7 @@ test('apuração recusa mês que ainda não fechou em Matão', async () => {
 });
 
 test('liquidação abate só o banco CONFIRMADO (em segundos da hora), uma vez por hora fechada; o resto fica reservado', async () => {
-  const { rows: dispositivo } = await pool.query('SELECT id FROM dispositivos LIMIT 1');
-  if (!dispositivo.length) return;
+  const telaId = await telaDoArquivo();
   const id = await contaDeTeste();
   try {
     const mesPassado = new Date();
@@ -340,7 +370,7 @@ test('liquidação abate só o banco CONFIRMADO (em segundos da hora), uma vez p
       `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas, vezes_banco,
                                        vezes_confirmadas, duracao_segundos)
        VALUES ($1, $2, $3, 5, 3, 2, 4, 30), ($1, $2, $4, 5, 3, 2, 2, 20), ($1, $2, $5, 3, 0, 3, 0, 20)`,
-      [id, dispositivo[0].id, horaFechada, outraHoraFechada, horaAberta],
+      [id, telaId, horaFechada, outraHoraFechada, horaAberta],
     );
     assert.strictEqual(
       (await bancoHorasRepo.saldosAtivos())[id].segundos,
