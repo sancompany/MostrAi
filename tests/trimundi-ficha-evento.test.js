@@ -78,6 +78,19 @@ test('criações simultâneas com o mesmo nome não brigam pelo mesmo endereço'
   const rs = await Promise.all([1, 2, 3, 4].map(() => criar({ nome })));
   for (const r of rs) assert.equal(r.status, 201, r.texto);
   assert.equal(new Set(rs.map((r) => r.json.evento.slug)).size, 4);
+
+  // Bases que se sobrepõem: com "festa" já existindo, "Festa" e "Festa-2"
+  // ao mesmo tempo disputariam "festa-2". A trava é do escopo, não da base.
+  const base = `Sobreposto ${apoio.sufixo()}`;
+  assert.equal((await criar({ nome: base })).status, 201);
+  const juntos = await Promise.all([criar({ nome: base }), criar({ nome: `${base}-2` }), criar({ nome: base })]);
+  for (const r of juntos) assert.equal(r.status, 201, r.texto);
+  assert.equal(new Set(juntos.map((r) => r.json.evento.slug)).size, 3);
+  // Edições do mesmo evento, idem.
+  const ev = (await criar({ nome: `Edições ${apoio.sufixo()}` })).json.evento.id;
+  const eds = await Promise.all(['ED', 'ED-2', 'ED'].map((nome) => criar({ id: ev }, { nome })));
+  for (const r of eds) assert.equal(r.status, 201, r.texto);
+  assert.equal(new Set(eds.map((r) => r.json.slug)).size, 3);
 });
 
 test('endereço escrito nas configurações avançadas continua valendo, validado e único', async () => {
@@ -167,6 +180,16 @@ test('logo: envio próprio, um por edição, independente do banner; substitui e
   assert.equal(ficha.logo, null);
   assert.ok(ficha.banner, 'remover o logo não mexe no banner');
   assert.equal(caminhos().length, 1);
+});
+
+test('a prévia do endereço no Admin usa a mesma lista de palavras reservadas do servidor', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const js = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin', 'trimundi.js'), 'utf8');
+  const lista = js.match(/const RESERVADOS_EVENTO = new Set\((\[[^\]]*\])\)/);
+  assert.ok(lista, 'lista da prévia não encontrada');
+  const daTela = [...lista[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  assert.deepEqual([...daTela].sort(), [...require('../src/trimundi/lib/validacao').RESERVADOS].sort());
 });
 
 test('o banco guarda a regra: tipo de imagem conhecido e um logo por edição', async () => {

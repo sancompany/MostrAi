@@ -257,6 +257,27 @@
       .replace(/^-+/, '')
       .slice(0, max)
       .replace(/-+$/, '');
+  // Mesma lista do servidor (lib/validacao.js → RESERVADOS).
+  // Um teste confere que as duas listas são iguais (trimundi-ficha-evento).
+  const RESERVADOS_EVENTO = new Set([
+    'ativar',
+    'checkin',
+    'api',
+    'admin',
+    'operador',
+    'pedido',
+    'webhook',
+    'entrar',
+    'sair',
+    'recuperar',
+    'dev',
+    'arquivos',
+    'conta',
+    'img',
+    'i',
+    'termos',
+    'privacidade',
+  ]);
   function enderecoLivre(base, max, usados) {
     for (let n = 1; n <= 1000; n++) {
       const fim = n === 1 ? '' : `-${n}`;
@@ -281,10 +302,17 @@
 
   async function renderFicha(el, id) {
     const leituras = await lerOuAvisar(el, () =>
-      Promise.all([id ? pegar(`${R}/edicoes/${id}`) : null, pegar(`${R}/eventos`), pegar(`${R}/estado`)]),
+      Promise.all([
+        id ? pegar(`${R}/edicoes/${id}`) : null,
+        pegar(`${R}/eventos`),
+        pegar(`${R}/estado`),
+        // Na criação, as edições que já existem: a prévia do endereço já
+        // mostra o número no fim que o servidor vai acrescentar.
+        id ? [] : pegar(`${R}/edicoes`),
+      ]),
     );
     if (!leituras) return;
-    const [ed, eventos, estado] = leituras;
+    const [ed, eventos, estado, edicoesExistentes] = leituras;
     const nova = !ed;
     const soLeitura = ed?.status === 'encerrado';
     const semArmazenamento = !estado.imagens;
@@ -297,6 +325,12 @@
     // { arquivo, previa } = imagem nova escolhida; { remover: true } = tirar a salva.
     const pendentes = { banner: null, logo: null };
     const slugsDeEventos = new Set(eventos.map((e) => String(e.slug).toLowerCase()));
+    const slugsDeEdicoes = new Map();
+    for (const e of edicoesExistentes) {
+      const usados = slugsDeEdicoes.get(String(e.evento.id)) || new Set();
+      usados.add(String(e.slug).toLowerCase());
+      slugsDeEdicoes.set(String(e.evento.id), usados);
+    }
     const opcoesEvento = eventos
       .map((e) => `<option value="${e.id}" data-slug="${esc(e.slug)}">${esc(e.nome)}</option>`)
       .join('');
@@ -480,16 +514,20 @@
         return;
       }
       let evS;
+      let usadosNaEdicao = new Set();
       if (modoExistente()) {
         evS = f.evId.selectedOptions[0]?.dataset.slug || '…';
+        usadosNaEdicao = slugsDeEdicoes.get(String(f.evId.value)) || usadosNaEdicao;
       } else {
         let base = paraEndereco(f.evNome.value, 60);
         if (base && base.length < 3) base = `${base}-evento`;
+        if (RESERVADOS_EVENTO.has(base)) base = `${base}-evento`;
         const auto = base ? enderecoLivre(base, 60, slugsDeEventos) : '';
         f.evSlug.placeholder = auto || 'gerado do nome do evento';
         evS = f.evSlug.value.trim() || auto || '…';
       }
-      const autoEd = paraEndereco(f.nome.value, 40);
+      const baseEd = paraEndereco(f.nome.value, 40);
+      const autoEd = baseEd ? enderecoLivre(baseEd, 40, usadosNaEdicao) : '';
       f.slug.placeholder = autoEd || 'gerado do código da edição';
       alvo.textContent = `/ticket/${evS}/${f.slug.value.trim() || autoEd || '…'}`;
       nota.textContent =

@@ -126,6 +126,7 @@ async function gravarTexto(cliente, edicaoId, tipo, texto, autor) {
 }
 
 async function slugEventoLivre(cliente, slug, ignorarId = null) {
+  await travarEnderecos(cliente, 'eventos');
   const { rows } = await cliente.query('SELECT id FROM eventos WHERE lower(slug) = lower($1) AND id <> $2', [
     slug,
     ignorarId || 0,
@@ -134,6 +135,7 @@ async function slugEventoLivre(cliente, slug, ignorarId = null) {
 }
 
 async function slugEdicaoLivre(cliente, eventoId, slug, ignorarId = null) {
+  await travarEnderecos(cliente, `edicoes:${eventoId}`);
   const { rows } = await cliente.query(
     'SELECT id FROM edicoes WHERE evento_id = $1 AND lower(slug) = lower($2) AND id <> $3',
     [eventoId, slug, ignorarId || 0],
@@ -143,9 +145,17 @@ async function slugEdicaoLivre(cliente, eventoId, slug, ignorarId = null) {
 
 // Endereço público gerado pelo nome ("Festa de Verão" → "festa-de-verao"),
 // quando o Admin não escreve um nas configurações avançadas. Colisão ganha
-// número no fim (festa-de-verao-2, -3...). Com a trava por endereço-base,
-// duas criações simultâneas com o mesmo nome não escolhem o mesmo.
+// número no fim (festa-de-verao-2, -3...).
 const TRAVA_ENDERECO = 872029;
+
+// Uma trava por escopo (todos os eventos; as edições de um evento), na
+// transação, para quem escolhe OU confere um endereço — gerado ou escrito à
+// mão. Por endereço-base não bastava: "Festa" e "Festa-2" ao mesmo tempo
+// disputavam o mesmo `festa-2` (revisão do PR #140). Criar evento é raro;
+// serializar não custa nada.
+async function travarEnderecos(cliente, escopo) {
+  await cliente.query('SELECT pg_advisory_xact_lock($1, hashtext($2))', [TRAVA_ENDERECO, escopo]);
+}
 
 function paraEndereco(texto, max) {
   return String(texto ?? '')
@@ -158,8 +168,7 @@ function paraEndereco(texto, max) {
     .replace(/-+$/, '');
 }
 
-async function enderecoLivre(cliente, { base, max, chave, existe }) {
-  await cliente.query('SELECT pg_advisory_xact_lock($1, hashtext($2))', [TRAVA_ENDERECO, `${chave}:${base}`]);
+async function enderecoLivre({ base, max, existe }) {
   for (let n = 1; n <= 1000; n++) {
     const fim = n === 1 ? '' : `-${n}`;
     const candidato = `${base.slice(0, max - fim.length).replace(/-+$/, '')}${fim}`;
@@ -176,20 +185,20 @@ function baseDoEvento(nome) {
 }
 
 async function enderecoDoEvento(cliente, nome) {
-  return enderecoLivre(cliente, {
+  await travarEnderecos(cliente, 'eventos');
+  return enderecoLivre({
     base: baseDoEvento(nome),
     max: 60,
-    chave: 'evento',
     existe: async (slug) =>
       (await cliente.query('SELECT 1 FROM eventos WHERE lower(slug) = lower($1)', [slug])).rows.length > 0,
   });
 }
 
 async function enderecoDaEdicao(cliente, eventoId, nome) {
-  return enderecoLivre(cliente, {
+  await travarEnderecos(cliente, `edicoes:${eventoId}`);
+  return enderecoLivre({
     base: paraEndereco(nome, 40) || 'edicao',
     max: 40,
-    chave: `edicao:${eventoId}`,
     existe: async (slug) =>
       (await cliente.query('SELECT 1 FROM edicoes WHERE evento_id = $1 AND lower(slug) = lower($2)', [eventoId, slug]))
         .rows.length > 0,
