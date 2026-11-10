@@ -135,6 +135,11 @@ router.post('/admin/trimundi/edicoes/:id/pedido-teste', async (req, res) =>
   res.status(201).json(await require('../pedidos').criarTeste(id(req), req.body, autor(req))),
 );
 
+// Check-in offline: leituras que o servidor não aceitou na sincronização.
+router.get('/admin/trimundi/edicoes/:id/checkin/conflitos', async (req, res) =>
+  res.json(await require('../checkin-offline').conflitos(id(req))),
+);
+
 router.post('/admin/trimundi/edicoes/:id/avisos/resolver', async (req, res) =>
   res.json(await participantes.resolverAviso(id(req), req.body, autor(req))),
 );
