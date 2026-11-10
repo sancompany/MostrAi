@@ -111,8 +111,10 @@
       : 'A definir';
     return el('section', { class: 'cabecalho-evento' }, [
       ed.banner ? el('img', { class: 'banner', src: ed.banner, alt: '' }) : null,
-      el('p', { class: 'sobre', text: dados.evento.nome }),
-      el('h1', { text: ed.nome }),
+      el('div', { class: 'identidade-evento' }, [
+        ed.logo ? el('img', { class: 'logo-evento', src: ed.logo, alt: `Logo de ${dados.evento.nome}` }) : null,
+        el('div', {}, [el('p', { class: 'sobre', text: dados.evento.nome }), el('h1', { text: ed.nome })]),
+      ]),
       el('ul', { class: 'fatos' }, [
         el('li', {}, [
           el('span', { class: 'rotulo', text: 'Data' }),

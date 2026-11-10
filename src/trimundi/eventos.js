@@ -24,6 +24,8 @@ const TRANSICOES = {
 };
 const MAX_IMAGEM = 8 * 1024 * 1024;
 const MAX_GALERIA = 8;
+// Uma por edição: enviar outra substitui (e o arquivo antigo sai do armazenamento).
+const IMAGEM_UNICA = ['banner', 'logo'];
 
 function lerLocal(local) {
   if (local === null || local === undefined || local === '') return null;
@@ -51,7 +53,9 @@ function lerEdicao(e = {}, { parcial = false } = {}) {
   const tem = (k) => !parcial || Object.hasOwn(e, k);
   const out = {};
   if (tem('nome')) out.nome = v.texto(e.nome, { campo: 'o nome da edição', obrigatorio: true, max: 120 });
-  if (tem('slug')) out.slug = v.slugEdicao(e.slug);
+  // Vazio = automático: na criação, o endereço sai do nome (enderecoLivre);
+  // na edição, o que já existe fica.
+  if (tem('slug')) out.slug = String(e.slug ?? '').trim() ? v.slugEdicao(e.slug) : undefined;
   if (tem('descricao')) out.descricao = v.texto(e.descricao, { campo: 'a descrição', max: 5000 });
   if (tem('inicio_em')) out.inicio_em = v.dataHora(e.inicio_em, { campo: 'a data de início' });
   if (tem('fim_em')) out.fim_em = v.dataHora(e.fim_em, { campo: 'a data de término' });
@@ -137,6 +141,61 @@ async function slugEdicaoLivre(cliente, eventoId, slug, ignorarId = null) {
   if (rows.length) throw erro(409, 'Essa edição já existe neste evento.');
 }
 
+// Endereço público gerado pelo nome ("Festa de Verão" → "festa-de-verao"),
+// quando o Admin não escreve um nas configurações avançadas. Colisão ganha
+// número no fim (festa-de-verao-2, -3...). Com a trava por endereço-base,
+// duas criações simultâneas com o mesmo nome não escolhem o mesmo.
+const TRAVA_ENDERECO = 872029;
+
+function paraEndereco(texto, max) {
+  return String(texto ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+/, '')
+    .slice(0, max)
+    .replace(/-+$/, '');
+}
+
+async function enderecoLivre(cliente, { base, max, chave, existe }) {
+  await cliente.query('SELECT pg_advisory_xact_lock($1, hashtext($2))', [TRAVA_ENDERECO, `${chave}:${base}`]);
+  for (let n = 1; n <= 1000; n++) {
+    const fim = n === 1 ? '' : `-${n}`;
+    const candidato = `${base.slice(0, max - fim.length).replace(/-+$/, '')}${fim}`;
+    if (!(await existe(candidato))) return candidato;
+  }
+  throw erro(409, 'Não foi possível gerar um endereço livre — escreva um nas configurações avançadas.');
+}
+
+function baseDoEvento(nome) {
+  let base = paraEndereco(nome, 60);
+  if (base.length < 3) base = base ? `${base}-evento` : 'evento';
+  if (v.RESERVADOS.has(base)) base = `${base}-evento`;
+  return base;
+}
+
+async function enderecoDoEvento(cliente, nome) {
+  return enderecoLivre(cliente, {
+    base: baseDoEvento(nome),
+    max: 60,
+    chave: 'evento',
+    existe: async (slug) =>
+      (await cliente.query('SELECT 1 FROM eventos WHERE lower(slug) = lower($1)', [slug])).rows.length > 0,
+  });
+}
+
+async function enderecoDaEdicao(cliente, eventoId, nome) {
+  return enderecoLivre(cliente, {
+    base: paraEndereco(nome, 40) || 'edicao',
+    max: 40,
+    chave: `edicao:${eventoId}`,
+    existe: async (slug) =>
+      (await cliente.query('SELECT 1 FROM edicoes WHERE evento_id = $1 AND lower(slug) = lower($2)', [eventoId, slug]))
+        .rows.length > 0,
+  });
+}
+
 const COLUNAS_LOCAL = ['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'uf'];
 
 async function criarEdicao(corpo, autor) {
@@ -156,8 +215,13 @@ async function criarEdicao(corpo, autor) {
         max: 120,
         mensagem: 'Preencha o nome do evento.',
       });
-      const slug = v.slugEvento(dadosEvento.slug);
-      await slugEventoLivre(cliente, slug);
+      let slug;
+      if (String(dadosEvento.slug ?? '').trim()) {
+        slug = v.slugEvento(dadosEvento.slug);
+        await slugEventoLivre(cliente, slug);
+      } else {
+        slug = await enderecoDoEvento(cliente, nome);
+      }
       const { rows } = await cliente.query('INSERT INTO eventos (nome, slug) VALUES ($1, $2) RETURNING id', [
         nome,
         slug,
@@ -165,7 +229,8 @@ async function criarEdicao(corpo, autor) {
       eventoId = rows[0].id;
       await auditar(cliente, autor, 'evento_criado', 'evento', eventoId, { slug });
     }
-    await slugEdicaoLivre(cliente, eventoId, e.slug);
+    if (e.slug) await slugEdicaoLivre(cliente, eventoId, e.slug);
+    else e.slug = await enderecoDaEdicao(cliente, eventoId, e.nome);
     const l = e.local || {};
     const { rows } = await cliente.query(
       `INSERT INTO edicoes (evento_id, nome, slug, codigo_publico, descricao, inicio_em, fim_em, local_nome,
@@ -247,6 +312,7 @@ function formatarEdicao(ed, termos = [], imagens = [], eventoPublicado = false) 
     encerrado_em: ed.encerrado_em,
     textos,
     banner: imagens.find((i) => i.tipo === 'banner')?.url || null,
+    logo: imagens.find((i) => i.tipo === 'logo')?.url || null,
     imagens: imagens.map((i) => ({ id: i.id, tipo: i.tipo, url: i.url })),
   };
 }
@@ -303,7 +369,8 @@ async function atualizarEdicao(id, corpo, autor) {
           mensagem: 'Preencha o nome do evento.',
         });
       }
-      if (Object.hasOwn(corpo.evento, 'slug')) {
+      // Vazio = fica o endereço que já existe.
+      if (Object.hasOwn(corpo.evento, 'slug') && String(corpo.evento.slug ?? '').trim()) {
         const slug = v.slugEvento(corpo.evento.slug);
         if (slug !== ev.slug) {
           if (publicada.length) throw erro(409, 'O endereço não muda depois de publicado.');
@@ -417,7 +484,7 @@ async function mudarStatus(id, status, autor) {
 }
 
 async function adicionarImagem(edicaoId, tipo, arquivo, autor) {
-  v.escolha(tipo, ['banner', 'galeria'], { mensagem: 'tipo de imagem inválido' });
+  v.escolha(tipo, [...IMAGEM_UNICA, 'galeria'], { mensagem: 'tipo de imagem inválido' });
   const destino = armazenamento.adaptador();
   if (!destino) throw erro(503, 'imagens não configuradas neste ambiente');
   if (!arquivo?.buffer || arquivo.buffer.length > MAX_IMAGEM)
@@ -451,10 +518,10 @@ async function adicionarImagem(edicaoId, tipo, arquivo, autor) {
     // Com a edição travada: dois envios ao mesmo tempo não passam de 8.
     await travarEdicao(cliente, edicaoId);
     await conferir((s, p) => cliente.query(s, p));
-    if (tipo === 'banner') {
+    if (IMAGEM_UNICA.includes(tipo)) {
       const { rows } = await cliente.query(
-        "DELETE FROM edicao_imagens WHERE edicao_id = $1 AND tipo = 'banner' RETURNING caminho",
-        [edicaoId],
+        'DELETE FROM edicao_imagens WHERE edicao_id = $1 AND tipo = $2 RETURNING caminho',
+        [edicaoId, tipo],
       );
       antigos.push(...rows.map((r) => r.caminho));
     }
@@ -498,6 +565,7 @@ async function removerImagem(imagemId, autor) {
 
 module.exports = {
   TEXTOS,
+  paraEndereco,
   criarEdicao,
   obterEdicao,
   listarEdicoes,

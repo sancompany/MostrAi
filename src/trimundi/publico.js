@@ -61,6 +61,7 @@ async function edicaoPublica(evento, edicao) {
       classificacao_etaria: ed.classificacao_etaria,
       status: ed.status,
       banner: imagens.find((i) => i.tipo === 'banner')?.url || null,
+      logo: imagens.find((i) => i.tipo === 'logo')?.url || null,
       galeria: imagens.filter((i) => i.tipo === 'galeria').map((i) => i.url),
     },
     venda_aberta: vendaAberta,

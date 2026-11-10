@@ -176,6 +176,23 @@ p {
   background: var(--marca-clara);
 }
 
+.identidade-evento {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.logo-evento {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  padding: 4px;
+  border-radius: 14px;
+  border: 1px solid var(--linha);
+  background: #fff;
+}
+
 .cabecalho-evento .sobre {
   color: var(--suave);
   font-weight: 600;
@@ -767,6 +784,24 @@ details.termo .texto {
   aspect-ratio: 16 / 9;
   object-fit: cover;
   background: var(--marca-clara);
+}
+
+.cartao-evento-capa {
+  position: relative;
+}
+
+/* Logo do evento sobre o banner (ou sobre o fundo, sem banner). */
+.cartao-evento-logo {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.75rem;
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  padding: 4px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--sombra);
 }
 
 .cartao-evento-corpo {
