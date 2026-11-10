@@ -86,6 +86,10 @@ reabrir é desmarcar com o motivo. Estado de cada funcionalidade:
 
 ## Engenharia — depois do lançamento
 
+- [ ] Se a venda crescer: aumentar o *pool size* do pooler de sessão no
+  Supabase e então `TRIMUNDI_POOL_MAX` (hoje 1 conexão por instância, para
+  caber nas 15 vagas que a Mostraí divide; RUNBOOK §11.2).
+
 - [ ] Reembolso por **cancelamento do evento** devolvendo só o valor dos
   ingressos (sem as taxas do Checkout) e o estorno em massa da edição. Hoje
   o reembolso total devolve o valor cobrado inteiro, taxas incluídas.

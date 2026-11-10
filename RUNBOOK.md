@@ -653,11 +653,23 @@ Estado de cada parte: `docs/trimundi/STATUS-IMPLEMENTACAO.md`.
 ```bash
 npm run trimundi:migrate
 ```
+**Em produção roda sozinho no arranque do contêiner**, logo depois das
+migrations da Mostraí (`Dockerfile`, autorizado pelo dono em 10/11/2026).
+Desligada, não faz nada; se falhar, registra no log e a Mostraí sobe mesmo
+assim (`/ticket` fica com erro até corrigir ou desligar a Trimundi).
+
 Cria o esquema `trimundi` (se não existir), tira o acesso de `anon` e
 `authenticated` a ele e aplica `src/trimundi/db/migrations/*.sql` dentro do
 esquema, uma vez cada, com trava própria (872027; a da Mostraí é 872026).
 Antes de cada arquivo confere que a conexão está no esquema. Em produção recusa sem `--producao-autorizada`, que só se
 usa com autorização do dono.
+
+**Conexões:** o pooler de sessão do Supabase tem 15 vagas; a Mostraí usa até
+13 (2 instâncias × 5, o LISTEN de cada uma e o job de conciliação). A
+Trimundi usa 1 por instância (`TRIMUNDI_POOL_MAX`, padrão 1). Subir esse
+número, ou o de instâncias, pede antes aumentar o *pool size* no Supabase
+(Database → Connection pooling); sem isso, `EMAXCONNSESSION` derruba a
+Mostraí.
 
 ### 11.3 Rotina
 - **Fila de avisos de pagamento e de e-mail:** a cada 30 s, no processo do

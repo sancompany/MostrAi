@@ -64,4 +64,11 @@ EXPOSE 3000
 # anterior servindo. É o comportamento que se quer — pior que deploy travado é
 # deploy pela metade. A concorrência entre instâncias está resolvida por
 # pg_advisory_lock dentro do runner.
-CMD ["sh", "-c", "node src/db/migrate.js && node src/server.js"]
+#
+# Trimundi (ADR-049, autorizado pelo dono em 10/11/2026): as migrations dela,
+# no esquema `trimundi`, logo depois das da Mostraí. Desligada (sem
+# TRIMUNDI_ATIVA), não faz nada. Se falharem, a Mostraí sobe mesmo assim —
+# um problema da ticketeira nunca tira a Mostraí do ar; /ticket fica com
+# erro até corrigir (ou até desligar a Trimundi). Cada arquivo é uma
+# transação: o esquema nunca fica pela metade.
+CMD ["sh", "-c", "node src/db/migrate.js && { node src/trimundi/db/migrate.js --producao-autorizada || echo 'trimundi: migration falhou; a Mostraí sobe e /ticket fica com erro'; } && node src/server.js"]

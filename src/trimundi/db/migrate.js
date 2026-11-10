@@ -21,7 +21,8 @@ async function migrar({ silencioso = false } = {}) {
       IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN REVOKE ALL ON SCHEMA ${config.ESQUEMA} FROM anon; END IF;
       IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN REVOKE ALL ON SCHEMA ${config.ESQUEMA} FROM authenticated; END IF;
     END $$`);
-    await pool.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
+    // Tudo pela MESMA conexão da trava: o pool da Trimundi pode ter uma só.
+    await trava.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
       filename text PRIMARY KEY,
       applied_at timestamptz NOT NULL DEFAULT now()
     )`);
@@ -31,10 +32,10 @@ async function migrar({ silencioso = false } = {}) {
       .filter((f) => f.endsWith('.sql'))
       .sort();
     for (const arquivo of arquivos) {
-      const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE filename = $1', [arquivo]);
+      const { rows } = await trava.query('SELECT 1 FROM schema_migrations WHERE filename = $1', [arquivo]);
       if (rows.length) continue;
       const sql = fs.readFileSync(path.join(dir, arquivo), 'utf8');
-      const cliente = await pool.connect();
+      const cliente = trava;
       try {
         await cliente.query('BEGIN');
         // Segunda conferência, já com o esquema criado: tudo cai nele.
@@ -47,8 +48,6 @@ async function migrar({ silencioso = false } = {}) {
       } catch (err) {
         await cliente.query('ROLLBACK').catch(() => {});
         throw new Error(`trimundi: migration ${arquivo} falhou: ${err.message}`);
-      } finally {
-        cliente.release();
       }
     }
   } finally {
@@ -59,6 +58,11 @@ async function migrar({ silencioso = false } = {}) {
 
 if (require.main === module) {
   require('dotenv').config();
+  // Desligada: nada a migrar (o arranque do contêiner chama sempre).
+  if (!config.configurada()) {
+    console.log('trimundi: desligada — sem migration');
+    process.exit(0);
+  }
   if (config.producao() && !process.argv.includes('--producao-autorizada')) {
     console.error('trimundi: migration em produção exige autorização do dono (--producao-autorizada)');
     process.exit(2);

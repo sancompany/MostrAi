@@ -59,8 +59,12 @@ function obterPool() {
     pool = new Pool({
       connectionString: url,
       ssl: local ? false : { rejectUnauthorized: false },
-      // Pouco: o pooler é o mesmo da Mostraí.
-      max: 3,
+      // O pooler de sessão é o mesmo da Mostraí e tem 15 vagas: ela usa até 13
+      // (2 instâncias × 5, o LISTEN de cada uma e o job de conciliação). Uma
+      // por instância cabe; subir exige aumentar o pool_size no Supabase.
+      max: Math.max(1, Number(process.env.TRIMUNDI_POOL_MAX) || 1),
+      // Conexão ociosa volta logo ao pooler (não fica segurando a vaga).
+      idleTimeoutMillis: 5000,
       connectionTimeoutMillis: 5000,
       types: tipos,
       Client: ClienteTrimundi,
