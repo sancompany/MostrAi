@@ -427,6 +427,11 @@ test('8. foto do ponto (fixo ou rede): só pelo Admin, só imagem de verdade, e 
       headers: { 'content-type': 'application/json', 'x-forwarded-for': IP },
       body: JSON.stringify({ usuario: process.env.ADMIN_USER, senha: process.env.ADMIN_PASSWORD }),
     });
+    assert.strictEqual(r.status, 200, 'login do admin');
+    // Ler o corpo antes de usar o cookie: o express-session só termina a
+    // resposta depois de gravar a sessão — sem isto, sob carga, o upload
+    // chegava antes da sessão existir e voltava 401.
+    await r.json();
     return r.headers
       .getSetCookie()
       .map((c) => c.split(';')[0])
