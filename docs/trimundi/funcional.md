@@ -23,10 +23,12 @@ o projeto: mudou o comportamento, muda aqui na mesma tarefa. Rotas em
 ### Administrador (principal)
 
 1. Entra no Admin (Access + login do Admin) e clica em **Eventos** → T1.
-2. Em T1, **+ Criar evento** → T1a. Escolhe "Evento novo" (nome e endereço)
-   ou "Evento já cadastrado", preenche a edição e salva. A edição nasce em
-   **Rascunho**.
-3. Em T1a, envia o banner e as imagens.
+2. Em T1, **+ Criar evento** → T1a. Escolhe o banner e o logo (com
+   pré-visualização), "Evento novo" (nome) ou "Nova edição de um evento já
+   cadastrado", preenche a edição e clica em **Criar evento**: a ficha é
+   gravada, as imagens são enviadas e o endereço público sai do nome. A
+   edição nasce em **Rascunho**.
+3. Em T1a, se quiser, envia as imagens da galeria.
 4. Em T2, cria os tipos de ingresso com seus lotes.
 5. Em T3, se quiser, cria combos.
 6. Em T1a, **Publicar**: a edição fica pronta para a venda, que chega com a
@@ -123,6 +125,14 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
   - O endereço público é `/ticket/<evento>/<edição>`, sem diferenciar
     maiúscula.
   - Violação: 400 ou 409 com a mensagem no campo. Quem vê: o administrador.
+  - **Gerado do nome** (10/11/2026) quando o administrador não escreve um
+    nas configurações avançadas: sem acento, minúsculo, o que não é letra
+    ou número vira hífen ("Festa de Verão" → `festa-de-verao`). Curto ou
+    reservado ganha `-evento`. Se já existir, ganha número no fim (`-2`,
+    `-3`...); duas criações ao mesmo tempo não escolhem o mesmo (trava por
+    endereço-base). Escrito à mão, não ganha número: repetido → 409.
+  - Editar a ficha nunca muda o endereço de quem já existe; campo vazio =
+    fica o que está.
 - **RN-T02 Endereço travado depois de publicado** (P-03). O da edição não
   muda depois da primeira publicação; o do evento, depois da primeira edição
   publicada. → 409. Quem vê: o administrador.
@@ -145,9 +155,14 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     apagada (o banco recusa).
   - Na ficha aparece "Versão {n}, de {data}". Quem vê: o administrador.
 - **RN-T06 Imagens.**
-  - Um banner e até 8 de galeria. JPEG, PNG ou WebP, conferidos pelo
-    conteúdo (não pela extensão), até 8 MB.
-  - Fora disso → 400. Banner novo substitui o anterior.
+  - Um banner, um logo (migration 008) e até 8 de galeria. JPEG, PNG ou
+    WebP, conferidos pelo conteúdo (não pela extensão), até 8 MB.
+  - Fora disso → 400. Banner ou logo novo substitui o anterior (e o arquivo
+    antigo sai do armazenamento).
+  - Banner: vitrine da TICK e topo da página de venda. Logo: ao lado do
+    nome na página de venda e sobre o banner no card da vitrine.
+  - Na ficha, banner e logo ficam pendentes (pré-visualização) até o
+    **Salvar**; a galeria envia e remove na hora.
   - Sem o armazenamento configurado → 503 "imagens não configuradas neste
     ambiente".
 - **RN-T07 Capacidade** (opcional, 1 a 1.000.000).
@@ -339,20 +354,29 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
 ### T1 e T1a
 
 - **Botões:**
-  - **+ Criar evento**, **Abrir**, **Salvar**, **Voltar**;
-  - **Publicar**, **Pausar**, **Retomar venda**, **Encerrar**;
-  - **Enviar banner**, **Enviar imagem**, **Remover**.
-- **Campos:**
-  - "Evento": **Evento novo** / **Evento já cadastrado**;
-  - "Nome do evento", "Endereço do evento" (prefixo `/ticket/`);
-  - "Edição", "Endereço da edição", "Descrição";
-  - "Data e horário" com a caixa **A definir**, e "Término (opcional)";
-  - "Local" com a caixa **A definir**, e "CEP", "Endereço", "Número",
-    "Complemento", "Bairro", "Cidade", "UF";
-  - "Classificação etária": Livre, 10, 12, 14, 16 ou 18 anos;
-  - "Capacidade do local (opcional)";
-  - "Regulamento e condições de entrada", "Termos e condições de compra";
-  - "Banner", "Imagens".
+  - **+ Criar evento**, **Abrir**, **Criar evento** / **Salvar alterações**,
+    **Voltar** (barra presa no rodapé);
+  - **Publicar**, **Pausar vendas**, **Retomar venda**, **Encerrar** (no
+    cabeçalho da ficha);
+  - banner e logo: **Escolher imagem**, **Substituir**, **Remover**,
+    **Trocar**, **Cancelar**, **Desfazer** (ou arrastar o arquivo);
+  - galeria: **Enviar imagem**, **Remover**.
+- **Seções** (reorganização de 10/11/2026), em cartões numerados:
+  1. **Identidade visual**: "Banner do evento" e "Logo do evento";
+  2. **Informações principais**: **Evento novo** / **Nova edição de um
+     evento já cadastrado**, "Nome do evento", "Código da edição",
+     "Descrição", a linha "Página de venda" com o endereço que vai ser
+     gerado, e **Configurações avançadas** (fechada) com "Endereço do
+     evento" (prefixo `/ticket/`) e "Endereço da edição";
+  3. **Data e classificação**: "Início" com **A definir**, "Término
+     (opcional)", "Classificação etária" (Livre, 10, 12, 14, 16 ou 18 anos),
+     "Capacidade do local", "Ingressos por CPF";
+  4. **Localização**: **A definir**, "Nome do local", "CEP", "Endereço",
+     "Número", "Complemento", "Bairro", "Cidade", "UF";
+  5. **Regulamento e condições**: "Regulamento e condições de entrada",
+     "Condições especiais (opcional)", "Termos e condições de compra", cada
+     um com a versão vigente;
+  6. **Galeria** (só depois de criada a edição).
 - **Status:** Rascunho, Publicado, Pausado, Encerrado. Na lista, sem data
   aparece "A definir", e o endereço público como texto
   `/ticket/{evento}/{edição}`.

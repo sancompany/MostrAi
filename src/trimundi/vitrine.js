@@ -21,7 +21,8 @@ async function listarEventos({ busca = '' } = {}) {
   const { rows } = await consultar(
     `SELECT ev.nome AS evento, ev.slug AS evento_slug, ed.nome AS edicao, ed.slug AS edicao_slug,
             ed.inicio_em, ed.fim_em, ed.local_nome, ed.cidade, ed.uf, ed.status, ed.classificacao_etaria,
-            (SELECT url FROM edicao_imagens im WHERE im.edicao_id = ed.id AND im.tipo = 'banner' LIMIT 1) AS banner
+            (SELECT url FROM edicao_imagens im WHERE im.edicao_id = ed.id AND im.tipo = 'banner' LIMIT 1) AS banner,
+            (SELECT url FROM edicao_imagens im WHERE im.edicao_id = ed.id AND im.tipo = 'logo' LIMIT 1) AS logo
        FROM edicoes ed JOIN eventos ev ON ev.id = ed.evento_id
       WHERE ed.status IN ('publicado', 'pausado')
         AND (COALESCE(ed.fim_em, ed.inicio_em + interval '12 hours') IS NULL
@@ -38,6 +39,7 @@ async function listarEventos({ busca = '' } = {}) {
     inicio_em: r.inicio_em,
     local: [r.local_nome, r.cidade && `${r.cidade}${r.uf ? `/${r.uf}` : ''}`].filter(Boolean).join(' · ') || null,
     banner: r.banner,
+    logo: r.logo,
     classificacao_etaria: r.classificacao_etaria,
     vendas_pausadas: r.status === 'pausado',
     // A página individual de venda é a de sempre (/ticket/<evento>/<edição>).

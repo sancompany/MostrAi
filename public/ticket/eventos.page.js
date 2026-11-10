@@ -12,9 +12,14 @@
     return el(
       'a',
       { class: 'cartao-evento', href: e.endereco },
-      e.banner
-        ? el('img', { class: 'cartao-evento-banner', src: e.banner, alt: '', loading: 'lazy' })
-        : el('div', { class: 'cartao-evento-banner vazio', 'aria-hidden': 'true' }),
+      el(
+        'div',
+        { class: 'cartao-evento-capa' },
+        e.banner
+          ? el('img', { class: 'cartao-evento-banner', src: e.banner, alt: '', loading: 'lazy' })
+          : el('div', { class: 'cartao-evento-banner vazio', 'aria-hidden': 'true' }),
+        e.logo ? el('img', { class: 'cartao-evento-logo', src: e.logo, alt: '', loading: 'lazy' }) : null,
+      ),
       el(
         'div',
         { class: 'cartao-evento-corpo' },

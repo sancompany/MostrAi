@@ -224,24 +224,121 @@
     ['termos_compra', 'Termos e condições de compra', 'termos de compra'],
   ];
 
+  // Identidade visual: banner e logo, cada um com pré-visualização antes de
+  // salvar. A escolha fica pendente (só na tela) até o Salvar, que grava a
+  // ficha e depois envia ou remove as imagens pelo caminho de sempre
+  // (/edicoes/:id/imagens, armazenamento da Mostraí). A prévia é data: — a
+  // CSP do Admin aceita data: em img-src, e não blob:.
+  const IMAGENS = {
+    banner: {
+      titulo: 'Banner do evento',
+      ajuda: 'Horizontal, ex.: 1920 × 1080. Aparece na vitrine da TICK e no topo da página do evento.',
+      convite: 'Arraste o banner aqui ou clique para escolher',
+    },
+    logo: {
+      titulo: 'Logo do evento',
+      ajuda:
+        'Quadrado, de preferência PNG com fundo transparente, ex.: 512 × 512. Aparece ao lado do nome na página de venda e no card da vitrine.',
+      convite: 'Arraste o logo aqui ou clique para escolher',
+    },
+  };
+  const TIPOS_IMAGEM = ['image/jpeg', 'image/png', 'image/webp'];
+  const MAX_IMAGEM = 8 * 1024 * 1024;
+  const ERRO_IMAGEM = 'Envie uma imagem JPEG, PNG ou WebP de até 8 MB.';
+
+  // Espelho do servidor (eventos.js → paraEndereco): só para mostrar o
+  // endereço que vai ser gerado. Quem decide é o servidor, na criação.
+  const paraEndereco = (texto, max) =>
+    String(texto ?? '')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+/, '')
+      .slice(0, max)
+      .replace(/-+$/, '');
+  // Mesma lista do servidor (lib/validacao.js → RESERVADOS).
+  // Um teste confere que as duas listas são iguais (trimundi-ficha-evento).
+  const RESERVADOS_EVENTO = new Set([
+    'ativar',
+    'checkin',
+    'api',
+    'admin',
+    'operador',
+    'pedido',
+    'webhook',
+    'entrar',
+    'sair',
+    'recuperar',
+    'dev',
+    'arquivos',
+    'conta',
+    'img',
+    'i',
+    'termos',
+    'privacidade',
+  ]);
+  function enderecoLivre(base, max, usados) {
+    for (let n = 1; n <= 1000; n++) {
+      const fim = n === 1 ? '' : `-${n}`;
+      const candidato = `${base.slice(0, max - fim.length).replace(/-+$/, '')}${fim}`;
+      if (!usados.has(candidato)) return candidato;
+    }
+    return base;
+  }
+
+  // Redesenha a ficha depois de salvar. Se a pessoa já foi para outra tela,
+  // a leitura é cancelada (carga.js) — não é erro, como no roteador do Admin.
+  const redesenharFicha = (el, id) =>
+    renderFicha(el, id).catch((err) => {
+      if (!err?.cancelada) throw err;
+    });
+
+  const secao = (n, titulo, nota, corpo, classe = '') => `<section class="tm-secao ${classe}">
+      <header class="tm-secao-topo"><span class="tm-secao-num" aria-hidden="true">${n}</span>
+        <div><h3>${titulo}</h3>${nota ? `<p class="tm-secao-nota">${nota}</p>` : ''}</div></header>
+      ${corpo}
+    </section>`;
+
   async function renderFicha(el, id) {
     const leituras = await lerOuAvisar(el, () =>
-      Promise.all([id ? pegar(`${R}/edicoes/${id}`) : null, pegar(`${R}/eventos`), pegar(`${R}/estado`)]),
+      Promise.all([
+        id ? pegar(`${R}/edicoes/${id}`) : null,
+        pegar(`${R}/eventos`),
+        pegar(`${R}/estado`),
+        // Na criação, as edições que já existem: a prévia do endereço já
+        // mostra o número no fim que o servidor vai acrescentar.
+        id ? [] : pegar(`${R}/edicoes`),
+      ]),
     );
     if (!leituras) return;
-    const [ed, eventos, estado] = leituras;
+    const [ed, eventos, estado, edicoesExistentes] = leituras;
     const nova = !ed;
-    const so_leitura = ed?.status === 'encerrado';
+    const soLeitura = ed?.status === 'encerrado';
+    const semArmazenamento = !estado.imagens;
     const v = (x) => esc(x ?? '');
     const local = ed?.local || null;
+    const salvas = {
+      banner: ed?.imagens.find((i) => i.tipo === 'banner') || null,
+      logo: ed?.imagens.find((i) => i.tipo === 'logo') || null,
+    };
+    // { arquivo, previa } = imagem nova escolhida; { remover: true } = tirar a salva.
+    const pendentes = { banner: null, logo: null };
+    const slugsDeEventos = new Set(eventos.map((e) => String(e.slug).toLowerCase()));
+    const slugsDeEdicoes = new Map();
+    for (const e of edicoesExistentes) {
+      const usados = slugsDeEdicoes.get(String(e.evento.id)) || new Set();
+      usados.add(String(e.slug).toLowerCase());
+      slugsDeEdicoes.set(String(e.evento.id), usados);
+    }
     const opcoesEvento = eventos
-      .map((e) => `<option value="${e.id}">${esc(e.nome)} (/ticket/${esc(e.slug)})</option>`)
+      .map((e) => `<option value="${e.id}" data-slug="${esc(e.slug)}">${esc(e.nome)}</option>`)
       .join('');
     const botoesStatus = !ed
       ? ''
       : {
           rascunho: '<button type="button" class="btn primary" data-status="publicado">Publicar</button>',
-          publicado: '<button type="button" class="btn ghost" data-status="pausado">Pausar</button>',
+          publicado: '<button type="button" class="btn ghost" data-status="pausado">Pausar vendas</button>',
           pausado: '<button type="button" class="btn primary" data-status="publicado">Retomar venda</button>',
           encerrado: '',
         }[ed.status] +
@@ -249,80 +346,146 @@
           ? '<button type="button" class="btn perigo-sutil" data-status="encerrado">Encerrar</button>'
           : '');
 
+    function slotImagem(tipo) {
+      const cfg = IMAGENS[tipo];
+      const p = pendentes[tipo];
+      const salva = salvas[tipo];
+      const url = p?.arquivo ? p.previa : p?.remover ? null : salva?.url;
+      const bloqueado = soLeitura || semArmazenamento;
+      const conteudo = url
+        ? `<img src="${esc(url)}" alt="${cfg.titulo}">`
+        : `<span class="tm-imagem-convite"><span class="tm-imagem-mais" aria-hidden="true">+</span>${p?.remover ? 'Removida ao salvar' : cfg.convite}</span>`;
+      const marca = p?.arquivo
+        ? '<span class="tm-imagem-selo">Pré-visualização</span>'
+        : p?.remover
+          ? '<span class="tm-imagem-selo perigo">Remoção pendente</span>'
+          : '';
+      let acoes = '';
+      if (!bloqueado) {
+        if (p?.arquivo)
+          acoes =
+            '<button type="button" class="btn ghost mini" data-escolher>Trocar</button><button type="button" class="btn ghost mini" data-desfazer>Cancelar</button><span class="tm-imagem-pendente">Ainda não salva — vai junto com o Salvar.</span>';
+        else if (p?.remover)
+          acoes =
+            '<button type="button" class="btn ghost mini" data-desfazer>Desfazer</button><span class="tm-imagem-pendente">Sai ao clicar em Salvar.</span>';
+        else if (salva)
+          acoes =
+            '<button type="button" class="btn ghost mini" data-escolher>Substituir</button><button type="button" class="btn perigo-sutil mini" data-remover>Remover</button>';
+        else acoes = '<button type="button" class="btn ghost mini" data-escolher>Escolher imagem</button>';
+      }
+      return `<div class="tm-imagem tm-imagem-${tipo}" data-slot="${tipo}">
+          <p class="tm-imagem-titulo">${cfg.titulo}</p>
+          <button type="button" class="tm-imagem-area${url ? ' com-imagem' : ''}" data-escolher ${bloqueado ? 'disabled' : ''}
+            aria-label="${url ? 'Substituir' : 'Escolher'} ${cfg.titulo.toLowerCase()}">${conteudo}${marca}</button>
+          <div class="tm-imagem-acoes">${acoes}</div>
+          <p class="campo-ajuda">${cfg.ajuda}</p>
+          <p class="form-msg err" data-erro hidden></p>
+          <input type="file" accept="${TIPOS_IMAGEM.join(',')}" hidden data-arquivo>
+        </div>`;
+    }
+
+    const campo = (classe, rotulo, idCampo, controle, ajuda = '', attrs = '') =>
+      `<div class="campo-grupo ${classe}" ${attrs}><label for="${idCampo}">${rotulo}</label>${controle}${ajuda ? `<p class="campo-ajuda">${ajuda}</p>` : ''}</div>`;
+
     el.innerHTML = `
       ${window.migalha([{ rotulo: 'Eventos', href: '#trimundi/eventos' }, { rotulo: ed ? nomeDaEdicao(ed) : 'Novo evento' }])}
-      ${ed ? `<p class="tm-status">${selo(STATUS_EDICAO[ed.status])} <span class="u-dim">Endereço público:</span> <code>${v(ed.endereco_publico)}</code>${ed.status !== 'rascunho' ? ` · <a href="${v(ed.endereco_publico)}" target="_blank" rel="noopener">abrir a página</a>` : ''}</p>` : ''}
-      ${so_leitura ? '<p class="form-msg">Edição encerrada fica só para consulta.</p>' : ''}
+      <header class="tm-cabecalho">
+        <div class="tm-cabecalho-texto">
+          <h2>${ed ? esc(nomeDaEdicao(ed)) : 'Novo evento'}</h2>
+          <p class="tm-status">${ed ? selo(STATUS_EDICAO[ed.status]) : selo(['badge-neutro', 'Rascunho'])}
+            ${ed && ed.status !== 'rascunho' ? `<a href="${v(ed.endereco_publico)}" target="_blank" rel="noopener">Abrir a página de venda</a>` : '<span class="u-dim">Só aparece na TICK depois de publicado.</span>'}</p>
+        </div>
+        ${botoesStatus ? `<div class="tm-cabecalho-acoes">${botoesStatus}</div>` : ''}
+      </header>
+      ${soLeitura ? '<p class="form-msg">Edição encerrada fica só para consulta.</p>' : ''}
       <form id="tmFicha" class="tm-ficha painel-form" novalidate>
-        <fieldset ${so_leitura ? 'disabled' : ''}>
-          <section class="secao-pagina">
-            <div class="secao-topo"><h3>Evento</h3></div>
-            ${
+        <fieldset ${soLeitura ? 'disabled' : ''}>
+          ${secao(
+            1,
+            'Identidade visual',
+            'Como o evento aparece na vitrine da TICK e na página de venda.',
+            `${semArmazenamento ? '<p class="form-msg err">As imagens não estão configuradas neste ambiente.</p>' : ''}
+             <div class="tm-identidade">${slotImagem('banner')}${slotImagem('logo')}</div>`,
+          )}
+          ${secao(
+            2,
+            'Informações principais',
+            '',
+            `${
               nova
-                ? `<div class="segmentado" role="radiogroup">
+                ? `<div class="segmentado" role="radiogroup" aria-label="Evento">
                     <label><input type="radio" name="modoEvento" value="novo" checked><span>Evento novo</span></label>
-                    <label><input type="radio" name="modoEvento" value="existente" ${eventos.length ? '' : 'disabled'}><span>Evento já cadastrado</span></label>
+                    <label><input type="radio" name="modoEvento" value="existente" ${eventos.length ? '' : 'disabled'}><span>Nova edição de um evento já cadastrado</span></label>
                   </div>`
                 : ''
             }
-            <div class="campos" data-evento-novo>
-              <div class="campo-grupo"><label for="tmEvNome">Nome do evento</label><input id="tmEvNome" name="evNome" maxlength="120" value="${v(ed?.evento.nome)}"></div>
-              <div class="campo-grupo"><label for="tmEvSlug">Endereço do evento</label>
-                <div class="tm-prefixo"><span>/ticket/</span><input id="tmEvSlug" name="evSlug" maxlength="60" value="${v(ed?.evento.slug)}" ${ed?.evento.endereco_travado ? 'readonly' : ''} autocomplete="off"></div>
-                <p class="campo-ajuda">${ed?.evento.endereco_travado ? 'O endereço não muda depois de publicado.' : 'Letras, números e hífen.'}</p></div>
+            <div class="tm-grade">
+              ${campo('tm-col-8', 'Nome do evento', 'tmEvNome', `<input id="tmEvNome" name="evNome" maxlength="120" value="${v(ed?.evento.nome)}" placeholder="ex.: TREEMUNDO" autocomplete="off">`, '', 'data-evento-novo')}
+              ${nova ? campo('tm-col-8', 'Evento', 'tmEvId', `<select id="tmEvId" name="evId">${opcoesEvento}</select>`, '', 'data-evento-existente hidden') : ''}
+              ${campo('tm-col-4', 'Código da edição', 'tmNome', `<input id="tmNome" name="nome" maxlength="120" value="${v(ed?.nome)}" placeholder="ex.: EDITION01" autocomplete="off">`)}
+              ${campo('tm-col-12', 'Descrição', 'tmDescricao', `<textarea id="tmDescricao" name="descricao" rows="4" maxlength="5000" placeholder="O que é o evento, atrações, o que esperar.">${v(ed?.descricao)}</textarea>`, 'Aparece na página de venda, abaixo do nome.')}
             </div>
-            ${nova ? `<div class="campos" data-evento-existente hidden><div class="campo-grupo"><label for="tmEvId">Evento</label><select id="tmEvId" name="evId">${opcoesEvento}</select></div></div>` : ''}
-          </section>
-          <section class="secao-pagina">
-            <div class="secao-topo"><h3>Edição</h3></div>
-            <div class="campos">
-              <div class="campo-grupo"><label for="tmNome">Edição</label><input id="tmNome" name="nome" maxlength="120" value="${v(ed?.nome)}" placeholder="ex.: EDITION01"></div>
-              <div class="campo-grupo"><label for="tmSlug">Endereço da edição</label>
-                <div class="tm-prefixo"><span>/ticket/…/</span><input id="tmSlug" name="slug" maxlength="40" value="${v(ed?.slug)}" ${ed?.endereco_travado ? 'readonly' : ''} autocomplete="off"></div></div>
+            <div class="tm-endereco">
+              <span class="tm-endereco-rotulo">Página de venda</span>
+              <code data-endereco></code>
+              <span class="campo-ajuda" data-endereco-nota></span>
             </div>
-            <div class="campo-grupo"><label for="tmDescricao">Descrição</label><textarea id="tmDescricao" name="descricao" rows="4" maxlength="5000">${v(ed?.descricao)}</textarea></div>
-            <div class="campos">
-              <div class="campo-grupo"><label for="tmInicio">Data e horário</label><input id="tmInicio" name="inicio" type="datetime-local" value="${paraCampoData(ed?.inicio_em)}">
-                <div class="tm-alternar">${alternar({ nome: 'semData', marcado: ed ? !ed.inicio_em : false, texto: 'A definir' })}</div></div>
-              <div class="campo-grupo"><label for="tmFim">Término (opcional)</label><input id="tmFim" name="fim" type="datetime-local" value="${paraCampoData(ed?.fim_em)}"></div>
-              <div class="campo-grupo"><label for="tmClass">Classificação etária</label><select id="tmClass" name="classificacao">${CLASSIFICACOES.map(([k, r]) => `<option value="${k}" ${String(ed?.classificacao_etaria ?? '') === k ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
-              <div class="campo-grupo"><label for="tmCap">Capacidade do local (opcional)</label><input id="tmCap" name="capacidade" type="number" min="1" max="1000000" value="${v(ed?.capacidade)}"></div>
-              <div class="campo-grupo"><label for="tmLimCpf">Ingressos por CPF nesta edição (opcional)</label><input id="tmLimCpf" name="limite_por_cpf" type="number" min="1" max="100" value="${v(ed?.limite_por_cpf)}"></div>
-            </div>
-          </section>
-          <section class="secao-pagina">
-            <div class="secao-topo"><h3>Local</h3></div>
-            ${alternar({ nome: 'semLocal', marcado: ed ? !local : false, texto: 'A definir' })}
-            <div class="campos" data-local>
-              <div class="campo-grupo"><label for="tmLocNome">Local</label><input id="tmLocNome" name="locNome" maxlength="120" value="${v(local?.nome)}"></div>
-              <div class="campo-grupo"><label for="tmCep">CEP</label><input id="tmCep" name="cep" inputmode="numeric" maxlength="9" value="${v(local?.cep)}"></div>
-              <div class="campo-grupo"><label for="tmLog">Endereço</label><input id="tmLog" name="logradouro" maxlength="160" value="${v(local?.logradouro)}"></div>
-              <div class="campo-grupo"><label for="tmNum">Número</label><input id="tmNum" name="numero" maxlength="20" value="${v(local?.numero)}"></div>
-              <div class="campo-grupo"><label for="tmComp">Complemento</label><input id="tmComp" name="complemento" maxlength="80" value="${v(local?.complemento)}"></div>
-              <div class="campo-grupo"><label for="tmBairro">Bairro</label><input id="tmBairro" name="bairro" maxlength="80" value="${v(local?.bairro)}"></div>
-              <div class="campo-grupo"><label for="tmCidade">Cidade</label><input id="tmCidade" name="cidade" maxlength="80" value="${v(local?.cidade)}"></div>
-              <div class="campo-grupo"><label for="tmUf">UF</label><input id="tmUf" name="uf" maxlength="2" value="${v(local?.uf)}"></div>
-            </div>
-          </section>
-          <section class="secao-pagina">
-            <div class="secao-topo"><h3>Textos que o comprador aceita</h3></div>
-            ${TEXTOS.map(
+            <details class="tm-avancado">
+              <summary>Configurações avançadas</summary>
+              <p class="campo-ajuda">O endereço é gerado do nome do evento e do código da edição; se já existir, ganha um número no fim. Preencha só para escolher outro. Depois de publicado, não muda.</p>
+              <div class="tm-grade">
+                ${campo('tm-col-6', 'Endereço do evento', 'tmEvSlug', `<div class="tm-prefixo"><span>/ticket/</span><input id="tmEvSlug" name="evSlug" maxlength="60" value="${v(ed?.evento.slug)}" ${ed?.evento.endereco_travado ? 'readonly' : ''} autocomplete="off"></div>`, 'Letras, números e hífen.', 'data-evento-novo')}
+                ${campo('tm-col-6', 'Endereço da edição', 'tmSlug', `<div class="tm-prefixo"><span>/ticket/…/</span><input id="tmSlug" name="slug" maxlength="40" value="${v(ed?.slug)}" ${ed?.endereco_travado ? 'readonly' : ''} autocomplete="off"></div>`)}
+              </div>
+            </details>`,
+          )}
+          ${secao(
+            3,
+            'Data e classificação',
+            'Sem data definida, a página mostra "A definir".',
+            `<div class="tm-grade">
+              ${campo('tm-col-3', 'Início', 'tmInicio', `<input id="tmInicio" name="inicio" type="datetime-local" value="${paraCampoData(ed?.inicio_em)}"><div class="tm-alternar">${alternar({ nome: 'semData', marcado: ed ? !ed.inicio_em : false, texto: 'A definir' })}</div>`)}
+              ${campo('tm-col-3', 'Término <span class="u-dim">(opcional)</span>', 'tmFim', `<input id="tmFim" name="fim" type="datetime-local" value="${paraCampoData(ed?.fim_em)}">`)}
+              ${campo('tm-col-2', 'Classificação etária', 'tmClass', `<select id="tmClass" name="classificacao">${CLASSIFICACOES.map(([k, r]) => `<option value="${k}" ${String(ed?.classificacao_etaria ?? '') === k ? 'selected' : ''}>${r}</option>`).join('')}</select>`, 'Obrigatória para publicar.')}
+              ${campo('tm-col-2', 'Capacidade do local', 'tmCap', `<input id="tmCap" name="capacidade" type="number" min="1" max="1000000" value="${v(ed?.capacidade)}" placeholder="Opcional">`)}
+              ${campo('tm-col-2', 'Ingressos por CPF', 'tmLimCpf', `<input id="tmLimCpf" name="limite_por_cpf" type="number" min="1" max="100" value="${v(ed?.limite_por_cpf)}" placeholder="Sem limite">`, 'Soma todos os tipos e combos.')}
+            </div>`,
+          )}
+          ${secao(
+            4,
+            'Localização',
+            'Onde o evento acontece — o endereço físico, não o da página.',
+            `${alternar({ nome: 'semLocal', marcado: ed ? !local : false, texto: 'A definir' })}
+            <div class="tm-grade tm-local" data-local>
+              ${campo('tm-col-8', 'Nome do local', 'tmLocNome', `<input id="tmLocNome" name="locNome" maxlength="120" value="${v(local?.nome)}" placeholder="ex.: Galpão 7">`)}
+              ${campo('tm-col-4', 'CEP', 'tmCep', `<input id="tmCep" name="cep" inputmode="numeric" maxlength="9" value="${v(local?.cep)}" placeholder="00000-000">`)}
+              ${campo('tm-col-8', 'Endereço', 'tmLog', `<input id="tmLog" name="logradouro" maxlength="160" value="${v(local?.logradouro)}" placeholder="Rua, avenida...">`)}
+              ${campo('tm-col-4', 'Número', 'tmNum', `<input id="tmNum" name="numero" maxlength="20" value="${v(local?.numero)}">`)}
+              ${campo('tm-col-3', 'Complemento', 'tmComp', `<input id="tmComp" name="complemento" maxlength="80" value="${v(local?.complemento)}">`)}
+              ${campo('tm-col-3', 'Bairro', 'tmBairro', `<input id="tmBairro" name="bairro" maxlength="80" value="${v(local?.bairro)}">`)}
+              ${campo('tm-col-4 tm-cidade', 'Cidade', 'tmCidade', `<input id="tmCidade" name="cidade" maxlength="80" value="${v(local?.cidade)}">`)}
+              ${campo('tm-col-2', 'UF', 'tmUf', `<input id="tmUf" name="uf" maxlength="2" value="${v(local?.uf)}" placeholder="SP">`)}
+            </div>`,
+          )}
+          ${secao(
+            5,
+            'Regulamento e condições',
+            'O comprador aceita estes textos na compra. Mudar um texto grava uma versão nova; quem já comprou fica com a versão que aceitou.',
+            `<div class="tm-textos">${TEXTOS.map(
               ([k, rotulo]) => `<div class="campo-grupo">
-                <label for="tm_${k}">${rotulo}${ed?.textos?.[k] ? ` <span class="u-dim">· versão ${ed.textos[k].versao}</span>` : ''}</label>
-                <textarea id="tm_${k}" name="${k}" rows="6" maxlength="50000">${v(ed?.textos?.[k]?.texto)}</textarea>
+                <label for="tm_${k}">${rotulo}${ed?.textos?.[k] ? ` <span class="tm-versao">versão ${ed.textos[k].versao}</span>` : ''}</label>
+                <textarea id="tm_${k}" name="${k}" rows="${k === 'condicoes_especiais' ? 3 : 6}" maxlength="50000">${v(ed?.textos?.[k]?.texto)}</textarea>
               </div>`,
-            ).join('')}
-            <p class="campo-ajuda">Mudar um texto grava uma versão nova; quem já comprou fica com a versão que aceitou.</p>
-          </section>
+            ).join('')}</div>`,
+          )}
         </fieldset>
-        <p class="form-msg" data-msg role="status"></p>
-        <div class="tm-acoes">
-          ${so_leitura ? '' : '<button type="submit" class="btn primary">Salvar</button>'}
-          ${botoesStatus}
+        <div class="tm-barra-acoes">
+          <p class="form-msg" data-msg role="status"></p>
           <button type="button" class="btn ghost" data-voltar>Voltar</button>
+          ${soLeitura ? '' : `<button type="submit" class="btn primary">${nova ? 'Criar evento' : 'Salvar alterações'}</button>`}
         </div>
       </form>
-      ${ed ? blocoImagens(ed, estado, so_leitura) : ''}`;
+      ${ed ? blocoGaleria(ed, estado, soLeitura) : ''}`;
 
     const form = el.querySelector('#tmFicha');
     const msg = form.querySelector('[data-msg]');
@@ -331,26 +494,147 @@
       msg.className = erro ? 'form-msg err' : 'form-msg ok';
     };
     form.querySelector('[data-voltar]').addEventListener('click', () => irPara('trimundi/eventos'));
+    const modoExistente = () => nova && form.querySelector('[name="modoEvento"]:checked').value === 'existente';
+
+    // Endereço público: na criação, o que vai ser gerado; depois, o de verdade.
+    function mostrarEndereco() {
+      const f = form.elements;
+      const alvo = form.querySelector('[data-endereco]');
+      const nota = form.querySelector('[data-endereco-nota]');
+      if (!nova) {
+        const evS = f.evSlug.value.trim() || ed.evento.slug;
+        const edS = f.slug.value.trim() || ed.slug;
+        alvo.textContent = `/ticket/${evS}/${edS}`;
+        const mudou = evS !== ed.evento.slug || edS !== ed.slug;
+        nota.textContent = ed.endereco_travado
+          ? 'Publicado — o endereço não muda mais.'
+          : mudou
+            ? 'Muda ao salvar.'
+            : '';
+        return;
+      }
+      let evS;
+      let usadosNaEdicao = new Set();
+      if (modoExistente()) {
+        evS = f.evId.selectedOptions[0]?.dataset.slug || '…';
+        usadosNaEdicao = slugsDeEdicoes.get(String(f.evId.value)) || usadosNaEdicao;
+      } else {
+        let base = paraEndereco(f.evNome.value, 60);
+        if (base && base.length < 3) base = `${base}-evento`;
+        if (RESERVADOS_EVENTO.has(base)) base = `${base}-evento`;
+        const auto = base ? enderecoLivre(base, 60, slugsDeEventos) : '';
+        f.evSlug.placeholder = auto || 'gerado do nome do evento';
+        evS = f.evSlug.value.trim() || auto || '…';
+      }
+      const baseEd = paraEndereco(f.nome.value, 40);
+      const autoEd = baseEd ? enderecoLivre(baseEd, 40, usadosNaEdicao) : '';
+      f.slug.placeholder = autoEd || 'gerado do código da edição';
+      alvo.textContent = `/ticket/${evS}/${f.slug.value.trim() || autoEd || '…'}`;
+      nota.textContent =
+        f.evSlug.value.trim() || f.slug.value.trim()
+          ? 'Escolhido nas configurações avançadas.'
+          : 'Gerado automaticamente.';
+    }
+
     const sincronizar = () => {
-      form.elements.inicio.disabled = form.elements.semData.checked;
-      form.querySelector('[data-local]').hidden = form.elements.semLocal.checked;
+      const f = form.elements;
+      f.inicio.disabled = f.semData.checked;
+      f.fim.disabled = f.semData.checked;
+      form.querySelector('[data-local]').hidden = f.semLocal.checked;
       if (nova) {
-        const existente = form.querySelector('[name="modoEvento"]:checked').value === 'existente';
-        form.querySelector('[data-evento-novo]').hidden = existente;
+        const existente = modoExistente();
+        form.querySelectorAll('[data-evento-novo]').forEach((n) => {
+          n.hidden = existente;
+        });
         form.querySelector('[data-evento-existente]').hidden = !existente;
       }
+      mostrarEndereco();
     };
     form.addEventListener('change', sincronizar);
+    form.addEventListener('input', (e) => {
+      if (['evNome', 'nome', 'evSlug', 'slug'].includes(e.target.name)) mostrarEndereco();
+    });
     sincronizar();
+
+    // ------------------------------------------------ banner e logo
+    const identidade = form.querySelector('.tm-identidade');
+    const slot = (tipo) => identidade.querySelector(`[data-slot="${tipo}"]`);
+    const redesenhar = (tipo) => {
+      slot(tipo).outerHTML = slotImagem(tipo);
+    };
+    function escolher(tipo, arquivo) {
+      if (!arquivo) return;
+      if (!TIPOS_IMAGEM.includes(arquivo.type) || arquivo.size > MAX_IMAGEM) {
+        const erro = slot(tipo).querySelector('[data-erro]');
+        erro.textContent = ERRO_IMAGEM;
+        erro.hidden = false;
+        return;
+      }
+      const leitor = new FileReader();
+      leitor.onload = () => {
+        pendentes[tipo] = { arquivo, previa: leitor.result };
+        redesenhar(tipo);
+      };
+      leitor.readAsDataURL(arquivo);
+    }
+    identidade.addEventListener('click', (e) => {
+      const s = e.target.closest('[data-slot]');
+      if (!s) return;
+      const tipo = s.dataset.slot;
+      if (e.target.closest('[data-escolher]')) s.querySelector('[data-arquivo]').click();
+      else if (e.target.closest('[data-remover]')) {
+        pendentes[tipo] = { remover: true };
+        redesenhar(tipo);
+      } else if (e.target.closest('[data-desfazer]')) {
+        pendentes[tipo] = null;
+        redesenhar(tipo);
+      }
+    });
+    identidade.addEventListener('change', (e) => {
+      if (!e.target.matches('[data-arquivo]')) return;
+      escolher(e.target.closest('[data-slot]').dataset.slot, e.target.files[0]);
+    });
+    const areaAtiva = (e) => {
+      const a = e.target.closest?.('.tm-imagem-area');
+      return a && !a.disabled ? a : null;
+    };
+    identidade.addEventListener('dragover', (e) => {
+      const a = areaAtiva(e);
+      if (!a) return;
+      e.preventDefault();
+      a.classList.add('arrastando');
+    });
+    identidade.addEventListener('dragleave', (e) => areaAtiva(e)?.classList.remove('arrastando'));
+    identidade.addEventListener('drop', (e) => {
+      const a = areaAtiva(e);
+      if (!a) return;
+      e.preventDefault();
+      escolher(a.closest('[data-slot]').dataset.slot, e.dataTransfer.files[0]);
+    });
+
+    // Depois da ficha salva: envia o que foi escolhido, tira o que foi removido.
+    async function gravarImagens(edicaoId) {
+      const falhas = [];
+      for (const tipo of ['banner', 'logo']) {
+        const p = pendentes[tipo];
+        if (!p) continue;
+        let r = null;
+        if (p.arquivo) r = await enviarArquivo(`/edicoes/${edicaoId}/imagens`, { tipo, arquivo: p.arquivo });
+        else if (p.remover && salvas[tipo]) r = await escrever(`/imagens/${salvas[tipo].id}`, 'DELETE');
+        if (r && !r.ok) falhas.push(`${IMAGENS[tipo].titulo}: ${r.erro}`);
+      }
+      return falhas;
+    }
+    const temImagemPendente = () => Boolean(pendentes.banner || pendentes.logo);
 
     function corpoDaFicha() {
       const f = form.elements;
       const edicao = {
         nome: f.nome.value,
-        slug: f.slug.value,
+        slug: f.slug.value.trim(),
         descricao: f.descricao.value,
         inicio_em: f.semData.checked ? null : doCampoData(f.inicio.value),
-        fim_em: doCampoData(f.fim.value),
+        fim_em: f.semData.checked ? null : doCampoData(f.fim.value),
         classificacao_etaria: f.classificacao.value || null,
         capacidade: f.capacidade.value === '' ? null : f.capacidade.value,
         limite_por_cpf: f.limite_por_cpf.value === '' ? null : f.limite_por_cpf.value,
@@ -371,6 +655,8 @@
       if (!nova) {
         // Texto que não mudou não vai (não cria versão nova).
         for (const [k] of TEXTOS) if ((ed.textos?.[k]?.texto || '') === edicao.textos[k]) delete edicao.textos[k];
+        // Endereço: só vai se mudou (vazio = fica o que já existe).
+        if (ed.endereco_travado || !edicao.slug || edicao.slug === ed.slug) delete edicao.slug;
       }
       return edicao;
     }
@@ -383,32 +669,36 @@
         const edicao = corpoDaFicha();
         let r;
         if (nova) {
-          const existente = form.querySelector('[name="modoEvento"]:checked').value === 'existente';
           r = await escrever('/edicoes', 'POST', {
-            evento: existente ? { id: f.evId.value } : { nome: f.evNome.value, slug: f.evSlug.value },
+            evento: modoExistente() ? { id: f.evId.value } : { nome: f.evNome.value, slug: f.evSlug.value.trim() },
             edicao,
           });
           if (!r.ok) return avisar(r.erro, true);
-          toast('Edição salva.');
+          const falhas = await gravarImagens(r.json.id);
+          if (falhas.length) toast(`Evento criado, mas: ${falhas.join(' ')}`, 'err');
+          else toast('Evento criado.');
           return irPara(`trimundi/eventos/${r.json.id}`);
         }
         const evento = {};
         if (f.evNome.value !== ed.evento.nome) evento.nome = f.evNome.value;
-        if (!ed.evento.endereco_travado && f.evSlug.value !== ed.evento.slug) evento.slug = f.evSlug.value;
-        if (ed.endereco_travado) delete edicao.slug;
+        const evSlug = f.evSlug.value.trim();
+        if (!ed.evento.endereco_travado && evSlug && evSlug !== ed.evento.slug) evento.slug = evSlug;
         r = await escrever(`/edicoes/${ed.id}`, 'PATCH', {
           ...edicao,
           ...(Object.keys(evento).length ? { evento } : {}),
         });
         if (!r.ok) return avisar(r.erro, true);
+        const falhas = temImagemPendente() ? await gravarImagens(ed.id) : [];
         const versoes = r.json.versoes_novas || [];
         const rotulo = Object.fromEntries(TEXTOS.map(([k, , curto]) => [k, curto]));
-        toast(
-          versoes.length
-            ? versoes.map((x) => `Versão ${x.versao} do ${rotulo[x.tipo]} salva.`).join(' ')
-            : 'Edição salva.',
-        );
-        return renderFicha(el, ed.id);
+        if (falhas.length) toast(`Ficha salva, mas: ${falhas.join(' ')}`, 'err');
+        else
+          toast(
+            versoes.length
+              ? versoes.map((x) => `Versão ${x.versao} do ${rotulo[x.tipo]} salva.`).join(' ')
+              : 'Alterações salvas.',
+          );
+        return redesenharFicha(el, ed.id);
       });
     });
 
@@ -417,7 +707,7 @@
       pausado: 'Venda pausada.',
       encerrado: 'Edição encerrada.',
     };
-    form.querySelectorAll('[data-status]').forEach((b) =>
+    el.querySelectorAll('[data-status]').forEach((b) =>
       b.addEventListener('click', async () => {
         const status = b.dataset.status;
         if (status === 'encerrado') {
@@ -433,60 +723,52 @@
           const r = await escrever(`/edicoes/${ed.id}/status`, 'POST', { status });
           if (!r.ok) return avisar(r.erro, true);
           toast(TEXTO_STATUS[status]);
-          renderFicha(el, ed.id);
+          return redesenharFicha(el, ed.id);
         });
       }),
     );
-    if (ed) ligarImagens(el, ed);
+    if (ed) ligarGaleria(el, ed);
   }
 
-  function blocoImagens(ed, estado, soLeitura) {
-    const banner = ed.imagens.find((i) => i.tipo === 'banner');
+  // Galeria (opcional, até 8): envio na hora, como sempre foi.
+  function blocoGaleria(ed, estado, soLeitura) {
     const galeria = ed.imagens.filter((i) => i.tipo === 'galeria');
-    const semArmazenamento = !estado.imagens;
-    const desligado = soLeitura || semArmazenamento ? 'disabled' : '';
-    return `<section class="secao-pagina tm-imagens">
-      <div class="secao-topo"><h3>Imagens</h3></div>
-      ${semArmazenamento ? '<p class="form-msg err">As imagens não estão configuradas neste ambiente.</p>' : ''}
-      <p class="campo-rotulo">Banner</p>
-      <div class="tm-banner">${banner ? `<img src="${esc(banner.url)}" alt="Banner da edição">` : '<div class="tm-banner-vazio">Sem banner</div>'}</div>
-      <div class="tm-acoes">
-        <input type="file" id="tmArqBanner" accept="image/jpeg,image/png,image/webp" hidden>
-        <button type="button" class="btn ghost mini" data-escolher-arquivo="tmArqBanner" ${desligado}>Enviar banner</button>
-        ${banner && !soLeitura ? `<button type="button" class="btn perigo-sutil mini" data-remover-imagem="${banner.id}">Remover</button>` : ''}
-      </div>
-      <p class="campo-rotulo">Imagens (até 8)</p>
-      <div class="tm-galeria">${galeria
+    const desligado = soLeitura || !estado.imagens ? 'disabled' : '';
+    return secao(
+      6,
+      'Galeria <span class="u-dim">(opcional)</span>',
+      'Até 8 imagens, mostradas no fim da página do evento. Enviar ou remover vale na hora.',
+      `<div class="tm-galeria">${galeria
         .map(
           (i) =>
             `<figure><img src="${esc(i.url)}" alt="">${soLeitura ? '' : `<button type="button" class="btn perigo-sutil mini" data-remover-imagem="${i.id}">Remover</button>`}</figure>`,
         )
         .join('')}</div>
-      <input type="file" id="tmArqGaleria" accept="image/jpeg,image/png,image/webp" hidden>
+      <input type="file" id="tmArqGaleria" accept="${TIPOS_IMAGEM.join(',')}" hidden>
       <button type="button" class="btn ghost mini" data-escolher-arquivo="tmArqGaleria" ${desligado || (galeria.length >= 8 ? 'disabled' : '')}>Enviar imagem</button>
-      <p class="campo-ajuda">JPEG, PNG ou WebP de até 8 MB.</p>
-    </section>`;
+      <p class="campo-ajuda">JPEG, PNG ou WebP de até 8 MB.</p>`,
+      'tm-galeria-secao',
+    );
   }
 
-  function ligarImagens(el, ed) {
-    const enviar = async (input, tipo) => {
+  function ligarGaleria(el, ed) {
+    el.querySelector('#tmArqGaleria')?.addEventListener('change', async (e) => {
+      const input = e.target;
       const arquivo = input.files[0];
       if (!arquivo) return;
-      const r = await enviarArquivo(`/edicoes/${ed.id}/imagens`, { tipo, arquivo });
+      const r = await enviarArquivo(`/edicoes/${ed.id}/imagens`, { tipo: 'galeria', arquivo });
       input.value = '';
       if (!r.ok) return toast(r.erro, 'err');
-      toast(tipo === 'banner' ? 'Banner enviado.' : 'Imagem enviada.');
-      renderFicha(el, ed.id);
-    };
-    el.querySelector('#tmArqBanner')?.addEventListener('change', (e) => enviar(e.target, 'banner'));
-    el.querySelector('#tmArqGaleria')?.addEventListener('change', (e) => enviar(e.target, 'galeria'));
+      toast('Imagem enviada.');
+      return redesenharFicha(el, ed.id);
+    });
     el.querySelectorAll('[data-remover-imagem]').forEach((b) =>
       b.addEventListener('click', async () => {
         await travado(b, async () => {
           const r = await escrever(`/imagens/${b.dataset.removerImagem}`, 'DELETE');
           if (!r.ok) return toast(r.erro, 'err');
           toast('Imagem removida.');
-          renderFicha(el, ed.id);
+          return redesenharFicha(el, ed.id);
         });
       }),
     );

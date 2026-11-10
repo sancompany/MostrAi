@@ -43,11 +43,11 @@ pelo Cloudflare Access, que cobre `/admin`. Toda escrita grava o histórico
 |---|---|
 | `GET /admin/trimundi/edicoes` | lista: `[{ id, evento: { id, nome, slug }, nome, slug, status, inicio_em, local_nome, endereco_publico }]` |
 | `GET /admin/trimundi/eventos` | eventos para "Evento já cadastrado" |
-| `POST /admin/trimundi/edicoes` | `{ evento: { id } \| { nome, slug }, edicao: { nome, slug, descricao, inicio_em, fim_em, local…, classificacao_etaria, capacidade, regulamento, termos_compra } }` → 201 com a ficha. A edição nasce em `rascunho` |
+| `POST /admin/trimundi/edicoes` | `{ evento: { id } \| { nome, slug? }, edicao: { nome, slug?, descricao, inicio_em, fim_em, local…, classificacao_etaria, capacidade, regulamento, termos_compra } }` → 201 com a ficha. A edição nasce em `rascunho`. Sem `slug` (ou vazio), o endereço sai do nome, com `-2`, `-3`... se já existir (RN-T01) |
 | `GET /admin/trimundi/edicoes/:id` | a ficha: campos, termos vigentes (versão, data) e imagens |
 | `PATCH /admin/trimundi/edicoes/:id` | altera campos. Texto de termos diferente do vigente vira versão nova (RN-T05). Endereço depois de publicado → 409 (RN-T02) |
 | `POST /admin/trimundi/edicoes/:id/status` | `{ status }`, com as transições de RN-T03 → 409 ou 422 |
-| `POST /admin/trimundi/edicoes/:id/imagens` | multipart: `arquivo` e `tipo` (`banner` ou `galeria`) → 201 (RN-T06) |
+| `POST /admin/trimundi/edicoes/:id/imagens` | multipart: `arquivo` e `tipo` (`banner`, `logo` ou `galeria`) → 201 (RN-T06). Banner e logo: um por edição, o novo substitui |
 | `DELETE /admin/trimundi/imagens/:id` | remove a imagem |
 
 ### Benefícios
