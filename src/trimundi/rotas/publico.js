@@ -54,6 +54,20 @@ router.get('/ticket/api/edicoes/:evento/:edicao', async (req, res) => {
 // primeiro link que valeu fica, também para o pedido. Devolve só nome e tipo
 // do indicador; código inválido, da própria conta ou de operador sem acesso
 // à edição é `null`, sem erro.
+// Visitas pelo link (só para os números de "Indique e acompanhe"): um
+// navegador conta uma vez por link. Teto por IP para ninguém inflar o número
+// com ids inventados — passado o teto, a página segue normal, só não conta.
+const visitasPorIp = new Map();
+function contaVisita(req) {
+  const ip = ipDo(req);
+  const agora = Date.now();
+  const atual = visitasPorIp.get(ip);
+  if (!atual || agora - atual.inicio > 3600000) visitasPorIp.set(ip, { inicio: agora, n: 1 });
+  else if (++atual.n > 60) return false;
+  if (visitasPorIp.size > 20000) visitasPorIp.clear();
+  return true;
+}
+
 router.post('/ticket/api/edicoes/:evento/:edicao/indicacao', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const cliente = await require('../clientes').daSessao(req);
@@ -67,6 +81,21 @@ router.post('/ticket/api/edicoes/:evento/:edicao/indicacao', async (req, res) =>
     clienteId: cliente?.id || null,
     edicaoId: ed.id,
     codigo: req.body?.codigo,
+    visitante: req.body?.visitante,
+    contarVisita: Boolean(req.body?.visitante) && contaVisita(req),
+  });
+  res.json({ indicacao });
+});
+
+// Link geral (/tic/eventos?ind=): quem indicou e a visita, sem edição.
+router.post('/ticket/api/indicacao/visita', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const cliente = await require('../clientes').daSessao(req);
+  const indicacao = await require('../indicacao').quemIndicou({
+    clienteId: cliente?.id || null,
+    codigo: req.body?.codigo,
+    visitante: req.body?.visitante,
+    contarVisita: Boolean(req.body?.visitante) && contaVisita(req),
   });
   res.json({ indicacao });
 });

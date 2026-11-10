@@ -1,6 +1,20 @@
 # Current Handoff
 
 ## Updated
+2026-11-10 (noite) — **TICK: telas públicas e documentos legais v1.2**, branch
+`claude/beautiful-faraday-cjq1nt-conta-legal` (sobre a de indicação, PR #142),
+PR em rascunho, nada em produção. Migration 011 (`aceites_conta`,
+`indicacao_visitas`); a 010 é do check-in offline (PR #143) — a ordem de
+merge é #142, #143, esta.
+- Não desfazer sem contexto: os textos de `docs/trimundi/legal/*.txt` são os
+  oficiais do dono e as páginas são conferidas palavra por palavra por
+  teste — não "corrigir" nada neles (nem os três pontos sem espaço); mudar
+  o texto pede `legal.VERSAO` nova e aceite de novo. `aceites_conta` não
+  muda nem se apaga. O aceite exige `versao_termos` igual à vigente.
+- Teste de navegador: dar a cada contexto um `x-forwarded-for` próprio
+  (`apoio.novoIp()`), senão o limitador de login (por IP, guardado no
+  banco) barra rodadas seguidas.
+
 2026-11-09 (noite) — **Trimundi, escopo simplificado pelo dono, em 6
 commits LOCAIS (sem push, sem PR atualizado, nada em produção)** na branch
 `claude/beautiful-faraday-cjq1nt`: esquema `trimundi` no banco da Mostraí

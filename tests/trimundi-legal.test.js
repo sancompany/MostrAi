@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const apoio = require('./trimundi-apoio');
+const { VERSAO: VERSAO_TERMOS } = require('../src/trimundi/legal');
 const { consultar } = require('../src/trimundi/db/conexao');
 const legal = require('../src/trimundi/legal');
 
@@ -27,6 +28,7 @@ test('cadastro exige maioridade e o aceite dos Termos e da Política; o aceite f
     senha: SENHA,
     senha_confirmacao: SENHA,
     aceite_termos: true,
+    versao_termos: VERSAO_TERMOS,
   });
   assert.equal(semIdade.status, 400);
   assert.equal(semIdade.json.codigo, 'maioridade');
@@ -50,7 +52,14 @@ test('cadastro exige maioridade e o aceite dos Termos e da Política; o aceite f
   const p = apoio.pessoa('D');
   const ok = await c.post(
     '/ticket/api/conta/cadastro',
-    { ...p, senha: SENHA, senha_confirmacao: SENHA, maioridade: true, aceite_termos: true },
+    {
+      ...p,
+      senha: SENHA,
+      senha_confirmacao: SENHA,
+      maioridade: true,
+      aceite_termos: true,
+      versao_termos: VERSAO_TERMOS,
+    },
     { 'user-agent': 'navegador-de-teste' },
   );
   assert.equal(ok.status, 201);
@@ -90,7 +99,11 @@ test('conta sem o aceite da versão atual não compra até aceitar de novo', asy
   assert.equal(recusado.status, 409);
   assert.equal(recusado.json.codigo, 'aceite_conta');
   assert.equal((await c.post('/ticket/api/conta/aceite', { maioridade: true })).status, 400);
-  assert.equal((await c.post('/ticket/api/conta/aceite', { maioridade: true, aceite_termos: true })).status, 200);
+  assert.equal(
+    (await c.post('/ticket/api/conta/aceite', { maioridade: true, aceite_termos: true, versao_termos: VERSAO_TERMOS }))
+      .status,
+    200,
+  );
   assert.equal((await c.get('/ticket/api/conta')).json.conta.aceite_pendente, false);
   assert.equal((await c.post('/ticket/api/pedidos', await corpo())).status, 201);
 });
@@ -152,7 +165,7 @@ test('Termos e Política: páginas próprias, com versão, contato e sem levar �
   assert.match(termos, /arrependimento/i);
   assert.match(termos, /art\. 49/);
   const politica = await (await fetch(`${srv.base}/ticket/privacidade`)).text();
-  assert.match(politica, /enquanto ela existir/);
+  assert.match(politica, /enquanto o usuário desejar realizar compras futuras/);
 });
 
 test('a portaria recebe a classificação para lembrar o documento com foto', async () => {

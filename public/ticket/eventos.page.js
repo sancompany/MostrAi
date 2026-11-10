@@ -2,7 +2,7 @@
 // nome, data e local, e a busca. Cada card leva à página de venda do evento
 // (/ticket/<evento>/<edição>), que é a de sempre.
 (() => {
-  const { el, api, dataHora } = window.trimundi;
+  const { el, api, dataHora, visitante, guardarIndicacaoGeral, indicacaoGeral } = window.trimundi;
   const lista = document.getElementById('lista');
   const form = document.getElementById('formBusca');
   const campo = document.getElementById('busca');
@@ -66,7 +66,34 @@
     carregar(q);
   });
 
+  // Link de indicação geral (/tic/eventos?ind=CÓDIGO): o código fica guardado
+  // para o evento que a pessoa abrir, a visita conta uma vez por navegador e
+  // a página diz quem indicou (só o nome).
+  async function indicacao() {
+    const ind = new URLSearchParams(window.location.search).get('ind');
+    if (ind) guardarIndicacaoGeral(ind);
+    const codigo = indicacaoGeral();
+    if (!codigo) return;
+    try {
+      const r = await api('/ticket/api/indicacao/visita', {
+        metodo: 'POST',
+        corpo: { codigo, visitante: visitante() },
+      });
+      if (r.indicacao) {
+        const aviso = el('p', {
+          class: 'mensagem indicado-por',
+          text:
+            r.indicacao.tipo === 'operador'
+              ? `Você chegou por indicação de ${r.indicacao.nome} — Operador oficial.`
+              : `Você chegou por indicação de ${r.indicacao.nome}.`,
+        });
+        form.after(aviso);
+      }
+    } catch {}
+  }
+
   const inicial = new URLSearchParams(window.location.search).get('q') || '';
   campo.value = inicial;
   carregar(inicial);
+  indicacao();
 })();

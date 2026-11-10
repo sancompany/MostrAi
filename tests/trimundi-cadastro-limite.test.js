@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const apoio = require('./trimundi-apoio');
+const { VERSAO: VERSAO_TERMOS } = require('../src/trimundi/legal');
 const { consultar } = require('../src/trimundi/db/conexao');
 const eventos = require('../src/trimundi/eventos');
 const catalogo = require('../src/trimundi/catalogo');
@@ -27,6 +28,7 @@ const cadastro = (c, p, extra = {}) =>
     senha_confirmacao: SENHA,
     maioridade: true,
     aceite_termos: true,
+    versao_termos: VERSAO_TERMOS,
     ...extra,
   });
 const contasDoCpf = async (cpf) =>

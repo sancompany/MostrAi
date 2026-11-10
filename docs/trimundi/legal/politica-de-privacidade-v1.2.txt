@@ -1,0 +1,58 @@
+Política de Privacidade
+Versão 1.2 · Atualizada e em vigor para o ecossistema SAN & CO.
+
+1. Controlador
+Bruno Henrique Sanches, CPF 552.085.198-01, sob o nome comercial SAN & CO., com sede em Matão-SP, é o controlador dos dados pessoais tratados na plataforma TICK. Canal oficial de atendimento ao titular: admin@sancocore.com.br.
+
+2. Menores de idade e Participantes Menores
+A criação de contas e a realização de compras na TICK são restritas exclusivamente a maiores de 18 anos.
+
+Participantes Menores: Quando um usuário maior de idade adquire ingressos para terceiros em eventos que autorizam expressamente a participação de menores (como faixas etárias de 16 a 18 anos incompletos em eventos específicos da SAN & CO.), o comprador adulto fornece e responsabiliza-se pelos dados do participante menor (nome, CPF e e-mail), declarando ser o responsável legal ou estar devidamente autorizado. Caso seja identificada uma conta de usuário titular pertencente a menor de idade, a conta será sumariamente encerrada.
+
+3. Que dados tratamos e para quê
+Conta: Nome, CPF, e-mail e senha (armazenada exclusivamente em formato criptografado hash, nunca em texto plano). Finalidade: identificar o usuário, habilitar compras e gerenciar ingressos. Base legal: execução de contrato.
+
+Aceite: Versão dos termos aceita, data, hora, endereço IP, navegador e declaração de maioridade. Finalidade: comprovação de consentimento e conformidade legal. Base legal: exercício regular de direitos.
+
+Pedido: Nome, CPF e e-mail do comprador, itens adquiridos, valores, declarações de idade e registros de aceite. Finalidade: faturamento, entrega, emissão fiscal e suporte a reembolsos ou contestações. Base legal: execução de contrato e obrigação legal.
+
+Participante: Nome, CPF e e-mail do portador de cada ingresso. Finalidade: validação de identidade na portaria do evento (a interface de portaria exibe apenas o nome e o status, sem expor o CPF; o QR Code não armazena dados pessoais em seu código). Base legal: execução de contrato.
+
+Entrada e Benefícios: Data, hora, operador responsável e registro de validação de acesso ou entrega de brindes. Finalidade: prevenção de fraudes e reutilização de ingressos. Base legal: execução de contrato.
+
+Indicação: Código de indicação e identificação de compras vinculadas. Finalidade: apuração de campanhas promocionais e entrega de recompensas. Base legal: execução de contrato.
+
+Segurança: Registros de tentativas de login (endereço IP e hash do e-mail) mantidos por 15 minutos. Finalidade: mitigação de ataques de força bruta. Base legal: legítimo interesse.Nota de cookies: Não utilizamos cookies de publicidade ou rastreamento de terceiros. O único cookie utilizado é o de sessão estritamente necessário para manter o usuário autenticado.
+
+4. Com quem compartilhamos os dados
+Os dados são compartilhados estritamente com os operadores de infraestrutura necessários para a operação da plataforma:
+
+San Checkout / Asaas (Brasil): Processamento de pagamentos (recebem nome, CPF e e-mail do pagador).
+
+Supabase (São Paulo - SP): Banco de dados relacional e armazenamento de arquivos.
+
+Northflank: Hospedagem da aplicação web.
+
+Cloudflare: Proteção contra ameaças, CDN e entrega de tráfego (podendo processar dados globalmente conforme infraestrutura de rede).
+
+Provedor de E-mail: Disparo transacional de confirmações de cadastro, recuperação de senha e entrega de ingressos.
+
+Organização do Evento: A portaria do evento recebe exclusivamente o nome do participante para o controle de acesso.A TICK não comercializa nem aluga dados pessoais sob nenhuma hipótese.
+
+5. Por quanto tempo mantemos os dados
+Conta: Mantida ativa enquanto o usuário desejar realizar compras futuras. Após o encerramento da conta, os dados de acesso são eliminados.
+
+Pedidos com pagamento: Armazenados por 5 (cinco) anos após a transação, em atendimento a exigências fiscais e prazos prescricionais de defesa jurídica, sendo anonimizados após o período.
+
+Dados de Participantes: Guardados pelo prazo de retenção operacional do evento e obrigações legais correlatas, sendo posteriormente anonimizados.
+
+Registros de Segurança (Tentativas de login): Eliminados automaticamente após 15 minutos.
+
+6. Seus direitos (LGPD)
+O titular pode solicitar a qualquer momento a confirmação da existência de tratamento, acesso, correção, portabilidade, anonimização ou eliminação de seus dados, bem como informações sobre o compartilhamento, enviando um e-mail para admin@sancocore.com.br. O prazo de resposta é de até 15 dias. Solicitações referentes a dados com obrigação legal de retenção (como histórico fiscal de pedidos de 5 anos) serão mantidas justificadamente. O titular também possui o direito de peticionar perante a Autoridade Nacional de Proteção de Dados (ANPD).
+
+7. Segurança da Informação
+A plataforma emprega criptografia em trânsito (HTTPS), hashes robustos para senhas, links de validação de uso único com expiração, isolamento de banco de dados acessível apenas pela aplicação, QR Codes assinados digitalmente sem exposição de dados sensíveis e limitação de tentativas de acesso. Em caso de incidente de segurança relevante que possa acarretar risco ou dano relevante, os titulares afetados e a ANPD serão notificados em conformidade com a LGPD.
+
+8. Atualizações da Política
+Modificações relevantes nesta Política geram uma nova versão, que exigirá novo aceite eletrônico do usuário antes de sua próxima transação na plataforma.

@@ -32,13 +32,13 @@
       }
     } catch {}
   })();
+  // O código deste evento; sem ele, o do link geral (/tic/eventos?ind=).
   function codigoDeIndicacao() {
     try {
       const g = JSON.parse(localStorage.getItem(INDICACAO) || 'null');
-      return g && g.ate > Date.now() ? g.c : null;
-    } catch {
-      return null;
-    }
+      if (g && g.ate > Date.now()) return g.c;
+    } catch {}
+    return window.trimundi.indicacaoGeral();
   }
 
   // Quem indicou: o servidor diz (nome e tipo, nada mais). Logado, ele
@@ -49,7 +49,7 @@
     try {
       const r = await api(`/ticket/api/edicoes/${encodeURIComponent(evento)}/${encodeURIComponent(edicao)}/indicacao`, {
         metodo: 'POST',
-        corpo: { codigo: codigoDeIndicacao() },
+        corpo: { codigo: codigoDeIndicacao(), visitante: window.trimundi.visitante() },
       });
       indicadoPor = r.indicacao || null;
     } catch {

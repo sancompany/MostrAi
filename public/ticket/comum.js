@@ -145,7 +145,101 @@
     }
   }
 
+  // Visitante (só para contar acessos únicos pelo link de indicação): um id
+  // aleatório deste navegador, sem nada da pessoa. O servidor guarda o hash.
+  function visitante() {
+    try {
+      let id = localStorage.getItem('tick:visitante');
+      if (!id || !/^[A-Za-z0-9_-]{16,64}$/.test(id)) {
+        id = (crypto.randomUUID?.() || `${Date.now()}${Math.random()}`).replace(/[^A-Za-z0-9]/g, '').slice(0, 40);
+        localStorage.setItem('tick:visitante', id);
+      }
+      return id;
+    } catch {
+      return null;
+    }
+  }
+
+  // Link de indicação geral (/tic/eventos?ind=CÓDIGO): guardado 30 dias e
+  // usado pela página do evento quando ela não tem um código próprio.
+  const INDICACAO_GERAL = 'trimundi:indicacao:geral';
+  function guardarIndicacaoGeral(codigo) {
+    try {
+      if (codigo && /^[A-Za-z2-9]{8}$/.test(codigo))
+        localStorage.setItem(
+          INDICACAO_GERAL,
+          JSON.stringify({ c: codigo.toUpperCase(), ate: Date.now() + 30 * 86400000 }),
+        );
+    } catch {}
+  }
+  function indicacaoGeral() {
+    try {
+      const g = JSON.parse(localStorage.getItem(INDICACAO_GERAL) || 'null');
+      return g && g.ate > Date.now() ? g.c : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Campo de senha com o botão de olho dentro, à direita: mostra e esconde o
+  // que foi digitado. É um botão de verdade (type="button": não envia o
+  // formulário), com nome para leitor de tela e aria-pressed. Começa oculto.
+  // Cada campo tem o seu — mostrar um não mexe no outro. A senha nunca sai
+  // daqui: só o `type` do campo muda.
+  const SVG = 'http://www.w3.org/2000/svg';
+  function icone(aberto) {
+    const svg = document.createElementNS(SVG, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', '20');
+    svg.setAttribute('height', '20');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    const caminho = (d) => {
+      const p = document.createElementNS(SVG, 'path');
+      p.setAttribute('d', d);
+      p.setAttribute('fill', 'none');
+      p.setAttribute('stroke', 'currentColor');
+      p.setAttribute('stroke-width', '1.8');
+      p.setAttribute('stroke-linecap', 'round');
+      p.setAttribute('stroke-linejoin', 'round');
+      svg.append(p);
+    };
+    caminho('M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z');
+    caminho('M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z');
+    if (!aberto) caminho('M4 4l16 16');
+    return svg;
+  }
+  function comOlho(input) {
+    const caixa = el('div', { class: 'campo-senha' });
+    const botao = el('button', {
+      type: 'button',
+      class: 'olho',
+      'aria-label': 'Mostrar senha',
+      'aria-pressed': 'false',
+      'aria-controls': input.id || null,
+    });
+    botao.append(icone(false));
+    botao.addEventListener('click', () => {
+      const mostrar = input.type === 'password';
+      input.type = mostrar ? 'text' : 'password';
+      botao.setAttribute('aria-pressed', String(mostrar));
+      botao.setAttribute('aria-label', mostrar ? 'Ocultar senha' : 'Mostrar senha');
+      botao.replaceChildren(icone(mostrar));
+      input.focus({ preventScroll: true });
+    });
+    // Mostrar a senha não deve ajudar corretor nem preenchimento a guardar
+    // o texto.
+    input.setAttribute('autocapitalize', 'off');
+    input.setAttribute('spellcheck', 'false');
+    caixa.append(input, botao);
+    return caixa;
+  }
+
   window.trimundi = {
+    visitante,
+    guardarIndicacaoGeral,
+    indicacaoGeral,
+    comOlho,
     el,
     moeda,
     dataHora,

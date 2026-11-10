@@ -21,7 +21,10 @@ const REDEFINIR_MIN = 60;
 const site = () => config.urlDoSite();
 
 // Aceite obrigatório: maioridade (a conta é só para maiores de 18) e os
-// Termos de Uso com a Política de Privacidade, na versão vigente.
+// Termos de Uso com a Política de Privacidade, na versão vigente. A tela
+// manda a versão que MOSTROU (`versao_termos`): se não for a vigente (a
+// versão mudou com a tela aberta), não vale — ninguém aceita um texto que não
+// lhe foi apresentado.
 function lerAceite(d) {
   if (d?.maioridade !== true) {
     throw erro(400, 'A conta é só para maiores de 18 anos — confirme que você tem 18 anos ou mais.', {
@@ -33,9 +36,33 @@ function lerAceite(d) {
       codigo: 'aceite_termos',
     });
   }
+  if (String(d?.versao_termos ?? '') !== legal.VERSAO) {
+    throw erro(
+      409,
+      'Os Termos de Uso e a Política de Privacidade foram atualizados. Leia a versão atual e aceite de novo.',
+      { codigo: 'versao_termos', versao: legal.VERSAO },
+    );
+  }
 }
 
 const textoCurto = (t, n) => (t ? String(t).slice(0, n) : null);
+
+// Cada aceite vira uma linha que não muda (aceites_conta): o aceite anterior
+// nunca é apagado nem sobrescrito.
+async function registrarAceite(cliente, clienteId, origem, contexto) {
+  await cliente.query(
+    `INSERT INTO aceites_conta (cliente_id, versao, documentos_hash, origem, maioridade_declarada, ip, user_agent)
+     VALUES ($1, $2, $3, $4, true, $5, $6)`,
+    [
+      clienteId,
+      legal.VERSAO,
+      legal.hashDocumentos(),
+      origem,
+      textoCurto(contexto.ip, 64),
+      textoCurto(contexto.userAgent, 300),
+    ],
+  );
+}
 
 // Uma conta TICK por CPF e por e-mail (pedido do dono, 10/11/2026). As
 // mensagens dizem qual dos dois já existe e mandam para o login. O banco
@@ -119,6 +146,7 @@ async function cadastrar(dados, contexto = {}) {
        VALUES ($1, $2, $3, $4, $5, now(), now(), $6, $7) RETURNING *`,
       [d.nome, d.cpf, d.email, hash, legal.VERSAO, textoCurto(contexto.ip, 64), textoCurto(contexto.userAgent, 300)],
     );
+    await registrarAceite(cliente, novo[0].id, 'cadastro', contexto);
     await enviarConfirmacao(cliente, novo[0]);
     await medir(cliente, 'conta:cadastro', null, {});
     return { email: d.email };
@@ -237,12 +265,17 @@ async function redefinirSenha(tk, senha) {
 // Aceite de novo (versão nova dos Termos, ou conta anterior ao aceite).
 async function aceitar(c, dados, contexto = {}) {
   lerAceite(dados);
-  await consultar(
-    `UPDATE clientes SET termos_versao = $2, termos_aceitos_em = now(), maioridade_declarada_em = now(),
-            aceite_ip = $3, aceite_user_agent = $4, atualizado_em = now()
-      WHERE id = $1`,
-    [c.id, legal.VERSAO, textoCurto(contexto.ip, 64), textoCurto(contexto.userAgent, 300)],
-  );
+  await emTransacao(async (cliente) => {
+    // A conta guarda o aceite vigente (o que a compra confere); o histórico,
+    // todos.
+    await cliente.query(
+      `UPDATE clientes SET termos_versao = $2, termos_aceitos_em = now(), maioridade_declarada_em = now(),
+              aceite_ip = $3, aceite_user_agent = $4, atualizado_em = now()
+        WHERE id = $1`,
+      [c.id, legal.VERSAO, textoCurto(contexto.ip, 64), textoCurto(contexto.userAgent, 300)],
+    );
+    await registrarAceite(cliente, c.id, 'reaceite', contexto);
+  });
   return { ok: true, versao: legal.VERSAO };
 }
 
@@ -268,12 +301,35 @@ async function daSessao(req) {
 
 const mascararCpf = (cpf) => (cpf ? `***.${cpf.slice(3, 6)}.***-${cpf.slice(9)}` : null);
 
-// "Minha conta": dados, ingressos pagos com QR e benefícios.
+// "Minha conta": dados, os pedidos — agrupados por edição, um cartão por
+// pedido (nunca dois eventos no mesmo cartão) — com os ingressos, o QR e os
+// benefícios, e a indicação. O QR só sai de ingresso válido de pedido pago e
+// ainda não usado (como sempre foi).
+const SITUACAO_PEDIDO = {
+  aguardando_pagamento: 'Aguardando pagamento',
+  pago: 'Confirmado',
+  expirado: 'Expirado',
+  cancelado: 'Cancelado',
+  estornado: 'Reembolsado',
+  pago_sem_vaga: 'Pago sem vaga — devolução em andamento',
+};
+
 async function painel(c) {
+  const { rows: pedidos } = await consultar(
+    `SELECT p.id, p.status, p.criado_em, p.pago_em, p.reserva_expira_em, p.total_centavos,
+            ed.id AS edicao_id, ev.nome AS evento, ed.nome AS edicao, ed.inicio_em, ed.local_nome, ed.cidade, ed.uf,
+            ev.slug AS evento_slug, ed.slug AS edicao_slug,
+            COALESCE((SELECT json_agg(json_build_object('descricao', pi.descricao, 'quantidade', pi.quantidade) ORDER BY pi.ordem)
+                        FROM pedido_itens pi WHERE pi.pedido_id = p.id), '[]') AS itens
+       FROM pedidos p JOIN edicoes ed ON ed.id = p.edicao_id JOIN eventos ev ON ev.id = ed.evento_id
+      WHERE p.cliente_id = $1 AND p.origem = 'venda'
+      ORDER BY ed.inicio_em NULLS LAST, ed.id, p.criado_em DESC`,
+    [c.id],
+  );
   const { rows } = await consultar(
     `SELECT i.id, i.codigo, i.codigo_curto, i.status, cat.nome AS categoria, pa.nome AS participante,
             ev.nome AS evento, ed.nome AS edicao, ed.inicio_em, ed.local_nome, ed.cidade, ed.uf, ed.codigo_publico,
-            ev.slug AS evento_slug, ed.slug AS edicao_slug, p.id AS pedido_id,
+            ev.slug AS evento_slug, ed.slug AS edicao_slug, p.id AS pedido_id, p.status AS pedido_status,
             (SELECT registrado_em FROM checkins ck WHERE ck.ingresso_id = i.id AND ck.escopo = 'entrada' AND ck.resultado = 'aceito') AS utilizado_em,
             COALESCE((SELECT json_agg(json_build_object('nome', ib.nome, 'resgatado_em', ib.resgatado_em) ORDER BY ib.nome)
                         FROM ingresso_beneficios ib WHERE ib.ingresso_id = i.id), '[]') AS beneficios
@@ -286,28 +342,90 @@ async function painel(c) {
       ORDER BY ed.inicio_em NULLS LAST, i.id`,
     [c.id],
   );
+  const localDe = (r) =>
+    [r.local_nome, r.cidade && `${r.cidade}${r.uf ? `/${r.uf}` : ''}`].filter(Boolean).join(' · ') || null;
   const ingressos = await Promise.all(
     rows.map(async (i) => ({
       codigo_curto: i.codigo_curto,
       evento: i.evento,
       edicao: i.edicao,
       inicio_em: i.inicio_em,
-      local: [i.local_nome, i.cidade && `${i.cidade}${i.uf ? `/${i.uf}` : ''}`].filter(Boolean).join(' · ') || null,
+      local: localDe(i),
       endereco_publico: `/ticket/${i.evento_slug}/${i.edicao_slug}`,
       pedido: i.pedido_id.slice(0, 8).toUpperCase(),
+      pedido_id: i.pedido_id,
       categoria: i.categoria,
       participante: i.participante,
       status: i.status,
       utilizado_em: i.utilizado_em,
       beneficios: i.beneficios,
-      qr: i.status === 'valido' && !i.utilizado_em ? await qrDataUrl(conteudoDoQr(i.codigo_publico, i.codigo)) : null,
+      qr:
+        i.status === 'valido' && !i.utilizado_em && i.pedido_status === 'pago'
+          ? await qrDataUrl(conteudoDoQr(i.codigo_publico, i.codigo))
+          : null,
     })),
   );
+  const porPedido = new Map();
+  for (const i of ingressos) {
+    if (!porPedido.has(i.pedido_id)) porPedido.set(i.pedido_id, []);
+    const { pedido_id, evento, edicao, inicio_em, local, endereco_publico, ...resto } = i;
+    porPedido.get(i.pedido_id).push(resto);
+  }
+  const edicoes = new Map();
+  for (const p of pedidos) {
+    if (!edicoes.has(p.edicao_id)) {
+      edicoes.set(p.edicao_id, {
+        evento: p.evento,
+        edicao: p.edicao,
+        inicio_em: p.inicio_em,
+        local: localDe(p),
+        endereco_publico: `/ticket/${p.evento_slug}/${p.edicao_slug}`,
+        pedidos: [],
+      });
+    }
+    const vivo = p.status === 'aguardando_pagamento' && new Date(p.reserva_expira_em) > new Date();
+    edicoes.get(p.edicao_id).pedidos.push({
+      id: p.id,
+      codigo: p.id.slice(0, 8).toUpperCase(),
+      status: vivo || p.status !== 'aguardando_pagamento' ? p.status : 'expirado',
+      situacao: SITUACAO_PEDIDO[vivo || p.status !== 'aguardando_pagamento' ? p.status : 'expirado'],
+      criado_em: p.criado_em,
+      pago_em: p.pago_em,
+      reserva_expira_em: vivo ? p.reserva_expira_em : null,
+      total_centavos: p.total_centavos,
+      itens: p.itens,
+      ingressos: porPedido.get(p.id) || [],
+    });
+  }
+  const indicacao = await require('./indicacao').andamentoDoCliente(c.id);
+  if (indicacao) {
+    const { rows: ind } = await consultar('SELECT id FROM indicadores WHERE cliente_id = $1', [c.id]);
+    indicacao.numeros = await require('./desempenho').numerosDoIndicador(ind[0].id);
+  }
   return {
     conta: { nome: c.nome, email: c.email, cpf: mascararCpf(c.cpf), aceite_pendente: !aceiteEmDia(c) },
+    termos_versao: legal.VERSAO,
+    edicoes: [...edicoes.values()],
     ingressos,
-    indicacao: await require('./indicacao').andamentoDoCliente(c.id),
+    indicacao,
   };
+}
+
+// "Continuar pagamento" de um pedido da própria conta ainda aguardando: um
+// acesso novo ao pedido (o mesmo link que a compra gera). Pedido de outra
+// conta, pago, expirado ou cancelado: não.
+async function linkDoMeuPedido(c, pedidoId) {
+  const id = v.uuid(pedidoId);
+  if (!id) throw erro(404, 'pedido não encontrado');
+  return emTransacao(async (cliente) => {
+    const { rows } = await cliente.query(
+      "SELECT id FROM pedidos WHERE id = $1 AND cliente_id = $2 AND status = 'aguardando_pagamento' AND reserva_expira_em > now()",
+      [id, c.id],
+    );
+    if (!rows[0]) throw erro(404, 'Este pedido não está aguardando pagamento.');
+    const tk = await require('./pedidos').novoAcesso(cliente, id, 'compra');
+    return { url: `/ticket/pedido/${id}?t=${encodeURIComponent(tk)}` };
+  });
 }
 
 module.exports = {
@@ -321,5 +439,6 @@ module.exports = {
   aceitar,
   aceiteEmDia,
   painel,
+  linkDoMeuPedido,
   mascararCpf,
 };

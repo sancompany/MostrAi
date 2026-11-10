@@ -60,6 +60,20 @@ reabrir é desmarcar com o motivo. Estado de cada funcionalidade:
   física), o valor das vendas cai na conta do operador do Checkout e o
   repasse ao organizador é manual (API.md do Checkout, §2.0 e §8).
 
+## Só o dono decide — documentos legais v1.2 (10/11/2026)
+
+- [ ] Os textos oficiais foram publicados **exatamente** como entregues,
+  inclusive três trechos em que a quebra de linha sumiu na colagem
+  ("concorrência de tempo.Não há", "legítimo interesse.Nota de cookies",
+  "controle de acesso.A TICK"). Corrigir é mudar o texto: só com um texto
+  novo do dono (e uma versão nova, que pede aceite de novo).
+- [ ] Os Termos publicam o CPF do operador da plataforma. Confirmar que é
+  intencional.
+- [ ] Revisão por advogado das afirmações da Política (retenção, bases
+  legais, cookies) frente ao que o sistema faz (`inventario-de-dados.md`).
+- [ ] Prazo de guarda do histórico de aceites (`aceites_conta`) e do IP e
+  navegador do aceite depois que a conta é apagada — hoje ficam.
+
 ## Só o dono faz — pode esperar
 
 - [ ] Criar a TREEMUNDO / EDITION01 pelo Admin (ingressos, lotes,
