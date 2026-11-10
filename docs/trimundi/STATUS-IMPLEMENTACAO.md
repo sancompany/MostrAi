@@ -30,6 +30,7 @@ Storage, celular): isso é a homologação de `pendencias.md`.
 | Um pedido aguardando pagamento por conta e edição (sem reter estoque) | feito | `pedidos.js` | `trimundi-conta` |
 | Página de erro e 404 próprias em `/ticket` | feito | `index.js`, `paginas/erro.html` | `trimundi-identidade` |
 | Nome público TICK, home `/tic/eventos` com busca, "Eventos" no menu público da Mostraí, cookie próprio da conta TICK | feito | `vitrine.js`, `paginas/eventos.html`, `eventos.page.js`, `src/lib/sessao.js`, `public/layout.js` | `trimundi-tick` |
+| Uma conta por CPF e por e-mail (mensagens próprias, confirmação de senha, corrida barrada no banco); limite de ingressos por CPF **na edição** (`edicoes.limite_por_cpf`, migration 007); pedido aberto por CPF e edição; aviso "Benefício disponível enquanto durar o estoque." | feito | `clientes.js`, `pedidos.js`, `disponibilidade.js`, `eventos.js`, `publico.js`, ficha do Admin | `trimundi-cadastro-limite` |
 | Termos de Uso e Política de Privacidade (v1.0) com aceite obrigatório, conta só para maiores, declaração de idade no pedido, lembrete na portaria | feito | `legal.js`, `paginas/termos.html`, `paginas/privacidade.html`, `clientes.js`, `pedidos.js` | `trimundi-legal` |
 | E-mail real, Storage real, Checkout real, celular real | **depende de fora** | — | dublês nos testes |
 

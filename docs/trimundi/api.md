@@ -148,7 +148,7 @@ scripts das páginas ficam em `public/ticket/`.
 | `GET /ticket/:evento/:edicao` | página T9 (404 em rascunho), com título e imagem para compartilhamento |
 | `GET /ticket/api/edicoes/:evento/:edicao` | vitrine: dados, textos vigentes, tipos (preço e lote do vigente, próximo lote, `disponibilidade` — "Disponível" ou "Últimas N" —, `beneficio_do_lote` com o que resta, quantidade máxima) e combos |
 | `POST /ticket/api/cotacao` | `{ evento, edicao, itens }` → itens com preço por lote, total, vagas (uma por ingresso) e os ids dos termos vigentes. Não reserva |
-| `POST /ticket/api/pedidos` | **exige conta logada e confirmada** (401 `conta`). `{ evento, edicao, itens, participantes[] (ou `{ conta: true }` = "é meu"), aceite: { aceito, termos[] }, chave, indicacao? }` → 201 `{ pedido_id, token, url, pagamento, reserva_expira_em }`; o comprador vem da conta, nunca do corpo; a mesma chave, da mesma conta → 200 com o mesmo pedido (de outra conta → 409). 409 `esgotado`, `limite`, `termos` ou `pedido_pendente` (a conta já tem um pedido aguardando pagamento na edição; volta `url` desse pedido) |
+| `POST /ticket/api/pedidos` | **exige conta logada e confirmada** (401 `conta`). `{ evento, edicao, itens, participantes[] (ou `{ conta: true }` = "é meu"), aceite: { aceito, termos[] }, chave, indicacao? }` → 201 `{ pedido_id, token, url, pagamento, reserva_expira_em }`; o comprador vem da conta, nunca do corpo; a mesma chave, da mesma conta → 200 com o mesmo pedido (de outra conta → 409). 409 `esgotado`, `limite` (por tipo), `limite_cpf` (limite da edição por CPF, com `disponivel`), `termos` ou `pedido_pendente` (o CPF já tem um pedido aguardando pagamento na edição; volta `url` desse pedido) |
 | `GET /ticket/api/pedidos/:id` | com `X-Pedido-Token` (ou `?t=`): pedido, pagamento e ingressos com QR; 404 sem token válido |
 | `GET /ticket/pedido/:id` | página T10 |
 | `POST /ticket/api/recuperar` | `{ email, cpf }` → resposta sempre igual; o link vai para o e-mail do comprador |
@@ -171,7 +171,7 @@ A conta TICK usa o cookie `tick.sid` (path `/ticket`), separado do
 | Método e rota | O que faz |
 |---|---|
 | `GET /ticket/conta`, `/ticket/conta/confirmar`, `/esqueci`, `/redefinir` | uma página: entrar, criar conta, confirmar e-mail, recuperar senha e "minha conta" |
-| `POST /ticket/api/conta/cadastro` | `{ nome, cpf, email, senha, maioridade: true, aceite_termos: true }` (sem os dois aceites → 400) → 201 com a mesma mensagem exista ou não conta com o e-mail (a existente não muda e o dono dela é avisado); 409 `cpf_em_uso` se o CPF é de outra conta |
+| `POST /ticket/api/conta/cadastro` | `{ nome, cpf, email, senha, senha_confirmacao, maioridade: true, aceite_termos: true }` (sem os aceites ou com a confirmação diferente → 400). Uma conta por CPF e por e-mail: 409 `email_em_uso` ("Este e-mail já possui uma conta. Entre na sua conta.") ou `cpf_em_uso` ("Este CPF já possui uma conta vinculada. Entre na sua conta."), com `entrar: '/ticket/conta'`; garantido no banco (índices únicos) e serializado por CPF e e-mail → 201 com a mesma mensagem exista ou não conta com o e-mail (a existente não muda e o dono dela é avisado); 409 `cpf_em_uso` se o CPF é de outra conta |
 | `POST /ticket/api/conta/confirmar` | `{ token }` (vem no fragmento `#t=` do link) → abre sessão; uso único, 48 h |
 | `POST /ticket/api/conta/reenviar` | `{ email }` → resposta sempre igual |
 | `POST /ticket/api/conta/entrar` | `{ email, senha }` → sessão nova; 401 igual com ou sem conta; 403 `nao_confirmado` |

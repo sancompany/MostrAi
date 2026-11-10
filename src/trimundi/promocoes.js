@@ -58,7 +58,7 @@ async function listarPromocoes(edicaoId, cliente = null) {
   const { rows: promos } = await q('SELECT * FROM promocoes WHERE edicao_id = $1 ORDER BY criado_em, id', [edicaoId]);
   if (!promos.length) return [];
   const { rows: itens } = await q(
-    `SELECT pi.*, c.nome AS categoria_nome, b.nome AS beneficio_nome
+    `SELECT pi.*, c.nome AS categoria_nome, b.nome AS beneficio_nome, (b.quantidade IS NOT NULL) AS beneficio_limitado
        FROM promocao_itens pi JOIN categorias c ON c.id = pi.categoria_id
        LEFT JOIN beneficios b ON b.id = pi.beneficio_id
       WHERE pi.promocao_id = ANY($1::bigint[]) ORDER BY pi.promocao_id, pi.ordem`,
@@ -99,6 +99,7 @@ async function listarPromocoes(edicaoId, cliente = null) {
         quantidade: i.quantidade,
         beneficio_id: i.beneficio_id,
         beneficio_nome: i.beneficio_nome,
+        beneficio_limitado: Boolean(i.beneficio_limitado),
       })),
       situacao: situacaoDoCombo(p, meus, usados, alocador),
     };

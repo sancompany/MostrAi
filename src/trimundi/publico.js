@@ -66,7 +66,10 @@ async function edicaoPublica(evento, edicao) {
     venda_aberta: vendaAberta,
     mensagem: vendaAberta ? null : ed.status === 'pausado' ? 'Vendas pausadas no momento.' : 'Vendas encerradas.',
     textos,
-    max_ingressos_por_pedido: MAX_INGRESSOS,
+    // O carrinho respeita também o limite por CPF da edição (o servidor
+    // confere de novo, somando o que o CPF já tem).
+    max_ingressos_por_pedido: Math.min(MAX_INGRESSOS, ed.limite_por_cpf || MAX_INGRESSOS),
+    limite_por_cpf: ed.limite_por_cpf || null,
     tipos: tipos.map((t) => {
       const situacao = vendaAberta ? situacaoDoTipo(t) : 'indisponivel';
       const vigente = t.lotes.find((l) => l.situacao === 'a_venda');
@@ -77,6 +80,9 @@ async function edicaoPublica(evento, edicao) {
         nome: t.nome,
         descricao: t.descricao,
         beneficios: t.beneficios.map((b) => b.nome),
+        // Algum benefício do tipo tem quantidade: a página avisa que é
+        // "enquanto durar o estoque" (a unidade só é separada no pagamento).
+        beneficios_limitados: t.beneficios.some((b) => b.limitado),
         situacao,
         situacao_rotulo: SITUACAO_TIPO[situacao],
         preco_centavos: vigente?.preco_centavos ?? null,
@@ -85,7 +91,11 @@ async function edicaoPublica(evento, edicao) {
         // Benefício do lote vigente, enquanto houver (ex.: copão personalizado).
         beneficio_do_lote:
           brinde?.ativo && (brinde.restam === null || brinde.restam > 0)
-            ? { nome: brinde.nome, restam: brinde.restam !== null && brinde.restam <= 50 ? brinde.restam : null }
+            ? {
+                nome: brinde.nome,
+                restam: brinde.restam !== null && brinde.restam <= 50 ? brinde.restam : null,
+                limitado: brinde.quantidade !== null && brinde.quantidade !== undefined,
+              }
             : null,
         // Disponibilidade sem expor o estoque inteiro: "últimas N" perto do fim.
         disponibilidade:
@@ -116,6 +126,7 @@ async function edicaoPublica(evento, edicao) {
           categoria: i.categoria_nome,
           quantidade: i.quantidade,
           beneficio: i.beneficio_nome,
+          beneficio_limitado: Boolean(i.beneficio_nome && i.beneficio_limitado),
         })),
         ingressos_por_combo: p.ingressos_por_combo,
         situacao: vendaAberta ? p.situacao : 'indisponivel',

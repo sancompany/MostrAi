@@ -49,7 +49,7 @@ test('lote com benefício: o ingresso nasce com ele enquanto houver; a página m
   const { pronta, copao } = await edicaoComCopao(2);
   const vitrine = async () =>
     (await apoio.cliente(srv).get(`/ticket/api/edicoes/${pronta.slugEvento}/${pronta.slugEdicao}`)).json.tipos[0];
-  assert.deepEqual((await vitrine()).beneficio_do_lote, { nome: 'Copão personalizado', restam: 2 });
+  assert.deepEqual((await vitrine()).beneficio_do_lote, { nome: 'Copão personalizado', restam: 2, limitado: true });
 
   const a = await comprarUm(pronta);
   const b = await comprarUm(pronta);

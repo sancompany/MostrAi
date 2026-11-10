@@ -12,6 +12,7 @@ const {
   criarAlocador,
   combosVendidos,
   compradosPorCpf,
+  ingressosDoCpfNaEdicao,
   ocupacaoDaEdicao,
   situacaoDoCombo,
 } = require('./disponibilidade');
@@ -311,13 +312,15 @@ async function criar(corpo, contexto = {}) {
         codigo: 'idade',
       });
     }
-    // Um pedido aguardando pagamento por conta e edição: ninguém segura o
-    // estoque abrindo vários pedidos. O que está aberto volta com o link.
+    // Um pedido aguardando pagamento por CPF e edição (o CPF é de uma conta
+    // só): ninguém segura o estoque abrindo vários pedidos. O que está aberto
+    // volta com o link.
     if (origem === 'venda') {
       const { rows: aberto } = await cliente.query(
-        `SELECT id FROM pedidos WHERE edicao_id = $1 AND cliente_id = $2 AND status = 'aguardando_pagamento'
-            AND reserva_expira_em > now() LIMIT 1`,
-        [ed.id, contexto.cliente.id],
+        `SELECT p.id FROM pedidos p JOIN compradores c ON c.id = p.comprador_id
+          WHERE p.edicao_id = $1 AND c.cpf = $2 AND p.status = 'aguardando_pagamento'
+            AND p.reserva_expira_em > now() LIMIT 1`,
+        [ed.id, comprador.cpf],
       );
       if (aberto[0]) return { pedidoPendente: aberto[0].id };
     }
@@ -351,6 +354,22 @@ async function criar(corpo, contexto = {}) {
         if ((ja.get(id) || 0) + q > cat.limite_por_comprador) {
           throw erro(409, `O limite é de ${cat.limite_por_comprador} ${cat.nome} por comprador.`, { codigo: 'limite' });
         }
+      }
+    }
+    // Limite de ingressos por CPF nesta edição (todos os tipos e combos). A
+    // trava da edição, segura desde o começo da transação, serializa compras
+    // simultâneas: duas nunca passam juntas do limite.
+    if (ed.limite_por_cpf) {
+      const ja = await ingressosDoCpfNaEdicao(cliente, ed.id, comprador.cpf);
+      if (ja + m.vagas.length > ed.limite_por_cpf) {
+        const resta = Math.max(0, ed.limite_por_cpf - ja);
+        throw erro(
+          409,
+          resta
+            ? `Este evento permite até ${ed.limite_por_cpf} ingressos por CPF. Você ainda pode comprar ${resta}.`
+            : `Este evento permite até ${ed.limite_por_cpf} ingressos por CPF, e você já atingiu o limite.`,
+          { codigo: 'limite_cpf', limite: ed.limite_por_cpf, disponivel: resta },
+        );
       }
     }
     if (ed.capacidade && (await ocupacaoDaEdicao(cliente, ed.id)) + m.vagas.length > ed.capacidade) {
