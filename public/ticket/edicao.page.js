@@ -41,6 +41,32 @@
     }
   }
 
+  // Quem indicou: o servidor diz (nome e tipo, nada mais). Logado, ele
+  // também registra a origem desta conta nesta edição — o primeiro link que
+  // valeu fica, inclusive para o pedido, mesmo vindo de outro aparelho depois.
+  let indicadoPor = null;
+  async function descobrirIndicacao() {
+    try {
+      const r = await api(`/ticket/api/edicoes/${encodeURIComponent(evento)}/${encodeURIComponent(edicao)}/indicacao`, {
+        metodo: 'POST',
+        corpo: { codigo: codigoDeIndicacao() },
+      });
+      indicadoPor = r.indicacao || null;
+    } catch {
+      indicadoPor = null; // nunca atrapalha a compra
+    }
+  }
+  const avisoDeIndicacao = () =>
+    indicadoPor
+      ? el('p', {
+          class: 'mensagem indicado-por',
+          text:
+            indicadoPor.tipo === 'operador'
+              ? `Você chegou por indicação de ${indicadoPor.nome} — Operador oficial.`
+              : `Você chegou por indicação de ${indicadoPor.nome}.`,
+        })
+      : null;
+
   async function carregar() {
     try {
       dados = await api(`/ticket/api/edicoes/${encodeURIComponent(evento)}/${encodeURIComponent(edicao)}`);
@@ -57,6 +83,7 @@
       return;
     }
     document.title = `${dados.evento.nome} — ${dados.edicao.nome} · TICK`;
+    await descobrirIndicacao();
     try {
       const guardado = JSON.parse(sessionStorage.getItem(CARRINHO) || 'null');
       sessionStorage.removeItem(CARRINHO);
@@ -286,7 +313,7 @@
   }
 
   function mostrarEscolha({ foco = null, aviso = null } = {}) {
-    const blocos = [cabecalho(), pedidoEmAndamento()];
+    const blocos = [cabecalho(), avisoDeIndicacao(), pedidoEmAndamento()];
     if (aviso) blocos.push(el('p', { class: 'mensagem erro', role: 'alert', text: aviso }));
     if (!dados.venda_aberta)
       blocos.push(el('p', { class: 'mensagem alerta', text: dados.mensagem || 'Vendas fechadas.' }));

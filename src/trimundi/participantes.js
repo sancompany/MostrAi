@@ -61,7 +61,7 @@ async function listar(edicaoId, { filtro = 'todos', busca = '', categoria = null
     consultar(
       `SELECT i.id, i.codigo_curto, i.origem, i.status, i.motivo_status, i.valor_centavos, i.emitido_em,
               pa.nome, pa.cpf, pa.email, c.nome AS categoria, pr.nome AS promocao,
-              p.id AS pedido_id, p.status AS pedido_status, p.origem AS pedido_origem, co.classificacao,
+              p.id AS pedido_id, p.status AS pedido_status, p.origem AS pedido_origem, p.cliente_id, co.classificacao,
               ck.registrado_em AS checkin_em, op.nome AS checkin_operador,
               COALESCE((SELECT json_agg(ib.nome ORDER BY ib.nome) FROM ingresso_beneficios ib WHERE ib.ingresso_id = i.id), '[]') AS beneficios
          ${base}
@@ -85,6 +85,8 @@ async function listar(edicaoId, { filtro = 'todos', busca = '', categoria = null
         : null,
       origem: r.origem,
       teste: r.pedido_origem === 'teste',
+      // Conta compradora do pedido (abre a ficha do comprador no Admin).
+      cliente_id: r.pedido_origem === 'venda' ? r.cliente_id : null,
       classificacao: r.classificacao,
       pagamento:
         r.origem === 'cortesia'
@@ -301,4 +303,14 @@ async function pedidoNoAdmin(pedidoId) {
   return { ...rows[0], codigo: id.slice(0, 8).toUpperCase(), itens, ingressos, reembolsos };
 }
 
-module.exports = { listar, resumo, avisos, resolverAviso, qrDoIngresso, linkDoPedido, pedidoNoAdmin, FILTROS };
+module.exports = {
+  listar,
+  resumo,
+  avisos,
+  resolverAviso,
+  qrDoIngresso,
+  linkDoPedido,
+  pedidoNoAdmin,
+  FILTROS,
+  mascararCpf,
+};

@@ -12,6 +12,7 @@ const participantes = require('../participantes');
 const operadores = require('../operadores');
 const reembolsos = require('../reembolsos');
 const indicacao = require('../indicacao');
+const desempenho = require('../desempenho');
 
 // Admin da Trimundi — `/admin/trimundi/*` (api.md). O server.js já exige a
 // sessão do Admin em todo /admin, e o Cloudflare Access fica na frente; a
@@ -158,6 +159,23 @@ router.post('/admin/trimundi/edicoes/:id/campanhas', async (req, res) =>
 router.patch('/admin/trimundi/campanhas/:id', async (req, res) =>
   res.json(await indicacao.atualizarCampanha(id(req), req.body, autorDaRequisicao(req))),
 );
+// Desempenho das indicações: ranking da edição (e CSV para premiações) e a
+// ficha do comprador. CPF inteiro só pelo POST próprio, auditado.
+router.get('/admin/trimundi/edicoes/:id/ranking', async (req, res) => res.json(await desempenho.ranking(id(req))));
+router.get('/admin/trimundi/edicoes/:id/ranking.csv', async (req, res) => {
+  const csv = await desempenho.rankingCsv(id(req));
+  res.set('Cache-Control', 'no-store');
+  res.set('Content-Disposition', `attachment; filename="ranking-indicacoes-edicao-${id(req)}.csv"`);
+  res.type('text/csv; charset=utf-8').send(csv);
+});
+router.get('/admin/trimundi/edicoes/:id/compradores/:cliente', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await desempenho.fichaDoComprador(id(req), id(req, 'cliente')));
+});
+router.post('/admin/trimundi/clientes/:id/cpf', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await desempenho.cpfCompleto(id(req), autor(req)));
+});
 router.get('/admin/trimundi/campanhas/:id/indicadores', async (req, res) =>
   res.json(await indicacao.indicadoresDaCampanha(id(req))),
 );
@@ -165,7 +183,20 @@ router.post('/admin/trimundi/recompensas/:id/entregar', async (req, res) =>
   res.json(await indicacao.entregarRecompensa(id(req), autorDaRequisicao(req))),
 );
 
-router.get('/admin/trimundi/operadores', async (_req, res) => res.json(await operadores.listar()));
+// Lista com o link e os números de cada operador (só conversões confirmadas).
+router.get('/admin/trimundi/operadores', async (_req, res) => {
+  const [lista, numeros] = await Promise.all([operadores.listar(), desempenho.numerosDosOperadores()]);
+  const zero = { pessoas: 0, compras: 0, ingressos: 0 };
+  const saida = [];
+  for (const o of lista) {
+    const { codigo, links } = await indicacao.linksDoOperador(o.id);
+    saida.push({ ...o, indicacao: { codigo, links, ...(numeros.get(Number(o.id)) || zero) } });
+  }
+  res.json(saida);
+});
+router.get('/admin/trimundi/operadores/:id/desempenho', async (req, res) =>
+  res.json(await desempenho.fichaDoOperador(id(req))),
+);
 router.post('/admin/trimundi/operadores', async (req, res) =>
   res.status(201).json(await operadores.criar(req.body, autor(req))),
 );

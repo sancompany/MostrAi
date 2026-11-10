@@ -6,7 +6,7 @@ const { medir } = require('./lib/registro');
 const { conteudoDoQr, qrDataUrl } = require('./lib/qr');
 const config = require('./config');
 const { travarEdicao } = require('./eventos');
-const { indicadorDoCodigo } = require('./indicacao');
+const { origemDaConta } = require('./indicacao');
 const {
   carregarLotes,
   criarAlocador,
@@ -393,8 +393,18 @@ async function criar(corpo, contexto = {}) {
         m.total,
         RESERVA_MINUTOS,
         chave,
-        // Quem indicou (link ?ind=): código inválido ou da própria pessoa não conta.
-        origem === 'venda' ? await indicadorDoCodigo(cliente, corpo?.indicacao, contexto.cliente.id) : null,
+        // Quem indicou: a origem desta conta nesta edição (o primeiro link que
+        // valeu fica; outro link depois não troca). Código inválido ou da
+        // própria pessoa não conta e nunca impede a compra.
+        origem === 'venda'
+          ? ((
+              await origemDaConta(cliente, {
+                clienteId: contexto.cliente.id,
+                edicaoId: ed.id,
+                codigo: corpo?.indicacao,
+              })
+            )?.id ?? null)
+          : null,
         Boolean(exigeIdade && corpo?.aceite?.idade === true),
       ],
     );

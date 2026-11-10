@@ -338,6 +338,26 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
 - **RN-T30 LGPD.**
   - CPF nunca vai para log; e-mail só mascarado (`ad***@…`).
   - Anonimização nos prazos de D2 (`inventario-de-dados.md`).
+- **RN-T32 Indicação de compradores e operadores** (10/11/2026).
+  - Link permanente: todo comprador (na conta) e todo operador ativo (na
+    tela de check-in, só nas edições autorizadas) têm um código fixo; o link
+    é a página de venda de cada edição com `?ind=CÓDIGO`, sem dado pessoal.
+  - Registro da indicação (`indicacao_origens`): a primeira indicação válida
+    de uma conta numa edição fica. Outro link depois — outra aba, outro
+    aparelho, pedido novo — não troca a origem. Antes do login, o código fica
+    guardado no navegador (30 dias); ao entrar, o servidor registra.
+  - Atribuição: um indicador por pedido (`pedidos.indicador_id`), fixo.
+    Autorreferência (mesma conta ou mesmo CPF), operador desativado ou sem
+    acesso à edição, conta apagada: a compra segue sem indicador.
+  - Conversão confirmada: pedido pago com ingresso de pé. Pendente,
+    expirado, cancelado, reembolsado ou contestado não conta; reembolso de
+    um ingresso tira só aquele ingresso.
+  - Pessoa indicada = conta compradora; ingressos vendidos por indicação =
+    os ingressos de pé desses pedidos (4 ingressos = 1 pessoa, 4 ingressos).
+  - Promoção (campanha) e benefício (recompensa) ficam separados da
+    conversão: nada é concedido sem campanha ativa.
+  - CPF mascarado em toda lista e ficha; o inteiro só pelo botão do Admin,
+    auditado. Ranking e CSV: nome, categoria e números.
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.

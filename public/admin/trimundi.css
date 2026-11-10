@@ -554,3 +554,60 @@
     flex: 1 1 auto;
   }
 }
+
+/* ------------------------------------------------------------------
+   Indicações: ficha do comprador e do operador, totais e ranking.
+   ------------------------------------------------------------------ */
+.tm-ficha-dados {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px 20px;
+  margin-bottom: 16px;
+}
+
+.tm-ficha-dados > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tm-ficha-bloco {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.tm-ficha-bloco h4 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}
+
+.tm-totais {
+  margin: 8px 0 12px;
+}
+
+.tm-link-linha {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.tm-link-linha code,
+.tm-lista code {
+  overflow-wrap: anywhere;
+}
+
+.tm-ranking .secao-acoes {
+  flex-wrap: wrap;
+}
+
+.tm-ranking tr[hidden] {
+  display: none;
+}
+
+.tm-ficha-dados .btn-linha {
+  justify-self: start;
+  padding: 0;
+}
