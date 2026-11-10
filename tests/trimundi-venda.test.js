@@ -34,7 +34,7 @@ async function corpoDoPedido(pronta, itens, extra = {}) {
       itens,
       comprador: extra.comprador || apoio.pessoa('Comprador'),
       participantes: extra.participantes || cot.vagas.map(() => apoio.pessoa('Participante')),
-      aceite: { aceito: true, termos: cot.termos.map((t) => t.id) },
+      aceite: { aceito: true, termos: cot.termos.map((t) => t.id), idade: true },
       chave: extra.chave || apoio.chave(),
     },
   };

@@ -7,6 +7,7 @@ const { conteudoDoQr, qrDataUrl } = require('./lib/qr');
 const { gerarHash, conferirHash, conferirSenha } = require('../lib/senha');
 const config = require('./config');
 const email = require('./email');
+const legal = require('./legal');
 
 // Conta do cliente da Trimundi (pedido do dono, 09/11/2026): cadastro com
 // nome, CPF, e-mail e senha; o e-mail é confirmado por link antes da
@@ -19,7 +20,25 @@ const REDEFINIR_MIN = 60;
 
 const site = () => config.urlDoSite();
 
+// Aceite obrigatório: maioridade (a conta é só para maiores de 18) e os
+// Termos de Uso com a Política de Privacidade, na versão vigente.
+function lerAceite(d) {
+  if (d?.maioridade !== true) {
+    throw erro(400, 'A conta é só para maiores de 18 anos — confirme que você tem 18 anos ou mais.', {
+      codigo: 'maioridade',
+    });
+  }
+  if (d?.aceite_termos !== true) {
+    throw erro(400, 'Para criar a conta, aceite os Termos de Uso e a Política de Privacidade.', {
+      codigo: 'aceite_termos',
+    });
+  }
+}
+
+const textoCurto = (t, n) => (t ? String(t).slice(0, n) : null);
+
 function lerCadastro(d) {
+  lerAceite(d);
   const senha = String(d?.senha ?? '');
   const regra = conferirSenha(senha);
   if (regra) throw erro(400, regra);
@@ -64,7 +83,7 @@ async function enviarConfirmacao(cliente, c) {
   });
 }
 
-async function cadastrar(dados) {
+async function cadastrar(dados, contexto = {}) {
   const d = lerCadastro(dados);
   const hash = await gerarHash(d.senha);
   return emTransacao(async (cliente) => {
@@ -98,8 +117,10 @@ async function cadastrar(dados) {
       return { email: d.email };
     }
     const { rows: novo } = await cliente.query(
-      'INSERT INTO clientes (nome, cpf, email, senha_hash) VALUES ($1, $2, $3, $4) RETURNING *',
-      [d.nome, d.cpf, d.email, hash],
+      `INSERT INTO clientes (nome, cpf, email, senha_hash, termos_versao, termos_aceitos_em, maioridade_declarada_em,
+          aceite_ip, aceite_user_agent)
+       VALUES ($1, $2, $3, $4, $5, now(), now(), $6, $7) RETURNING *`,
+      [d.nome, d.cpf, d.email, hash, legal.VERSAO, textoCurto(contexto.ip, 64), textoCurto(contexto.userAgent, 300)],
     );
     await enviarConfirmacao(cliente, novo[0]);
     await medir(cliente, 'conta:cadastro', null, {});
@@ -210,12 +231,26 @@ async function redefinirSenha(tk, senha) {
   });
 }
 
+// Aceite de novo (versão nova dos Termos, ou conta anterior ao aceite).
+async function aceitar(c, dados, contexto = {}) {
+  lerAceite(dados);
+  await consultar(
+    `UPDATE clientes SET termos_versao = $2, termos_aceitos_em = now(), maioridade_declarada_em = now(),
+            aceite_ip = $3, aceite_user_agent = $4, atualizado_em = now()
+      WHERE id = $1`,
+    [c.id, legal.VERSAO, textoCurto(contexto.ip, 64), textoCurto(contexto.userAgent, 300)],
+  );
+  return { ok: true, versao: legal.VERSAO };
+}
+
+const aceiteEmDia = (c) => Boolean(c?.termos_aceitos_em && c.termos_versao === legal.VERSAO);
+
 // Cliente da sessão, conferido no banco a cada requisição.
 async function daSessao(req) {
   const id = req.session?.trimundiClienteId;
   if (!id || !config.configurada()) return null;
   const { rows } = await consultar(
-    `SELECT id, nome, cpf, email, sessao_versao, email_confirmado_em FROM clientes
+    `SELECT id, nome, cpf, email, sessao_versao, email_confirmado_em, termos_versao, termos_aceitos_em FROM clientes
       WHERE id = $1 AND anonimizado_em IS NULL`,
     [id],
   );
@@ -266,7 +301,7 @@ async function painel(c) {
     })),
   );
   return {
-    conta: { nome: c.nome, email: c.email, cpf: mascararCpf(c.cpf) },
+    conta: { nome: c.nome, email: c.email, cpf: mascararCpf(c.cpf), aceite_pendente: !aceiteEmDia(c) },
     ingressos,
     indicacao: await require('./indicacao').andamentoDoCliente(c.id),
   };
@@ -280,6 +315,8 @@ module.exports = {
   esqueciSenha,
   redefinirSenha,
   daSessao,
+  aceitar,
+  aceiteEmDia,
   painel,
   mascararCpf,
 };

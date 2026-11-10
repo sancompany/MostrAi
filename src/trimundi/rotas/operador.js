@@ -96,7 +96,13 @@ router.get('/ticket/api/operador', exigirOperador, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({
     nome: req.operador.nome,
-    edicoes: edicoes.map((e) => ({ id: e.id, nome: `${e.evento} — ${e.nome}`, inicio_em: e.inicio_em })),
+    edicoes: edicoes.map((e) => ({
+      id: e.id,
+      nome: `${e.evento} — ${e.nome}`,
+      inicio_em: e.inicio_em,
+      // Lembrete na portaria: idade mínima e documento com foto.
+      classificacao_etaria: e.classificacao_etaria,
+    })),
     // Link de indicação do operador, quando o Admin habilita.
     indicacao: await require('../indicacao').andamentoDoOperador(req.operador.id),
   });

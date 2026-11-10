@@ -99,7 +99,7 @@ async function consultarIngresso(operador, edicaoId, entrada) {
   if (!achado.ingresso) return { resultado: achado.resultado, mensagem: RESULTADOS[achado.resultado] };
   const d = await detalhes(cliente, achado.ingresso);
   const resultado = resultadoDe(d);
-  return { resultado, mensagem: RESULTADOS[resultado], ingresso: d };
+  return { resultado, mensagem: RESULTADOS[resultado], ingresso: d, classificacao_etaria: ed.classificacao_etaria };
 }
 
 async function confirmar(operador, edicaoId, ingressoId, { aparelho = null, lidoEm = null } = {}) {

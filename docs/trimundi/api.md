@@ -160,13 +160,15 @@ scripts das páginas ficam em `public/ticket/`.
 | Método e rota | O que faz |
 |---|---|
 | `GET /ticket/conta`, `/ticket/conta/confirmar`, `/esqueci`, `/redefinir` | uma página: entrar, criar conta, confirmar e-mail, recuperar senha e "minha conta" |
-| `POST /ticket/api/conta/cadastro` | `{ nome, cpf, email, senha }` → 201 com a mesma mensagem exista ou não conta com o e-mail (a existente não muda e o dono dela é avisado); 409 `cpf_em_uso` se o CPF é de outra conta |
+| `POST /ticket/api/conta/cadastro` | `{ nome, cpf, email, senha, maioridade: true, aceite_termos: true }` (sem os dois aceites → 400) → 201 com a mesma mensagem exista ou não conta com o e-mail (a existente não muda e o dono dela é avisado); 409 `cpf_em_uso` se o CPF é de outra conta |
 | `POST /ticket/api/conta/confirmar` | `{ token }` (vem no fragmento `#t=` do link) → abre sessão; uso único, 48 h |
 | `POST /ticket/api/conta/reenviar` | `{ email }` → resposta sempre igual |
 | `POST /ticket/api/conta/entrar` | `{ email, senha }` → sessão nova; 401 igual com ou sem conta; 403 `nao_confirmado` |
 | `POST /ticket/api/conta/sair` | sai da conta |
 | `POST /ticket/api/conta/esqueci` | `{ email }` → resposta sempre igual; link de 60 min |
 | `POST /ticket/api/conta/redefinir` | `{ token, senha }` → senha nova, sessões antigas caem |
+| `POST /ticket/api/conta/aceite` | `{ maioridade: true, aceite_termos: true }` → aceita a versão atual dos Termos (conta logada) |
+| `GET /ticket/termos`, `GET /ticket/privacidade` | Termos de Uso e Política de Privacidade, com versão e contato |
 | `GET /ticket/api/conta/sessao` | `{ logado, nome, email }` (a página do evento sabe se pede login) |
 | `GET /ticket/api/conta` | conta (CPF mascarado), ingressos pagos com QR e benefícios, e a indicação (`codigo` e, por campanha ativa, link e andamento) |
 

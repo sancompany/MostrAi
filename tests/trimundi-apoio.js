@@ -181,15 +181,16 @@ async function contaDe(p) {
   const { consultar } = require('../src/trimundi/db/conexao');
   const cpfLimpo = String(p.cpf).replace(/\D/g, '');
   const achada = await consultar(
-    'SELECT id, nome, cpf, email FROM clientes WHERE cpf = $1 AND anonimizado_em IS NULL',
+    'SELECT id, nome, cpf, email, termos_versao, termos_aceitos_em FROM clientes WHERE cpf = $1 AND anonimizado_em IS NULL',
     [cpfLimpo],
   );
   if (achada.rows[0]) return achada.rows[0];
   hashDaSenha ||= await require('../src/lib/senha').gerarHash(SENHA_CONTA);
   const { rows } = await consultar(
-    `INSERT INTO clientes (nome, cpf, email, senha_hash, email_confirmado_em)
-     VALUES ($1, $2, $3, $4, now()) RETURNING id, nome, cpf, email`,
-    [p.nome, cpfLimpo, String(p.email).toLowerCase(), hashDaSenha],
+    `INSERT INTO clientes (nome, cpf, email, senha_hash, email_confirmado_em, termos_versao, termos_aceitos_em,
+        maioridade_declarada_em)
+     VALUES ($1, $2, $3, $4, now(), $5, now(), now()) RETURNING id, nome, cpf, email, termos_versao, termos_aceitos_em`,
+    [p.nome, cpfLimpo, String(p.email).toLowerCase(), hashDaSenha, require('../src/trimundi/legal').VERSAO],
   );
   return rows[0];
 }
@@ -246,7 +247,7 @@ async function novoPedido(pronta, itens, extra = {}) {
     itens,
     comprador: extra.comprador || pessoa('Comprador'),
     participantes: extra.participantes || cot.vagas.map(() => pessoa('Participante')),
-    aceite: { aceito: true, termos: cot.termos.map((t) => t.id) },
+    aceite: { aceito: true, termos: cot.termos.map((t) => t.id), idade: true },
     chave: extra.chave || chave(),
     ...(extra.indicacao ? { indicacao: extra.indicacao } : {}),
   };

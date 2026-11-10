@@ -705,3 +705,18 @@ details.termo .texto {
   display: grid;
   gap: 0.4rem;
 }
+
+/* Termos e Política. */
+.texto-legal h2 {
+  margin-top: 1.5rem;
+  font-size: 1.1rem;
+}
+
+.texto-legal li + li {
+  margin-top: 0.35rem;
+}
+
+/* `hidden` vence qualquer display (ex.: os campos do "Este ingresso é meu"). */
+[hidden] {
+  display: none !important;
+}

@@ -271,6 +271,11 @@ async function criar(corpo, contexto = {}) {
   if (origem === 'venda' && !contexto.cliente?.id) {
     throw erro(401, 'Entre na sua conta para comprar.', { codigo: 'conta' });
   }
+  if (origem === 'venda' && !require('./clientes').aceiteEmDia(contexto.cliente)) {
+    throw erro(409, 'Antes de comprar, aceite a versão atual dos Termos de Uso e da Política de Privacidade.', {
+      codigo: 'aceite_conta',
+    });
+  }
   const comprador =
     origem === 'venda'
       ? { nome: contexto.cliente.nome, cpf: contexto.cliente.cpf, email: contexto.cliente.email, telefone: null }
@@ -298,6 +303,14 @@ async function criar(corpo, contexto = {}) {
       return { pedido_id: existente[0].id, token: tk, repetido: true, pagamento: linkDePagamento(existente[0].id, tk) };
     }
     conferirVenda(ed, origem);
+    // Evento com classificação etária: quem compra declara a idade mínima de
+    // cada participante e o documento com foto na entrada.
+    const exigeIdade = ed.classificacao_etaria && ed.classificacao_etaria !== 'livre';
+    if (exigeIdade && origem === 'venda' && corpo?.aceite?.idade !== true) {
+      throw erro(400, `Confirme que cada participante tem pelo menos ${ed.classificacao_etaria} anos.`, {
+        codigo: 'idade',
+      });
+    }
     // Um pedido aguardando pagamento por conta e edição: ninguém segura o
     // estoque abrindo vários pedidos. O que está aberto volta com o link.
     if (origem === 'venda') {
@@ -350,8 +363,9 @@ async function criar(corpo, contexto = {}) {
     );
     const { rows: ped } = await cliente.query(
       `INSERT INTO pedidos (edicao_id, comprador_id, cliente_id, origem, total_centavos, reserva_expira_em,
-          chave_idempotencia, indicador_id)
-       VALUES ($1, $2, $3, $4, $5, now() + make_interval(mins => $6), $7, $8) RETURNING id, reserva_expira_em`,
+          chave_idempotencia, indicador_id, declaracao_idade_em)
+       VALUES ($1, $2, $3, $4, $5, now() + make_interval(mins => $6), $7, $8,
+               CASE WHEN $9::boolean THEN now() END) RETURNING id, reserva_expira_em`,
       [
         ed.id,
         comp[0].id,
@@ -362,6 +376,7 @@ async function criar(corpo, contexto = {}) {
         chave,
         // Quem indicou (link ?ind=): código inválido ou da própria pessoa não conta.
         origem === 'venda' ? await indicadorDoCodigo(cliente, corpo?.indicacao, contexto.cliente.id) : null,
+        Boolean(exigeIdade && corpo?.aceite?.idade === true),
       ],
     );
     const pedidoId = ped[0].id;

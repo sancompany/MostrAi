@@ -77,6 +77,10 @@
     }
   }
 
+  // Evento com classificação etária (não livre): o pedido pede a declaração.
+  const exigeIdade = () =>
+    Boolean(dados?.edicao?.classificacao_etaria && dados.edicao.classificacao_etaria !== 'livre');
+
   const itemDaChave = (k) => {
     const [tipo, id] = [k[0], Number(k.slice(2))];
     return (tipo === 't' ? dados.tipos : dados.combos).find((x) => Number(x.id) === id);
@@ -455,6 +459,12 @@
         el('input', { type: 'checkbox', name: 'aceite', required: true }),
         `Li e aceito ${textos.map(([, r]) => r.toLowerCase()).join(', ')}.`,
       ]),
+      exigeIdade()
+        ? el('label', { class: 'marcar' }, [
+            el('input', { type: 'checkbox', name: 'idade', required: true }),
+            `Confirmo que cada participante tem pelo menos ${dados.edicao.classificacao_etaria} anos e vai apresentar documento oficial com foto na entrada. Sem isso, a entrada é recusada e não há reembolso.`,
+          ])
+        : null,
     ]);
     const erro = el('p', { class: 'mensagem erro', id: 'erroPedido', role: 'alert', text: aviso || '' });
     const pagar = el('button', { class: 'btn primario grande', type: 'submit', text: 'Ir para o pagamento' });
@@ -517,6 +527,11 @@
         return [form.elements[`${p}email`], `${rotulo}: informe um e-mail válido.`];
     }
     if (!form.elements.aceite.checked) return [form.elements.aceite, 'Para continuar, aceite as regras do evento.'];
+    if (exigeIdade() && !form.elements.idade.checked)
+      return [
+        form.elements.idade,
+        `Confirme a idade mínima (${dados.edicao.classificacao_etaria} anos) dos participantes.`,
+      ];
     return null;
   }
 
@@ -533,7 +548,7 @@
       edicao,
       itens: itensDoCarrinho(),
       participantes: cotacao.vagas.map((_, i) => (ehMeu(form, i) ? { conta: true } : ler(form, `p${i}-`))),
-      aceite: { aceito: true, termos: cotacao.termos.map((t) => t.id) },
+      aceite: { aceito: true, termos: cotacao.termos.map((t) => t.id), idade: exigeIdade() ? true : undefined },
       chave,
       indicacao: codigoDeIndicacao(),
     };
@@ -573,7 +588,7 @@
         erro.scrollIntoView({ block: 'center' });
         return;
       }
-      if (err.codigo === 'conta') {
+      if (err.codigo === 'conta' || err.codigo === 'aceite_conta') {
         try {
           sessionStorage.setItem(CARRINHO, JSON.stringify([...qtd]));
         } catch {}

@@ -266,7 +266,7 @@ async function daSessao(req) {
 // Edições em que o operador pode fazer check-in agora (publicadas ou pausadas).
 async function edicoesPermitidas(operadorId) {
   const { rows } = await consultar(
-    `SELECT DISTINCT ed.id, ed.nome, ev.nome AS evento, ed.inicio_em, ed.codigo_publico
+    `SELECT DISTINCT ed.id, ed.nome, ev.nome AS evento, ed.inicio_em, ed.codigo_publico, ed.classificacao_etaria
        FROM operador_permissoes op
        JOIN edicoes ed ON (op.edicao_id IS NULL OR ed.id = op.edicao_id)
        JOIN eventos ev ON ev.id = ed.evento_id

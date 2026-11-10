@@ -33,6 +33,58 @@
   const SENHA = 'Mínimo de 8 caracteres, com letra maiúscula, minúscula, número e símbolo.';
   const emailOk = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e);
 
+  // Maioridade e aceite: obrigatórios, nunca marcados de antemão.
+  function caixasDeAceite() {
+    const caixa = (nome, ...texto) =>
+      el(
+        'label',
+        { class: 'marcar' },
+        el('input', { type: 'checkbox', name: nome, required: true }),
+        el('span', {}, ...texto),
+      );
+    return [
+      caixa('maioridade', 'Declaro que tenho 18 anos ou mais.'),
+      caixa(
+        'aceite_termos',
+        'Li e aceito os ',
+        el('a', { href: '/ticket/termos', target: '_blank', rel: 'noopener', text: 'Termos de Uso' }),
+        ' e a ',
+        el('a', { href: '/ticket/privacidade', target: '_blank', rel: 'noopener', text: 'Política de Privacidade' }),
+        '.',
+      ),
+    ];
+  }
+
+  // Conta sem o aceite da versão atual: aceita de novo antes de comprar.
+  function blocoDeAceite() {
+    const m = mensagem();
+    const form = el(
+      'form',
+      { class: 'cartao', novalidate: true },
+      el('h2', { text: 'Confirme para continuar comprando' }),
+      el('p', {
+        text: 'Os Termos de Uso e a Política de Privacidade da Trimundi mudaram ou ainda não foram aceitos nesta conta.',
+      }),
+      ...caixasDeAceite(),
+      m,
+      el('button', { class: 'btn primario', type: 'submit', text: 'Confirmar' }),
+    );
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!form.elements.maioridade.checked) return avisar(m, 'erro', 'A conta é só para maiores de 18 anos.');
+      if (!form.elements.aceite_termos.checked)
+        return avisar(m, 'erro', 'Aceite os Termos de Uso e a Política de Privacidade.');
+      try {
+        await api('/ticket/api/conta/aceite', { metodo: 'POST', corpo: { maioridade: true, aceite_termos: true } });
+        if (volta) location.assign(volta);
+        else form.replaceWith(el('p', { class: 'mensagem ok', text: 'Pronto. Obrigado!' }));
+      } catch (err) {
+        avisar(m, 'erro', err.message);
+      }
+    });
+    return form;
+  }
+
   const trocarPara = (tela) => (e) => {
     e.preventDefault();
     tela();
@@ -116,6 +168,7 @@
       campo('E-mail', 'email', { type: 'email', autocomplete: 'email', maxlength: 200 }),
       campo('Senha', 'senha', { type: 'password', autocomplete: 'new-password', maxlength: 200 }),
       el('p', { class: 'discreto', text: SENHA }),
+      ...caixasDeAceite(),
       m,
       el('button', { class: 'btn primario grande', type: 'submit', text: 'Criar conta' }),
     );
@@ -127,10 +180,14 @@
         cpf: digitos(f.cpf.value),
         email: f.email.value.trim(),
         senha: f.senha.value,
+        maioridade: f.maioridade.checked,
+        aceite_termos: f.aceite_termos.checked,
       };
       if (dados.nome.length < 2) return avisar(m, 'erro', 'Informe seu nome completo.');
       if (!cpfValido(dados.cpf)) return avisar(m, 'erro', 'CPF inválido — confira os números.');
       if (!emailOk(dados.email)) return avisar(m, 'erro', 'Informe um e-mail válido.');
+      if (!dados.maioridade) return avisar(m, 'erro', 'A conta é só para maiores de 18 anos.');
+      if (!dados.aceite_termos) return avisar(m, 'erro', 'Aceite os Termos de Uso e a Política de Privacidade.');
       try {
         const r = await enviando(form.querySelector('[type="submit"]'), 'Criando...', () =>
           api('/ticket/api/conta/cadastro', { metodo: 'POST', corpo: dados }),
@@ -279,6 +336,7 @@
     trocar(
       el('h1', { text: `Olá, ${d.conta.nome.split(' ')[0]}` }),
       el('p', { class: 'discreto', text: `${d.conta.email} · CPF ${d.conta.cpf}` }),
+      d.conta.aceite_pendente ? blocoDeAceite() : null,
       d.indicacao ? secaoIndicacao(d.indicacao) : null,
       el('h2', { text: d.ingressos.length === 1 ? 'Seu ingresso' : 'Seus ingressos' }),
       d.ingressos.length

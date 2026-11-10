@@ -72,6 +72,8 @@ const RESERVADOS = new Set([
   'conta',
   'img',
   'i',
+  'termos',
+  'privacidade',
 ]);
 
 function slugEvento(valor) {

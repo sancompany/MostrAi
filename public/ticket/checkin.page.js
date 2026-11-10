@@ -124,6 +124,17 @@
           text: `${i.categoria}${i.promocao ? ` · promoção ${i.promocao}` : ''}${i.cortesia ? ' · cortesia' : ''} · ${i.codigo_curto}`,
         }),
       );
+      // Evento com idade mínima: o operador confere o documento com foto.
+      const edicao = operador.edicoes.find((e) => Number(e.id) === edicaoAtual());
+      const idade = r.classificacao_etaria || edicao?.classificacao_etaria;
+      if (idade && idade !== 'livre' && ['valido', 'entrada_registrada'].includes(r.resultado)) {
+        linhas.push(
+          el('p', {
+            class: 'mensagem alerta',
+            text: `Evento ${idade} anos: confira documento oficial com foto e a idade.`,
+          }),
+        );
+      }
       if (i.beneficios?.length) linhas.push(listaDeBeneficios(i, r.resultado));
       if (r.resultado === 'ja_utilizado' && i.utilizado_em) {
         linhas.push(

@@ -3,6 +3,9 @@ const { limiteTentativas, limiteTentativasPorAlvo, descontarAcerto } = require('
 const { tratarErros, erro } = require('../lib/erros');
 const paginas = require('../paginas');
 const clientes = require('../clientes');
+const legal = require('../legal');
+
+const ipDo = (req) => req.get('cf-connecting-ip') || req.ip;
 
 // Conta do cliente — /ticket/conta e /ticket/api/conta/*. Toda rota que
 // recebe e-mail ou senha passa pelo limitador da Mostraí (por IP e, quando
@@ -40,7 +43,7 @@ async function exigirCliente(req, _res, next) {
 }
 
 router.post('/ticket/api/conta/cadastro', limiteTentativasPorAlvo(emailDoCorpo), async (req, res) => {
-  const r = await clientes.cadastrar(req.body);
+  const r = await clientes.cadastrar(req.body, { ip: ipDo(req), userAgent: req.get('user-agent') });
   await acertou(req, res);
   res.status(201).json({
     ok: true,
@@ -101,10 +104,21 @@ router.get('/ticket/api/conta/sessao', async (req, res) => {
   res.json(c ? { logado: true, nome: c.nome, email: c.email } : { logado: false });
 });
 
+router.post('/ticket/api/conta/aceite', exigirCliente, async (req, res) => {
+  res.json(await clientes.aceitar(req.clienteTrimundi, req.body, { ip: ipDo(req), userAgent: req.get('user-agent') }));
+});
+
 router.get('/ticket/api/conta', exigirCliente, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(await clientes.painel(req.clienteTrimundi));
 });
+
+// Termos de Uso e Política de Privacidade (com a versão e o canal do titular).
+for (const nome of ['termos', 'privacidade']) {
+  router.get(`/ticket/${nome}`, (_req, res) =>
+    paginas.enviar(res, nome, { versao: legal.VERSAO, vigencia: legal.VIGENCIA, contato: legal.contato() || '—' }),
+  );
+}
 
 // Uma página só para entrar, cadastrar, confirmar, recuperar e "minha conta".
 for (const caminho of [

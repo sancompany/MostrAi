@@ -45,8 +45,16 @@ reabrir é desmarcar com o motivo. Estado de cada funcionalidade:
   de valor baixo com Pix e outra com cartão, e-mail recebido, QR na conta,
   check-in num celular Android e num iPhone, entrega do benefício, e um
   reembolso.
-- [ ] **Termos do evento e Política de Privacidade** cobrindo a Trimundi
-  (conta, CPF, indicação), revisados por advogado.
+- [x] **Termos de Uso e Política de Privacidade** da Trimundi (v1.0,
+  10/11/2026) em `/ticket/termos` e `/ticket/privacidade`, com aceite
+  obrigatório no cadastro (maioridade + termos, guardados com versão, IP e
+  navegador). Conta só para maiores de 18; compra para evento com
+  classificação exige a declaração de idade dos participantes; reembolso só
+  nos casos legais (arrependimento do art. 49, evento cancelado, pago sem
+  vaga). **Recomendado:** revisão de um advogado.
+- [ ] **E-mail de contato próprio** para o titular e o comprador (ex.:
+  `trimundi@sancocore.com.br`) em `TRIMUNDI_EMAIL_CONTATO`. Sem ele, os
+  documentos mostram o contato da Mostraí (`MOSTRAI_EMAIL_CONTATO`).
 - [ ] **Nota fiscal do ingresso:** quem emite e em nome de quem.
 - [ ] **Repasse financeiro:** sem `wallet_id` (conta Asaas de pessoa
   física), o valor das vendas cai na conta do operador do Checkout e o

@@ -32,7 +32,7 @@ async function linkDoEmail(email, tipo) {
 test('cadastro → confirmação por e-mail → login; antes de confirmar não entra', async () => {
   const p = apoio.pessoa('Cliente');
   const c = apoio.cliente(srv);
-  const cad = await c.post('/ticket/api/conta/cadastro', { ...p, senha: SENHA });
+  const cad = await c.post('/ticket/api/conta/cadastro', { ...p, senha: SENHA, maioridade: true, aceite_termos: true });
   assert.equal(cad.status, 201);
   assert.match(cad.json.mensagem, /link de confirmação/);
   const { rows } = await consultar('SELECT senha_hash, email_confirmado_em, cpf FROM clientes WHERE email = $1', [
@@ -66,7 +66,12 @@ test('cadastro repetido não muda a conta; CPF de outra conta é recusado; senha
   const p = apoio.pessoa('Cliente');
   const c = apoio.cliente(srv);
   await apoio.contaDe(p);
-  const repetido = await c.post('/ticket/api/conta/cadastro', { ...p, senha: 'Outra12@senha' });
+  const repetido = await c.post('/ticket/api/conta/cadastro', {
+    ...p,
+    senha: 'Outra12@senha',
+    maioridade: true,
+    aceite_termos: true,
+  });
   assert.equal(repetido.status, 201, 'mesma resposta: não diz que o e-mail já tem conta');
   assert.equal((await c.post('/ticket/api/conta/entrar', { email: p.email, senha: 'Outra12@senha' })).status, 401);
   assert.equal((await c.post('/ticket/api/conta/entrar', { email: p.email, senha: apoio.SENHA_CONTA })).status, 200);
@@ -76,16 +81,29 @@ test('cadastro repetido não muda a conta; CPF de outra conta é recusado; senha
   );
   assert.equal(rows[0].n, 1, 'o dono da conta é avisado');
 
-  const outroEmail = await c.post('/ticket/api/conta/cadastro', { ...apoio.pessoa('X'), cpf: p.cpf, senha: SENHA });
+  const outroEmail = await c.post('/ticket/api/conta/cadastro', {
+    ...apoio.pessoa('X'),
+    cpf: p.cpf,
+    senha: SENHA,
+    maioridade: true,
+    aceite_termos: true,
+  });
   assert.equal(outroEmail.status, 409);
   assert.equal(outroEmail.json.codigo, 'cpf_em_uso');
 
-  const fraca = await c.post('/ticket/api/conta/cadastro', { ...apoio.pessoa('Y'), senha: '123' });
+  const fraca = await c.post('/ticket/api/conta/cadastro', {
+    ...apoio.pessoa('Y'),
+    senha: '123',
+    maioridade: true,
+    aceite_termos: true,
+  });
   assert.equal(fraca.status, 400);
   const cpfRuim = await c.post('/ticket/api/conta/cadastro', {
     ...apoio.pessoa('Z'),
     cpf: '11111111111',
     senha: SENHA,
+    maioridade: true,
+    aceite_termos: true,
   });
   assert.equal(cpfRuim.status, 400);
 });
@@ -126,7 +144,7 @@ test('esqueci a senha: resposta igual com ou sem conta; senha nova derruba a ses
 test('link vencido não confirma', async () => {
   const p = apoio.pessoa('Cliente');
   const c = apoio.cliente(srv);
-  await c.post('/ticket/api/conta/cadastro', { ...p, senha: SENHA });
+  await c.post('/ticket/api/conta/cadastro', { ...p, senha: SENHA, maioridade: true, aceite_termos: true });
   const tk = await linkDoEmail(p.email, 'confirmar_email');
   await consultar(
     "UPDATE cliente_tokens SET expira_em = now() - interval '1 minute' WHERE cliente_id = (SELECT id FROM clientes WHERE email = $1)",
@@ -153,7 +171,7 @@ test('compra pela conta: o pedido é da conta, o ingresso "é meu" usa os dados 
     itens: apoio.itensDe(pronta.tipo, 2),
     comprador: apoio.pessoa('Ignorado'),
     participantes: [{ conta: true }, amigo],
-    aceite: { aceito: true, termos: cot.json.termos.map((t) => t.id) },
+    aceite: { aceito: true, termos: cot.json.termos.map((t) => t.id), idade: true },
     chave: apoio.chave(),
   });
   assert.equal(r.status, 201);
@@ -220,7 +238,7 @@ test('um pedido aguardando pagamento por conta e edição: o segundo volta com o
       edicao: pronta.slugEdicao,
       itens: apoio.itensDe(pronta.tipo, 1),
       participantes: [{ conta: true }],
-      aceite: { aceito: true, termos: cot.json.termos.map((t) => t.id) },
+      aceite: { aceito: true, termos: cot.json.termos.map((t) => t.id), idade: true },
       chave: apoio.chave(),
     };
   };
