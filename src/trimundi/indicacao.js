@@ -18,6 +18,13 @@ const config = require('./config');
 
 const CODIGO = /^[A-Z2-9]{8}$/;
 
+// Ingresso "de pé": válido, ou bloqueado só porque o reembolso foi pedido e
+// ainda não saiu. Conversão confirmada = pedido de venda PAGO com ao menos um
+// ingresso de pé; os ingressos vendidos por indicação são os de pé. A mesma
+// regra vale para a campanha (revisarPedido) e para os relatórios
+// (desempenho.js): reembolso, contestação ou cancelamento tiram da conta.
+const INGRESSO_DE_PE = "(i.status = 'valido' OR (i.status = 'bloqueado' AND i.motivo_status = 'reembolso solicitado'))";
+
 function novoCodigo() {
   let s = '';
   for (const b of crypto.randomBytes(8)) s += ALFABETO[b % 32];
@@ -46,30 +53,92 @@ async function criarIndicador(cliente, coluna, id) {
 const indicadorDoCliente = (cliente, clienteId) => criarIndicador(cliente, 'cliente_id', clienteId);
 const indicadorDoOperador = (cliente, operadorId) => criarIndicador(cliente, 'operador_id', operadorId);
 
-// Código que veio no pedido → indicador, se valer: existe, não é a própria
-// conta de quem compra, e (operador) está habilitado. Código ruim é ignorado
-// em silêncio — nunca impede a compra.
-async function indicadorDoCodigo(cliente, codigo, compradorClienteId) {
-  const c = String(codigo ?? '')
-    .trim()
-    .toUpperCase();
-  if (!CODIGO.test(c)) return null;
+// Indicador que vale para esta compra (ou para mostrar na página): existe; o
+// de comprador não é a própria conta (nem o mesmo CPF) e não foi apagado; o
+// de operador está ativo e autorizado nesta edição (10/11/2026: todo
+// operador tem link — a antiga marca "indicação habilitada" não decide mais).
+// Devolve { id, nome, tipo } ou null. Código ruim é ignorado em silêncio —
+// nunca impede a compra.
+async function indicadorValido(cliente, onde, { compradorClienteId = null, edicaoId }) {
   const { rows } = await cliente.query(
-    `SELECT i.id, i.cliente_id, i.operador_id, o.indicacao_habilitada, o.status AS operador_status,
-            cl.cpf AS indicador_cpf
+    `SELECT i.id, i.cliente_id, i.operador_id, o.status AS operador_status, cl.cpf AS indicador_cpf,
+            cl.anonimizado_em AS cliente_anonimizado, COALESCE(cl.nome, o.nome) AS nome,
+            EXISTS (SELECT 1 FROM operador_permissoes op WHERE op.operador_id = i.operador_id
+                     AND op.permissao = 'checkin' AND (op.edicao_id IS NULL OR op.edicao_id = $2)) AS operador_autorizado
        FROM indicadores i LEFT JOIN operadores o ON o.id = i.operador_id LEFT JOIN clientes cl ON cl.id = i.cliente_id
-      WHERE i.codigo = $1`,
-    [c],
+      WHERE ${onde.coluna} = $1`,
+    [onde.valor, edicaoId],
   );
   const ind = rows[0];
   if (!ind) return null;
-  if (ind.operador_id && !(ind.indicacao_habilitada && ind.operador_status === 'ativo')) return null;
-  if (ind.cliente_id && Number(ind.cliente_id) === Number(compradorClienteId)) return null;
-  if (ind.indicador_cpf) {
-    const { rows: comp } = await cliente.query('SELECT cpf FROM clientes WHERE id = $1', [compradorClienteId]);
-    if (comp[0]?.cpf === ind.indicador_cpf) return null;
+  if (ind.operador_id && !(ind.operador_status === 'ativo' && ind.operador_autorizado)) return null;
+  if (ind.cliente_id) {
+    if (ind.cliente_anonimizado) return null;
+    if (compradorClienteId && Number(ind.cliente_id) === Number(compradorClienteId)) return null;
+    if (compradorClienteId) {
+      const { rows: comp } = await cliente.query('SELECT cpf FROM clientes WHERE id = $1', [compradorClienteId]);
+      if (comp[0]?.cpf === ind.indicador_cpf) return null;
+    }
   }
-  return ind.id;
+  return { id: ind.id, nome: ind.nome, tipo: ind.operador_id ? 'operador' : 'comprador' };
+}
+
+const normalizarCodigo = (codigo) => {
+  const c = String(codigo ?? '')
+    .trim()
+    .toUpperCase();
+  return CODIGO.test(c) ? c : null;
+};
+
+async function indicadorDoCodigo(cliente, codigo, compradorClienteId, edicaoId) {
+  const c = normalizarCodigo(codigo);
+  if (!c) return null;
+  return indicadorValido(cliente, { coluna: 'i.codigo', valor: c }, { compradorClienteId, edicaoId });
+}
+
+// A origem desta conta nesta edição (registro da indicação). O primeiro link
+// que valeu fica: outro link depois — na mesma página, em outra aba, num
+// pedido novo — não troca quem indicou. Sem origem ainda, o código que veio
+// (se valer) vira a origem. ON CONFLICT DO NOTHING + releitura: duas abas ao
+// mesmo tempo ficam com a mesma origem.
+async function origemDaConta(cliente, { clienteId, edicaoId, codigo }) {
+  const registrada = async () =>
+    (
+      await cliente.query('SELECT indicador_id FROM indicacao_origens WHERE cliente_id = $1 AND edicao_id = $2', [
+        clienteId,
+        edicaoId,
+      ])
+    ).rows[0];
+  let reg = await registrada();
+  if (!reg) {
+    const novo = await indicadorDoCodigo(cliente, codigo, clienteId, edicaoId);
+    if (!novo) return null;
+    await cliente.query(
+      `INSERT INTO indicacao_origens (cliente_id, edicao_id, indicador_id) VALUES ($1, $2, $3)
+       ON CONFLICT (cliente_id, edicao_id) DO NOTHING`,
+      [clienteId, edicaoId, novo.id],
+    );
+    reg = await registrada();
+  }
+  // A origem registrada só vale enquanto o indicador puder indicar (operador
+  // desativado ou tirado da edição, conta apagada): senão, a compra fica sem.
+  return indicadorValido(
+    cliente,
+    { coluna: 'i.id', valor: reg.indicador_id },
+    { compradorClienteId: clienteId, edicaoId },
+  );
+}
+
+// Página de venda: quem indicou, para o aviso "Você chegou por indicação de…".
+// Logado, registra a origem (a mesma regra do pedido); sem login, só mostra
+// de quem é o código. Nome e tipo — nada mais do indicador.
+async function quemIndicou({ clienteId = null, edicaoId, codigo }) {
+  return emTransacao(async (cliente) => {
+    const ind = clienteId
+      ? await origemDaConta(cliente, { clienteId, edicaoId, codigo })
+      : await indicadorDoCodigo(cliente, codigo, null, edicaoId);
+    return ind ? { nome: ind.nome, tipo: ind.tipo } : null;
+  });
 }
 
 // Campanha ativa da edição agora (no máximo uma).
@@ -123,8 +192,7 @@ async function recalcular(cliente, campanhaId, indicadorId) {
 async function revisarPedido(cliente, pedidoId) {
   const { rows } = await cliente.query(
     `SELECT p.id, p.edicao_id, p.status, p.cliente_id, p.indicador_id, p.origem,
-            EXISTS (SELECT 1 FROM ingressos i WHERE i.pedido_id = p.id
-                     AND (i.status = 'valido' OR (i.status = 'bloqueado' AND i.motivo_status = 'reembolso solicitado'))) AS de_pe
+            EXISTS (SELECT 1 FROM ingressos i WHERE i.pedido_id = p.id AND ${INGRESSO_DE_PE}) AS de_pe
        FROM pedidos p WHERE p.id = $1`,
     [pedidoId],
   );
@@ -301,8 +369,32 @@ async function entregarRecompensa(id, autor) {
 }
 
 // ------------------------------------------------- "minha indicação"
-// Link e andamento de cada campanha ativa agora (de edição publicada).
-async function andamento(cliente, indicador) {
+// Link permanente: o código é da conta (não muda), e o endereço é a página de
+// venda de cada edição em que ele vale hoje — publicada ou com venda
+// pausada, que ainda não terminou (a mesma regra da vitrine). Para operador,
+// só as edições autorizadas. Sai com ou sem campanha: a campanha é só a
+// promoção que, se existir, dá recompensa.
+const linkDaEdicao = (codigo, e) => `${config.urlDoSite()}/ticket/${e.evento_slug}/${e.edicao_slug}?ind=${codigo}`;
+
+async function edicoesDoLink(cliente, operadorId = null) {
+  const { rows } = await cliente.query(
+    `SELECT ed.id, ev.nome AS evento, ed.nome AS edicao, ev.slug AS evento_slug, ed.slug AS edicao_slug
+       FROM edicoes ed JOIN eventos ev ON ev.id = ed.evento_id
+      WHERE ed.status IN ('publicado', 'pausado')
+        AND (COALESCE(ed.fim_em, ed.inicio_em + interval '12 hours') IS NULL
+             OR COALESCE(ed.fim_em, ed.inicio_em + interval '12 hours') > now())
+        AND ($1::bigint IS NULL OR EXISTS (
+              SELECT 1 FROM operador_permissoes op WHERE op.operador_id = $1 AND op.permissao = 'checkin'
+                 AND (op.edicao_id IS NULL OR op.edicao_id = ed.id)))
+      ORDER BY ed.inicio_em NULLS LAST, ed.id`,
+    [operadorId],
+  );
+  return rows;
+}
+
+async function andamento(cliente, indicador, operadorId = null) {
+  const edicoes = await edicoesDoLink(cliente, operadorId);
+  const ids = edicoes.map((e) => e.id);
   const { rows } = await cliente.query(
     `SELECT c.*, ev.nome AS evento, ed.nome AS edicao, ev.slug AS evento_slug, ed.slug AS edicao_slug,
             (SELECT count(*)::int FROM indicacoes x WHERE x.campanha_id = c.id AND x.indicador_id = $1 AND x.valida) AS minhas_conversoes,
@@ -311,11 +403,17 @@ async function andamento(cliente, indicador) {
             (SELECT count(*)::int FROM recompensas_indicacao r WHERE r.campanha_id = c.id AND r.status <> 'revogada') AS concedidas
        FROM campanhas_indicacao c JOIN edicoes ed ON ed.id = c.edicao_id JOIN eventos ev ON ev.id = ed.evento_id
       WHERE c.ativo AND ed.status = 'publicado' AND (c.inicio IS NULL OR c.inicio <= now()) AND (c.fim IS NULL OR c.fim > now())
+        AND c.edicao_id = ANY($2::bigint[])
       ORDER BY ed.inicio_em NULLS LAST, c.id`,
-    [indicador.id],
+    [indicador.id, ids],
   );
   return {
     codigo: indicador.codigo,
+    links: edicoes.map((e) => ({
+      edicao_id: e.id,
+      evento: `${e.evento} — ${e.edicao}`,
+      link: linkDaEdicao(indicador.codigo, e),
+    })),
     campanhas: rows.map((c) => {
       const ganhas = c.a_retirar + c.entregues;
       const noLimite = c.limite_por_indicador && ganhas >= c.limite_por_indicador;
@@ -323,7 +421,7 @@ async function andamento(cliente, indicador) {
         campanha: c.nome,
         evento: `${c.evento} — ${c.edicao}`,
         recompensa: c.recompensa,
-        link: `${config.urlDoSite()}/ticket/${c.evento_slug}/${c.edicao_slug}?ind=${indicador.codigo}`,
+        link: linkDaEdicao(indicador.codigo, c),
         indicacoes_por_recompensa: c.indicacoes_por_recompensa,
         limite_por_indicador: c.limite_por_indicador,
         conversoes: c.minhas_conversoes,
@@ -342,16 +440,50 @@ async function andamentoDoCliente(clienteId) {
   return emTransacao(async (cliente) => andamento(cliente, await indicadorDoCliente(cliente, clienteId)));
 }
 
+// Todo operador tem link (10/11/2026), nas edições em que está autorizado.
 async function andamentoDoOperador(operadorId) {
+  return emTransacao(async (cliente) => andamento(cliente, await indicadorDoOperador(cliente, operadorId), operadorId));
+}
+
+// Código e links do operador para a ficha do Admin (cria o código se faltar).
+async function linksDoOperador(operadorId) {
   return emTransacao(async (cliente) => {
-    const { rows } = await cliente.query('SELECT indicacao_habilitada FROM operadores WHERE id = $1', [operadorId]);
-    if (!rows[0]?.indicacao_habilitada) return null;
-    return andamento(cliente, await indicadorDoOperador(cliente, operadorId));
+    const ind = await indicadorDoOperador(cliente, operadorId);
+    const edicoes = await edicoesDoLink(cliente, operadorId);
+    return {
+      indicador_id: ind.id,
+      codigo: ind.codigo,
+      links: edicoes.map((e) => ({
+        edicao_id: e.id,
+        evento: `${e.evento} — ${e.edicao}`,
+        link: linkDaEdicao(ind.codigo, e),
+      })),
+    };
+  });
+}
+
+// Link do comprador numa edição (ficha do Admin).
+async function linkDoCliente(clienteId, edicaoId) {
+  return emTransacao(async (cliente) => {
+    const ind = await indicadorDoCliente(cliente, clienteId);
+    const { rows } = await cliente.query(
+      `SELECT ev.slug AS evento_slug, ed.slug AS edicao_slug FROM edicoes ed JOIN eventos ev ON ev.id = ed.evento_id
+        WHERE ed.id = $1`,
+      [edicaoId],
+    );
+    return { indicador_id: ind.id, codigo: ind.codigo, link: rows[0] ? linkDaEdicao(ind.codigo, rows[0]) : null };
   });
 }
 
 module.exports = {
+  INGRESSO_DE_PE,
   indicadorDoCodigo,
+  origemDaConta,
+  quemIndicou,
+  linksDoOperador,
+  linkDoCliente,
+  indicadorDoCliente,
+  indicadorDoOperador,
   revisarPedido,
   listarCampanhas,
   criarCampanha,

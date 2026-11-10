@@ -49,6 +49,28 @@ router.get('/ticket/api/edicoes/:evento/:edicao', async (req, res) => {
   res.json(await publico.edicaoPublica(req.params.evento, req.params.edicao));
 });
 
+// Quem indicou (aviso "Você chegou por indicação de…" na página de venda).
+// Com a conta logada, registra a origem desta conta nesta edição — o
+// primeiro link que valeu fica, também para o pedido. Devolve só nome e tipo
+// do indicador; código inválido, da própria conta ou de operador sem acesso
+// à edição é `null`, sem erro.
+router.post('/ticket/api/edicoes/:evento/:edicao/indicacao', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const cliente = await require('../clientes').daSessao(req);
+  const ed = await pedidos.edicaoPorEndereco(
+    { query: (s, p) => consultar(s, p) },
+    req.params.evento,
+    req.params.edicao,
+  );
+  if (!ed || ed.status === 'rascunho') throw erro(404, 'evento não encontrado');
+  const indicacao = await require('../indicacao').quemIndicou({
+    clienteId: cliente?.id || null,
+    edicaoId: ed.id,
+    codigo: req.body?.codigo,
+  });
+  res.json({ indicacao });
+});
+
 router.post('/ticket/api/cotacao', limiteTentativas, async (req, res) => {
   const cotacao = await pedidos.cotar(req.body);
   await acertou(req, res);

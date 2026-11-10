@@ -67,29 +67,46 @@
       } catch {}
       limparResultado();
       atualizarContador();
+      mostrarLink();
     });
-    // Link de indicação do operador (quando o Admin habilita): um por campanha.
-    if (operador.indicacao?.campanhas?.length) {
-      const aside = $('indicacao');
-      aside.replaceChildren(
-        ...operador.indicacao.campanhas.map((c) =>
-          el(
-            'p',
-            {},
-            `${c.evento}: `,
-            el('a', { href: c.link, text: 'meu link de indicação' }),
-            ` · ${c.conversoes} indicação(ões) paga(s)`,
-          ),
-        ),
-      );
-      aside.classList.remove('oculto');
-    }
+    mostrarLink();
     $('painel').classList.remove('oculto');
     atualizarContador();
     contadorTimer = setInterval(atualizarContador, 15000);
   }
 
   const edicaoAtual = () => Number($('edicao').value);
+
+  // Link de indicação do operador (todo operador tem um, 10/11/2026) na
+  // edição escolhida: quem comprar por ele fica registrado como indicado por
+  // este operador. Sem lista de compradores aqui — isso é do Admin.
+  function mostrarLink() {
+    const aside = $('indicacao');
+    const l = operador.indicacao?.links?.find((x) => Number(x.edicao_id) === edicaoAtual());
+    if (!l) {
+      aside.classList.add('oculto');
+      return;
+    }
+    const copiar = el('button', { class: 'btn mini', type: 'button', text: 'Copiar' });
+    copiar.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(l.link);
+        copiar.textContent = 'Copiado';
+      } catch {
+        copiar.textContent = 'Selecione e copie';
+      }
+    });
+    const c = operador.indicacao.campanhas?.find((x) => x.link === l.link);
+    aside.replaceChildren(
+      el('p', { class: 'discreto', text: 'Seu link de indicação para este evento' }),
+      el('input', { class: 'link-indicacao', readonly: true, value: l.link, 'aria-label': 'Seu link de indicação' }),
+      copiar,
+      c
+        ? el('p', { class: 'discreto', text: `${c.conversoes} indicação(ões) paga(s) na promoção ${c.campanha}` })
+        : null,
+    );
+    aside.classList.remove('oculto');
+  }
 
   async function atualizarContador() {
     if (!edicaoAtual()) return;

@@ -98,9 +98,10 @@ pelo Cloudflare Access, que cobre `/admin`. Toda escrita grava o histórico
 
 | Método e rota | O que faz |
 |---|---|
-| `GET /admin/trimundi/operadores` | lista (com `indicacao_habilitada`) |
-| `POST /admin/trimundi/operadores` | `{ nome, email, edicoes: 'todas' \| [ids], indicacao_habilitada? }` → 201 `{ operador, codigo }`. O código só aparece nesta resposta |
-| `PATCH /admin/trimundi/operadores/:id` | altera nome, edições e `indicacao_habilitada` |
+| `GET /admin/trimundi/operadores` | lista, com `indicacao: { codigo, links[], pessoas, compras, ingressos }` (só conversões confirmadas, todas as edições) |
+| `GET /admin/trimundi/operadores/:id/desempenho` | ficha: operador, código, links por edição autorizada, totais, histórico por edição e compradores indicados (CPF mascarado) |
+| `POST /admin/trimundi/operadores` | `{ nome, email, edicoes: 'todas' \| [ids] }` → 201 `{ operador, codigo }`. O código só aparece nesta resposta. (`indicacao_habilitada` ainda é aceito, mas não decide mais nada: todo operador tem link) |
+| `PATCH /admin/trimundi/operadores/:id` | altera nome e edições |
 | `POST /admin/trimundi/operadores/:id/codigo` | gera código novo → `{ codigo }` (RN-T25) |
 | `POST /admin/trimundi/operadores/:id/desativar` | desativa |
 | `POST /admin/trimundi/operadores/:id/reativar` | volta a ativo (ou a aguardando ativação, se nunca ativou) |
@@ -114,6 +115,10 @@ pelo Cloudflare Access, que cobre `/admin`. Toda escrita grava o histórico
 | `PATCH /admin/trimundi/campanhas/:id` | altera; a quantidade não fica abaixo do concedido (409) |
 | `GET /admin/trimundi/campanhas/:id/indicadores` | quem indicou: nome, tipo, código, indicações pagas e recompensas (sem CPF nem e-mail) |
 | `POST /admin/trimundi/recompensas/:id/entregar` | marca entregue (uma vez; a segunda é 409) |
+| `GET /admin/trimundi/edicoes/:id/ranking` | ranking da edição: `[{ posicao, nome, categoria (comprador\|operador), pessoas, compras, ingressos }]` — só conversões confirmadas |
+| `GET /admin/trimundi/edicoes/:id/ranking.csv` | o mesmo em CSV (`;`, UTF-8 com BOM), sem CPF, e-mail nem código; nome com cara de fórmula ganha apóstrofo |
+| `GET /admin/trimundi/edicoes/:id/compradores/:cliente` | ficha do comprador na edição: conta (CPF mascarado), compra, pedidos, quem indicou, link e pessoas indicadas com totais |
+| `POST /admin/trimundi/clientes/:id/cpf` | CPF inteiro de um comprador; fica na auditoria (`cpf_consultado`) |
 
 Benefício (em "Benefícios" acima) ganhou `quantidade` (vazio = sem limite) e
 devolve `concedidos`, `resgatados` e `restam`; cada lote aceita
@@ -133,7 +138,7 @@ scripts das páginas ficam em `public/ticket/`.
 | `POST /ticket/api/operador/entrar` | sem sessão | `{ email, senha }` → 200 `{ ok, destino: '/ticket/checkin' }` e sessão nova; 401 igual com ou sem operador; 403 desativado. Limitador por IP e e-mail |
 | `POST /ticket/api/ativar` | sem sessão | `{ email, codigo, senha }` → 200 `{ ok: true }`. Limitador por IP e por e-mail (RN-T26); 400, 410 ou 429 |
 | `GET /ticket/checkin` | sessão de operador | página T8. Sem sessão de operador → 302 para `/ticket/entrar` |
-| `GET /ticket/api/operador` | sessão de operador | `{ nome, edicoes, indicacao }` (`indicacao` = link e andamento quando o Admin habilita; senão `null`). Sem sessão ou operador desativado → 401 (RN-T28) |
+| `GET /ticket/api/operador` | sessão de operador | `{ nome, edicoes, indicacao }` (`indicacao` = `{ codigo, links[] das edições autorizadas, campanhas[] }`; todo operador tem). Sem sessão ou operador desativado → 401 (RN-T28) |
 | `POST /ticket/api/sair` | sessão de operador | encerra a sessão → 200 |
 | `POST /ticket/api/checkin/consultar` | sessão de operador | `{ edicao_id, entrada }` (texto do QR ou código curto) → `{ resultado, mensagem, ingresso? }`; 403 sem permissão na edição. Não registra nada |
 | `POST /ticket/api/checkin/confirmar` | sessão de operador | `{ edicao_id, ingresso_id, lido_em? }` → `entrada_registrada` ou o motivo da recusa; entrada única por ingresso (índice no banco + trava da linha) |
@@ -181,7 +186,8 @@ A conta TICK usa o cookie `tick.sid` (path `/ticket`), separado do
 | `POST /ticket/api/conta/aceite` | `{ maioridade: true, aceite_termos: true }` → aceita a versão atual dos Termos (conta logada) |
 | `GET /ticket/termos`, `GET /ticket/privacidade` | Termos de Uso e Política de Privacidade, com versão e contato |
 | `GET /ticket/api/conta/sessao` | `{ logado, nome, email }` (a página do evento sabe se pede login) |
-| `GET /ticket/api/conta` | conta (CPF mascarado), ingressos pagos com QR e benefícios, e a indicação (`codigo` e, por campanha ativa, link e andamento) |
+| `GET /ticket/api/conta` | conta (CPF mascarado), ingressos pagos com QR e benefícios, e a indicação (`codigo`, `links[]` de cada edição à venda e, por campanha ativa, o andamento) |
+| `POST /ticket/api/edicoes/:evento/:edicao/indicacao` | `{ codigo? }` → `{ indicacao: { nome, tipo } \| null }` para o aviso "Você chegou por indicação de…". Com conta logada, registra a origem da conta na edição (o primeiro link que valeu fica) |
 
 ## Rotas da Mostraí
 

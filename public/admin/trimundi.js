@@ -1245,6 +1245,7 @@
                   <td>${i.beneficios.length ? i.beneficios.map(esc).join(', ') : '—'}</td>
                   <td>${situacaoDoIngresso(i)}</td>
                   <td class="u-ta-r">
+                    ${i.cliente_id ? `<button type="button" class="btn ghost mini" data-comprador="${i.cliente_id}">Ficha do comprador</button>` : ''}
                     ${i.status !== 'cancelado' ? `<button type="button" class="btn ghost mini" data-qr="${i.id}" data-codigo="${esc(i.codigo_curto)}">Ver QR</button>` : ''}
                     ${i.origem === 'cortesia' && i.status !== 'cancelado' && !soLeitura ? `<button type="button" class="btn perigo-sutil mini" data-cancelar="${i.id}" data-nome="${esc(i.nome)}">Cancelar cortesia</button>` : ''}
                   </td></tr>`,
@@ -1288,6 +1289,9 @@
     );
     el.querySelectorAll('[data-qr]').forEach((b) =>
       b.addEventListener('click', () => modalQr(b.dataset.qr, b.dataset.codigo)),
+    );
+    el.querySelectorAll('[data-comprador]').forEach((b) =>
+      b.addEventListener('click', () => modalComprador(ed.id, b.dataset.comprador)),
     );
     el.querySelectorAll('[data-pedido]').forEach((b) =>
       b.addEventListener('click', () => modalPedido(b.dataset.pedido, recarregar)),
@@ -1634,6 +1638,138 @@
     });
   }
 
+  // ============================================ Indicações (desempenho)
+  // Só conversões confirmadas contam: pedido pago com ingresso de pé. Pessoa
+  // indicada é uma conta compradora — 4 ingressos de uma pessoa são 1 pessoa
+  // e 4 ingressos. Quem chegou pelo link e não comprou aparece, fora dos
+  // totais. CPF sempre mascarado aqui.
+  const CATEGORIA_INDICADOR = { comprador: 'Comprador', operador: 'Operador' };
+  const totaisIndicacao = (t) => `<div class="mini-indicadores tm-totais">
+      <div class="mini-indicador"><b>${num(t.pessoas)}</b><span>pessoas indicadas (com compra)</span></div>
+      <div class="mini-indicador"><b>${num(t.compras)}</b><span>compras confirmadas</span></div>
+      <div class="mini-indicador"><b>${num(t.ingressos)}</b><span>ingressos vendidos por indicação</span></div>
+    </div>`;
+  function tabelaIndicados(lista, { comEdicao = false } = {}) {
+    if (!lista.length) return vazio('Ninguém chegou por este link ainda.');
+    return `<div class="tabela-caixa"><div class="rolagem"><table>
+      <thead><tr><th>Pessoa indicada</th><th>CPF</th>${comEdicao ? '<th>Evento</th>' : ''}<th>Ingressos</th><th>Situação da compra</th><th>Conversão</th></tr></thead>
+      <tbody>${lista
+        .map(
+          (x) => `<tr>
+          <td><b>${esc(x.nome)}</b></td><td>${esc(x.cpf || '—')}</td>${comEdicao ? `<td>${esc(x.edicao)}</td>` : ''}
+          <td>${x.confirmada ? `${num(x.ingressos)} · ${x.tipos.map(esc).join(', ')}` : '—'}</td>
+          <td>${x.confirmada ? selo(['badge-ok', 'Compra confirmada']) : selo(['badge-neutro', x.situacao])}</td>
+          <td>${esc(quando(x.convertido_em) || '—')}</td></tr>`,
+        )
+        .join('')}</tbody></table></div></div>`;
+  }
+  const botaoCopiar = (texto, rotulo = 'Copiar link') =>
+    `<button type="button" class="btn ghost mini" data-copiar="${esc(texto)}">${rotulo}</button>`;
+  function ligarCopiar(raiz) {
+    raiz.querySelectorAll('[data-copiar]').forEach((b) =>
+      b.addEventListener('click', () =>
+        copiarTexto(b.dataset.copiar)
+          .then(() => toast('Link copiado.'))
+          .catch(() => toast('Não foi possível copiar — selecione o link e copie.', 'err')),
+      ),
+    );
+  }
+
+  // Ficha do comprador (Participantes → "Ficha do comprador"): a conta, o
+  // que comprou nesta edição, quem indicou e quem ela indicou.
+  async function modalComprador(edicaoId, clienteId) {
+    let f;
+    try {
+      f = await pegar(`${R}/edicoes/${edicaoId}/compradores/${clienteId}`);
+    } catch (err) {
+      return toast(frase(err.message), 'err');
+    }
+    const c = f.comprador;
+    const PAG = {
+      confirmado: 'Confirmado',
+      aguardando_pagamento: 'Aguardando pagamento',
+      expirado: 'Expirado',
+      cancelado: 'Cancelado',
+      estornado: 'Reembolsado',
+      pago_sem_vaga: 'Pago sem vaga',
+    };
+    const { dlg } = abrirModal({
+      titulo: c.nome,
+      largo: true,
+      corpo: `<div class="tm-ficha-dados">
+          <div><span class="campo-rotulo">CPF</span><span data-cpf>${esc(c.cpf || '—')}</span>
+            ${c.cpf ? '<button type="button" class="btn-linha" data-ver-cpf>Mostrar completo</button>' : ''}</div>
+          <div><span class="campo-rotulo">E-mail</span>${esc(c.email || '—')}</div>
+          <div><span class="campo-rotulo">Conta</span>${esc(c.situacao_conta)}</div>
+          <div><span class="campo-rotulo">Pagamento</span>${esc(PAG[f.compra.pagamento] || f.compra.pagamento)}</div>
+          <div><span class="campo-rotulo">Ingressos comprados</span>${num(f.compra.ingressos)}${f.compra.tipos.length ? ` · ${f.compra.tipos.map((t) => `${num(t.quantidade)} ${esc(t.nome)}`).join(', ')}` : ''}</div>
+          <div><span class="campo-rotulo">Check-in</span>${f.compra.ingressos ? `${num(f.compra.entradas)} de ${num(f.compra.ingressos)} entraram` : '—'}</div>
+        </div>
+        <p class="campo-rotulo">Pedidos nesta edição</p>
+        <ul class="tm-lista">${f.pedidos
+          .map(
+            (
+              p,
+            ) => `<li><code>${esc(p.codigo)}</code> · ${selo(STATUS_PEDIDO[p.status] || ['badge-neutro', p.status])} · ${fmt(p.total_centavos / 100)} · ${esc(quando(p.criado_em))}
+              ${p.ingressos.length ? `<br><span class="u-dim">${p.ingressos.map((i) => `${esc(i.categoria)} (${esc(i.participante)})${i.checkin_em ? ' · entrou' : ''}`).join(' · ')}</span>` : ''}</li>`,
+          )
+          .join('')}</ul>
+        <section class="tm-ficha-bloco"><h4>Indicado por</h4>
+          ${f.indicado_por ? `<p><b>${esc(f.indicado_por.nome)}</b> · ${esc(CATEGORIA_INDICADOR[f.indicado_por.tipo])}</p>` : '<p class="u-dim">Chegou sem indicação.</p>'}
+        </section>
+        <section class="tm-ficha-bloco"><h4>Pessoas indicadas por ${esc(c.nome)}</h4>
+          ${f.link ? `<p class="tm-link-linha"><code>${esc(f.link)}</code> ${botaoCopiar(f.link)}</p>` : ''}
+          ${totaisIndicacao(f.indicacoes.totais)}
+          ${tabelaIndicados(f.indicacoes.indicados)}
+        </section>`,
+      rodape: '<button type="button" class="btn primary" data-fechar>Fechar</button>',
+    });
+    ligarCopiar(dlg);
+    dlg.querySelector('[data-ver-cpf]')?.addEventListener('click', async (e) => {
+      const r = await escrever(`/clientes/${c.id}/cpf`, 'POST', {});
+      if (!r.ok) return toast(r.erro, 'err');
+      dlg.querySelector('[data-cpf]').textContent = r.json.cpf;
+      e.target.remove();
+    });
+  }
+
+  // Ficha do operador: dados, links, totais, desempenho por edição e quem ele trouxe.
+  async function modalFichaOperador(operadorId) {
+    let f;
+    try {
+      f = await pegar(`${R}/operadores/${operadorId}/desempenho`);
+    } catch (err) {
+      return toast(frase(err.message), 'err');
+    }
+    const o = f.operador;
+    const { dlg } = abrirModal({
+      titulo: o.nome,
+      largo: true,
+      corpo: `<div class="tm-ficha-dados">
+          <div><span class="campo-rotulo">Identificação</span>${esc(o.email)}</div>
+          <div><span class="campo-rotulo">Situação</span>${selo(SITUACAO_OPERADOR[o.status])}</div>
+          <div><span class="campo-rotulo">Edições autorizadas</span>${o.edicoes === 'todas' ? 'Todas' : o.edicoes.map((e) => esc(e.nome || `#${e.id}`)).join(', ') || '—'}</div>
+          <div><span class="campo-rotulo">Código de indicação</span><code>${esc(f.codigo)}</code></div>
+        </div>
+        <section class="tm-ficha-bloco"><h4>Links de indicação</h4>
+          ${f.links.length ? `<ul class="tm-lista">${f.links.map((l) => `<li>${esc(l.evento)}<br><code>${esc(l.link)}</code> ${botaoCopiar(l.link)}</li>`).join('')}</ul>` : '<p class="u-dim">Nenhuma edição à venda entre as autorizadas.</p>'}
+        </section>
+        <section class="tm-ficha-bloco"><h4>Resultados</h4>
+          ${totaisIndicacao(f.totais)}
+          ${
+            f.por_edicao.length
+              ? `<p class="campo-rotulo">Histórico por edição</p><div class="tabela-caixa"><div class="rolagem"><table>
+              <thead><tr><th>Edição</th><th class="num">Pessoas</th><th class="num">Compras</th><th class="num">Ingressos</th><th>Primeira venda</th><th>Última venda</th></tr></thead>
+              <tbody>${f.por_edicao.map((e) => `<tr><td>${esc(e.edicao)}</td><td class="num">${num(e.pessoas)}</td><td class="num">${num(e.compras)}</td><td class="num">${num(e.ingressos)}</td><td>${esc(quando(e.primeira))}</td><td>${esc(quando(e.ultima))}</td></tr>`).join('')}</tbody></table></div></div>`
+              : ''
+          }
+        </section>
+        <section class="tm-ficha-bloco"><h4>Compradores indicados</h4>${tabelaIndicados(f.indicados, { comEdicao: true })}</section>`,
+      rodape: '<button type="button" class="btn primary" data-fechar>Fechar</button>',
+    });
+    ligarCopiar(dlg);
+  }
+
   // ================================================ T5 — Adicionar operador
   const SITUACAO_OPERADOR = {
     aguardando_ativacao: ['badge-pendente', 'Aguardando ativação'],
@@ -1650,19 +1786,28 @@
     el.innerHTML = `
       <div class="barra-pagina"><p class="barra-pagina-texto">${operadores.length ? plural(operadores.length, 'operador', 'operadores') : ''}</p>
         <button type="button" class="btn primary" id="tmNovoOperador">+ Adicionar operador</button></div>
-      <p class="campo-ajuda">O operador ativa o acesso em <code>/ticket/ativar</code> e entra em <code>/ticket/entrar</code> (login próprio da Trimundi); a sessão dele só abre o check-in.</p>
+      <p class="campo-ajuda">O operador ativa o acesso em <code>/ticket/ativar</code> e entra em <code>/ticket/entrar</code> (login próprio da Trimundi); a sessão dele só abre o check-in. Todo operador tem um link de indicação nas edições em que está autorizado; os números contam só compras confirmadas.</p>
       ${
         operadores.length
           ? `<div class="tabela-caixa"><div class="rolagem"><table>
-          <thead><tr><th>Nome</th><th>E-mail</th><th>Edições</th><th>Situação</th><th>Último acesso</th><th></th></tr></thead>
+          <thead><tr><th>Nome</th><th>Identificação</th><th>Edições</th><th>Situação</th><th>Link de indicação</th><th class="num">Indicados</th><th class="num">Compras</th><th class="num">Ingressos</th><th></th></tr></thead>
           <tbody>${operadores
             .map(
               (o) => `<tr>
               <td><b>${esc(o.nome)}</b></td><td>${esc(o.email)}</td><td>${edicoesTexto(o)}</td>
-              <td>${selo(SITUACAO_OPERADOR[o.status])}${o.indicacao_habilitada ? ' <span class="badge badge-neutro">indicação</span>' : ''}
-                ${o.status === 'aguardando_ativacao' && o.codigo_expira_em ? `<br><span class="u-dim">código vale até ${esc(quando(o.codigo_expira_em))}</span>` : ''}</td>
-              <td>${esc(quando(o.ultimo_acesso_em) || '—')}</td>
+              <td>${selo(SITUACAO_OPERADOR[o.status])}
+                ${o.status === 'aguardando_ativacao' && o.codigo_expira_em ? `<br><span class="u-dim">código vale até ${esc(quando(o.codigo_expira_em))}</span>` : ''}
+                <br><span class="u-dim">último acesso ${esc(quando(o.ultimo_acesso_em) || '—')}</span></td>
+              <td><code>${esc(o.indicacao.codigo)}</code><br>${
+                o.indicacao.links.length === 1
+                  ? botaoCopiar(o.indicacao.links[0].link)
+                  : o.indicacao.links.length
+                    ? `<span class="u-dim">${plural(o.indicacao.links.length, 'link', 'links')} — ver ficha</span>`
+                    : '<span class="u-dim">sem edição à venda</span>'
+              }</td>
+              <td class="num">${num(o.indicacao.pessoas)}</td><td class="num">${num(o.indicacao.compras)}</td><td class="num">${num(o.indicacao.ingressos)}</td>
               <td class="u-ta-r">
+                <button type="button" class="btn ghost mini" data-ficha-op="${o.id}">Ficha</button>
                 <button type="button" class="btn ghost mini" data-editar-op="${o.id}">Editar</button>
                 <button type="button" class="btn ghost mini" data-codigo-op="${o.id}">Gerar novo código</button>
                 ${o.status === 'desativado' ? `<button type="button" class="btn ghost mini" data-reativar-op="${o.id}">Reativar</button>` : `<button type="button" class="btn perigo-sutil mini" data-desativar-op="${o.id}">Desativar</button>`}
@@ -1674,6 +1819,10 @@
     const recarregar = () => renderOperadores(el);
     const porId = (id) => operadores.find((o) => o.id === Number(id));
     el.querySelector('#tmNovoOperador').addEventListener('click', () => modalOperador(null, edicoes, recarregar));
+    ligarCopiar(el);
+    el.querySelectorAll('[data-ficha-op]').forEach((b) =>
+      b.addEventListener('click', () => modalFichaOperador(b.dataset.fichaOp)),
+    );
     el.querySelectorAll('[data-editar-op]').forEach((b) =>
       b.addEventListener('click', () => modalOperador(porId(b.dataset.editarOp), edicoes, recarregar)),
     );
@@ -1760,7 +1909,6 @@
                 `<label class="tm-marcar"><input type="checkbox" name="edicao" value="${e.id}" ${escolhidas.has(e.id) ? 'checked' : ''}> ${esc(nomeDaEdicao(e))}</label>`,
             )
             .join('')}</div>
-          ${alternar({ nome: 'indicacao', marcado: Boolean(op?.indicacao_habilitada), texto: 'Link de indicação próprio (aparece na tela de check-in)' })}
           <p class="form-msg" data-msg></p></form>`,
       rodape: `<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="tmFormOperador" class="btn primary">${op ? 'Salvar' : 'Adicionar e gerar código'}</button>`,
     });
@@ -1780,13 +1928,11 @@
           ? await escrever(`/operadores/${op.id}`, 'PATCH', {
               nome: f.nome.value,
               edicoes: edicoesSel,
-              indicacao_habilitada: f.indicacao.checked,
             })
           : await escrever('/operadores', 'POST', {
               nome: f.nome.value,
               email: f.email.value,
               edicoes: edicoesSel,
-              indicacao_habilitada: f.indicacao.checked,
             });
         if (!r.ok) return erroNoModal(dlg, r.erro);
         fechar();
@@ -1811,7 +1957,10 @@
       el.innerHTML = semEdicao();
       return ligarSemEdicao(el);
     }
-    const campanhas = await pegar(`${R}/edicoes/${ed.id}/campanhas`);
+    const [campanhas, ranking] = await Promise.all([
+      pegar(`${R}/edicoes/${ed.id}/campanhas`),
+      pegar(`${R}/edicoes/${ed.id}/ranking`),
+    ]);
     const ativa = campanhas.find((c) => c.ativo);
     const indicadores = ativa ? await pegar(`${R}/campanhas/${ativa.id}/indicadores`) : [];
     const criterio = (c) =>
@@ -1819,7 +1968,40 @@
     el.innerHTML = `
       <div class="barra-pagina">${seletorEdicao(edicoes, ed, 'indicacao')}
         <button type="button" class="btn primary" id="tmNovaCampanha">+ Criar campanha</button></div>
-      <p class="campo-ajuda">Cada cliente tem um link próprio na conta (e o operador habilitado, na tela de check-in). Conta o pedido pago de quem chegou pelo link — uma vez por pessoa; reembolso ou contestação tiram a indicação. A recompensa sai enquanto houver.</p>
+      <p class="campo-ajuda">Todo comprador tem um link próprio na conta, e todo operador, na tela de check-in (nas edições autorizadas). O primeiro link pelo qual a pessoa chegou fica como a origem dela nesta edição. Conta só a compra confirmada — pendente, expirada, cancelada ou reembolsada não entra. Recompensa só sai com campanha ativa.</p>
+      <section class="secao-pagina tm-ranking">
+        <div class="secao-topo"><h3>Ranking de indicações</h3><span class="contagem">${ranking.length}</span>
+          <div class="secao-acoes">
+            <div class="chips">${[
+              ['todos', 'Todos'],
+              ['comprador', 'Compradores'],
+              ['operador', 'Operadores'],
+            ]
+              .map(
+                ([k, r]) =>
+                  `<button type="button" class="chip ${k === 'todos' ? 'active' : ''}" data-categoria="${k}">${r}</button>`,
+              )
+              .join('')}</div>
+            ${ranking.length ? `<a class="btn ghost mini" href="${API_BASE_URL}${R}/edicoes/${ed.id}/ranking.csv" download>Exportar CSV</a>` : ''}
+          </div></div>
+        ${
+          ranking.length
+            ? `<div class="tabela-caixa"><div class="rolagem"><table>
+          <thead><tr><th class="num">#</th><th>Nome</th><th>Categoria</th><th class="num">Pessoas indicadas (com compra)</th><th class="num">Compras confirmadas</th><th class="num">Ingressos vendidos</th></tr></thead>
+          <tbody>${ranking
+            .map(
+              (
+                r,
+              ) => `<tr data-linha-categoria="${esc(r.categoria)}"><td class="num">${r.posicao}</td><td><b>${esc(r.nome)}</b></td>
+              <td>${esc(CATEGORIA_INDICADOR[r.categoria] || r.categoria)}</td>
+              <td class="num">${num(r.pessoas)}</td><td class="num">${num(r.compras)}</td><td class="num">${num(r.ingressos)}</td></tr>`,
+            )
+            .join('')}</tbody></table></div></div>`
+            : vazio('Nenhuma compra confirmada por indicação nesta edição ainda.')
+        }
+        <p class="campo-ajuda">Uma pessoa que comprou 4 ingressos conta como 1 pessoa indicada e 4 ingressos vendidos. O CSV traz nome, categoria e os números — sem CPF nem e-mail.</p>
+      </section>
+      <h3>Campanhas (promoções de indicação)</h3>
       ${
         campanhas.length
           ? `<div class="tabela-caixa"><div class="rolagem"><table>
@@ -1869,6 +2051,14 @@
           : ''
       }`;
     ligarSeletor(el);
+    el.querySelectorAll('[data-categoria]').forEach((b) =>
+      b.addEventListener('click', () => {
+        el.querySelectorAll('[data-categoria]').forEach((x) => x.classList.toggle('active', x === b));
+        el.querySelectorAll('[data-linha-categoria]').forEach((tr) => {
+          tr.hidden = b.dataset.categoria !== 'todos' && tr.dataset.linhaCategoria !== b.dataset.categoria;
+        });
+      }),
+    );
     const recarregar = () => renderIndicacao(el, String(ed.id));
     el.querySelector('#tmNovaCampanha').addEventListener('click', () => modalCampanha(ed, null, recarregar));
     el.querySelectorAll('[data-editar-campanha]').forEach((b) =>

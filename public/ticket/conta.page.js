@@ -370,50 +370,63 @@
 
   // Indicação: o link de cada campanha ativa e o andamento (sem pontos nem
   // níveis — só quantas indicações pagas e o que já ganhou).
+  // Link de indicação permanente (o código é da conta): um endereço por
+  // evento à venda, com ou sem promoção. Se a edição tiver campanha ativa, a
+  // regra e o andamento aparecem junto. Quem comprar pelo link fica
+  // registrado como indicado por você — só a compra confirmada conta.
   function secaoIndicacao(ind) {
-    if (!ind.campanhas.length) return null;
+    if (!ind?.links?.length) return null;
+    const campanhaDo = new Map((ind.campanhas || []).map((c) => [c.link, c]));
     return el(
       'section',
       { class: 'cartao' },
-      el('h2', { text: 'Indique e ganhe' }),
-      ind.campanhas.map((c) => {
+      el('h2', { text: 'Seu link de indicação' }),
+      el('p', {
+        class: 'discreto',
+        text: 'Compartilhe com amigos. Quem comprar pelo seu link fica registrado como indicado por você.',
+      }),
+      ind.links.map((l) => {
+        const c = campanhaDo.get(l.link);
         const copiar = el('button', { class: 'btn mini', type: 'button', text: 'Copiar link' });
         copiar.addEventListener('click', async () => {
           try {
-            await navigator.clipboard.writeText(c.link);
+            await navigator.clipboard.writeText(l.link);
             copiar.textContent = 'Copiado';
           } catch {
             copiar.textContent = 'Selecione e copie';
           }
         });
-        const regra =
-          c.indicacoes_por_recompensa === 1
-            ? `Cada amigo que comprar pelo seu link vale 1 ${c.recompensa}.`
-            : `A cada ${c.indicacoes_por_recompensa} amigos que comprarem pelo seu link, 1 ${c.recompensa}.`;
-        const andamento = [
-          `${c.conversoes} ${c.conversoes === 1 ? 'indicação paga' : 'indicações pagas'}`,
-          c.recompensas_a_retirar ? `${c.recompensas_a_retirar} para retirar` : null,
-          c.recompensas_entregues ? `${c.recompensas_entregues} já retirada(s)` : null,
-          c.faltam_para_proxima && c.restam_na_campanha ? `faltam ${c.faltam_para_proxima} para a próxima` : null,
-        ]
-          .filter(Boolean)
-          .join(' · ');
+        const regra = !c
+          ? null
+          : c.indicacoes_por_recompensa === 1
+            ? `Promoção: cada amigo que comprar pelo seu link vale 1 ${c.recompensa}.`
+            : `Promoção: a cada ${c.indicacoes_por_recompensa} amigos que comprarem pelo seu link, 1 ${c.recompensa}.`;
+        const andamento = !c
+          ? null
+          : [
+              `${c.conversoes} ${c.conversoes === 1 ? 'indicação paga' : 'indicações pagas'}`,
+              c.recompensas_a_retirar ? `${c.recompensas_a_retirar} para retirar` : null,
+              c.recompensas_entregues ? `${c.recompensas_entregues} já retirada(s)` : null,
+              c.faltam_para_proxima && c.restam_na_campanha ? `faltam ${c.faltam_para_proxima} para a próxima` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ');
         return el(
           'div',
           { class: 'indicacao' },
-          el('div', { class: 'discreto', text: c.evento }),
-          el('p', { text: regra }),
+          el('div', { class: 'discreto', text: l.evento }),
+          regra ? el('p', { text: regra }) : null,
           el('input', {
             class: 'link-indicacao',
             readonly: true,
-            value: c.link,
-            'aria-label': 'Seu link de indicação',
+            value: l.link,
+            'aria-label': `Seu link de indicação para ${l.evento}`,
           }),
           copiar,
-          el('p', { class: 'discreto', text: andamento }),
-          c.restam_na_campanha
-            ? null
-            : el('p', { class: 'mensagem alerta', text: 'As recompensas desta campanha acabaram.' }),
+          andamento ? el('p', { class: 'discreto', text: andamento }) : null,
+          c && !c.restam_na_campanha
+            ? el('p', { class: 'mensagem alerta', text: 'As recompensas desta promoção acabaram.' })
+            : null,
         );
       }),
     );

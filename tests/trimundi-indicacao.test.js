@@ -147,22 +147,35 @@ test('Admin: uma campanha ativa por edição; quantidade não fica abaixo do con
   assert.equal(daEdicao((await codigoDe(apoio.pessoa('Ana'))).painel.indicacao.campanhas, pronta).length, 0);
 });
 
-test('operador: link próprio só quando o Admin habilita', async () => {
+test('operador: todo operador ativo tem link nas edições autorizadas; desativado ou sem acesso, não vale', async () => {
   const pronta = await apoio.edicaoPronta();
   await campanha(pronta, { indicacoes_por_recompensa: 1 });
   const op = await apoio.operadorLogado(srv);
   const c = apoio.cliente(srv, { cookie: op.cookie });
-  assert.equal((await c.get('/ticket/api/operador')).json.indicacao, null);
-  await operadores.atualizar(op.id, { indicacao_habilitada: true }, apoio.AUTOR);
   const ind = (await c.get('/ticket/api/operador')).json.indicacao;
+  assert.match(ind.codigo, /^[A-Z2-9]{8}$/, 'sem precisar habilitar nada');
+  const link = ind.links.find((l) => Number(l.edicao_id) === Number(pronta.edicao.id));
+  assert.match(link.link, new RegExp(`/ticket/${pronta.slugEvento}/${pronta.slugEdicao}\\?ind=${ind.codigo}$`));
   assert.equal(daEdicao(ind.campanhas, pronta).length, 1);
   await comprarPelo(pronta, apoio.pessoa('Bia'), ind.codigo);
   const depois = (await c.get('/ticket/api/operador')).json.indicacao;
   assert.equal(daEdicao(depois.campanhas, pronta)[0].conversoes, 1);
 
-  // Desabilitado, o código do operador deixa de valer para pedidos novos.
-  await operadores.atualizar(op.id, { indicacao_habilitada: false }, apoio.AUTOR);
+  // Operador só de OUTRA edição: o código dele não vale aqui.
+  const outra = await apoio.edicaoPronta();
+  const restrito = await apoio.operadorLogado(srv, [outra.edicao.id]);
+  const indR = (await apoio.cliente(srv, { cookie: restrito.cookie }).get('/ticket/api/operador')).json.indicacao;
+  assert.equal(
+    indR.links.some((l) => Number(l.edicao_id) === Number(pronta.edicao.id)),
+    false,
+  );
+  const semAcesso = await comprarPelo(pronta, apoio.pessoa('Davi'), indR.codigo);
+  let { rows } = await consultar('SELECT indicador_id FROM pedidos WHERE id = $1', [semAcesso.pedido_id]);
+  assert.equal(rows[0].indicador_id, null, 'fora das edições autorizadas');
+
+  // Desativado, o código do operador deixa de valer para pedidos novos.
+  await operadores.desativar(op.id, apoio.AUTOR);
   const ped = await comprarPelo(pronta, apoio.pessoa('Caio'), ind.codigo);
-  const { rows } = await consultar('SELECT indicador_id FROM pedidos WHERE id = $1', [ped.pedido_id]);
+  ({ rows } = await consultar('SELECT indicador_id FROM pedidos WHERE id = $1', [ped.pedido_id]));
   assert.equal(rows[0].indicador_id, null);
 });

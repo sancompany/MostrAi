@@ -152,7 +152,8 @@ test('login próprio: o operador vai para /ticket/checkin e a sessão só abre /
   const eu = await sessao.get('/ticket/api/operador');
   assert.equal(eu.status, 200);
   assert.equal(eu.json.nome, op.nome);
-  assert.equal(eu.json.indicacao, null, 'sem indicação habilitada pelo Admin, sem link');
+  // Todo operador tem link de indicação (10/11/2026), só nas edições dele.
+  assert.match(eu.json.indicacao.codigo, /^[A-Z2-9]{8}$/);
 
   assert.equal((await sessao.get('/anunciantes/me')).status, 401, 'operador não é conta da Mostraí');
   assert.equal((await sessao.get('/admin/trimundi/estado')).status, 401, 'operador não entra no Admin');
