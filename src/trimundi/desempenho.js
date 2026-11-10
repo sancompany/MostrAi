@@ -129,6 +129,26 @@ async function indicadosPor(indicadorId, edicaoId = null) {
   };
 }
 
+// "Indique e acompanhe" (Minha conta): o funil do link de um indicador, em
+// todas as edições. Três números que não se confundem:
+//   · acessos únicos — navegadores diferentes que chegaram pelo link;
+//   · contas criadas — desses navegadores, os que criaram conta DEPOIS da
+//     primeira visita (a visita ganha a conta quando o navegador entra);
+//   · compras confirmadas — pessoas (contas) com compra confirmada pela
+//     indicação, as compras e os ingressos (a regra de sempre, acima).
+// Só números: nada de quem visitou.
+async function numerosDoIndicador(indicadorId) {
+  const { rows } = await consultar(
+    `SELECT count(*)::int AS acessos,
+            count(DISTINCT v.cliente_id) FILTER (WHERE c.criado_em >= v.primeira_em - interval '1 minute')::int AS contas
+       FROM indicacao_visitas v LEFT JOIN clientes c ON c.id = v.cliente_id
+      WHERE v.indicador_id = $1`,
+    [indicadorId],
+  );
+  const { totais } = await indicadosPor(indicadorId);
+  return { acessos: rows[0].acessos, contas_criadas: rows[0].contas, ...totais };
+}
+
 // ---------------------------------------------- ficha do comprador
 // Admin → Participantes → ficha: a conta, o que comprou nesta edição, quem
 // indicou esta pessoa e quem ela indicou. CPF mascarado; o inteiro só pelo
@@ -265,6 +285,7 @@ async function fichaDoOperador(operadorId) {
 }
 
 module.exports = {
+  numerosDoIndicador,
   ranking,
   rankingCsv,
   indicadosPor,

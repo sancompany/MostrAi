@@ -845,3 +845,456 @@ details.termo .texto {
   color: var(--suave);
   font-size: 0.85rem;
 }
+
+/* ------------------------------------------------------------------
+   Refinamento das telas públicas (10/11/2026): botão "Minha conta",
+   entrar / criar conta / recuperar, senha com olho e "Minha conta".
+   As mesmas cores (tema escuro e claro), fonte e raios de sempre.
+   ------------------------------------------------------------------ */
+
+/* Botão "Minha conta" (e "Sair") no canto do cabeçalho. */
+.btn-conta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  min-height: 2.5rem;
+  padding: 0.45rem 1rem;
+  border: 1px solid var(--linha);
+  border-radius: 999px;
+  background: var(--marca-clara);
+  color: var(--texto);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.btn-conta:hover {
+  border-color: var(--marca);
+  background: var(--cartao);
+}
+
+.btn-conta:active {
+  transform: translateY(1px);
+}
+
+.btn-conta:focus-visible {
+  outline: 3px solid var(--marca);
+  outline-offset: 2px;
+}
+
+.btn {
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    opacity 0.15s;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--marca);
+}
+
+.btn.primario:hover:not(:disabled) {
+  background: var(--marca-forte);
+  border-color: var(--marca-forte);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* Secundário: contorno, para a outra opção (criar conta / entrar). */
+.btn.secundario {
+  width: 100%;
+  min-height: 3rem;
+  background: transparent;
+  border: 1.5px solid var(--marca);
+  color: var(--marca-forte);
+}
+
+.btn.secundario:hover {
+  background: var(--marca-clara);
+}
+
+/* Entrar, criar conta, recuperar: um cartão centralizado. */
+.auth {
+  max-width: 440px;
+  margin: 1.5rem auto 0;
+}
+
+.auth-cabeca {
+  margin-bottom: 1.25rem;
+  text-align: center;
+}
+
+.auth-cabeca h1 {
+  margin: 0 0 0.35rem;
+  font-size: 1.9rem;
+  letter-spacing: -0.01em;
+}
+
+.auth-cabeca p {
+  margin: 0 auto;
+  max-width: 34ch;
+  color: var(--suave);
+}
+
+.auth-cartao {
+  padding: 1.5rem 1.25rem;
+}
+
+.auth-cartao .campo {
+  margin-bottom: 1rem;
+}
+
+.auth-cartao label {
+  font-size: 0.92rem;
+}
+
+.auth-cartao input:not([type='checkbox']) {
+  min-height: 3rem;
+  padding: 0.65rem 0.85rem;
+}
+
+.auth-cartao .btn.grande {
+  margin-top: 0.5rem;
+}
+
+.auth-linha {
+  display: flex;
+  justify-content: flex-end;
+  margin: -0.4rem 0 0.75rem;
+}
+
+.link-suave {
+  color: var(--suave);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-underline-offset: 3px;
+}
+
+.link-suave:hover {
+  color: var(--texto);
+}
+
+.auth-alternativa {
+  margin-top: 1.25rem;
+  text-align: center;
+}
+
+.auth-alternativa p {
+  margin: 0 0 0.5rem;
+  color: var(--suave);
+}
+
+.ajuda-campo {
+  margin: -0.35rem 0 1rem;
+  color: var(--suave);
+  font-size: 0.85rem;
+}
+
+.aceites {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0.25rem 0 1rem;
+  padding: 0.85rem;
+  border: 1px solid var(--linha);
+  border-radius: 10px;
+  background: var(--fundo);
+  font-size: 0.92rem;
+}
+
+.auth-cartao .grade-2 {
+  gap: 0 0.75rem;
+}
+
+/* Senha com o olho dentro do campo, à direita. */
+.campo-senha {
+  position: relative;
+}
+
+.campo-senha input {
+  padding-right: 3rem;
+}
+
+.campo-senha .olho {
+  position: absolute;
+  top: 50%;
+  right: 0.35rem;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--suave);
+  cursor: pointer;
+}
+
+.campo-senha .olho:hover,
+.campo-senha .olho[aria-pressed='true'] {
+  color: var(--texto);
+}
+
+.campo-senha .olho:focus-visible {
+  outline: 3px solid var(--marca);
+  outline-offset: 0;
+}
+
+/* Minha conta: identificação, ingressos e indicação. */
+.identificacao h1 {
+  margin: 0 0 0.25rem;
+}
+
+.identificacao p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.conta-secao {
+  margin-top: 1.75rem;
+}
+
+.conta-secao > h2 {
+  margin-bottom: 0.75rem;
+}
+
+.evento-grupo {
+  margin-bottom: 1.25rem;
+}
+
+.evento-grupo-topo {
+  display: grid;
+  gap: 0.15rem;
+  margin-bottom: 0.6rem;
+}
+
+.evento-grupo-topo h3 {
+  display: grid;
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.evento-grupo-topo h3 .sobre {
+  color: var(--suave);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.evento-grupo-topo p {
+  margin: 0;
+}
+
+.pedido-card {
+  margin-bottom: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--linha);
+  border-left: 4px solid var(--linha);
+  border-radius: var(--raio);
+  background: var(--cartao);
+  box-shadow: var(--sombra);
+}
+
+.pedido-card.pago {
+  border-left-color: var(--ok);
+}
+
+.pedido-card.aguardando_pagamento,
+.pedido-card.pago_sem_vaga {
+  border-left-color: var(--alerta);
+}
+
+.pedido-card.cancelado,
+.pedido-card.estornado {
+  border-left-color: var(--erro);
+}
+
+.pedido-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 0.75rem;
+}
+
+.pedido-itens {
+  margin: 0.5rem 0 0;
+  font-weight: 600;
+}
+
+.pedido-card .ingressos {
+  margin-top: 0.85rem;
+}
+
+.ingresso {
+  display: grid;
+  gap: 0.45rem;
+  justify-items: center;
+  padding: 0.85rem;
+  border: 1px solid var(--linha);
+  border-radius: 12px;
+  background: var(--fundo);
+  text-align: center;
+}
+
+.ingresso-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.ingresso.usado {
+  opacity: 0.8;
+}
+
+.ingresso.usado .qr-vazio,
+.ingresso.inativo .qr-vazio {
+  width: min(240px, 100%);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--linha);
+  border-radius: 10px;
+  color: var(--suave);
+  padding: 1rem;
+}
+
+.nao-concluidos summary,
+.mais-campanhas summary {
+  cursor: pointer;
+  margin: 0.25rem 0 0.75rem;
+  color: var(--suave);
+  font-weight: 600;
+}
+
+.vazio-ingressos {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: start;
+}
+
+.vazio-ingressos p {
+  margin: 0;
+}
+
+/* Indique e acompanhe. */
+.numeros {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.numero {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.75rem;
+  border: 1px solid var(--linha);
+  border-radius: 12px;
+  background: var(--fundo);
+}
+
+.numero b {
+  font-size: 1.5rem;
+  line-height: 1.1;
+}
+
+.numero span {
+  color: var(--suave);
+  font-size: 0.82rem;
+}
+
+.numero.destaque {
+  grid-column: 1 / -1;
+  border-color: var(--marca);
+}
+
+.numero.destaque b {
+  font-size: 2.4rem;
+}
+
+@media (min-width: 640px) {
+  .numeros {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.indique h3 {
+  margin: 1.25rem 0 0.25rem;
+  font-size: 1.05rem;
+}
+
+.divulgar-evento {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--linha);
+}
+
+.divulgar-evento select {
+  margin-bottom: 0.25rem;
+}
+
+.campanhas {
+  margin: 1rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--suave);
+  font-size: 0.9rem;
+}
+
+/* Textos legais: leitura confortável. */
+.texto-legal {
+  line-height: 1.65;
+}
+
+.texto-legal h1 {
+  margin-bottom: 0.25rem;
+}
+
+.versao-legal {
+  margin: 0 0 1.5rem;
+  color: var(--suave);
+  font-size: 0.9rem;
+}
+
+.texto-legal h2 {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--linha);
+}
+
+.texto-legal p {
+  margin: 0 0 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.texto-legal strong {
+  color: var(--marca-forte);
+}
+
+@media (max-width: 420px) {
+  .topo {
+    padding: 0.6rem 0.85rem;
+  }
+
+  .btn-conta {
+    padding: 0.4rem 0.85rem;
+  }
+
+  .auth-cabeca h1 {
+    font-size: 1.6rem;
+  }
+}

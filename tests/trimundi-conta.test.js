@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const apoio = require('./trimundi-apoio');
+const { VERSAO: VERSAO_TERMOS } = require('../src/trimundi/legal');
 const { consultar } = require('../src/trimundi/db/conexao');
 
 // Conta do cliente (pedido do dono, 09/11/2026): cadastro com nome, CPF,
@@ -38,6 +39,7 @@ test('cadastro → confirmação por e-mail → login; antes de confirmar não e
     senha_confirmacao: SENHA,
     maioridade: true,
     aceite_termos: true,
+    versao_termos: VERSAO_TERMOS,
   });
   assert.equal(cad.status, 201);
   assert.match(cad.json.mensagem, /link de confirmação/);
@@ -78,6 +80,7 @@ test('cadastro repetido não muda a conta; CPF de outra conta é recusado; senha
     senha_confirmacao: 'Outra12@senha',
     maioridade: true,
     aceite_termos: true,
+    versao_termos: VERSAO_TERMOS,
   });
   assert.equal(repetido.status, 409);
   assert.equal(repetido.json.codigo, 'email_em_uso');
@@ -91,6 +94,7 @@ test('cadastro repetido não muda a conta; CPF de outra conta é recusado; senha
     senha_confirmacao: SENHA,
     maioridade: true,
     aceite_termos: true,
+    versao_termos: VERSAO_TERMOS,
   });
   assert.equal(outroEmail.status, 409);
   assert.equal(outroEmail.json.codigo, 'cpf_em_uso');
@@ -101,6 +105,7 @@ test('cadastro repetido não muda a conta; CPF de outra conta é recusado; senha
     senha_confirmacao: '123',
     maioridade: true,
     aceite_termos: true,
+    versao_termos: VERSAO_TERMOS,
   });
   assert.equal(fraca.status, 400);
   const cpfRuim = await c.post('/ticket/api/conta/cadastro', {
@@ -110,6 +115,7 @@ test('cadastro repetido não muda a conta; CPF de outra conta é recusado; senha
     senha_confirmacao: SENHA,
     maioridade: true,
     aceite_termos: true,
+    versao_termos: VERSAO_TERMOS,
   });
   assert.equal(cpfRuim.status, 400);
 });
@@ -157,6 +163,7 @@ test('link vencido não confirma', async () => {
     senha_confirmacao: SENHA,
     maioridade: true,
     aceite_termos: true,
+    versao_termos: VERSAO_TERMOS,
   });
   const tk = await linkDoEmail(p.email, 'confirmar_email');
   await consultar(

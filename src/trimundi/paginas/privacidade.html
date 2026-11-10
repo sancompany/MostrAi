@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Política de Privacidade · TICK</title>
-  <meta name="description" content="Como a TICK trata seus dados pessoais (LGPD): o que coleta, para quê, com quem compartilha, por quanto tempo e como exercer seus direitos.">
+  <meta name="description" content="Política de Privacidade da TICK: que dados tratamos, para quê, com quem compartilhamos, por quanto tempo e os seus direitos (LGPD).">
   <link rel="icon" href="/ticket/img/trimundi-icone.png" sizes="64x64" type="image/png">
   <meta name="theme-color" content="#0a0b0e">
   <link rel="stylesheet" href="/ticket/ticket.css">
@@ -12,57 +12,55 @@
 <body>
   <header class="topo">
     <a class="marca" href="/tic/eventos" aria-label="TICK — eventos"><img src="/ticket/img/trimundi-logo.webp" alt="" width="36" height="36">TICK</a>
-    <a class="discreto" href="/ticket/conta">Minha conta</a>
+    <a class="btn-conta" href="/ticket/conta">Minha conta</a>
   </header>
+  <!-- Texto oficial, sem nenhuma palavra mudada: docs/trimundi/legal/politica-de-privacidade-v1.2.txt.
+       Mudar o texto = arquivo novo, versão nova (src/trimundi/legal.js) e novo
+       aceite; o teste trimundi-legal confere que esta página e o arquivo dizem
+       exatamente o mesmo. -->
   <main class="pagina estreita texto-legal">
     <h1>Política de Privacidade</h1>
-    <p class="discreto">Versão {{versao}} · em vigor desde {{vigencia}}</p>
+    <p class="versao-legal">Versão 1.2 · Atualizada e em vigor para o ecossistema SAN &amp; CO.</p>
 
     <h2>1. Controlador</h2>
-    <p>Bruno Henrique Sanches, CPF 552.085.198-01, sob o nome comercial SAN &amp; CO., Matão-SP, é o controlador dos dados tratados na TICK. Canal do titular: {{contato}}.</p>
+    <p>Bruno Henrique Sanches, CPF 552.085.198-01, sob o nome comercial SAN &amp; CO., com sede em Matão-SP, é o controlador dos dados pessoais tratados na plataforma TICK. Canal oficial de atendimento ao titular: <a href="mailto:admin@sancocore.com.br">admin@sancocore.com.br</a>.</p>
 
-    <h2>2. Menores de idade</h2>
-    <p>A TICK não é destinada a menores de 18 anos: só maiores criam conta e compram. Quando um maior compra ingresso para outra pessoa, informa nome, CPF e e-mail do participante e declara que ele tem a idade mínima do evento. Se soubermos que uma conta é de menor, ela é encerrada.</p>
+    <h2>2. Menores de idade e Participantes Menores</h2>
+    <p>A criação de contas e a realização de compras na TICK são restritas exclusivamente a maiores de 18 anos.</p>
+    <p><strong>Participantes Menores:</strong> Quando um usuário maior de idade adquire ingressos para terceiros em eventos que autorizam expressamente a participação de menores (como faixas etárias de 16 a 18 anos incompletos em eventos específicos da SAN &amp; CO.), o comprador adulto fornece e responsabiliza-se pelos dados do participante menor (nome, CPF e e-mail), declarando ser o responsável legal ou estar devidamente autorizado. Caso seja identificada uma conta de usuário titular pertencente a menor de idade, a conta será sumariamente encerrada.</p>
 
     <h2>3. Que dados tratamos e para quê</h2>
-    <ul>
-      <li><strong>Conta:</strong> nome, CPF, e-mail e senha (guardada só como código embaralhado, nunca em texto). Para identificar você, permitir a compra e mostrar seus ingressos. Base: execução de contrato.</li>
-      <li><strong>Aceite:</strong> versão destes documentos aceita, data, IP e navegador, e a declaração de maioridade. Para provar o que foi aceito. Base: exercício regular de direitos.</li>
-      <li><strong>Pedido:</strong> nome, CPF e e-mail de quem compra, itens, valores, a declaração de idade dos participantes e o aceite das regras do evento (versão, IP e navegador). Para cobrar, entregar, emitir nota e atender reembolso ou contestação. Base: execução de contrato e obrigação legal.</li>
-      <li><strong>Participante:</strong> nome, CPF e e-mail de quem usa cada ingresso. Para identificar o titular do ingresso na entrada (a portaria vê o nome, nunca o CPF; o QR Code não leva dado pessoal). Base: execução de contrato.</li>
-      <li><strong>Entrada e benefícios:</strong> data e hora da entrada e da entrega do benefício, e o operador que registrou. Para impedir entrada e entrega em dobro. Base: execução de contrato.</li>
-      <li><strong>Indicação:</strong> seu código de indicação e quem comprou pelo seu link. Para contar as indicações e entregar a recompensa. Base: execução de contrato.</li>
-      <li><strong>Segurança:</strong> tentativas de login, por IP e por um código embaralhado do e-mail, durante 15 minutos. Para conter força bruta. Base: legítimo interesse.</li>
-    </ul>
-    <p>Não usamos cookies de publicidade nem de terceiros. O único cookie é o de sessão, necessário para você continuar logado.</p>
+    <p><strong>Conta:</strong> Nome, CPF, e-mail e senha (armazenada exclusivamente em formato criptografado hash, nunca em texto plano). Finalidade: identificar o usuário, habilitar compras e gerenciar ingressos. Base legal: execução de contrato.</p>
+    <p><strong>Aceite:</strong> Versão dos termos aceita, data, hora, endereço IP, navegador e declaração de maioridade. Finalidade: comprovação de consentimento e conformidade legal. Base legal: exercício regular de direitos.</p>
+    <p><strong>Pedido:</strong> Nome, CPF e e-mail do comprador, itens adquiridos, valores, declarações de idade e registros de aceite. Finalidade: faturamento, entrega, emissão fiscal e suporte a reembolsos ou contestações. Base legal: execução de contrato e obrigação legal.</p>
+    <p><strong>Participante:</strong> Nome, CPF e e-mail do portador de cada ingresso. Finalidade: validação de identidade na portaria do evento (a interface de portaria exibe apenas o nome e o status, sem expor o CPF; o QR Code não armazena dados pessoais em seu código). Base legal: execução de contrato.</p>
+    <p><strong>Entrada e Benefícios:</strong> Data, hora, operador responsável e registro de validação de acesso ou entrega de brindes. Finalidade: prevenção de fraudes e reutilização de ingressos. Base legal: execução de contrato.</p>
+    <p><strong>Indicação:</strong> Código de indicação e identificação de compras vinculadas. Finalidade: apuração de campanhas promocionais e entrega de recompensas. Base legal: execução de contrato.</p>
+    <p><strong>Segurança:</strong> Registros de tentativas de login (endereço IP e hash do e-mail) mantidos por 15 minutos. Finalidade: mitigação de ataques de força bruta. Base legal: legítimo interesse.Nota de cookies: Não utilizamos cookies de publicidade ou rastreamento de terceiros. O único cookie utilizado é o de sessão estritamente necessário para manter o usuário autenticado.</p>
 
-    <h2>4. Com quem compartilhamos</h2>
-    <ul>
-      <li><strong>San Checkout e Asaas</strong> (Brasil): pagamento — recebem nome, CPF e e-mail de quem paga.</li>
-      <li><strong>Supabase</strong> (São Paulo): banco de dados e imagens.</li>
-      <li><strong>Northflank</strong>: hospedagem da aplicação.</li>
-      <li><strong>Cloudflare</strong>: proteção e entrega do site; pode processar o tráfego fora do Brasil.</li>
-      <li><strong>Provedor de e-mail</strong>: envio da confirmação da conta, da senha e dos ingressos.</li>
-      <li>A organização do evento recebe, na portaria, o nome do participante.</li>
-    </ul>
-    <p>Não vendemos dados.</p>
+    <h2>4. Com quem compartilhamos os dados</h2>
+    <p>Os dados são compartilhados estritamente com os operadores de infraestrutura necessários para a operação da plataforma:</p>
+    <p><strong>San Checkout / Asaas (Brasil):</strong> Processamento de pagamentos (recebem nome, CPF e e-mail do pagador).</p>
+    <p><strong>Supabase (São Paulo - SP):</strong> Banco de dados relacional e armazenamento de arquivos.</p>
+    <p><strong>Northflank:</strong> Hospedagem da aplicação web.</p>
+    <p><strong>Cloudflare:</strong> Proteção contra ameaças, CDN e entrega de tráfego (podendo processar dados globalmente conforme infraestrutura de rede).</p>
+    <p><strong>Provedor de E-mail:</strong> Disparo transacional de confirmações de cadastro, recuperação de senha e entrega de ingressos.</p>
+    <p><strong>Organização do Evento:</strong> A portaria do evento recebe exclusivamente o nome do participante para o controle de acesso.A TICK não comercializa nem aluga dados pessoais sob nenhuma hipótese.</p>
 
-    <h2>5. Por quanto tempo</h2>
-    <ul>
-      <li><strong>Conta:</strong> enquanto ela existir, para você comprar em eventos futuros sem cadastrar de novo. Encerrada a conta, os dados de acesso são apagados.</li>
-      <li><strong>Pedidos com pagamento:</strong> 5 anos após o pagamento, por obrigação fiscal e para defesa em reclamações. Depois, são anonimizados.</li>
-      <li><strong>Participantes:</strong> até o fim do prazo de guarda do evento; depois, anonimizados (o ingresso e a entrada ficam, sem a pessoa).</li>
-      <li><strong>Tentativas de login:</strong> 15 minutos.</li>
-    </ul>
+    <h2>5. Por quanto tempo mantemos os dados</h2>
+    <p><strong>Conta:</strong> Mantida ativa enquanto o usuário desejar realizar compras futuras. Após o encerramento da conta, os dados de acesso são eliminados.</p>
+    <p><strong>Pedidos com pagamento:</strong> Armazenados por 5 (cinco) anos após a transação, em atendimento a exigências fiscais e prazos prescricionais de defesa jurídica, sendo anonimizados após o período.</p>
+    <p><strong>Dados de Participantes:</strong> Guardados pelo prazo de retenção operacional do evento e obrigações legais correlatas, sendo posteriormente anonimizados.</p>
+    <p><strong>Registros de Segurança (Tentativas de login):</strong> Eliminados automaticamente após 15 minutos.</p>
 
-    <h2>6. Seus direitos</h2>
-    <p>Você pode pedir confirmação, acesso, correção, cópia (portabilidade), anonimização ou eliminação dos seus dados e informação sobre com quem compartilhamos, pelo canal {{contato}}. Respondemos em até 15 dias. O que tem guarda legal (pedido pago, por 5 anos) é mantido e explicamos o motivo. Você também pode reclamar à ANPD.</p>
+    <h2>6. Seus direitos (LGPD)</h2>
+    <p>O titular pode solicitar a qualquer momento a confirmação da existência de tratamento, acesso, correção, portabilidade, anonimização ou eliminação de seus dados, bem como informações sobre o compartilhamento, enviando um e-mail para <a href="mailto:admin@sancocore.com.br">admin@sancocore.com.br</a>. O prazo de resposta é de até 15 dias. Solicitações referentes a dados com obrigação legal de retenção (como histórico fiscal de pedidos de 5 anos) serão mantidas justificadamente. O titular também possui o direito de peticionar perante a Autoridade Nacional de Proteção de Dados (ANPD).</p>
 
-    <h2>7. Segurança</h2>
-    <p>Conexão criptografada (HTTPS), senhas com hash, links de confirmação de uso único e com prazo, acesso ao banco só pela aplicação, QR Code assinado e sem dado pessoal, e limite de tentativas de login. Nenhum sistema é infalível; em incidente relevante, avisamos os titulares afetados e a ANPD, como a LGPD exige.</p>
+    <h2>7. Segurança da Informação</h2>
+    <p>A plataforma emprega criptografia em trânsito (HTTPS), hashes robustos para senhas, links de validação de uso único com expiração, isolamento de banco de dados acessível apenas pela aplicação, QR Codes assinados digitalmente sem exposição de dados sensíveis e limitação de tentativas de acesso. Em caso de incidente de segurança relevante que possa acarretar risco ou dano relevante, os titulares afetados e a ANPD serão notificados em conformidade com a LGPD.</p>
 
-    <h2>8. Mudanças</h2>
-    <p>Mudança relevante desta Política gera versão nova, que você aceita antes da próxima compra.</p>
+    <h2>8. Atualizações da Política</h2>
+    <p>Modificações relevantes nesta Política geram uma nova versão, que exigirá novo aceite eletrônico do usuário antes de sua próxima transação na plataforma.</p>
   </main>
   <footer class="rodape">
     <p><a href="/ticket/termos">Termos de Uso</a> · <a href="/ticket/privacidade">Política de Privacidade</a></p>

@@ -71,7 +71,11 @@ async function indicadorValido(cliente, onde, { compradorClienteId = null, edica
   );
   const ind = rows[0];
   if (!ind) return null;
-  if (ind.operador_id && !(ind.operador_status === 'ativo' && ind.operador_autorizado)) return null;
+  // Sem edição (link geral, /tic/eventos?ind=): basta o operador estar ativo;
+  // a autorização dele na edição é conferida na compra.
+  if (ind.operador_id && !(ind.operador_status === 'ativo' && (edicaoId == null || ind.operador_autorizado))) {
+    return null;
+  }
   if (ind.cliente_id) {
     if (ind.cliente_anonimizado) return null;
     if (compradorClienteId && Number(ind.cliente_id) === Number(compradorClienteId)) return null;
@@ -129,14 +133,35 @@ async function origemDaConta(cliente, { clienteId, edicaoId, codigo }) {
   );
 }
 
+// Visita pelo link ("Indique e acompanhe"): um visitante é um navegador — um
+// id aleatório dele, guardado só como hash. A mesma pessoa voltando pelo
+// mesmo link no mesmo navegador não conta de novo. Quando esse navegador
+// entra numa conta, a visita ganha o cliente_id (assim se conta quem criou
+// conta pela indicação). Quem visita o próprio link não conta.
+const VISITANTE = /^[A-Za-z0-9_-]{16,64}$/;
+async function registrarVisita(cliente, { indicadorId, visitante, edicaoId = null, clienteId = null }) {
+  if (!indicadorId || !VISITANTE.test(String(visitante ?? ''))) return false;
+  const h = crypto.createHash('sha256').update(String(visitante)).digest('hex');
+  const { rowCount } = await cliente.query(
+    `INSERT INTO indicacao_visitas (indicador_id, visitante, edicao_id, cliente_id) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (indicador_id, visitante) DO UPDATE SET cliente_id = EXCLUDED.cliente_id
+       WHERE indicacao_visitas.cliente_id IS NULL AND EXCLUDED.cliente_id IS NOT NULL`,
+    [indicadorId, h, edicaoId, clienteId],
+  );
+  return rowCount > 0;
+}
+
 // Página de venda: quem indicou, para o aviso "Você chegou por indicação de…".
 // Logado, registra a origem (a mesma regra do pedido); sem login, só mostra
-// de quem é o código. Nome e tipo — nada mais do indicador.
-async function quemIndicou({ clienteId = null, edicaoId, codigo }) {
+// de quem é o código. Nome e tipo — nada mais do indicador. Com `visitante`,
+// conta a visita pelo link do código que veio (não o da origem).
+async function quemIndicou({ clienteId = null, edicaoId = null, codigo, visitante = null, contarVisita = true }) {
   return emTransacao(async (cliente) => {
-    const ind = clienteId
-      ? await origemDaConta(cliente, { clienteId, edicaoId, codigo })
-      : await indicadorDoCodigo(cliente, codigo, null, edicaoId);
+    const doCodigo = await indicadorDoCodigo(cliente, codigo, clienteId, edicaoId);
+    if (doCodigo && visitante && contarVisita) {
+      await registrarVisita(cliente, { indicadorId: doCodigo.id, visitante, edicaoId, clienteId });
+    }
+    const ind = clienteId && edicaoId ? await origemDaConta(cliente, { clienteId, edicaoId, codigo }) : doCodigo;
     return ind ? { nome: ind.nome, tipo: ind.tipo } : null;
   });
 }
@@ -409,6 +434,10 @@ async function andamento(cliente, indicador, operadorId = null) {
   );
   return {
     codigo: indicador.codigo,
+    // Link permanente geral: a vitrine da TICK, que leva o código para
+    // qualquer evento que a pessoa abrir (edicao.page.js usa o geral quando
+    // não há um do próprio evento).
+    link_geral: `${config.urlDoSite()}/tic/eventos?ind=${indicador.codigo}`,
     links: edicoes.map((e) => ({
       edicao_id: e.id,
       evento: `${e.evento} — ${e.edicao}`,
@@ -477,6 +506,7 @@ async function linkDoCliente(clienteId, edicaoId) {
 
 module.exports = {
   INGRESSO_DE_PE,
+  registrarVisita,
   indicadorDoCodigo,
   origemDaConta,
   quemIndicou,

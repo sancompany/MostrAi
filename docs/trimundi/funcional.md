@@ -358,6 +358,34 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     conversão: nada é concedido sem campanha ativa.
   - CPF mascarado em toda lista e ficha; o inteiro só pelo botão do Admin,
     auditado. Ranking e CSV: nome, categoria e números.
+- **RN-T33 Aceite dos Termos com histórico** (10/11/2026).
+  - Textos oficiais v1.2 em `docs/trimundi/legal/` (exatamente como o dono
+    entregou); as páginas `/ticket/termos` e `/ticket/privacidade` dizem o
+    mesmo texto, conferido por teste palavra por palavra.
+  - O aceite só vale para a versão que a página apresentou: a página manda
+    `versao_termos`; se não for a vigente (`src/trimundi/legal.js`), o
+    servidor recusa (409) e a pessoa recarrega e lê a atual. Ninguém é dado
+    como tendo aceitado uma versão que não viu.
+  - Cada aceite é uma linha em `aceites_conta` (versão, hash dos dois
+    documentos apresentados, maioridade, IP, navegador, data e hora, origem
+    `cadastro` ou `reaceite`), que não muda nem se apaga (trigger de
+    histórico). Os aceites que existiam antes entraram como `anterior`.
+    As colunas da conta guardam só o aceite vigente, o que a compra confere.
+  - Versão nova publicada: a conta fica com `aceite_pendente` e não compra
+    até aceitar de novo; o aceite antigo continua no histórico.
+- **RN-T34 Indique e acompanhe** (Minha conta, 10/11/2026).
+  - Um link permanente por conta, `/tic/eventos?ind=CÓDIGO`, vale para
+    qualquer evento (o código fica no navegador por 30 dias e segue até a
+    página de venda); os links por edição continuam.
+  - Acessos únicos: um navegador conta uma vez por link (id aleatório
+    gerado no navegador, guardado só como hash em `indicacao_visitas`; sem
+    IP, nome ou e-mail). A própria conta não conta. Limite de 60 acessos
+    contados por hora por IP. É aproximado: outro navegador ou aparelho da
+    mesma pessoa conta de novo; navegador com dados apagados também.
+  - Contas criadas: navegador que chegou pelo link e depois entrou numa
+    conta criada a partir dessa visita.
+  - Compras: só as confirmadas (RN-T32). Nenhum dado de quem visitou ou
+    comprou aparece para quem indicou.
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.

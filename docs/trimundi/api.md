@@ -176,18 +176,20 @@ A conta TICK usa o cookie `tick.sid` (path `/ticket`), separado do
 | Método e rota | O que faz |
 |---|---|
 | `GET /ticket/conta`, `/ticket/conta/confirmar`, `/esqueci`, `/redefinir` | uma página: entrar, criar conta, confirmar e-mail, recuperar senha e "minha conta" |
-| `POST /ticket/api/conta/cadastro` | `{ nome, cpf, email, senha, senha_confirmacao, maioridade: true, aceite_termos: true }` (sem os aceites ou com a confirmação diferente → 400). Uma conta por CPF e por e-mail: 409 `email_em_uso` ("Este e-mail já possui uma conta. Entre na sua conta.") ou `cpf_em_uso` ("Este CPF já possui uma conta vinculada. Entre na sua conta."), com `entrar: '/ticket/conta'`; garantido no banco (índices únicos) e serializado por CPF e e-mail → 201 com a mesma mensagem exista ou não conta com o e-mail (a existente não muda e o dono dela é avisado); 409 `cpf_em_uso` se o CPF é de outra conta |
+| `POST /ticket/api/conta/cadastro` | `{ nome, cpf, email, senha, senha_confirmacao, maioridade: true, aceite_termos: true, versao_termos }` (sem os aceites ou com a confirmação diferente → 400; `versao_termos` diferente da vigente — a página manda a que mostrou, de `<meta name="tick-termos">` — → 409 `versao_termos` com `versao`, nada é criado). O aceite vira uma linha em `aceites_conta` (origem `cadastro`). Uma conta por CPF e por e-mail: 409 `email_em_uso` ("Este e-mail já possui uma conta. Entre na sua conta.") ou `cpf_em_uso` ("Este CPF já possui uma conta vinculada. Entre na sua conta."), com `entrar: '/ticket/conta'`; garantido no banco (índices únicos) e serializado por CPF e e-mail → 201 com a mesma mensagem exista ou não conta com o e-mail (a existente não muda e o dono dela é avisado); 409 `cpf_em_uso` se o CPF é de outra conta |
 | `POST /ticket/api/conta/confirmar` | `{ token }` (vem no fragmento `#t=` do link) → abre sessão; uso único, 48 h |
 | `POST /ticket/api/conta/reenviar` | `{ email }` → resposta sempre igual |
 | `POST /ticket/api/conta/entrar` | `{ email, senha }` → sessão nova; 401 igual com ou sem conta; 403 `nao_confirmado` |
 | `POST /ticket/api/conta/sair` | sai da conta |
 | `POST /ticket/api/conta/esqueci` | `{ email }` → resposta sempre igual; link de 60 min |
 | `POST /ticket/api/conta/redefinir` | `{ token, senha }` → senha nova, sessões antigas caem |
-| `POST /ticket/api/conta/aceite` | `{ maioridade: true, aceite_termos: true }` → aceita a versão atual dos Termos (conta logada) |
-| `GET /ticket/termos`, `GET /ticket/privacidade` | Termos de Uso e Política de Privacidade, com versão e contato |
+| `POST /ticket/api/conta/aceite` | `{ maioridade: true, aceite_termos: true, versao_termos }` → aceita a versão atual dos Termos (conta logada); versão diferente da vigente → 409 `versao_termos`. Nova linha em `aceites_conta` (origem `reaceite`); as anteriores ficam |
+| `GET /ticket/termos`, `GET /ticket/privacidade` | Termos de Uso e Política de Privacidade v1.2 — o texto oficial, sem mudança (`docs/trimundi/legal/*.txt`, conferido por teste) |
 | `GET /ticket/api/conta/sessao` | `{ logado, nome, email }` (a página do evento sabe se pede login) |
-| `GET /ticket/api/conta` | conta (CPF mascarado), ingressos pagos com QR e benefícios, e a indicação (`codigo`, `links[]` de cada edição à venda e, por campanha ativa, o andamento) |
-| `POST /ticket/api/edicoes/:evento/:edicao/indicacao` | `{ codigo? }` → `{ indicacao: { nome, tipo } \| null }` para o aviso "Você chegou por indicação de…". Com conta logada, registra a origem da conta na edição (o primeiro link que valeu fica) |
+| `GET /ticket/api/conta` | conta (CPF mascarado); `edicoes[]` — um grupo por edição (`evento`, `edicao`, `inicio_em`, `local`) com `pedidos[]` (`codigo`, `status`, `situacao`, `itens[]`, `reserva_expira_em`, `ingressos[]` com QR só se o pedido está pago e o ingresso válido e não usado); `ingressos[]` (lista plana, compatibilidade); e a indicação (`codigo`, `link_geral` permanente `/tic/eventos?ind=…`, `links[]` de cada edição à venda, campanhas e `numeros: { acessos, contas_criadas, pessoas, compras, ingressos }`) — nenhum dado de quem visitou ou comprou |
+| `POST /ticket/api/conta/pedidos/:id/link` | conta logada, dona do pedido, pedido aguardando pagamento com reserva viva → `{ url }` ("Continuar pagamento"); qualquer outro caso → 404 |
+| `POST /ticket/api/indicacao/visita` | `{ codigo, visitante }` (visitante = id aleatório do navegador, 16–64 `[A-Za-z0-9_-]`) → `{ indicacao: { nome, tipo } \| null }`. Registra o acesso único (só o hash SHA-256 do visitante; a própria conta não conta; 60 por hora por IP) |
+| `POST /ticket/api/edicoes/:evento/:edicao/indicacao` | `{ codigo?, visitante? }` (com `visitante`, conta o acesso único como a rota acima) → `{ indicacao: { nome, tipo } \| null }` para o aviso "Você chegou por indicação de…". Com conta logada, registra a origem da conta na edição (o primeiro link que valeu fica) |
 
 ## Rotas da Mostraí
 

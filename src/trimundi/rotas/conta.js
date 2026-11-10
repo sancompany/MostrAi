@@ -113,6 +113,12 @@ router.get('/ticket/api/conta', exigirCliente, async (req, res) => {
   res.json(await clientes.painel(req.clienteTrimundi));
 });
 
+// "Continuar pagamento" de um pedido da própria conta.
+router.post('/ticket/api/conta/pedidos/:id/link', exigirCliente, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await clientes.linkDoMeuPedido(req.clienteTrimundi, req.params.id));
+});
+
 // Termos de Uso e Política de Privacidade (com a versão e o canal do titular).
 for (const nome of ['termos', 'privacidade']) {
   router.get(`/ticket/${nome}`, (_req, res) =>
@@ -127,7 +133,9 @@ for (const caminho of [
   '/ticket/conta/esqueci',
   '/ticket/conta/redefinir',
 ]) {
-  router.get(caminho, (_req, res) => paginas.enviar(res, 'conta', {}, { cache: 'no-store' }));
+  // A versão dos Termos vai na página: é a que o cadastro e o reaceite
+  // mostram e mandam de volta (clientes.lerAceite confere).
+  router.get(caminho, (_req, res) => paginas.enviar(res, 'conta', { versao: legal.VERSAO }, { cache: 'no-store' }));
 }
 
 router.use('/ticket', tratarErros);
