@@ -646,6 +646,16 @@
       if (err.status === 401) return telaEntrar(volta ? 'Entre na sua conta para continuar a compra.' : null);
       return trocar(el('p', { class: 'mensagem erro', text: err.message }));
     }
+    // Chegou pelo link geral de indicação antes de ter conta: com a conta
+    // aberta, o servidor liga aquela visita a ela (conta "criou conta pela
+    // indicação" mesmo sem abrir uma página de evento depois).
+    const codigoGeral = window.trimundi.indicacaoGeral();
+    if (codigoGeral) {
+      api('/ticket/api/indicacao/visita', {
+        metodo: 'POST',
+        corpo: { codigo: codigoGeral, visitante: window.trimundi.visitante() },
+      }).catch(() => {});
+    }
     topo.replaceChildren(
       el('button', {
         class: 'btn-conta',
