@@ -622,3 +622,104 @@ sem nada do outro lado para creditar.
   documento: com o runbook e sem falar com quem construiu, faz um deploy
   trivial, reverte, e acha a data de vencimento do domínio. Onde travar, o
   runbook está incompleto.
+
+---
+
+## 11. Trimundi (projeto hospedado nesta aplicação)
+
+A ticketeira Trimundi é outro projeto da San & Co. e mora neste repositório
+e neste serviço. Os dados dela ficam no banco da Mostraí, no **esquema
+próprio `trimundi`** (nunca no `public`) — `docs/trimundi/README.md`.
+
+**Hoje (09/11/2026) a Trimundi tem código na branch
+`claude/beautiful-faraday-cjq1nt`, mas nada dela está em produção.** Sem
+`TRIMUNDI_ATIVA=1`, o módulo fica desligado: `/ticket/*` e
+`/admin/trimundi/*` respondem 503. O login da Mostraí não conhece a
+Trimundi (operador e cliente entram nas telas dela).
+Estado de cada parte: `docs/trimundi/STATUS-IMPLEMENTACAO.md`.
+
+### 11.1 Ligar e desligar
+- **Ligar:** `TRIMUNDI_ATIVA=1` e `TRIMUNDI_SEGREDO` (32+ caracteres;
+  obrigatório em produção), mais `TRIMUNDI_CHECKOUT_*`. Usa o
+  `DATABASE_URL` da Mostraí, que precisa ser o pooler de SESSÃO (5432): com
+  o de transação (6543) o módulo não liga. Imagens e e-mail usam o
+  `SUPABASE_*` e o `SMTP_*`/`MOSTRAI_EMAIL_FROM` da Mostraí. Os nomes estão
+  no `.env.example`, bloco Trimundi.
+- **Desligar às pressas:** apagar `TRIMUNDI_ATIVA` e reiniciar (reinício de
+  produção só com autorização do dono). A Mostraí segue igual; as tabelas
+  da Trimundi ficam paradas no esquema dela.
+
+### 11.2 Migrations
+```bash
+npm run trimundi:migrate
+```
+**Em produção roda sozinho no arranque do contêiner**, logo depois das
+migrations da Mostraí (`Dockerfile`, autorizado pelo dono em 10/11/2026).
+Desligada, não faz nada; se falhar, registra no log e a Mostraí sobe mesmo
+assim (`/ticket` fica com erro até corrigir ou desligar a Trimundi).
+
+Cria o esquema `trimundi` (se não existir), tira o acesso de `anon` e
+`authenticated` a ele e aplica `src/trimundi/db/migrations/*.sql` dentro do
+esquema, uma vez cada, com trava própria (872027; a da Mostraí é 872026).
+Antes de cada arquivo confere que a conexão está no esquema. Em produção recusa sem `--producao-autorizada`, que só se
+usa com autorização do dono.
+
+**Conexões:** o pooler de sessão do Supabase tem 15 vagas; a Mostraí usa até
+13 (2 instâncias × 5, o LISTEN de cada uma e o job de conciliação). A
+Trimundi usa 1 por instância (`TRIMUNDI_POOL_MAX`, padrão 1). Subir esse
+número, ou o de instâncias, pede antes aumentar o *pool size* no Supabase
+(Database → Connection pooling); sem isso, `EMAXCONNSESSION` derruba a
+Mostraí.
+
+### 11.3 Rotina
+- **Fila de avisos de pagamento e de e-mail:** a cada 30 s, no processo do
+  servidor. Aviso que falha 6 vezes vira `morto` e aparece em Admin →
+  Eventos → Participantes ("Precisa de você").
+- **Pedidos vencidos:** a cada 5 min viram `expirado`.
+- **Conciliação com o Checkout:** roda sozinha a cada 6 h no processo
+  (só com o Checkout configurado). À mão:
+  ```bash
+  npm run trimundi:conciliar
+  ```
+- **Retenção (D2):** nunca automática. Prazos provisórios até a revisão
+  jurídica. Ensaio (não muda nada):
+  ```bash
+  npm run trimundi:retencao
+  ```
+  Anonimizar de verdade exige `-- --confirmar` e autorização do dono.
+
+### 11.4 Incidentes
+- **Operador perdeu o aparelho ou saiu:** Admin → Eventos → Adicionar
+  operador → **Desativar**. A sessão cai na requisição seguinte.
+- **`TRIMUNDI_SEGREDO` vazou:** quem tem o segredo forja QR. Trocar o
+  segredo invalida TODOS os QR emitidos: avisar os compradores e reenviar
+  os links dos pedidos (Admin → pedido → **Gerar link do pedido**) antes
+  do evento. A troca é decisão do dono.
+- **Pagamento confirmado no Checkout e o pedido aqui não mudou:** rodar a
+  conciliação (11.3); o fato entra pela mesma fila, sem duplicar.
+- **"Pago sem vaga":** o pagamento chegou depois da reserva e esgotou.
+  Admin → pedido → **Reembolsar pedido**.
+- **Pedido do titular (LGPD):** Admin → Eventos → Participantes → **Pedido
+  do titular (LGPD)** → CPF → **Baixar os dados** e/ou **Anonimizar**.
+- **Backup e restauração:** o backup da Mostraí (banco inteiro) já leva o
+  esquema `trimundi`. Para voltar só a Trimundi, sem mexer na Mostraí:
+  ```bash
+  psql "$DATABASE_URL" -c "CREATE SCHEMA IF NOT EXISTS trimundi"
+  ```
+  ```bash
+  pg_restore --schema=trimundi --clean --if-exists --no-owner -d "$DATABASE_URL" backup.dump
+  ```
+  O primeiro comando é necessário: `--schema` não recria o esquema, e sem
+  ele a restauração falha inteira. Ensaiado em 09/11/2026 num banco de
+  teste: ingressos, tabelas e RLS voltaram iguais, e repetir por cima
+  também funciona.
+  Restaurar o banco inteiro volta as duas no tempo — decisão do dono.
+- **Operador sem acesso:** `/ticket/entrar` é o login dele (nunca a tela da
+  Mostraí). Esqueceu a senha: Admin → Adicionar operador → **Gerar novo
+  código** e ele ativa de novo em `/ticket/ativar`.
+- **Cliente não recebeu a confirmação:** na tela de entrar ele pede de novo
+  ("Reenviar o link"). Sem e-mail ativo no ambiente, a mensagem fica na fila
+  como `aguardando_provedor`.
+
+O que precisa existir antes de ligar em produção está em
+`docs/trimundi/pendencias.md`.

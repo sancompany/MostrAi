@@ -1787,3 +1787,80 @@ nada. E o `/estornar` do San Checkout não alcança cobrança de assinatura
 - Janela contada da hora em que a Mostraí gravou, quando o PSP dá a hora.
 - Polling para "acelerar" a ativação: a demora (~110 s) é da Asaas.
 - Cancelar a assinatura junto com o estorno.
+
+## ADR-048 — A Trimundi mora na aplicação da Mostraí, com banco próprio (09/11/2026)
+
+> Numeração: o ADR-047 está na branch `claude/busy-noether-hheir2`, ainda
+> fora da `main`. Este pula para 048 para não colidir quando ela entrar.
+
+**Contexto.**
+- O dono pediu a fundação da Trimundi (ticketeira) dentro do Admin da
+  Mostraí:
+  - um item "Eventos" com cinco funções;
+  - a tela de login da Mostraí para os operadores de check-in;
+  - a rota pública `/ticket/:evento/:edicao` no mesmo domínio.
+- Pela skill `classificar`, a Trimundi é **projeto próprio** (os quatro
+  testes, em `docs/trimundi/specs/2026-11-09-trimundi-fundacao.md` §6). E
+  projeto tem banco próprio, sem exceção.
+
+**Decisão.**
+- **Módulo com banco próprio.** A Trimundi é um módulo desta aplicação
+  (`src/trimundi/`, `public/admin/trimundi.js`, `/admin/trimundi/*`,
+  `/ticket/*`), com banco próprio (`TRIMUNDI_DATABASE_URL`) e migrations
+  próprias (`src/trimundi/db/migrations/`, numeração própria).
+- **Desligado sem banco.** Sem o banco configurado, o módulo fica desligado:
+  as rotas dele respondem 503 e o login não procura operador.
+- **Uma rota da Mostraí muda.** É `POST /anunciantes/login`: um e-mail sem
+  conta da Mostraí pode ser de operador da Trimundi, que vai direto para
+  `/ticket/checkin`. Autorizado pelo dono, por ser mudança de autenticação.
+- **Prefixo `trimundi` em tudo**, porque dois nomes já têm dono na Mostraí:
+  - "eventos": a tabela de métrica, o canal `GET /admin/eventos`,
+    `public/eventos.js` e o atalho `#eventos`;
+  - "operador": `src/lib/operador.js`, que é quem opera o Admin.
+
+**Consequências.**
+- Documentos próprios em `docs/trimundi/`.
+- Exceção registrada nos dois `CONSTRAINTS.md`.
+- Até a decisão do serviço próprio, um pico de venda divide processo e
+  deploy com a Mostraí.
+
+**Não fazer sem o dono.**
+- Criar tabela da Trimundi no banco da Mostraí "para simplificar".
+- Ler tabela de um projeto a partir do outro: chama-se a função do módulo
+  dono do dado.
+- Pôr a API da Trimundi em `/admin/eventos*`.
+- Mudar o login da Mostraí além do caminho do operador.
+
+## ADR-049 — Trimundi no banco da Mostraí, em esquema próprio; marca e logins próprios (09/11/2026)
+
+Substitui, da ADR-048, o "banco próprio" e o login de operador pela tela da
+Mostraí. O resto da ADR-048 (módulo nesta aplicação, prefixo `trimundi`,
+documentos próprios, sem tabela cruzada) continua.
+
+**Contexto.** O dono decidiu: "banco e imagens utiliza a própria estrutura
+da Mostraí", "use o e-mail da Mostraí", e depois simplificou o escopo —
+experiência da Trimundi completamente independente da Mostraí (marca,
+páginas, login de operador), conta de cliente com e-mail confirmado,
+benefício por lote e indicação simples. Esquema `trimundi` no PostgreSQL
+compartilhado foi a forma escolhida por ele de manter a separação lógica.
+
+**Decisão.**
+- Tabelas da Trimundi no esquema `trimundi` do banco da Mostraí, nunca no
+  `public`. Conexão do pool da Trimundi só é entregue depois de `SET
+  search_path` e da conferência do servidor (falha fechado); o migrador
+  confere `current_schema()` antes de cada arquivo; pooler de transação
+  (6543) desliga o módulo; `anon`/`authenticated` sem acesso ao esquema; RLS
+  em toda tabela. `TRIMUNDI_DATABASE_URL` continua como saída para outro
+  banco, sem mudar código.
+- Imagens no bucket da Mostraí sob `trimundi/`; e-mail pelo SMTP/remetente
+  da Mostraí, com a logo e o nome Trimundi no corpo.
+- Login do operador em `/ticket/entrar` e do cliente em `/ticket/conta`;
+  `POST /anunciantes/login` volta a ser o da `main`.
+- Exceção registrada em `CONSTRAINTS.md` (raiz) e
+  `docs/trimundi/CONSTRAINTS.md` ("banco próprio por projeto").
+
+**Não fazer sem falar com o dono.**
+- Pôr tabela da Trimundi no `public` ou ler tabela da Mostraí a partir dela.
+- Tirar a conferência do esquema da conexão ("simplificar" o pool).
+- Usar o pooler de transação para a Trimundi.
+- Pôr de volta qualquer elemento ou link da Mostraí nas telas públicas.

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Recuperar meus ingressos · Trimundi</title>
+  <meta name="description" content="Receba de novo o link dos seus ingressos no e-mail de quem comprou.">
+  <link rel="icon" href="/ticket/img/trimundi-icone.png" sizes="64x64" type="image/png">
+  <meta name="theme-color" content="#0a0b0e">
+  <link rel="stylesheet" href="/ticket/ticket.css">
+</head>
+<body>
+  <header class="topo">
+    <span class="marca"><img src="/ticket/img/trimundi-logo.webp" alt="" width="36" height="36">Trimundi</span>
+  </header>
+
+  <main class="pagina estreita">
+    <h1>Recuperar meus ingressos</h1>
+    <p>Informe o e-mail e o CPF de quem comprou. Se houver pedido pago com esses dados, mandamos de novo o link dos ingressos para esse e-mail.</p>
+    <form class="cartao" id="formRecuperar" novalidate>
+      <div class="campo">
+        <label for="email">E-mail de quem comprou</label>
+        <input id="email" name="email" type="email" autocomplete="email" maxlength="200" required>
+      </div>
+      <div class="campo">
+        <label for="cpf">CPF de quem comprou</label>
+        <input id="cpf" name="cpf" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="000.000.000-00" required>
+      </div>
+      <p class="mensagem" id="msg" role="status" aria-live="polite"></p>
+      <button class="btn primario grande" type="submit">Enviar o link</button>
+    </form>
+  </main>
+
+  <footer class="rodape">
+    <p><a href="/ticket/termos">Termos de Uso</a> · <a href="/ticket/privacidade">Política de Privacidade</a></p>
+  </footer>
+
+  <script src="/ticket/comum.js"></script>
+  <script src="/ticket/recuperar.page.js"></script>
+</body>
+</html>

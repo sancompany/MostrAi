@@ -26,3 +26,7 @@ backups/
 .DS_Store
 Thumbs.db
 npm-debug.log*
+
+# Trimundi — arquivos locais de desenvolvimento
+.trimundi-arquivos/
+.trimundi-emails.jsonl

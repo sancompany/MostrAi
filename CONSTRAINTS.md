@@ -142,6 +142,15 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
 
 - **Ponto único de falha:** um serviço no Northflank e um banco no Supabase.
   Aceito para este porte.
+- **Este repositório e esta aplicação hospedam a Trimundi** (ticketeira,
+  projeto próprio da San & Co.), por decisão do dono em 09/11/2026. Ela
+  entra como um item "Eventos" no Admin e tem as rotas `/ticket/*`, com
+  marca e login próprios. **Os dados da Trimundi ficam no esquema próprio
+  `trimundi` deste banco, nunca no `public`** (decisão do dono, 09/11/2026);
+  a conexão dela falha fechado fora do esquema. Custo assumido: um pico de
+  ingressos divide o processo (0,5 vCPU, 1 GB) e o deploy com a Mostraí; o
+  serviço próprio se decide antes da venda pública. Regras, limites e a
+  exceção completa: `docs/trimundi/CONSTRAINTS.md`.
 - **PIN de saída do Player é UM para a rede (4 a 8 dígitos).** Só libera
   sair do modo quiosque na própria TV — protege contra o curioso, não contra
   ataque, e não dá acesso a nada no servidor. Um PIN por rede (e não por
@@ -285,3 +294,4 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
 | 6 (backup) | Supabase gratuito sem backup automático | plano Pro |
 | 4/seguranca-san (Access) | `/admin` protegido por senha própria, não por Access | domínio no Cloudflare e Access configurado |
 | 6 (RLS) | autorização só na aplicação, sem RLS no banco | decisão do dono na Estação 4 — ver `CLAUDE.md` |
+| `classificar` / `leis` (um projeto por repositório e serviço; banco próprio por projeto) | a Trimundi mora neste repositório, nesta aplicação e neste banco, no esquema `trimundi` (09/11/2026) | venda pública com volume que peça serviço próprio, ou a Mostraí ser entregue a terceiro — detalhe em `docs/trimundi/CONSTRAINTS.md` |

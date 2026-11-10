@@ -1,6 +1,68 @@
 # Current Handoff
 
 ## Updated
+2026-11-09 (noite) — **Trimundi, escopo simplificado pelo dono, em 6
+commits LOCAIS (sem push, sem PR atualizado, nada em produção)** na branch
+`claude/beautiful-faraday-cjq1nt`: esquema `trimundi` no banco da Mostraí
+(ADR-049), lote sem sobra, identidade Trimundi (logo), conta do cliente,
+benefício por lote, indicação, login próprio do operador. Suíte inteira
+verde. Estado: `docs/trimundi/STATUS-IMPLEMENTACAO.md`, "Escopo
+simplificado". O dono pediu para revisar antes de push/merge/deploy.
+- Não desfazer sem contexto: conexão da Trimundi falha fechado fora do
+  esquema; testes da Trimundi usam IP 100.64/10 (a 198.18/15 é dos testes de
+  limite da Mostraí); a compra exige conta confirmada.
+- Rodar a bateria com o ambiente do CI exportado (DATABASE_URL do usuário
+  `mostrai`, NODE_ENV=test); sem NODE_ENV=test o LISTEN do SSE prende o
+  processo de teste.
+
+2026-11-09 (tarde) — **Trimundi, Etapas 1 a 6 construídas e testadas;
+Etapa 7 (homologação do dono) aberta.** Mesma branch
+`claude/beautiful-faraday-cjq1nt`, PR #137 em rascunho, nada em produção.
+- Estado de cada parte, riscos e como rodar: `docs/trimundi/STATUS-IMPLEMENTACAO.md`.
+- Decisões que só o dono toma: `docs/trimundi/pendencias.md`, "Decisões do
+  dono desta execução" (pedido de teste em produção, taxas no reembolso
+  total, prazos de D2, sobra de lote, avisos resolvidos à mão).
+- Não desfazer sem contexto: reserva = `expiraEm` = 30 min; combo consome o
+  estoque do tipo; recusa de cartão não encerra o pedido; login da Mostraí
+  com a Trimundi fora do ar responde o 401 de sempre; `jsqr` é dependência
+  de produção (servido em `/ticket/jsqr.js`).
+- Testes: `tests/trimundi-*.test.js`, banco de teste próprio criado pelo
+  teste. Rodar a bateria com o `.env` exportado (o pool da Mostraí não lê o
+  `.env` sozinho).
+
+2026-11-09 — **Produção conferida estável + Trimundi, Etapa 0 (só
+documentos).** Branch `claude/beautiful-faraday-cjq1nt`, nascida da `main`
+(= produção = `f344882`); ela **não** contém a `busy-noether`.
+- **Produção, só leitura.** Nada foi alterado.
+  - Instâncias: 2 de pé desde 13/10, sem reinício e sem `uncaughtException`;
+    memória estável em ~13,6 %.
+  - Banco: 3 quedas pontuais de conexão nos processadores de fundo (25, 26
+    e 29/10), recuperadas sozinhas.
+  - Filas: webhooks, e-mail e pendências vazias.
+  - Jobs verdes: conciliação diária, backup de 08/11 (116 KB), apuração de
+    01/11.
+  - Certificado da Cloudflare válido até 28/01/2027.
+  - Nenhuma assinatura paga ativa.
+  - Telas: a do ponto 10 ficou desligada no horário de sexta e sábado
+    (problema físico); a do Móvel está parada desde 20/10 (esperado).
+- **`claude/busy-noether-hheir2`** segue com 34 commits fora da `main`
+  (ADR-047; migration 123, não aplicada em produção) e sem PR. Não misturar
+  com a Trimundi.
+- **Trimundi** (ticketeira, projeto próprio, hospedada aqui com banco
+  próprio, ADR-048). A Etapa 0 escreveu:
+  - `docs/trimundi/`: spec, CONSTRAINTS, funcional, modelo de dados, api,
+    inventário, pendências, próximas versões e README;
+  - a exceção e o limite no `CONSTRAINTS.md` da raiz;
+  - o `RUNBOOK.md` §11;
+  - os ponteiros no `CLAUDE.md` e no `AGENTS.md`.
+  
+  Nenhum código ainda.
+- **Próximo:** Etapa 1 (banco próprio, migrations, RLS, módulo desligado
+  sem configuração), depois de o dono confirmar D1 (métrica) e D2
+  (retenção) em `docs/trimundi/pendencias.md`. Etapas: spec §11.
+- **Não fazer:** merge na `main` sem autorização (publica em produção),
+  migration em produção, deploy.
+
 2026-10-13 — **Review-Master, Ciclo 1, lote 1: 1 CRÍTICO + 10 ALTOS + 1
 MÉDIO corrigidos** (migration 122, aditiva; branch
 `claude/busy-noether-hheir2`, 15 commits sobre `48d6030`; PR do lote 1 a

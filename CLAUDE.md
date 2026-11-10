@@ -67,6 +67,15 @@ conformidade: ou corrige, ou vira exceção registrada no `CONSTRAINTS.md`.
   item entra na seção F e sai corrigido. Fecha só com a lista `[x]` e o dono
   satisfeito. Nenhuma outra pendência bloqueia hoje.
 
+## Trimundi — outro projeto, hospedado aqui
+A ticketeira Trimundi é projeto próprio da San & Co. Mora neste repositório e
+nesta aplicação por decisão do dono (09/11/2026). Os dados dela ficam no
+banco da Mostraí, mas no **esquema próprio `trimundi`** — nunca no `public`
+(decisão do dono, 09/11/2026: estrutura da Mostraí; a conexão falha fechado
+se não entrar no esquema). Marca, telas públicas e login de operador são
+dela, sem nada da Mostraí. Porta de entrada, estado na esteira e pendências:
+`docs/trimundi/README.md`. Não misturar dado, regra nem migration dos dois.
+
 ## Memória entre agentes (Claude Code, Codex, Jules)
 Este projeto agora também é trabalhado por mais de um agente de IA, em
 sessões que não compartilham memória entre si. `AGENTS.md` (raiz) e `.ia/`

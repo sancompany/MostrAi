@@ -771,6 +771,31 @@ const MODULOS = [
   // "ação administrativa especial", não mais um item de "Conteúdo" — fica
   // sozinho no fim da lista, com `destaque: true` pra `montarNav()` desenhar
   // como atalho, separado do resto só por espaçamento (sem título de seção).
+  // Trimundi (ticketeira, projeto próprio hospedado aqui — ADR-048): um item
+  // só, "Eventos", com as cinco funções na ordem de T1 a T5
+  // (docs/trimundi/funcional.md). O código das telas mora em
+  // admin/trimundi.js; id `trimundi` (e não "eventos"): `#eventos` já é alias
+  // dos eventos do Checkout em Financeiro.
+  {
+    id: 'trimundi',
+    nome: 'Eventos',
+    abas: [
+      { id: 'eventos', nome: 'Criar evento', render: (el, resto) => window.renderTrimundiEventos(el, resto) },
+      { id: 'ingressos', nome: 'Criar ingressos', render: (el, resto) => window.renderTrimundiIngressos(el, resto) },
+      { id: 'promocoes', nome: 'Criar promoção', render: (el, resto) => window.renderTrimundiPromocoes(el, resto) },
+      {
+        id: 'participantes',
+        nome: 'Participantes',
+        render: (el, resto) => window.renderTrimundiParticipantes(el, resto),
+      },
+      {
+        id: 'operadores',
+        nome: 'Adicionar operador',
+        render: (el, resto) => window.renderTrimundiOperadores(el, resto),
+      },
+      { id: 'indicacao', nome: 'Indicação', render: (el, resto) => window.renderTrimundiIndicacao(el, resto) },
+    ],
+  },
   { id: 'midiamostrai', nome: 'Mídia Mostraí', destaque: true, render: renderMidiaMostrai },
 ];
 
@@ -804,6 +829,13 @@ const SUBTITULOS = {
   meusanuncios: 'Vídeo institucional e mídias próprias da rede.',
   pendencias:
     'As mesmas filas da Visão geral, juntas numa lista só — sem os números do mês, só o que precisa de você agora.',
+  'trimundi/eventos': 'Trimundi: cada evento tem edições, e cada edição vende no próprio endereço /ticket/.',
+  'trimundi/ingressos': 'Tipos de ingresso da edição, com até 10 lotes cada. O próximo lote abre sozinho.',
+  'trimundi/promocoes': 'Combos: usam o estoque dos ingressos que os compõem e viram um ingresso por posição.',
+  'trimundi/participantes': 'Ingressos emitidos, cortesias, pedidos e reembolsos — e os números da edição.',
+  'trimundi/operadores': 'Quem faz o check-in na portaria. O acesso para na hora ao desativar.',
+  'trimundi/indicacao':
+    'Link de indicação de cada cliente: conta o pedido pago de quem chegou por ele, e a recompensa sai enquanto houver.',
 };
 
 let RESUMO = null;
