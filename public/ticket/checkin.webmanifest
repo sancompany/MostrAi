@@ -1,0 +1,16 @@
+{
+  "name": "TICK Check-in",
+  "short_name": "Check-in",
+  "description": "Check-in da portaria dos eventos TICK, com ou sem internet.",
+  "lang": "pt-BR",
+  "start_url": "/ticket/checkin",
+  "scope": "/ticket/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0b0e",
+  "theme_color": "#0a0b0e",
+  "icons": [
+    { "src": "/ticket/img/tick-app-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/ticket/img/tick-app-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

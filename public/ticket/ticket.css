@@ -1298,3 +1298,19 @@ details.termo .texto {
     font-size: 1.6rem;
   }
 }
+
+/* Check-in sem internet: estado do pacote, entradas a enviar e conflitos. */
+.offline p {
+  margin: 0 0 0.5rem;
+}
+
+.offline .acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.selo-offline {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}

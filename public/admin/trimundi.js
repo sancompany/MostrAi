@@ -1189,13 +1189,14 @@
       return ligarSemEdicao(el);
     }
     const q = new URLSearchParams({ filtro: estadoT4.filtro, busca: estadoT4.busca, pagina: String(estadoT4.pagina) });
-    const [lista, resumo, avisos, tipos, beneficios, estado] = await Promise.all([
+    const [lista, resumo, avisos, tipos, beneficios, estado, conflitos] = await Promise.all([
       pegar(`${R}/edicoes/${ed.id}/participantes?${q}`),
       pegar(`${R}/edicoes/${ed.id}/resumo`),
       pegar(`${R}/edicoes/${ed.id}/avisos`),
       pegar(`${R}/edicoes/${ed.id}/tipos`),
       pegar(`${R}/edicoes/${ed.id}/beneficios`),
       pegar(`${R}/estado`),
+      pegar(`${R}/edicoes/${ed.id}/checkin/conflitos`),
     ]);
     const soLeitura = ed.status === 'encerrado';
     const indicador = (valor, rotulo) => `<div class="mini-indicador"><b>${valor}</b><span>${rotulo}</span></div>`;
@@ -1223,6 +1224,24 @@
         avisos.length
           ? `<section class="secao-pagina tm-avisos"><div class="secao-topo"><h3>Precisa de você</h3><span class="contagem">${avisos.length}</span></div>
           <ul>${avisos.map((a, n) => `<li><b>${esc(a.texto || a.tipo)}</b> Pedido ${esc(a.pedido_codigo || '—')}${a.desde ? ` · ${esc(quando(a.desde))}` : ''} ${a.pedido_id ? `<button type="button" class="btn ghost mini" data-pedido="${esc(a.pedido_id)}">Abrir pedido</button>` : ''} ${soLeitura ? '' : `<button type="button" class="btn ghost mini" data-resolver="${n}">Marcar como resolvido</button>`}</li>`).join('')}</ul></section>`
+          : ''
+      }
+      ${
+        conflitos.length
+          ? `<section class="secao-pagina tm-conflitos"><div class="secao-topo"><h3>Conflitos do check-in sem internet</h3><span class="contagem">${conflitos.length}</span></div>
+          <p class="campo-ajuda">Entradas liberadas por aparelhos sem internet que o servidor recusou ao sincronizar. Aparelhos desconectados não se falam: o mesmo ingresso pode ter passado por dois. Confira com a equipe da portaria.</p>
+          <div class="tabela-caixa"><div class="rolagem"><table>
+            <thead><tr><th>Ingresso</th><th>Motivo</th><th>Leitura recusada</th><th>Entrada que valeu</th></tr></thead>
+            <tbody>${conflitos
+              .map(
+                (
+                  c,
+                ) => `<tr><td><b>${esc(c.participante)}</b><br><span class="u-dim">${esc(c.categoria)} · ${esc(c.codigo_curto)}</span></td>
+                <td>${esc(c.motivo)}</td>
+                <td>${esc(quando(c.lido_em || c.sincronizado_em))}<br><span class="u-dim">${esc(c.operador)} · aparelho ${esc(String(c.aparelho || '').slice(0, 8))}</span></td>
+                <td>${c.entrada_valida ? `${esc(quando(c.entrada_valida.em))}<br><span class="u-dim">${esc(c.entrada_valida.operador || '')} · ${c.entrada_valida.modo === 'offline' ? 'sem internet' : 'online'}</span>` : '—'}</td></tr>`,
+              )
+              .join('')}</tbody></table></div></div></section>`
           : ''
       }
       <div class="tabela-caixa">

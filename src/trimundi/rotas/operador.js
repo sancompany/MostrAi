@@ -131,6 +131,17 @@ router.post('/ticket/api/checkin/beneficio', exigirOperador, ritmo, async (req, 
   );
 });
 
+// Check-in offline: o pacote da edição (baixado antes de perder a conexão)
+// e a sincronização das entradas registradas sem internet.
+router.get('/ticket/api/checkin/pacote', exigirOperador, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await require('../checkin-offline').pacote(req.operador, req.query.edicao));
+});
+router.post('/ticket/api/checkin/sincronizar', exigirOperador, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await require('../checkin-offline').sincronizar(req.operador, req.body));
+});
+
 router.get('/ticket/api/checkin/contador', exigirOperador, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(await checkin.contador(req.operador, req.query.edicao));

@@ -1,10 +1,17 @@
 // Trimundi — check-in da portaria (T8, /ticket/checkin). A câmera só extrai
-// o texto do QR; quem decide é o servidor (assinatura, edição, status, uso
-// único). Dois passos: consultar mostra quem é; "Confirmar entrada" registra.
+// o texto do QR; com internet, quem decide é o servidor (assinatura, edição,
+// status, uso único). Sem internet, o aparelho decide com o pacote baixado
+// (checkin-offline.js) e as entradas sobem quando a conexão volta. Dois
+// passos: consultar mostra quem é; "Confirmar entrada" registra.
 // Leitor: BarcodeDetector quando o navegador tem; senão, jsQR (servido pelo
 // próprio site — /ticket/jsqr.js — por causa da CSP).
 (() => {
   const { el, api, dataCurta, enviando } = window.trimundi;
+  const off = window.tickOffline;
+  // Sem rede: a última chamada falhou por conexão (ou o aparelho diz que está
+  // offline). Volta a false no evento `online` ou numa chamada que deu certo.
+  let semRede = false;
+  const desconectado = () => semRede || navigator.onLine === false;
   const $ = (id) => document.getElementById(id);
   const ULTIMA = 'trimundi:checkin-edicao';
   let operador = null;
@@ -24,6 +31,7 @@
     bloqueado: 'Ingresso bloqueado',
     outra_edicao: 'Ingresso de outra edição',
     invalido: 'Ingresso inválido',
+    nao_encontrado: 'Não está nos dados baixados',
   };
 
   const sessaoAcabou = () => window.location.replace('/ticket/entrar');
@@ -42,11 +50,19 @@
     $('carregando').classList.remove('oculto');
     try {
       operador = await chamar('/ticket/api/operador');
+      off.guardarOperador(operador);
+      semRede = false;
     } catch (err) {
       if (err.status === 401) return;
-      $('carregando').classList.add('oculto');
-      $('falha').classList.remove('oculto');
-      return;
+      // Sem internet, abrindo o app instalado: segue com o último acesso.
+      const guardado = err.status === 0 ? off.operadorGuardado() : null;
+      if (!guardado) {
+        $('carregando').classList.add('oculto');
+        $('falha').classList.remove('oculto');
+        return;
+      }
+      operador = guardado;
+      semRede = true;
     }
     $('carregando').classList.add('oculto');
     $('ola').textContent = `Olá, ${operador.nome}.`;
@@ -68,11 +84,122 @@
       limparResultado();
       atualizarContador();
       mostrarLink();
+      mostrarOffline();
     });
     mostrarLink();
+    mostrarOffline();
     $('painel').classList.remove('oculto');
     atualizarContador();
-    contadorTimer = setInterval(atualizarContador, 15000);
+    contadorTimer = setInterval(() => {
+      atualizarContador();
+      manterOffline();
+    }, 15000);
+  }
+
+  // ------------------------------------------------------- sem internet
+  function mostrarOffline() {
+    const ed = edicaoAtual();
+    if (!ed) return;
+    const info = off.infoDoPacote(ed);
+    const r = off.resumo(ed);
+    const linhas = [];
+    if (desconectado()) {
+      linhas.push(
+        el('p', {
+          class: info ? 'mensagem alerta' : 'mensagem erro',
+          text: info
+            ? `Sem internet — validando com os dados baixados em ${dataCurta(info.baixado_em)} (${info.ingressos} ingressos).`
+            : 'Sem internet e sem os dados desta edição no aparelho. Conecte-se para baixar.',
+        }),
+      );
+    } else {
+      linhas.push(
+        el('p', {
+          class: 'discreto',
+          text: info
+            ? `Pronto para usar sem internet: ${info.ingressos} ingressos, dados de ${dataCurta(info.baixado_em)}.`
+            : 'Antes de ficar sem internet, baixe os dados desta edição.',
+        }),
+      );
+    }
+    if (r.pendentes) linhas.push(el('p', { text: `${r.pendentes} entrada(s) neste aparelho aguardando envio.` }));
+    if (r.conflitos)
+      linhas.push(
+        el('p', {
+          class: 'mensagem alerta',
+          text: `${r.conflitos} entrada(s) liberada(s) sem internet foram recusadas ao sincronizar (ingresso já usado em outro aparelho, cancelado ou bloqueado). O Admin vê o detalhe.`,
+        }),
+      );
+    const baixar = el('button', {
+      class: 'btn mini',
+      type: 'button',
+      id: 'baixarPacote',
+      text: info ? 'Atualizar dados' : 'Baixar para usar sem internet',
+      disabled: desconectado(),
+    });
+    baixar.addEventListener('click', () => baixarPacote(baixar));
+    const sinc = el('button', {
+      class: 'btn mini',
+      type: 'button',
+      id: 'sincronizar',
+      text: 'Sincronizar agora',
+      disabled: desconectado() || !r.pendentes,
+    });
+    sinc.addEventListener('click', () => sincronizarAgora(sinc));
+    $('offline').replaceChildren(...linhas, el('div', { class: 'acoes' }, baixar, sinc));
+    $('offline').classList.remove('oculto');
+  }
+
+  async function baixarPacote(botao) {
+    const ed = edicaoAtual();
+    try {
+      const p = await enviando(botao, 'Baixando...', () => chamar(`/ticket/api/checkin/pacote?edicao=${ed}`));
+      semRede = false;
+      if (!off.salvarPacote(ed, p)) $('msgCamera').textContent = 'Sem espaço no aparelho para guardar os dados.';
+    } catch (err) {
+      if (err.status === 0) semRede = true;
+      $('msgCamera').textContent = err.message;
+    }
+    mostrarOffline();
+  }
+
+  let sincronizando = false;
+  async function sincronizarAgora(botao = null) {
+    const ed = edicaoAtual();
+    if (sincronizando || !ed || !off.pendentes(ed).length) return;
+    sincronizando = true;
+    try {
+      const fazer = () => off.sincronizar(ed, chamar);
+      const r = botao ? await enviando(botao, 'Enviando...', fazer) : await fazer();
+      semRede = false;
+      if (r.conflitos) $('msgCamera').textContent = `${r.conflitos} entrada(s) recusada(s) ao sincronizar.`;
+      atualizarContador();
+    } catch (err) {
+      if (err.status === 0) semRede = true;
+      else if (botao) $('msgCamera').textContent = err.message;
+    } finally {
+      sincronizando = false;
+      mostrarOffline();
+    }
+  }
+
+  // A cada 15 s: com internet, sobe o pendente e mantém o pacote fresco (o
+  // "já entrou" de outros aparelhos chega aqui).
+  let ultimoPacote = 0;
+  async function manterOffline() {
+    const ed = edicaoAtual();
+    if (!ed || navigator.onLine === false) return;
+    if (off.pendentes(ed).length) await sincronizarAgora();
+    const info = off.infoDoPacote(ed);
+    if (info && !semRede && Date.now() - ultimoPacote > 5 * 60000) {
+      ultimoPacote = Date.now();
+      try {
+        off.salvarPacote(ed, await chamar(`/ticket/api/checkin/pacote?edicao=${ed}`));
+      } catch (err) {
+        if (err.status === 0) semRede = true;
+      }
+      mostrarOffline();
+    }
   }
 
   const edicaoAtual = () => Number($('edicao').value);
@@ -110,10 +237,22 @@
 
   async function atualizarContador() {
     if (!edicaoAtual()) return;
+    const local = () => {
+      const r = off.resumo(edicaoAtual());
+      $('contador').textContent = `Sem internet · ${r.entradas} entrada(s) registradas neste aparelho`;
+    };
+    if (desconectado()) return local();
     try {
       const c = await chamar(`/ticket/api/checkin/contador?edicao=${edicaoAtual()}`);
-      $('contador').textContent = `Entradas: ${c.entradas} de ${c.ingressos} ingressos`;
-    } catch {}
+      const p = off.pendentes(edicaoAtual()).length;
+      $('contador').textContent = `Entradas: ${c.entradas} de ${c.ingressos} ingressos${p ? ` · ${p} a enviar` : ''}`;
+    } catch (err) {
+      if (err.status === 0) {
+        semRede = true;
+        local();
+        mostrarOffline();
+      }
+    }
   }
 
   // ------------------------------------------------------------- resultado
@@ -138,7 +277,14 @@
       linhas.push(el('p', { class: 'contador', text: i.participante }));
       linhas.push(
         el('p', {
-          text: `${i.categoria}${i.promocao ? ` · promoção ${i.promocao}` : ''}${i.cortesia ? ' · cortesia' : ''} · ${i.codigo_curto}`,
+          text: [
+            i.categoria,
+            i.promocao ? `promoção ${i.promocao}` : null,
+            i.cortesia ? 'cortesia' : null,
+            i.codigo_curto || null,
+          ]
+            .filter(Boolean)
+            .join(' · '),
         }),
       );
       // Evento com idade mínima: o operador confere o documento com foto.
@@ -153,7 +299,9 @@
         );
       }
       if (i.beneficios?.length) linhas.push(listaDeBeneficios(i, r.resultado));
-      if (r.resultado === 'ja_utilizado' && i.utilizado_em) {
+      if (r.offline && i.utilizado_aqui) {
+        linhas.push(el('p', { text: `Entrou por este aparelho em ${dataCurta(i.utilizado_em)}.` }));
+      } else if (r.resultado === 'ja_utilizado' && i.utilizado_em) {
         linhas.push(
           el('p', {
             text: `Entrou em ${dataCurta(i.utilizado_em)}${i.utilizado_por ? `, por ${i.utilizado_por}` : ''}.`,
@@ -163,10 +311,23 @@
       if ((r.resultado === 'bloqueado' || r.resultado === 'cancelado') && i.motivo)
         linhas.push(el('p', { text: `Motivo: ${i.motivo}` }));
     }
+    if (r.offline) {
+      linhas.push(
+        el('p', {
+          class: 'discreto selo-offline',
+          text:
+            r.resultado === 'nao_encontrado'
+              ? 'Validado sem internet: este código não está nos dados baixados (ingresso emitido depois, ou falso). Não libere; confira quando a internet voltar.'
+              : r.resultado === 'entrada_registrada'
+                ? 'Registrada sem internet: sobe para o servidor quando a conexão voltar.'
+                : `Validado sem internet${r.assinatura === 'conferida' ? ' · assinatura do QR conferida' : ''}. Benefícios só com internet.`,
+        }),
+      );
+    }
     const acoes = el('div', { class: 'acoes' });
     if (r.resultado === 'valido') {
       const confirmar = el('button', { class: 'btn primario grande', type: 'button', text: 'Confirmar entrada' });
-      confirmar.addEventListener('click', () => confirmarEntrada(confirmar, i.id));
+      confirmar.addEventListener('click', () => (r.offline ? confirmarLocal(i.id) : confirmarEntrada(confirmar, i.id)));
       acoes.append(confirmar);
       acoes.append(el('button', { class: 'btn', type: 'button', text: 'Cancelar', onclick: proximo }));
     } else {
@@ -212,10 +373,37 @@
     );
   }
 
+  let ultimoLocal = null;
+  async function consultarLocal(entrada) {
+    const r = await off.validar(edicaoAtual(), entrada);
+    ultimoLocal = r;
+    if (r.resultado === 'sem_pacote') {
+      $('msgCamera').textContent = 'Sem internet e sem os dados desta edição no aparelho — não dá para validar agora.';
+      ocupado = false;
+      return;
+    }
+    $('msgCamera').textContent = '';
+    mostrarResultado(r);
+  }
+
+  function confirmarLocal(ingressoId) {
+    const r = off.registrarEntrada(edicaoAtual(), ingressoId);
+    if (r.resultado === 'sem_espaco') {
+      $('msgCamera').textContent = 'Sem espaço no aparelho para guardar a entrada.';
+      return;
+    }
+    // Mostra o mesmo ingresso, agora como entrada registrada (ou já usado).
+    mostrarResultado({ ...ultimoLocal, resultado: r.resultado });
+    atualizarContador();
+    mostrarOffline();
+    if (r.resultado === 'entrada_registrada' && lendo) setTimeout(proximo, 1800);
+  }
+
   async function consultar(entrada) {
     if (ocupado) return;
     ocupado = true;
     limparResultado();
+    if (desconectado()) return consultarLocal(entrada);
     $('msgCamera').textContent = 'Consultando...';
     try {
       const r = await chamar('/ticket/api/checkin/consultar', {
@@ -225,6 +413,12 @@
       $('msgCamera').textContent = '';
       mostrarResultado(r);
     } catch (err) {
+      // Caiu a conexão no meio: com pacote, valida aqui mesmo.
+      if (err.status === 0 && off.infoDoPacote(edicaoAtual())) {
+        semRede = true;
+        mostrarOffline();
+        return consultarLocal(entrada);
+      }
       $('msgCamera').textContent = err.message;
       ocupado = false;
     }
@@ -239,6 +433,7 @@
         }),
       );
       mostrarResultado(r);
+      if (r.resultado === 'entrada_registrada') off.marcarUtilizado(edicaoAtual(), ingressoId);
       atualizarContador();
       // Com benefício a entregar, a tela fica parada até o operador seguir.
       const pendente = r.ingresso?.beneficios?.some((b) => !b.resgatado_em);
@@ -366,11 +561,41 @@
     consultar(codigo);
   });
   $('sair').addEventListener('click', async () => {
+    // Entrada registrada sem internet e ainda não enviada não pode se perder.
+    if (off.totalPendente()) {
+      await sincronizarAgora();
+      const resta = off.totalPendente();
+      if (resta) {
+        $('msgCamera').textContent =
+          `Ainda há ${resta} entrada(s) deste aparelho sem enviar. Conecte-se e sincronize antes de sair.`;
+        return;
+      }
+    }
     desligarCamera();
     clearInterval(contadorTimer);
     await api('/ticket/api/sair', { metodo: 'POST', corpo: {} }).catch(() => {});
+    off.limparAoSair();
     window.location.replace('/ticket/entrar');
   });
+  window.addEventListener('online', () => {
+    semRede = false;
+    if (operador) {
+      mostrarOffline();
+      sincronizarAgora();
+      atualizarContador();
+    }
+  });
+  window.addEventListener('offline', () => {
+    semRede = true;
+    if (operador) {
+      mostrarOffline();
+      atualizarContador();
+    }
+  });
+  // Instalável no celular (PWA): o service worker guarda a casca da página
+  // para abrir sem internet. Os dados vêm do pacote (checkin-offline.js).
+  if ('serviceWorker' in navigator)
+    navigator.serviceWorker.register('/ticket/checkin-sw.js', { scope: '/ticket/' }).catch(() => {});
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && lendo) desligarCamera();
   });
