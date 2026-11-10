@@ -29,6 +29,7 @@ Storage, celular): isso é a homologação de `pendencias.md`.
 | Login próprio do operador (`/ticket/entrar`); login da Mostraí restaurado | feito | `rotas/operador.js` | `trimundi-checkin` |
 | Um pedido aguardando pagamento por conta e edição (sem reter estoque) | feito | `pedidos.js` | `trimundi-conta` |
 | Página de erro e 404 próprias em `/ticket` | feito | `index.js`, `paginas/erro.html` | `trimundi-identidade` |
+| Nome público TICK, home `/tic/eventos` com busca, "Eventos" no menu público da Mostraí, cookie próprio da conta TICK | feito | `vitrine.js`, `paginas/eventos.html`, `eventos.page.js`, `src/lib/sessao.js`, `public/layout.js` | `trimundi-tick` |
 | Termos de Uso e Política de Privacidade (v1.0) com aceite obrigatório, conta só para maiores, declaração de idade no pedido, lembrete na portaria | feito | `legal.js`, `paginas/termos.html`, `paginas/privacidade.html`, `clientes.js`, `pedidos.js` | `trimundi-legal` |
 | E-mail real, Storage real, Checkout real, celular real | **depende de fora** | — | dublês nos testes |
 

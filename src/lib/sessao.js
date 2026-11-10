@@ -1,8 +1,8 @@
 const session = require('express-session');
 const PgSession = require('connect-pg-simple')(session);
 
-// Sessões do site — duas, com cookies separados (estação sessão do
-// anunciante, 27/09/2026).
+// Sessões do site — três, com cookies separados: admin, conta da Mostraí
+// (estação sessão do anunciante, 27/09/2026) e TICK (10/11/2026).
 //
 // Sessão no Postgres (tabela `session`, migration 019). Com o MemoryStore
 // padrão todo deploy deslogava todo mundo — docs/erros/2026-09-sessao-em-memoria.md
@@ -56,6 +56,21 @@ function montarSessoes(app, pool) {
       store: novoStore({ pruneSessionInterval: false }),
       name: 'mostrai.admin',
       cookie: { ...cookie, path: '/admin' },
+    }),
+  );
+  // TICK (ticketeira, src/trimundi — pedido do dono, 10/11/2026): conta de
+  // comprador e de operador são de outro sistema, com cookie próprio
+  // (`tick.sid`, path=/ticket), pelo mesmo motivo do admin: dividir o
+  // `connect.sid` fazia o login de um derrubar o outro no mesmo navegador.
+  // Nenhuma rota /ticket lê a sessão da Mostraí (conferido em 10/11/2026), e
+  // nenhuma rota da Mostraí lê `trimundiClienteId`/`trimundiOperadorId`.
+  app.use(
+    '/ticket',
+    session({
+      ...base,
+      store: novoStore({ pruneSessionInterval: false }),
+      name: 'tick.sid',
+      cookie: { ...cookie, path: '/ticket' },
     }),
   );
   app.use(session({ ...base, store: novoStore(), cookie }));

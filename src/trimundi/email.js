@@ -38,8 +38,8 @@ function html(texto) {
   return `<!doctype html><html lang="pt-BR"><body style="margin:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#0d0f13">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:14px;padding:28px">
-<tr><td align="center" style="padding-bottom:20px"><img src="${esc(logo)}" width="96" height="96" alt="Trimundi" style="display:block;border:0;background:#0a0b0e;border-radius:50%">
-<div style="margin-top:10px;font-weight:700;letter-spacing:4px;font-size:13px">TRIMUNDI</div></td></tr>
+<tr><td align="center" style="padding-bottom:20px"><img src="${esc(logo)}" width="96" height="96" alt="TICK" style="display:block;border:0;background:#0a0b0e;border-radius:50%">
+<div style="margin-top:10px;font-weight:700;letter-spacing:4px;font-size:13px">TICK</div></td></tr>
 <tr><td style="font-size:15px;line-height:1.5">${corpo}</td></tr>
 </table></td></tr></table></body></html>`;
 }

@@ -63,7 +63,7 @@
       { class: 'cartao', novalidate: true },
       el('h2', { text: 'Confirme para continuar comprando' }),
       el('p', {
-        text: 'Os Termos de Uso e a Política de Privacidade da Trimundi mudaram ou ainda não foram aceitos nesta conta.',
+        text: 'Os Termos de Uso e a Política de Privacidade da TICK mudaram ou ainda não foram aceitos nesta conta.',
       }),
       ...caixasDeAceite(),
       m,

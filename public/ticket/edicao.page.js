@@ -56,7 +56,7 @@
       );
       return;
     }
-    document.title = `${dados.evento.nome} — ${dados.edicao.nome} · Trimundi`;
+    document.title = `${dados.evento.nome} — ${dados.edicao.nome} · TICK`;
     try {
       const guardado = JSON.parse(sessionStorage.getItem(CARRINHO) || 'null');
       sessionStorage.removeItem(CARRINHO);

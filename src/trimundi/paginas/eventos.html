@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Eventos · TICK</title>
+  <meta name="description" content="Ingressos para os próximos eventos, com compra segura e QR Code na sua conta.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="TICK">
+  <meta property="og:title" content="Eventos · TICK">
+  <meta property="og:url" content="{{url}}">
+  <link rel="canonical" href="{{url}}">
+  <link rel="icon" href="/ticket/img/trimundi-icone.png" sizes="64x64" type="image/png">
+  <meta name="theme-color" content="#0a0b0e">
+  <link rel="stylesheet" href="/ticket/ticket.css">
+</head>
+<body>
+  <header class="topo">
+    <a class="marca" href="/tic/eventos" aria-label="TICK — eventos"><img src="/ticket/img/trimundi-logo.webp" alt="" width="36" height="36">TICK</a>
+    <a class="discreto" href="/ticket/conta">Minha conta</a>
+  </header>
+
+  <main class="pagina">
+    <h1>Eventos</h1>
+    <form class="busca-eventos" id="formBusca" role="search">
+      <label class="visualmente-oculto" for="busca">Buscar eventos</label>
+      <input id="busca" name="q" type="search" placeholder="Buscar por evento, local ou cidade" maxlength="80" autocomplete="off">
+      <button class="btn" type="submit">Buscar</button>
+    </form>
+    <div id="lista" class="lista-eventos" aria-live="polite">
+      <p class="carregando">Carregando...</p>
+    </div>
+  </main>
+
+  <footer class="rodape">
+    <p><a href="/ticket/termos">Termos de Uso</a> · <a href="/ticket/privacidade">Política de Privacidade</a></p>
+    <p>Ingressos TICK. O pagamento é feito no San Checkout, em ambiente seguro.</p>
+  </footer>
+
+  <script src="/ticket/comum.js"></script>
+  <script src="/ticket/eventos.page.js"></script>
+</body>
+</html>

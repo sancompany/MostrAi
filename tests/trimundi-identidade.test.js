@@ -34,7 +34,7 @@ test('a página servida traz a logo e a marca Trimundi, e as imagens existem', a
   const r = await fetch(`${srv.base}/ticket/recuperar`);
   assert.equal(r.status, 200);
   const html = await r.text();
-  assert.match(html, /Trimundi/);
+  assert.match(html, /TICK/);
   assert.doesNotMatch(html, /mostra[ií]/i);
   for (const img of ['trimundi-logo.webp', 'trimundi-logo-256.png', 'trimundi-icone.png']) {
     const i = await fetch(`${srv.base}/ticket/img/${img}`);
@@ -48,7 +48,7 @@ test('o e-mail sai com a logo e o nome da Trimundi no corpo, e o texto é escapa
     'Olá <script>x</script>\n\nSeus ingressos: https://site.teste.invalid/ticket/pedido/1?t=a&b=c',
   );
   assert.match(corpo, /\/ticket\/img\/trimundi-logo-256\.png/);
-  assert.match(corpo, /TRIMUNDI/);
+  assert.match(corpo, /TICK/);
   assert.doesNotMatch(corpo, /<script>/);
   assert.match(corpo, /<a href="https:\/\/site\.teste\.invalid\/ticket\/pedido\/1\?t=a&amp;b=c"/);
   assert.doesNotMatch(corpo, /mostra[ií]/i);
@@ -58,7 +58,7 @@ test('endereço que não existe em /ticket mostra a página da Trimundi, não a 
   const r = await fetch(`${srv.base}/ticket/nao/existe/mesmo`);
   assert.equal(r.status, 404);
   const html = await r.text();
-  assert.match(html, /Trimundi/);
+  assert.match(html, /TICK/);
   assert.doesNotMatch(html, /mostra[ií]/i);
   const api = await fetch(`${srv.base}/ticket/api/nada`);
   assert.equal(api.status, 404);

@@ -78,8 +78,8 @@ async function enviarConfirmacao(cliente, c) {
     chave: `confirmar_email:${c.id}:${hashToken(tk).slice(0, 16)}`,
     tipo: 'confirmar_email',
     para: c.email,
-    assunto: 'Confirme seu e-mail — Trimundi',
-    texto: `Olá, ${c.nome.split(' ')[0]}.\n\nPara ativar sua conta na Trimundi, confirme seu e-mail neste link (vale por ${CONFIRMAR_H} horas):\n${site()}/ticket/conta/confirmar#t=${tk}\n\nSe não foi você, ignore este e-mail.`,
+    assunto: 'Confirme seu e-mail — TICK',
+    texto: `Olá, ${c.nome.split(' ')[0]}.\n\nPara ativar sua conta na TICK, confirme seu e-mail neste link (vale por ${CONFIRMAR_H} horas):\n${site()}/ticket/conta/confirmar#t=${tk}\n\nSe não foi você, ignore este e-mail.`,
   });
 }
 
@@ -96,7 +96,7 @@ async function cadastrar(dados, contexto = {}) {
     const mesmoEmail = rows.find((r) => r.email === d.email);
     const mesmoCpf = rows.find((r) => r.cpf === d.cpf);
     if (mesmoCpf && mesmoCpf.email !== d.email) {
-      throw erro(409, 'Este CPF já tem conta na Trimundi. Entre com o e-mail dela ou recupere a senha.', {
+      throw erro(409, 'Este CPF já tem conta na TICK. Entre com o e-mail dela ou recupere a senha.', {
         codigo: 'cpf_em_uso',
       });
     }
@@ -108,8 +108,8 @@ async function cadastrar(dados, contexto = {}) {
           chave: `conta_existente:${mesmoEmail.id}:${Date.now()}`,
           tipo: 'conta_existente',
           para: mesmoEmail.email,
-          assunto: 'Você já tem conta na Trimundi',
-          texto: `Alguém tentou criar uma conta com este e-mail, que já tem conta na Trimundi.\n\nPara entrar: ${site()}/ticket/conta\nEsqueceu a senha? Recupere em ${site()}/ticket/conta/esqueci\n\nSe não foi você, ignore este e-mail.`,
+          assunto: 'Você já tem conta na TICK',
+          texto: `Alguém tentou criar uma conta com este e-mail, que já tem conta na TICK.\n\nPara entrar: ${site()}/ticket/conta\nEsqueceu a senha? Recupere em ${site()}/ticket/conta/esqueci\n\nSe não foi você, ignore este e-mail.`,
         });
       } else {
         await enviarConfirmacao(cliente, mesmoEmail);
@@ -207,8 +207,8 @@ async function esqueciSenha(emailBruto) {
       chave: `redefinir_senha:${c.id}:${hashToken(tk).slice(0, 16)}`,
       tipo: 'redefinir_senha',
       para: c.email,
-      assunto: 'Redefinir sua senha — Trimundi',
-      texto: `Para criar uma senha nova na Trimundi, use este link (vale por ${REDEFINIR_MIN} minutos):\n${site()}/ticket/conta/redefinir#t=${tk}\n\nSe não foi você, ignore este e-mail: sua senha continua a mesma.`,
+      assunto: 'Redefinir sua senha — TICK',
+      texto: `Para criar uma senha nova na TICK, use este link (vale por ${REDEFINIR_MIN} minutos):\n${site()}/ticket/conta/redefinir#t=${tk}\n\nSe não foi você, ignore este e-mail: sua senha continua a mesma.`,
     });
   });
 }

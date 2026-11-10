@@ -155,6 +155,17 @@ scripts das páginas ficam em `public/ticket/`.
 | `GET /ticket/recuperar` | página T11 |
 | `GET /ticket/dev/pagamento/:id`, `POST /ticket/api/dev/pagamento/:id` | só com `TRIMUNDI_PAGAMENTO_SIMULADO=1` fora de produção (404 no resto) |
 
+## Home pública — `/tic`
+
+| Método e rota | O que faz |
+|---|---|
+| `GET /tic` | 302 para `/tic/eventos` |
+| `GET /tic/eventos` | home da TICK: eventos publicados (ou pausados) que ainda não terminaram, busca e cards com banner, nome, data e local; cada card leva a `/ticket/<evento>/<edição>` |
+| `GET /ticket/api/vitrine?q=` | a lista da home (até 60), com busca por evento, edição, local ou cidade |
+
+A conta TICK usa o cookie `tick.sid` (path `/ticket`), separado do
+`connect.sid` da Mostraí e do `mostrai.admin` do Admin (`src/lib/sessao.js`).
+
 ## Conta do cliente — `/ticket/conta`
 
 | Método e rota | O que faz |
