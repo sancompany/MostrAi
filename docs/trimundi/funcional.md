@@ -347,8 +347,10 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     aparelho, pedido novo — não troca a origem. Antes do login, o código fica
     guardado no navegador (30 dias); ao entrar, o servidor registra.
   - Atribuição: um indicador por pedido (`pedidos.indicador_id`), fixo.
-    Autorreferência (mesma conta ou mesmo CPF), operador desativado ou sem
-    acesso à edição, conta apagada: a compra segue sem indicador.
+    Autorreferência (mesma conta ou mesmo CPF; para o link de operador, a
+    conta de cliente com o mesmo e-mail do operador — 11/11/2026), operador
+    desativado ou sem acesso à edição, conta apagada: a compra segue sem
+    indicador, e a visita dele pelo próprio link não conta.
   - Conversão confirmada: pedido pago com ingresso de pé. Pendente,
     expirado, cancelado, reembolsado ou contestado não conta; reembolso de
     um ingresso tira só aquele ingresso.

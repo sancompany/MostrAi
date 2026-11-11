@@ -55,13 +55,15 @@ const indicadorDoOperador = (cliente, operadorId) => criarIndicador(cliente, 'op
 
 // Indicador que vale para esta compra (ou para mostrar na página): existe; o
 // de comprador não é a própria conta (nem o mesmo CPF) e não foi apagado; o
-// de operador está ativo e autorizado nesta edição (10/11/2026: todo
+// de operador não é a conta de cliente com o e-mail dele e está ativo e
+// autorizado nesta edição (10/11/2026: todo
 // operador tem link — a antiga marca "indicação habilitada" não decide mais).
 // Devolve { id, nome, tipo } ou null. Código ruim é ignorado em silêncio —
 // nunca impede a compra.
 async function indicadorValido(cliente, onde, { compradorClienteId = null, edicaoId }) {
   const { rows } = await cliente.query(
-    `SELECT i.id, i.cliente_id, i.operador_id, o.status AS operador_status, cl.cpf AS indicador_cpf,
+    `SELECT i.id, i.cliente_id, i.operador_id, o.status AS operador_status, o.email_normalizado AS operador_email,
+            cl.cpf AS indicador_cpf,
             cl.anonimizado_em AS cliente_anonimizado, COALESCE(cl.nome, o.nome) AS nome,
             EXISTS (SELECT 1 FROM operador_permissoes op WHERE op.operador_id = i.operador_id
                      AND op.permissao = 'checkin' AND (op.edicao_id IS NULL OR op.edicao_id = $2)) AS operador_autorizado
@@ -75,6 +77,15 @@ async function indicadorValido(cliente, onde, { compradorClienteId = null, edica
   // a autorização dele na edição é conferida na compra.
   if (ind.operador_id && !(ind.operador_status === 'ativo' && (edicaoId == null || ind.operador_autorizado))) {
     return null;
+  }
+  // Operador comprando com a própria conta de cliente (mesmo e-mail, 11/11/2026):
+  // é autoindicação — o operador não tem CPF, então o e-mail é o que liga as
+  // duas contas da mesma pessoa. Não conta a compra nem a visita.
+  if (ind.operador_id && compradorClienteId && ind.operador_email) {
+    const { rows: comp } = await cliente.query('SELECT lower(trim(email)) AS email FROM clientes WHERE id = $1', [
+      compradorClienteId,
+    ]);
+    if (comp[0]?.email && comp[0].email === String(ind.operador_email).trim().toLowerCase()) return null;
   }
   if (ind.cliente_id) {
     if (ind.cliente_anonimizado) return null;

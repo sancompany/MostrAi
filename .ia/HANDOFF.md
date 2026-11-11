@@ -1,6 +1,12 @@
 # Current Handoff
 
 ## Updated
+2026-11-11 — **TICK: autoindicação do operador**, branch
+`claude/beautiful-faraday-cjq1nt-autoindicacao`. Operador e conta de cliente
+são tabelas separadas (o mesmo e-mail pode existir nas duas); o e-mail é o
+que liga as duas contas da mesma pessoa — `indicadorValido` recusa o link de
+operador para a conta de cliente com o e-mail dele. Não desfazer sem contexto.
+
 2026-11-11 — **TICK: olho na senha do operador e "Indique e acompanhe" na
 portaria**, branch `claude/beautiful-faraday-cjq1nt-olho-operador`. O
 componente da área de indicação mora em `public/ticket/comum.js`

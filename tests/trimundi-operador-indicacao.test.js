@@ -77,3 +77,37 @@ test('a conta do cliente continua sem lista de indicados; sem sessão de operado
   assert.equal((await apoio.cliente(srv).get('/ticket/api/operador')).status, 401);
   assert.equal((await c.get('/ticket/api/operador')).status, 401, 'conta de cliente não é operador');
 });
+
+test('operador comprando com a própria conta de cliente (mesmo e-mail) não conta como indicação', async () => {
+  const pronta = await apoio.edicaoPronta();
+  const op = await apoio.operadorLogado(srv, [pronta.edicao.id]);
+  const portaria = apoio.cliente(srv, { cookie: op.cookie });
+  const { codigo } = (await portaria.get('/ticket/api/operador')).json.indicacao;
+  // A conta de cliente dele: o mesmo e-mail, com outra caixa.
+  const ele = { ...apoio.pessoa('Operador'), email: op.email.toUpperCase() };
+  const comoCliente = apoio.cliente(srv, { cookie: await apoio.entrarCliente(srv, ele) });
+  const pagina = await comoCliente.post(`/ticket/api/edicoes/${pronta.slugEvento}/${pronta.slugEdicao}/indicacao`, {
+    codigo,
+    visitante: visitante(),
+  });
+  assert.equal(pagina.json.indicacao, null, 'sem "Você chegou por indicação de…" para ele mesmo');
+  await comoCliente.post('/ticket/api/indicacao/visita', { codigo, visitante: visitante() });
+  const dele = await apoio.novoPedido(pronta, apoio.itensDe(pronta.tipo, 2), { comprador: ele, indicacao: codigo });
+  await apoio.pagar(dele.pedido_id);
+  const { rows } = await require('../src/trimundi/db/conexao').consultar(
+    'SELECT indicador_id FROM pedidos WHERE id = $1',
+    [dele.pedido_id],
+  );
+  assert.equal(rows[0].indicador_id, null, 'a compra dele fica sem indicador');
+
+  // Outra pessoa pelo mesmo link continua contando.
+  const bia = apoio.pessoa('Bia');
+  const dela = await apoio.novoPedido(pronta, apoio.itensDe(pronta.tipo, 1), { comprador: bia, indicacao: codigo });
+  await apoio.pagar(dela.pedido_id);
+  const ind = (await portaria.get('/ticket/api/operador')).json.indicacao;
+  assert.deepEqual([ind.numeros.pessoas, ind.numeros.ingressos, ind.numeros.acessos], [1, 1, 0]);
+  assert.deepEqual(
+    ind.indicados.map((i) => i.nome),
+    [bia.nome],
+  );
+});
