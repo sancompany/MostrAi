@@ -15,34 +15,12 @@
   </header>
 
   <main class="pagina estreita">
-    <h1>Ativar acesso de operador</h1>
-    <section id="painelForm">
-      <p>Use o e-mail cadastrado por quem organiza o evento e o código de ativação que você recebeu.</p>
-      <form class="cartao" id="formAtivar" novalidate>
-        <div class="campo">
-          <label for="email">E-mail</label>
-          <input id="email" name="email" type="email" autocomplete="username" maxlength="200" required>
-        </div>
-        <div class="campo">
-          <label for="codigo">Código de ativação</label>
-          <input id="codigo" name="codigo" autocomplete="one-time-code" autocapitalize="characters" maxlength="9" placeholder="XXXX-XXXX" required>
-        </div>
-        <div class="campo">
-          <label for="senha">Senha nova</label>
-          <input id="senha" name="senha" type="password" autocomplete="new-password" maxlength="200" required aria-describedby="regraSenha">
-          <p class="discreto" id="regraSenha">No mínimo 8 caracteres, com maiúscula, minúscula, número e símbolo.</p>
-        </div>
-        <div class="campo">
-          <label for="senha2">Repita a senha</label>
-          <input id="senha2" name="senha2" type="password" autocomplete="new-password" maxlength="200" required>
-        </div>
-        <p class="mensagem" id="msg" role="status" aria-live="polite"></p>
-        <button class="btn primario grande" type="submit">Ativar acesso</button>
-      </form>
-    </section>
-    <section id="painelOk" class="cartao oculto">
-      <p class="mensagem ok">Acesso ativado. Agora entre com seu e-mail e a senha nova.</p>
-      <a class="btn primario grande" href="/ticket/entrar">Entrar</a>
+    <section class="auth">
+      <div class="auth-cabeca">
+        <h1>Ativar acesso de operador</h1>
+        <p>O acesso de operador fica na sua conta TICK: o mesmo e-mail, a mesma senha, os seus ingressos.</p>
+      </div>
+      <div id="ativacao"><p class="carregando">Carregando...</p></div>
     </section>
   </main>
 

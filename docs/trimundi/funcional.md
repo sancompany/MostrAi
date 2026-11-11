@@ -432,6 +432,27 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     recompensa de indicação da conta naquela edição (a retirar / entregue);
     a entrega continua pelo Admin. O benefício do tipo ou do lote (Open Bar,
     copão) aparece só na unidade que dá direito.
+- **RN-T38 Operador na conta TICK** (11/11/2026).
+  - Um login, um cadastro: o convite de operador (código de 8 caracteres,
+    ou o link `/ticket/ativar#c=…`, que só preenche o código) liga o
+    cadastro de operador à conta TICK de quem o usa. A pessoa continua com o
+    mesmo e-mail, a mesma senha e os mesmos ingressos; a conta passa a ter a
+    "Área do operador" e a mesma sessão abre a portaria.
+  - Sem conta logada, a página manda entrar ou criar a conta (o código fica
+    na aba) e volta. A validação é só do servidor: o link sozinho não dá
+    permissão.
+  - O convite é para um e-mail: só a conta com esse e-mail ativa. Convite de
+    outro e-mail, convite já ligado a outra conta ou conta já ligada a outro
+    operador → mensagem clara, nada é transferido. Repetir a ativação não
+    duplica.
+  - Regras do código preservadas: uso único, 72 h, 5 tentativas (erros na
+    conta contam no convite do e-mail dela), revogado por "gerar código
+    novo". Desativar fecha a portaria na hora; a conta segue normal.
+  - Um operador por e-mail, com várias edições: a conta lista cada evento
+    liberado, com o desempenho de indicação separado.
+  - Quem ativou antes com senha só da portaria segue entrando em
+    `/ticket/entrar` até receber um código novo e ativar na conta.
+  - Sair da portaria encerra a sessão inteira (é a mesma conta).
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.

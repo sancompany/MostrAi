@@ -77,7 +77,7 @@ async function obter(id, cliente = null) {
   const q = cliente ? (s, p) => cliente.query(s, p) : consultar;
   const { rows } = await q(
     `SELECT o.id, o.nome, o.email, o.status, o.ativado_em, o.desativado_em, o.ultimo_acesso_em, o.codigo_expira_em,
-            o.indicacao_habilitada,
+            o.indicacao_habilitada, o.vinculado_em,
             COALESCE(json_agg(json_build_object('edicao_id', op.edicao_id, 'nome', CASE WHEN ed.id IS NULL THEN NULL ELSE ev.nome || ' — ' || ed.nome END))
                      FILTER (WHERE op.id IS NOT NULL), '[]') AS permissoes
        FROM operadores o
@@ -103,6 +103,9 @@ function formatar(o) {
     codigo_expira_em: o.status === 'aguardando_ativacao' ? o.codigo_expira_em : null,
     // Link de indicação próprio na tela de check-in, quando o Admin habilita.
     indicacao_habilitada: o.indicacao_habilitada,
+    // Ligado a uma conta TICK (12, 11/11/2026): entra pela conta, não por
+    // /ticket/entrar.
+    na_conta_tick: Boolean(o.vinculado_em),
     edicoes: todas ? 'todas' : o.permissoes.map((p) => ({ id: p.edicao_id, nome: p.nome })),
   };
 }
@@ -174,7 +177,7 @@ async function desativar(id, autor) {
 async function reativar(id, autor) {
   return emTransacao(async (cliente) => {
     const { rows } = await cliente.query(
-      `UPDATE operadores SET status = CASE WHEN senha_hash IS NULL THEN 'aguardando_ativacao' ELSE 'ativo' END,
+      `UPDATE operadores SET status = CASE WHEN senha_hash IS NULL AND cliente_id IS NULL THEN 'aguardando_ativacao' ELSE 'ativo' END,
          desativado_em = NULL WHERE id = $1 AND status = 'desativado' RETURNING id`,
       [id],
     );
@@ -222,6 +225,86 @@ async function ativar(dados) {
   });
 }
 
+// Ativação NA CONTA TICK (pedido do dono, 11/11/2026): o mesmo código do
+// convite (uso único, validade, 5 tentativas, revogado por código novo), mas
+// em vez de criar uma senha só para a portaria, liga o operador à conta
+// logada. Regras:
+//   · o convite é para um e-mail: só a conta com ESSE e-mail o usa (outro
+//     e-mail → 409, nada é ligado nem transferido);
+//   · operador já ligado a outra conta, ou conta já ligada a outro operador
+//     → 409, sem mexer em nada;
+//   · conta já ligada a este operador → ok, sem duplicar;
+//   · código errado conta tentativa no convite do e-mail da conta.
+// Tudo decidido aqui, no servidor — nunca pelo parâmetro do link.
+async function vincular(conta, dados) {
+  const codigo = normalizarCodigo(dados?.codigo);
+  const invalido = () =>
+    erro(400, 'Código inválido. Confira o código ou peça um novo a quem organiza o evento.', {
+      codigo: 'codigo_invalido',
+    });
+  const emailDaConta = String(conta?.email ?? '')
+    .trim()
+    .toLowerCase();
+  return emTransacao(async (cliente) => {
+    const { rows: meu } = await cliente.query('SELECT id, status FROM operadores WHERE cliente_id = $1', [conta.id]);
+    const { rows } =
+      codigo.length === 8
+        ? await cliente.query('SELECT * FROM operadores WHERE codigo_hash = $1 FOR UPDATE', [hashDoCodigo(codigo)])
+        : { rows: [] };
+    const o = rows[0];
+    // O código já usado (ou repetido) por quem já está ligado e ativo: nada a
+    // fazer, sem duplicar.
+    if (!o && meu[0]?.status === 'ativo') return { ok: true, ja_ativo: true, operador_id: meu[0].id };
+    if (!o) {
+      await cliente.query(
+        `UPDATE operadores SET codigo_tentativas = codigo_tentativas + 1
+          WHERE email_normalizado = $1 AND status = 'aguardando_ativacao'`,
+        [emailDaConta],
+      );
+      return { erro: 'invalido' };
+    }
+    if (o.email_normalizado !== emailDaConta) {
+      throw erro(
+        409,
+        'Este convite de operador foi emitido para outro e-mail. Entre com a conta TICK desse e-mail, ou peça a quem organiza o evento um convite para o e-mail desta conta.',
+        { codigo: 'outro_email' },
+      );
+    }
+    if (o.cliente_id && Number(o.cliente_id) !== Number(conta.id)) {
+      throw erro(409, 'Este convite já está ligado a outra conta TICK. Fale com quem organiza o evento.', {
+        codigo: 'outra_conta',
+      });
+    }
+    if (meu[0] && Number(meu[0].id) !== Number(o.id)) {
+      throw erro(409, 'Esta conta já está ligada a outro cadastro de operador. Fale com quem organiza o evento.', {
+        codigo: 'ja_operador',
+      });
+    }
+    if (o.status !== 'aguardando_ativacao' || o.codigo_tentativas >= MAX_TENTATIVAS_CODIGO) throw invalido();
+    if (new Date(o.codigo_expira_em) <= new Date()) {
+      throw erro(410, 'Este código venceu — peça um novo a quem organiza o evento.', { codigo: 'codigo_vencido' });
+    }
+    await cliente.query(
+      `UPDATE operadores SET cliente_id = $2, vinculado_em = COALESCE(vinculado_em, now()), status = 'ativo',
+         ativado_em = COALESCE(ativado_em, now()), codigo_hash = NULL, codigo_expira_em = NULL, codigo_tentativas = 0,
+         sessao_versao = sessao_versao + 1
+       WHERE id = $1`,
+      [o.id, conta.id],
+    );
+    await medir(cliente, 'acesso:operador_ativa', null, { operador_id: o.id, na_conta: true });
+    return { ok: true, ja_ativo: false, operador_id: o.id };
+  }).then((r) => {
+    if (r.erro) throw invalido();
+    return r;
+  });
+}
+
+// Operador ligado à conta (ativo ou não) — para "Minha conta".
+async function daConta(clienteId) {
+  const { rows } = await consultar('SELECT id, nome, status FROM operadores WHERE cliente_id = $1', [clienteId]);
+  return rows[0] || null;
+}
+
 // Login do operador (/ticket/entrar): null = e-mail ou senha errados (a
 // mesma resposta nos dois casos).
 async function autenticar(email, senha) {
@@ -243,10 +326,13 @@ async function autenticar(email, senha) {
 }
 
 // Operador da sessão, conferido no banco a cada requisição: desativado ou
-// com versão antiga perde a sessão na hora.
+// com versão antiga perde a sessão na hora. Duas origens: o login antigo da
+// portaria (/ticket/entrar) ou — desde 11/11/2026 — a própria conta TICK
+// ligada a um operador ativo (um login só).
 async function daSessao(req) {
+  if (!config.configurada()) return null;
   const id = req.session?.trimundiOperadorId;
-  if (!id || !config.configurada()) return null;
+  if (!id) return daContaLogada(req);
   const { rows } = await consultar(
     'SELECT id, nome, status, sessao_versao, ultimo_acesso_em FROM operadores WHERE id = $1',
     [id],
@@ -255,12 +341,28 @@ async function daSessao(req) {
   if (o?.status !== 'ativo' || o.sessao_versao !== req.session.trimundiOperadorVersao) {
     delete req.session.trimundiOperadorId;
     delete req.session.trimundiOperadorVersao;
-    return null;
+    return daContaLogada(req);
   }
   if (!o.ultimo_acesso_em || Date.now() - new Date(o.ultimo_acesso_em).getTime() > 5 * 60000) {
     await consultar('UPDATE operadores SET ultimo_acesso_em = now() WHERE id = $1', [o.id]);
   }
   return o;
+}
+
+// A conta TICK logada (confirmada, sessão em dia) ligada a um operador ativo.
+async function daContaLogada(req) {
+  const conta = await require('./clientes').daSessao(req);
+  if (!conta) return null;
+  const { rows } = await consultar(
+    "SELECT id, nome, status, sessao_versao, ultimo_acesso_em FROM operadores WHERE cliente_id = $1 AND status = 'ativo'",
+    [conta.id],
+  );
+  const o = rows[0];
+  if (!o) return null;
+  if (!o.ultimo_acesso_em || Date.now() - new Date(o.ultimo_acesso_em).getTime() > 5 * 60000) {
+    await consultar('UPDATE operadores SET ultimo_acesso_em = now() WHERE id = $1', [o.id]);
+  }
+  return { ...o, pela_conta: true };
 }
 
 // Edições em que o operador pode fazer check-in agora (publicadas ou pausadas).
@@ -286,6 +388,8 @@ module.exports = {
   desativar,
   reativar,
   ativar,
+  vincular,
+  daConta,
   autenticar,
   daSessao,
   edicoesPermitidas,

@@ -9,8 +9,10 @@ const checkin = require('../checkin');
 
 // Área do operador de check-in (T6, T8; RN-T26 a RN-T28). A sessão do
 // operador é conferida no banco a cada requisição (revogação imediata) e só
-// abre /ticket/*: nenhuma rota de conta da Mostraí nem do Admin a aceita. O
-// login é próprio da Trimundi (/ticket/entrar), sem passar pela Mostraí.
+// abre /ticket/*: nenhuma rota de conta da Mostraí nem do Admin a aceita.
+// Desde 11/11/2026 o operador entra pela própria conta TICK (ativação pelo
+// código liga as duas); o login antigo da portaria (/ticket/entrar) segue
+// para quem ainda não ligou.
 
 const router = express.Router();
 
@@ -82,6 +84,23 @@ router.post('/ticket/api/ativar', limiteTentativasPorAlvo(alvoDaAtivacao), async
   await descontarAcerto(req, res).catch(() => {});
   res.json({ ok: true });
 });
+
+// Ativação na conta TICK (11/11/2026): o código do convite liga o operador à
+// conta logada — sem senha nova, sem segundo cadastro. Sem conta logada, 401
+// (a página manda entrar ou criar a conta e volta). O limitador conta erros
+// por conta, como o login conta por e-mail.
+router.post(
+  '/ticket/api/operador/vincular',
+  limiteTentativasPorAlvo((req) => `vincular:${req.session?.trimundiClienteId ?? ''}`),
+  async (req, res) => {
+    if (!config.configurada()) throw erro(503, 'a Trimundi não está configurada neste ambiente');
+    const conta = await require('../clientes').daSessao(req);
+    if (!conta) throw erro(401, 'Entre na sua conta TICK para ativar o acesso de operador.', { codigo: 'conta' });
+    const r = await operadores.vincular(conta, req.body);
+    await descontarAcerto(req, res).catch(() => {});
+    res.json({ ok: true, ja_ativo: r.ja_ativo, portaria: '/ticket/checkin' });
+  },
+);
 
 router.get('/ticket/checkin', async (req, res) => {
   const op = config.configurada() ? await operadores.daSessao(req) : null;

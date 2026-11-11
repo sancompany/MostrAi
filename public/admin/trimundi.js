@@ -1805,7 +1805,7 @@
     el.innerHTML = `
       <div class="barra-pagina"><p class="barra-pagina-texto">${operadores.length ? plural(operadores.length, 'operador', 'operadores') : ''}</p>
         <button type="button" class="btn primary" id="tmNovoOperador">+ Adicionar operador</button></div>
-      <p class="campo-ajuda">O operador ativa o acesso em <code>/ticket/ativar</code> e entra em <code>/ticket/entrar</code> (login próprio da Trimundi); a sessão dele só abre o check-in. Todo operador tem um link de indicação nas edições em que está autorizado; os números contam só compras confirmadas.</p>
+      <p class="campo-ajuda">O operador ativa o acesso pelo código ou pelo link do convite, na conta TICK do e-mail cadastrado aqui, e entra na portaria com essa mesma conta. Quem ativou antes com senha só da portaria segue entrando em <code>/ticket/entrar</code> até receber um código novo; a sessão dele só abre o check-in. Todo operador tem um link de indicação nas edições em que está autorizado; os números contam só compras confirmadas.</p>
       ${
         operadores.length
           ? `<div class="tabela-caixa"><div class="rolagem"><table>
@@ -1814,7 +1814,7 @@
             .map(
               (o) => `<tr>
               <td><b>${esc(o.nome)}</b></td><td>${esc(o.email)}</td><td>${edicoesTexto(o)}</td>
-              <td>${selo(SITUACAO_OPERADOR[o.status])}
+              <td>${selo(SITUACAO_OPERADOR[o.status])}${o.na_conta_tick ? '<br><span class="u-dim">na conta TICK</span>' : ''}
                 ${o.status === 'aguardando_ativacao' && o.codigo_expira_em ? `<br><span class="u-dim">código vale até ${esc(quando(o.codigo_expira_em))}</span>` : ''}
                 <br><span class="u-dim">último acesso ${esc(quando(o.ultimo_acesso_em) || '—')}</span></td>
               <td><code>${esc(o.indicacao.codigo)}</code><br>${
@@ -1888,19 +1888,24 @@
     );
   }
 
+  // O convite vai como código e como link (o link só preenche o código; quem
+  // confere é o servidor). A ativação acontece na conta TICK do e-mail do
+  // convite — sem senha só da portaria (11/11/2026).
   function mostrarCodigo({ operador, codigo, endereco }) {
-    const texto = `Código de ativação de ${operador.nome}: ${codigo}. Vale 72 horas e uma vez só. Envie também o endereço: ${endereco}`;
+    const link = `${endereco}#c=${encodeURIComponent(codigo)}`;
+    const texto = `Convite de operador da TICK para ${operador.nome}. Abra o link e entre (ou crie) a conta TICK com o e-mail ${operador.email}: ${link} — ou digite o código ${codigo} em ${endereco}. Vale 72 horas e uma vez só.`;
     const { dlg } = abrirModal({
       titulo: 'Código de ativação',
       corpo: `<p>Código de ativação de <b>${esc(operador.nome)}</b>:</p><p class="tm-codigo">${esc(codigo)}</p>
-        <p>Vale 72 horas e uma vez só. Envie também o endereço: <code>${esc(endereco)}</code></p>
+        <p>Link de ativação: <code>${esc(link)}</code></p>
+        <p>Vale 72 horas e uma vez só. A pessoa ativa na conta TICK do e-mail <b>${esc(operador.email)}</b> (entra ou cria a conta com esse e-mail) — o mesmo login dos ingressos.</p>
         <p class="campo-ajuda">O código aparece só agora. Se perder, gere outro.</p>`,
       rodape:
         '<button type="button" class="btn ghost" data-copiar>Copiar</button><button type="button" class="btn primary" data-fechar>Fechar</button>',
     });
     dlg.querySelector('[data-copiar]').addEventListener('click', () =>
       copiarTexto(texto).then(
-        () => toast('Código e endereço copiados.'),
+        () => toast('Convite copiado.'),
         () => toast('Copie o código à mão.', 'err'),
       ),
     );

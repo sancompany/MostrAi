@@ -1497,3 +1497,20 @@ details.termo .texto {
 .indicado-topo strong {
   overflow-wrap: anywhere;
 }
+
+/* "Trocar de conta" na ativação de operador: botão com cara de link. */
+button.link-suave {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.auth-cartao .btn + .auth-linha {
+  justify-content: center;
+  margin: 0.85rem 0 0;
+}

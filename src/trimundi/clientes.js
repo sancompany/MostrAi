@@ -315,6 +315,36 @@ const SITUACAO_PEDIDO = {
   pago_sem_vaga: 'Pago sem vaga — devolução em andamento',
 };
 
+// Área do operador dentro da conta (11/11/2026), quando a conta está ligada
+// a um operador: os eventos em que ele trabalha na portaria agora, cada um
+// com o desempenho de indicação dele ali (pessoas, compras, ingressos). Sem
+// lista de quem comprou — isso fica na portaria, com sessão e conexão.
+async function areaDoOperador(clienteId) {
+  const operadores = require('./operadores');
+  const op = await operadores.daConta(clienteId);
+  if (!op) return null;
+  const ativo = op.status === 'ativo';
+  const permitidas = ativo ? await operadores.edicoesPermitidas(op.id) : [];
+  const ficha = await require('./desempenho').fichaDoOperador(op.id);
+  const doEvento = new Map(ficha.por_edicao.map((e) => [Number(e.edicao_id), e]));
+  const links = new Map(ficha.links.map((l) => [Number(l.edicao_id), l.link]));
+  return {
+    nome: op.nome,
+    ativo,
+    portaria: ativo ? '/ticket/checkin' : null,
+    totais: ficha.totais,
+    eventos: permitidas.map((e) => ({
+      edicao_id: e.id,
+      nome: `${e.evento} — ${e.nome}`,
+      inicio_em: e.inicio_em,
+      link_indicacao: links.get(Number(e.id)) || null,
+      pessoas: doEvento.get(Number(e.id))?.pessoas || 0,
+      compras: doEvento.get(Number(e.id))?.compras || 0,
+      ingressos: doEvento.get(Number(e.id))?.ingressos || 0,
+    })),
+  };
+}
+
 async function painel(c) {
   const { rows: pedidos } = await consultar(
     `SELECT p.id, p.status, p.criado_em, p.pago_em, p.reserva_expira_em, p.total_centavos,
@@ -445,6 +475,7 @@ async function painel(c) {
     edicoes: [...edicoes.values()],
     ingressos,
     indicacao,
+    operador: await areaDoOperador(c.id),
   };
 }
 

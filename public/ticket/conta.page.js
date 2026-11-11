@@ -552,12 +552,79 @@
     );
   }
 
+  // Área do operador (11/11/2026): aparece quando a conta está ligada a um
+  // operador — os eventos em que ele trabalha na portaria, com o desempenho
+  // de indicação de cada um separado, e o botão da portaria. Mesmo login.
+  function secaoOperador(op) {
+    if (!op) return null;
+    const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+    const eventos = op.eventos.length
+      ? el(
+          'ul',
+          { class: 'lista-indicados' },
+          op.eventos.map((e) =>
+            el(
+              'li',
+              {},
+              el(
+                'div',
+                { class: 'indicado-topo' },
+                el('strong', { text: e.nome }),
+                el('span', { class: 'discreto', text: e.inicio_em ? dataCurta(e.inicio_em) : 'Data a definir' }),
+              ),
+              el('span', {
+                class: 'discreto',
+                text: `Por indicação: ${plural(e.pessoas, 'pessoa', 'pessoas')} · ${plural(e.ingressos, 'ingresso', 'ingressos')}`,
+              }),
+            ),
+          ),
+        )
+      : el('p', {
+          class: 'discreto',
+          text: op.ativo
+            ? 'Nenhum evento está liberado para você na portaria agora.'
+            : 'Seu acesso de operador está pausado — fale com quem organiza o evento.',
+        });
+    return el(
+      'section',
+      { class: 'conta-secao', 'aria-labelledby': 'tituloOperador' },
+      el('h2', { id: 'tituloOperador', text: 'Área do operador' }),
+      el(
+        'div',
+        { class: 'cartao' },
+        el('p', { class: 'discreto', text: `Você trabalha na portaria como ${op.nome}. Eventos liberados para você:` }),
+        eventos,
+        op.portaria ? el('a', { class: 'btn primario grande', href: op.portaria, text: 'Abrir a portaria' }) : null,
+      ),
+    );
+  }
+
+  // Código de ativação de operador guardado nesta aba (veio do link e a
+  // pessoa entrou ou criou a conta): um atalho para terminar.
+  function ativacaoPendente(op) {
+    let pendente = '';
+    try {
+      pendente = sessionStorage.getItem('tick:ativacao-operador') || '';
+    } catch {}
+    if (!pendente || op?.ativo) return null;
+    return el(
+      'div',
+      { class: 'cartao aviso-aceite' },
+      el('p', { text: 'Você começou a ativar o acesso de operador nesta conta.' }),
+      el('a', { class: 'btn primario', href: '/ticket/ativar', text: 'Continuar a ativação' }),
+    );
+  }
+
   async function telaConta() {
     let d;
     try {
       d = await api('/ticket/api/conta');
     } catch (err) {
-      if (err.status === 401) return telaEntrar(volta ? 'Entre na sua conta para continuar a compra.' : null);
+      if (err.status === 401) {
+        // `#criar` (vindo da ativação de operador, por exemplo): já abre o cadastro.
+        if (location.hash === '#criar') return telaCadastro();
+        return telaEntrar(volta ? 'Entre na sua conta para continuar.' : null);
+      }
       return trocar(el('p', { class: 'mensagem erro', text: err.message }));
     }
     // Chegou pelo link geral de indicação antes de ter conta: com a conta
@@ -595,6 +662,8 @@
         ),
       ),
       d.conta.aceite_pendente ? blocoDeAceite() : null,
+      ativacaoPendente(d.operador),
+      secaoOperador(d.operador),
       secaoIngressos(d),
       window.trimundi.indiqueEAcompanhe(d.indicacao),
     );
