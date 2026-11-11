@@ -1,8 +1,15 @@
 // Trimundi — login do operador de check-in (/ticket/entrar). Login próprio
 // da Trimundi; o destino vem do servidor e só pode ser um caminho /ticket/.
 (() => {
-  const { api, enviando } = window.trimundi;
+  const { api, enviando, comOlho } = window.trimundi;
   const form = document.getElementById('formEntrar');
+  // Olho dentro de cada campo de senha (mostrar/ocultar), o mesmo da conta
+  // do cliente: só troca o tipo do campo, não envia o formulário.
+  for (const campo of form.querySelectorAll('input[type="password"]')) {
+    const pai = campo.parentNode;
+    const depois = campo.nextSibling;
+    pai.insertBefore(comOlho(campo), depois);
+  }
   const msg = document.getElementById('msg');
   const botao = form.querySelector('[type="submit"]');
 
