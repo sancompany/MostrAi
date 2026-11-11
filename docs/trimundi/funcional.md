@@ -407,6 +407,11 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     conta criada a partir dessa visita.
   - Compras: só as confirmadas (RN-T32). Nenhum dado de quem visitou ou
     comprou aparece para quem indicou.
+  - Operador (11/11/2026): a portaria mostra a mesma área, com o link
+    permanente valendo para os eventos em que ele trabalha, e também a lista
+    de quem ele indicou — nome, evento, situação e ingressos; sem CPF nem
+    e-mail. Sem área de ingressos (o do operador é cortesia). O cliente
+    continua sem lista.
 - **RN-T36 Seleção, titular e ingresso por unidade** (10/11/2026).
   - Card de cada tipo na página de venda: nome e selo verde "Disponível" no
     topo; preço (cor de destaque) e quantidade na mesma linha, no rodapé. Não

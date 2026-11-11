@@ -103,8 +103,8 @@ router.get('/ticket/api/operador', exigirOperador, async (req, res) => {
       // Lembrete na portaria: idade mínima e documento com foto.
       classificacao_etaria: e.classificacao_etaria,
     })),
-    // Link de indicação do operador, quando o Admin habilita.
-    indicacao: await require('../indicacao').andamentoDoOperador(req.operador.id),
+    // "Indique e acompanhe" do operador: link, números e quem ele indicou.
+    indicacao: await require('../desempenho').indicacaoDoOperador(req.operador.id),
   });
 });
 
