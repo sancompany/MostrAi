@@ -1,9 +1,9 @@
 // Trimundi — página pública da edição (/ticket/<evento>/<edição>): vitrine,
-// escolha dos ingressos, dados de cada participante, aceite dos termos e
-// ida para o pagamento. Quem decide preço, lote e estoque é o servidor
+// escolha dos ingressos, conferência (todos no nome do titular da conta),
+// aceite dos termos e ida para o pagamento. Quem decide preço, lote e estoque é o servidor
 // (cotação e pedido); esta página só mostra e envia.
 (() => {
-  const { el, moeda, dataHora, hora, api, novaChave, mascaraCpf, cpfValido, enviando } = window.trimundi;
+  const { el, moeda, dataHora, hora, api, novaChave, enviando } = window.trimundi;
   const main = document.getElementById('conteudo');
   const [, , evento, edicao] = window.location.pathname.split('/').map(decodeURIComponent);
   const qtd = new Map();
@@ -207,54 +207,59 @@
     indisponivel: 'Indisponível',
   };
 
+  // Card do ingresso (pedido do dono, 10/11/2026): no topo, o nome e o selo;
+  // embaixo, o preço e a quantidade na mesma linha. Sem preço nem data do
+  // próximo lote; a quantidade restante só aparece quando o lote atual tem
+  // 10 ou menos (o servidor manda `restantes_no_lote` só nesse caso).
+  const escassez = (n) => (n === 1 ? 'Último ingresso' : `Últimos ${n} ingressos`);
+
+  function cardDeOferta({ nome, selo, corpo, preco, legenda, alerta, seletorDaOferta }) {
+    return el('article', { class: `oferta${seletorDaOferta ? '' : ' fora'}` }, [
+      el('div', { class: 'oferta-topo' }, [el('h3', { class: 'nome', text: nome }), selo]),
+      ...corpo,
+      seletorDaOferta
+        ? el('div', { class: 'oferta-rodape' }, [
+            el('div', { class: 'valor' }, [
+              el('span', { class: 'preco', text: preco }),
+              legenda ? el('span', { class: alerta ? 'escassez' : 'legenda', text: legenda }) : null,
+            ]),
+            seletorDaOferta,
+          ])
+        : null,
+    ]);
+  }
+
   function ofertaDeTipo(t) {
     const aVenda = t.situacao === 'a_venda';
     let situacao = SELO[t.situacao];
     if (t.situacao === 'em_breve' && t.proximo_inicio) situacao = `A partir de ${dataHora(t.proximo_inicio)}`;
-    return el('div', { class: 'oferta' }, [
-      el('div', {}, [
-        el('div', { class: 'nome', text: t.nome }),
+    const beneficios = [...(t.beneficios || []), ...(aVenda && t.beneficio_do_lote ? [t.beneficio_do_lote.nome] : [])];
+    const limitado = t.beneficios_limitados || (aVenda && t.beneficio_do_lote?.limitado);
+    const pouco = aVenda && t.restantes_no_lote !== null && t.restantes_no_lote !== undefined;
+    return cardDeOferta({
+      nome: t.nome,
+      selo: aVenda
+        ? el('span', { class: 'selo ok', text: 'Disponível' })
+        : el('span', { class: `selo ${t.situacao === 'esgotado' ? 'erro' : 'alerta'}`, text: situacao }),
+      corpo: [
         t.descricao ? el('p', { class: 'detalhe', text: t.descricao }) : null,
-        aVenda
-          ? el('p', { class: 'detalhe' }, [
-              el('span', { class: 'preco', text: moeda(t.preco_centavos) }),
-              ` · ${t.lote}`,
-              t.vendas_ate ? ` · vendas até ${dataHora(t.vendas_ate)}` : '',
-            ])
-          : el('span', { class: `selo ${t.situacao === 'esgotado' ? 'erro' : 'alerta'}`, text: situacao }),
-        aVenda && t.disponibilidade
-          ? el('span', {
-              class: `selo${t.disponibilidade.startsWith('Últimas') ? ' alerta' : ''}`,
-              text: t.disponibilidade,
-            })
+        beneficios.length
+          ? el(
+              'ul',
+              { class: 'chips', 'aria-label': 'Benefícios' },
+              beneficios.map((b) => el('li', { class: 'chip', text: b })),
+            )
           : null,
-        aVenda && t.proximo_lote
-          ? el('p', {
-              class: 'detalhe',
-              text: `Próximo: ${t.proximo_lote.lote} · ${moeda(t.proximo_lote.preco_centavos)}`,
-            })
-          : null,
-        aVenda && t.beneficio_do_lote
-          ? el('p', { class: 'beneficio-lote' }, [
-              el('strong', { text: `Direito a: ${t.beneficio_do_lote.nome}` }),
-              t.beneficio_do_lote.restam ? ` · restam ${t.beneficio_do_lote.restam}` : '',
-              t.beneficio_do_lote.limitado ? el('span', { class: 'aviso-estoque', text: AVISO_ESTOQUE }) : null,
-            ])
-          : null,
+        limitado ? el('p', { class: 'aviso-estoque', text: AVISO_ESTOQUE }) : null,
         t.limite_por_comprador
           ? el('p', { class: 'detalhe', text: `Até ${t.limite_por_comprador} por comprador.` })
           : null,
-        t.beneficios?.length
-          ? el(
-              'ul',
-              { class: 'chips' },
-              t.beneficios.map((b) => el('li', { class: 'chip', text: b })),
-            )
-          : null,
-        t.beneficios_limitados ? el('p', { class: 'aviso-estoque', text: AVISO_ESTOQUE }) : null,
-      ]),
-      aVenda ? seletor(`t:${t.id}`, t) : null,
-    ]);
+      ],
+      preco: moeda(t.preco_centavos),
+      legenda: pouco ? escassez(t.restantes_no_lote) : t.lote,
+      alerta: pouco,
+      seletorDaOferta: aVenda ? seletor(`t:${t.id}`, t) : null,
+    });
   }
 
   function ofertaDeCombo(c) {
@@ -275,22 +280,20 @@
       inativa: 'Indisponível',
       indisponivel: 'Indisponível',
     };
-    return el('div', { class: 'oferta' }, [
-      el('div', {}, [
-        el('div', { class: 'nome', text: c.nome }),
+    return cardDeOferta({
+      nome: c.nome,
+      selo: aVenda
+        ? el('span', { class: 'selo ok', text: 'Disponível' })
+        : el('span', { class: 'selo alerta', text: rotulo[c.situacao] || 'Indisponível' }),
+      corpo: [
         el('p', { class: 'detalhe', text: composicao }),
-        c.ingressos.some((i) => i.beneficio_limitado) ? el('p', { class: 'aviso-estoque', text: AVISO_ESTOQUE }) : null,
         c.descricao ? el('p', { class: 'detalhe', text: c.descricao }) : null,
-        aVenda
-          ? el('p', { class: 'detalhe' }, [
-              el('span', { class: 'preco', text: moeda(c.preco_total_centavos) }),
-              ` · ${c.ingressos_por_combo} ingressos`,
-              c.valida_ate ? ` · até ${dataHora(c.valida_ate)}` : '',
-            ])
-          : el('span', { class: 'selo alerta', text: rotulo[c.situacao] || 'Indisponível' }),
-      ]),
-      aVenda ? seletor(`c:${c.id}`, c) : null,
-    ]);
+        c.ingressos.some((i) => i.beneficio_limitado) ? el('p', { class: 'aviso-estoque', text: AVISO_ESTOQUE }) : null,
+      ],
+      preco: moeda(c.preco_total_centavos),
+      legenda: `${c.ingressos_por_combo} ingressos`,
+      seletorDaOferta: aVenda ? seletor(`c:${c.id}`, c) : null,
+    });
   }
 
   function pedidoEmAndamento() {
@@ -399,30 +402,6 @@
     }
   }
 
-  function campo(rotulo, nome, atributos = {}) {
-    const id = `${nome}-${Math.random().toString(36).slice(2, 8)}`;
-    return el('div', { class: 'campo' }, [
-      el('label', { for: id, text: rotulo }),
-      el('input', { id, name: nome, ...atributos }),
-    ]);
-  }
-
-  function pessoa(prefixo) {
-    const bloco = el('div', { class: 'grade-2' }, [
-      campo('Nome completo', `${prefixo}nome`, { autocomplete: 'off', maxlength: 120, required: true }),
-      campo('CPF', `${prefixo}cpf`, {
-        inputmode: 'numeric',
-        autocomplete: 'off',
-        maxlength: 14,
-        required: true,
-        placeholder: '000.000.000-00',
-      }),
-      campo('E-mail', `${prefixo}email`, { type: 'email', autocomplete: 'off', maxlength: 200, required: true }),
-    ]);
-    for (const i of bloco.querySelectorAll('input[name$="cpf"]')) mascaraCpf(i);
-    return bloco;
-  }
-
   function mostrarDados(cotacao, aviso = null) {
     const textos = TEXTOS.filter(([k]) => dados.textos[k]);
     const resumo = el('section', { class: 'cartao' }, [
@@ -461,30 +440,33 @@
       el('p', { class: 'discreto', text: 'As taxas do meio de pagamento, se houver, aparecem na tela de pagamento.' }),
     ]);
 
-    const comprador = el('p', { class: 'discreto' }, [
-      `Comprando como ${conta.nome} (${conta.email}). `,
-      el('a', { href: `/ticket/conta?volta=${encodeURIComponent(window.location.pathname)}`, text: 'Não é você?' }),
+    // Todos os ingressos ficam no nome do titular da conta (pedido do dono,
+    // 10/11/2026): nada de formulário por acompanhante. Cada um continua sendo
+    // uma unidade, com número, tipo e QR Code próprios.
+    const titular = el('section', { class: 'cartao titular' }, [
+      el('h2', { text: 'Seus ingressos' }),
+      el('p', { class: 'discreto' }, [
+        'Todos ficam no nome de ',
+        el('strong', { text: conta.nome }),
+        `. Cada ingresso tem o próprio QR Code, e cada QR vale uma entrada.`,
+      ]),
+      el(
+        'ol',
+        { class: 'lista-ingressos' },
+        cotacao.vagas.map((vaga) =>
+          el('li', {}, [
+            el('span', { class: 'n-ingresso', text: `Ingresso ${vaga.numero}` }),
+            el('span', {
+              text: `${vaga.categoria_nome}${vaga.combo_nome ? ` (promoção ${vaga.combo_nome})` : ''}`,
+            }),
+          ]),
+        ),
+      ),
+      el('p', { class: 'discreto' }, [
+        `Comprando como ${conta.nome} (${conta.email}). `,
+        el('a', { href: `/ticket/conta?volta=${encodeURIComponent(window.location.pathname)}`, text: 'Não é você?' }),
+      ]),
     ]);
-    const participantes = cotacao.vagas.map((vaga, i) => {
-      const titulo = `Ingresso ${vaga.numero} · ${vaga.categoria_nome}${vaga.combo_nome ? ` (promoção ${vaga.combo_nome})` : ''}`;
-      const souEu =
-        i === 0
-          ? el('label', { class: 'marcar' }, [
-              el('input', {
-                type: 'checkbox',
-                name: 'sou-eu',
-                checked: true,
-                onchange: (ev) => usarMinhaConta(ev.currentTarget.checked),
-              }),
-              'Este ingresso é meu (usar os dados da minha conta)',
-            ])
-          : null;
-      return el('fieldset', { dataset: { vaga: String(i) } }, [
-        el('legend', { text: titulo }),
-        souEu,
-        pessoa(`p${i}-`),
-      ]);
-    });
     const termos = el('section', { class: 'cartao' }, [
       el('h2', { text: 'Regras do evento' }),
       textos.map(([k, rotulo]) =>
@@ -507,15 +489,7 @@
     const erro = el('p', { class: 'mensagem erro', id: 'erroPedido', role: 'alert', text: aviso || '' });
     const pagar = el('button', { class: 'btn primario grande', type: 'submit', text: 'Ir para o pagamento' });
     const form = el('form', { id: 'formPedido', novalidate: true }, [
-      el('section', { class: 'cartao' }, [
-        el('h2', { text: 'Quem vai usar cada ingresso' }),
-        el('p', {
-          class: 'discreto',
-          text: 'Cada ingresso é individual: tem o nome e o CPF de quem vai entrar. O QR Code não leva esses dados.',
-        }),
-        comprador,
-        participantes,
-      ]),
+      titular,
       termos,
       erro,
       el('p', { class: 'discreto', text: 'Seus ingressos ficam reservados por 30 minutos para o pagamento.' }),
@@ -536,34 +510,10 @@
       enviarPedido(form, cotacao, pagar, erro);
     });
     main.replaceChildren(resumo, form);
-    usarMinhaConta(true);
     if (aviso) erro.scrollIntoView({ block: 'center' });
   }
 
-  // "Este ingresso é meu": o servidor preenche com os dados da conta.
-  function usarMinhaConta(marcado) {
-    const bloco = document.querySelector('fieldset[data-vaga="0"] .grade-2');
-    bloco.hidden = marcado;
-  }
-
-  const ler = (form, prefixo) => ({
-    nome: form.elements[`${prefixo}nome`].value.trim(),
-    cpf: form.elements[`${prefixo}cpf`].value,
-    email: form.elements[`${prefixo}email`].value.trim(),
-  });
-  const ehMeu = (form, i) => i === 0 && form.elements['sou-eu']?.checked;
-
-  function conferir(form, cotacao) {
-    for (const [i] of cotacao.vagas.entries()) {
-      if (ehMeu(form, i)) continue;
-      const p = `p${i}-`;
-      const rotulo = `Ingresso ${i + 1}`;
-      const d = ler(form, p);
-      if (d.nome.length < 2) return [form.elements[`${p}nome`], `${rotulo}: informe o nome completo.`];
-      if (!cpfValido(d.cpf)) return [form.elements[`${p}cpf`], `${rotulo}: CPF inválido — confira os números.`];
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(d.email))
-        return [form.elements[`${p}email`], `${rotulo}: informe um e-mail válido.`];
-    }
+  function conferir(form) {
     if (!form.elements.aceite.checked) return [form.elements.aceite, 'Para continuar, aceite as regras do evento.'];
     if (exigeIdade() && !form.elements.idade.checked)
       return [
@@ -575,7 +525,7 @@
 
   async function enviarPedido(form, cotacao, botao, erro) {
     erro.textContent = '';
-    const problema = conferir(form, cotacao);
+    const problema = conferir(form);
     if (problema) {
       erro.textContent = problema[1];
       problema[0].focus();
@@ -585,7 +535,7 @@
       evento,
       edicao,
       itens: itensDoCarrinho(),
-      participantes: cotacao.vagas.map((_, i) => (ehMeu(form, i) ? { conta: true } : ler(form, `p${i}-`))),
+      // Sem `participantes`: o servidor põe cada ingresso no nome do titular.
       aceite: { aceito: true, termos: cotacao.termos.map((t) => t.id), idade: exigeIdade() ? true : undefined },
       chave,
       indicacao: codigoDeIndicacao(),

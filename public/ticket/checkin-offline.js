@@ -178,6 +178,8 @@
     const ingresso = {
       id: item.i,
       participante: item.n,
+      numero: item.o ?? null,
+      numero_de: item.q ?? null,
       categoria: item.t,
       status: item.s,
       utilizado_em: local?.lido_em || null,

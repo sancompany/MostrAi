@@ -5,6 +5,7 @@ const { lerQr } = require('./lib/qr');
 const { normalizarCodigoCurto } = require('./lib/codigos');
 const { historicoDoIngresso, medir } = require('./lib/registro');
 const { edicoesPermitidas } = require('./operadores');
+const { colunasDeNumero } = require('./lib/numeracao');
 
 // Check-in (T8). A leitura do QR no aparelho só extrai o texto: quem decide
 // é o servidor — assinatura, edição, status e uso único. A entrada aceita é
@@ -57,7 +58,7 @@ async function acharIngresso(cliente, ed, entrada) {
 async function detalhes(cliente, ingresso) {
   const { rows } = await cliente.query(
     `SELECT i.id, i.codigo_curto, i.origem, i.status, i.motivo_status, pa.nome AS participante, c.nome AS categoria,
-            pr.nome AS promocao,
+            pr.nome AS promocao, ${colunasDeNumero('i')},
             COALESCE((SELECT json_agg(json_build_object('id', ib.beneficio_id, 'nome', ib.nome, 'resgatado_em', ib.resgatado_em,
                         'resgatado_por', (SELECT nome FROM operadores WHERE 'operador:' || operadores.id = ib.resgatado_por))
                         ORDER BY ib.nome) FROM ingresso_beneficios ib WHERE ib.ingresso_id = i.id), '[]') AS beneficios,
@@ -74,6 +75,10 @@ async function detalhes(cliente, ingresso) {
     id: d.id,
     codigo_curto: d.codigo_curto,
     participante: d.participante,
+    // "Ingresso 2 de 4" do pedido: cada QR é uma unidade; validar um não
+    // mexe nos outros do mesmo pedido.
+    numero: d.numero,
+    numero_de: d.numero_de,
     categoria: d.categoria,
     promocao: d.promocao,
     cortesia: d.origem === 'cortesia',

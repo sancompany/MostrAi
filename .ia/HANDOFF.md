@@ -1,6 +1,16 @@
 # Current Handoff
 
 ## Updated
+2026-11-11 — **TICK: seleção de ingressos, titular e número por ingresso**,
+branch `claude/beautiful-faraday-cjq1nt-ingressos`, PR em rascunho, nada em
+produção. Sem migration.
+- Não desfazer sem contexto: o número do ingresso (`lib/numeracao.js`) é
+  calculado da ordem do item e da posição da vaga — não guardar posição de
+  lista; a compra pela conta sem `participantes` põe tudo no titular (a lista
+  explícita ainda é aceita); "últimos N" usa o disponível do LOTE ATUAL, não a
+  soma da cadeia; o benefício do titular (recompensa de indicação) só no
+  ingresso principal.
+
 2026-11-10 (noite) — **TICK: telas públicas e documentos legais v1.2**, branch
 `claude/beautiful-faraday-cjq1nt-conta-legal` (sobre a de indicação, PR #142),
 PR em rascunho, nada em produção. Migration 011 (`aceites_conta`,

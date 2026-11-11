@@ -176,14 +176,17 @@
     a.remove();
   }
 
-  function cartaoDoIngresso(i, n) {
+  // O número vem do servidor (ordem do item e posição da vaga no pedido):
+  // fixo, não a posição nesta lista. Sem ele (resposta antiga), a posição.
+  function cartaoDoIngresso(i, posicao) {
+    const n = i.numero || posicao;
     const usado = Boolean(i.utilizado_em);
     const [cor, rotulo] = usado
       ? ['', `Utilizado em ${dataCurta(i.utilizado_em)}`]
       : INGRESSO[i.status] || ['', i.status];
     const ativo = i.status === 'valido' && i.qr;
     return el('article', { class: `cartao ingresso${ativo ? '' : ' inativo'}`, 'aria-label': `Ingresso ${n}` }, [
-      el('div', { class: 'discreto', text: `Ingresso ${n}` }),
+      el('div', { class: 'discreto', text: `Ingresso ${n}${i.numero_de ? ` de ${i.numero_de}` : ''}` }),
       el('h3', { text: i.participante }),
       el('div', { text: `${i.categoria}${i.promocao ? ` · promoção ${i.promocao}` : ''}` }),
       ativo

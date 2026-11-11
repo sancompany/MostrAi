@@ -5,6 +5,7 @@ const { erro } = require('./lib/erros');
 const { chavePublicaDaEdicao } = require('./lib/qr');
 const { historicoDoIngresso, medir } = require('./lib/registro');
 const { edicoesPermitidas } = require('./operadores');
+const { colunasDeNumero } = require('./lib/numeracao');
 
 // Check-in offline (pedido do dono, 10/11/2026).
 //
@@ -48,7 +49,7 @@ async function permitida(operador, edicaoId) {
 async function pacote(operador, edicaoId) {
   const ed = await permitida(operador, v.id(edicaoId, 'edição'));
   const { rows } = await consultar(
-    `SELECT i.id, i.codigo, i.codigo_curto, i.status, c.nome AS categoria, pa.nome,
+    `SELECT i.id, i.codigo, i.codigo_curto, i.status, c.nome AS categoria, pa.nome, ${colunasDeNumero('i')},
             EXISTS (SELECT 1 FROM checkins ck WHERE ck.ingresso_id = i.id AND ck.escopo = 'entrada' AND ck.resultado = 'aceito') AS utilizado
        FROM ingressos i JOIN categorias c ON c.id = i.categoria_id JOIN participantes pa ON pa.id = i.participante_id
       WHERE i.edicao_id = $1
@@ -75,6 +76,9 @@ async function pacote(operador, edicaoId) {
       u: r.utilizado,
       t: r.categoria,
       n: primeiroNome(r.nome),
+      // Número do ingresso no pedido e quantos o pedido tem (cortesia: nulos).
+      o: r.numero,
+      q: r.numero_de,
     })),
   };
 }

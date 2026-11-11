@@ -17,6 +17,9 @@ const SITUACAO_TIPO = {
   indisponivel: 'Indisponível',
 };
 
+// "Últimos N ingressos" a partir daqui (inclusive).
+const LIMITE_ESCASSEZ = 10;
+
 function situacaoDoTipo(t) {
   if (!t.ativo) return 'indisponivel';
   if (t.disponivel_agora > 0) return 'a_venda';
@@ -74,7 +77,6 @@ async function edicaoPublica(evento, edicao) {
     tipos: tipos.map((t) => {
       const situacao = vendaAberta ? situacaoDoTipo(t) : 'indisponivel';
       const vigente = t.lotes.find((l) => l.situacao === 'a_venda');
-      const seguinte = vigente ? t.lotes.find((l) => l.numero > vigente.numero && !l.encerrado_em) : null;
       const brinde = vigente?.beneficio;
       return {
         id: t.id,
@@ -88,7 +90,6 @@ async function edicaoPublica(evento, edicao) {
         situacao_rotulo: SITUACAO_TIPO[situacao],
         preco_centavos: vigente?.preco_centavos ?? null,
         lote: vigente ? `${vigente.numero}º lote` : null,
-        proximo_lote: seguinte ? { lote: `${seguinte.numero}º lote`, preco_centavos: seguinte.preco_centavos } : null,
         // Benefício do lote vigente, enquanto houver (ex.: copão personalizado).
         beneficio_do_lote:
           brinde?.ativo && (brinde.restam === null || brinde.restam > 0)
@@ -98,14 +99,12 @@ async function edicaoPublica(evento, edicao) {
                 limitado: brinde.quantidade !== null && brinde.quantidade !== undefined,
               }
             : null,
-        // Disponibilidade sem expor o estoque inteiro: "últimas N" perto do fim.
-        disponibilidade:
-          situacao === 'a_venda'
-            ? t.disponivel_agora <= 20
-              ? `Últimas ${t.disponivel_agora}`
-              : 'Disponível'
-            : SITUACAO_TIPO[situacao],
-        vendas_ate: vigente?.fim_vendas ?? null,
+        // Escassez do LOTE ATUAL (pedido do dono, 10/11/2026): o número só
+        // aparece quando restam 10 ou menos nele — pagos com ingresso de pé e
+        // reservas ainda vivas contam; reserva vencida não. Acima disso, nada
+        // (nem preço, nem data do próximo lote: não aparecem para o público).
+        restantes_no_lote:
+          situacao === 'a_venda' && vigente && vigente.disponivel <= LIMITE_ESCASSEZ ? vigente.disponivel : null,
         proximo_inicio: t.proximo_inicio,
         // Quanto dá para escolher: o menor entre o limite por comprador, o
         // teto do pedido e o que há agora (o número exato não aparece).
