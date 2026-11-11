@@ -41,8 +41,15 @@ function html(texto) {
 <tr><td align="center" style="padding-bottom:20px"><img src="${esc(logo)}" width="96" height="96" alt="TICK" style="display:block;border:0;background:#0a0b0e;border-radius:50%">
 <div style="margin-top:10px;font-weight:700;letter-spacing:4px;font-size:13px">TICK</div></td></tr>
 <tr><td style="font-size:15px;line-height:1.5">${corpo}</td></tr>
+<tr><td style="padding-top:16px;border-top:1px solid #dcdfe5;font-size:12px;line-height:1.5;color:#565d6b">${esc(rodape())}</td></tr>
 </table></td></tr></table></body></html>`;
 }
+
+// Quem opera a TICK, no fim de todo e-mail (pedido do dono, 11/11/2026):
+// nome empresarial e CNPJ do MEI. Entra na hora do envio, nos dois formatos;
+// o texto guardado na fila não muda.
+const rodape = () => require('./legal').linhaDaOperadora();
+const textoComRodape = (texto) => `${texto}\n\n—\n${rodape()}`;
 
 let transporte = null;
 function obterTransporte(c) {
@@ -77,14 +84,14 @@ async function processar(limite = 10) {
       if (c.captura) {
         await fs.appendFile(
           c.captura,
-          `${JSON.stringify({ para: m.para, assunto: m.assunto, texto: m.texto, html: html(m.texto), tipo: m.tipo })}\n`,
+          `${JSON.stringify({ para: m.para, assunto: m.assunto, texto: textoComRodape(m.texto), html: html(m.texto), tipo: m.tipo })}\n`,
         );
       } else {
         await obterTransporte(c).sendMail({
           from: c.remetente,
           to: m.para,
           subject: m.assunto,
-          text: m.texto,
+          text: textoComRodape(m.texto),
           html: html(m.texto),
         });
       }
@@ -105,4 +112,4 @@ async function processar(limite = 10) {
   return rows.length;
 }
 
-module.exports = { enfileirar, processar, html };
+module.exports = { enfileirar, processar, html, textoComRodape };

@@ -60,15 +60,31 @@ reabrir é desmarcar com o motivo. Estado de cada funcionalidade:
   física), o valor das vendas cai na conta do operador do Checkout e o
   repasse ao organizador é manual (API.md do Checkout, §2.0 e §8).
 
-## Só o dono decide — documentos legais v1.2 (10/11/2026)
+## Só o dono decide — documentos legais (v1.2 em 10/11/2026, v1.3 em 11/11/2026)
 
 - [ ] Os textos oficiais foram publicados **exatamente** como entregues,
   inclusive três trechos em que a quebra de linha sumiu na colagem
   ("concorrência de tempo.Não há", "legítimo interesse.Nota de cookies",
   "controle de acesso.A TICK"). Corrigir é mudar o texto: só com um texto
   novo do dono (e uma versão nova, que pede aceite de novo).
-- [ ] Os Termos publicam o CPF do operador da plataforma. Confirmar que é
-  intencional.
+- [x] ~~Os Termos publicam o CPF do operador da plataforma.~~ Na v1.3
+  (11/11/2026) a identificação passou a ser o MEI (nome empresarial e CNPJ)
+  e o CPF saiu dos dois textos. Se o CPF deve voltar, é uma versão nova.
+- [ ] **Endereço completo da operadora.** Os textos dizem só "com sede em
+  Matão-SP"; o Decreto 7.962/2013 (comércio eletrônico) pede, em local de
+  destaque no site, o endereço físico e eletrônico do fornecedor. Falta o
+  endereço completo — não foi informado, e não foi inventado.
+- [ ] **Nome no San Checkout.** A página de pagamento é do San Checkout (outro
+  projeto): o nome e o CNPJ que ela mostra vêm do cadastro do contratante da
+  TICK lá. Conferir no painel do Checkout que aparece o MEI.
+- [ ] **Remetente dos e-mails.** O nome do remetente vem da variável
+  `MOSTRAI_EMAIL_FROM` (ou `TRIMUNDI_EMAIL_FROM`), fora do código. Os e-mails
+  já levam a identificação do MEI no rodapé; conferir o nome do remetente.
+- [ ] **Quem organiza cada evento.** A TICK não guarda quem organiza cada
+  evento (nome, CNPJ ou CPF da produtora); os Termos separam as
+  responsabilidades, mas nenhuma página identifica o organizador. Decidir se
+  entra um campo na ficha do evento (não foi criado sem pedido).
+- [ ] Advogado: conferir a v1.3 (só a identificação mudou; o resto é a 1.2).
 - [ ] Revisão por advogado das afirmações da Política (retenção, bases
   legais, cookies) frente ao que o sistema faz (`inventario-de-dados.md`).
 - [ ] Prazo de guarda do histórico de aceites (`aceites_conta`) e do IP e

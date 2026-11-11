@@ -1,6 +1,14 @@
 # Current Handoff
 
 ## Updated
+2026-11-11 — **TICK: identificação da operadora pelo MEI**, branch
+`claude/beautiful-faraday-cjq1nt-mei`, PR em rascunho. Termos e Política
+v1.3 (só a linha de identificação e o número da versão mudaram; v1.2 fica em
+`docs/trimundi/legal/`). Não desfazer sem contexto: os dados do MEI moram
+só em `legal.js` (`OPERADORA`); o rodapé usa `{{operadora}}`, preenchido
+por `paginas.enviar`; endereço, telefone e inscrições não existem no código
+porque não foram informados.
+
 2026-11-11 — **TICK: olho na senha do operador e "Indique e acompanhe" na
 portaria**, branch `claude/beautiful-faraday-cjq1nt-olho-operador`. O
 componente da área de indicação mora em `public/ticket/comum.js`
