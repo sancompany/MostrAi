@@ -149,6 +149,33 @@ async function numerosDoIndicador(indicadorId) {
   return { acessos: rows[0].acessos, contas_criadas: rows[0].contas, ...totais };
 }
 
+// Área do operador na portaria (pedido do dono, 11/11/2026): o mesmo
+// "Indique e acompanhe" da conta do cliente — os quatro números, o link
+// permanente e os links por edição autorizada — e, só para o operador, a
+// lista de quem ele indicou: nome, evento, situação e ingressos. Sem CPF,
+// e-mail nem nada de quem só visitou o link.
+async function indicacaoDoOperador(operadorId) {
+  const andamento = await require('./indicacao').andamentoDoOperador(operadorId);
+  if (!andamento) return null;
+  const { rows } = await consultar('SELECT id FROM indicadores WHERE operador_id = $1', [operadorId]);
+  const indicadorId = rows[0].id;
+  const numeros = await numerosDoIndicador(indicadorId);
+  const { indicados } = await indicadosPor(indicadorId);
+  return {
+    ...andamento,
+    numeros,
+    indicados: indicados.map((i) => ({
+      nome: i.nome,
+      edicao: i.edicao,
+      situacao: i.situacao,
+      confirmada: i.confirmada,
+      ingressos: i.ingressos,
+      tipos: i.tipos,
+      convertido_em: i.convertido_em,
+    })),
+  };
+}
+
 // ---------------------------------------------- ficha do comprador
 // Admin → Participantes → ficha: a conta, o que comprou nesta edição, quem
 // indicou esta pessoa e quem ela indicou. CPF mascarado; o inteiro só pelo
@@ -286,6 +313,7 @@ async function fichaDoOperador(operadorId) {
 
 module.exports = {
   numerosDoIndicador,
+  indicacaoDoOperador,
   ranking,
   rankingCsv,
   indicadosPor,

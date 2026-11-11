@@ -1,6 +1,12 @@
 # Current Handoff
 
 ## Updated
+2026-11-11 — **TICK: olho na senha do operador e "Indique e acompanhe" na
+portaria**, branch `claude/beautiful-faraday-cjq1nt-olho-operador`. O
+componente da área de indicação mora em `public/ticket/comum.js`
+(`indiqueEAcompanhe`), usado pela conta e pela portaria; a lista de
+indicados só vem para o operador (`desempenho.indicacaoDoOperador`).
+
 2026-11-11 — **TICK: seleção de ingressos, titular e número por ingresso**,
 branch `claude/beautiful-faraday-cjq1nt-ingressos`, PR em rascunho, nada em
 produção. Sem migration.

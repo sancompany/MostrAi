@@ -204,34 +204,25 @@
 
   const edicaoAtual = () => Number($('edicao').value);
 
-  // Link de indicação do operador (todo operador tem um, 10/11/2026) na
-  // edição escolhida: quem comprar por ele fica registrado como indicado por
-  // este operador. Sem lista de compradores aqui — isso é do Admin.
+  // Área de indicação do operador (11/11/2026): igual ao "Indique e
+  // acompanhe" do cliente — números, link permanente, link por evento,
+  // promoções — e a lista de quem ele indicou. O evento escolhido na portaria
+  // já vem selecionado no link por evento. Sem área de ingressos: o do
+  // operador é cortesia.
   function mostrarLink() {
     const aside = $('indicacao');
-    const l = operador.indicacao?.links?.find((x) => Number(x.edicao_id) === edicaoAtual());
-    if (!l) {
+    const secao = window.trimundi.indiqueEAcompanhe(operador.indicacao, { paraOperador: true });
+    if (!secao) {
       aside.classList.add('oculto');
       return;
     }
-    const copiar = el('button', { class: 'btn mini', type: 'button', text: 'Copiar' });
-    copiar.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(l.link);
-        copiar.textContent = 'Copiado';
-      } catch {
-        copiar.textContent = 'Selecione e copie';
-      }
-    });
-    const c = operador.indicacao.campanhas?.find((x) => x.link === l.link);
-    aside.replaceChildren(
-      el('p', { class: 'discreto', text: 'Seu link de indicação para este evento' }),
-      el('input', { class: 'link-indicacao', readonly: true, value: l.link, 'aria-label': 'Seu link de indicação' }),
-      copiar,
-      c
-        ? el('p', { class: 'discreto', text: `${c.conversoes} indicação(ões) paga(s) na promoção ${c.campanha}` })
-        : null,
-    );
+    const l = operador.indicacao.links?.find((x) => Number(x.edicao_id) === edicaoAtual());
+    const escolha = secao.querySelector('#eventoIndicacao');
+    if (l && escolha) {
+      escolha.value = l.link;
+      escolha.dispatchEvent(new Event('change'));
+    }
+    aside.replaceChildren(secao);
     aside.classList.remove('oculto');
   }
 
