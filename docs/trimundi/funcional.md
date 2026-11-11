@@ -407,6 +407,24 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     conta criada a partir dessa visita.
   - Compras: só as confirmadas (RN-T32). Nenhum dado de quem visitou ou
     comprou aparece para quem indicou.
+- **RN-T36 Seleção, titular e ingresso por unidade** (10/11/2026).
+  - Card de cada tipo na página de venda: nome e selo verde "Disponível" no
+    topo; preço (cor de destaque) e quantidade na mesma linha, no rodapé. Não
+    aparecem preço nem data do próximo lote. "Últimos N ingressos" só quando
+    o LOTE ATUAL tem 10 ou menos (pagos com ingresso de pé e reservas vivas;
+    reserva vencida não conta).
+  - A compra pela conta põe todos os ingressos no nome do titular, sem
+    formulário de acompanhante. O limite por CPF da edição (ex.: 4) segue
+    igual. Cada ingresso continua uma unidade: participante, vaga, código, QR,
+    situação e benefícios próprios; validar um não toca nos outros.
+  - Número do ingresso ("Ingresso 2 de 4"): sai da ordem do item e da posição
+    da vaga no pedido, gravadas na criação — fixo; não é o lote. Aparece na
+    conta, na página do pedido e na portaria (online e sem internet).
+  - Ingresso principal: por edição, o primeiro ingresso não cancelado do
+    primeiro pedido pago da conta. Só nele aparece o benefício do titular — a
+    recompensa de indicação da conta naquela edição (a retirar / entregue);
+    a entrega continua pelo Admin. O benefício do tipo ou do lote (Open Bar,
+    copão) aparece só na unidade que dá direito.
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.

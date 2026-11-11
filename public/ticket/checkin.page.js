@@ -278,6 +278,7 @@
       linhas.push(
         el('p', {
           text: [
+            i.numero ? `Ingresso ${i.numero}${i.numero_de ? ` de ${i.numero_de}` : ''}` : null,
             i.categoria,
             i.promocao ? `promoção ${i.promocao}` : null,
             i.cortesia ? 'cortesia' : null,

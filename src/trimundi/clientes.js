@@ -4,6 +4,7 @@ const { erro } = require('./lib/erros');
 const { medir } = require('./lib/registro');
 const { token, hashToken } = require('./lib/codigos');
 const { conteudoDoQr, qrDataUrl } = require('./lib/qr');
+const { colunasDeNumero } = require('./lib/numeracao');
 const { gerarHash, conferirHash, conferirSenha } = require('../lib/senha');
 const config = require('./config');
 const email = require('./email');
@@ -330,6 +331,7 @@ async function painel(c) {
     `SELECT i.id, i.codigo, i.codigo_curto, i.status, cat.nome AS categoria, pa.nome AS participante,
             ev.nome AS evento, ed.nome AS edicao, ed.inicio_em, ed.local_nome, ed.cidade, ed.uf, ed.codigo_publico,
             ev.slug AS evento_slug, ed.slug AS edicao_slug, p.id AS pedido_id, p.status AS pedido_status,
+            ed.id AS edicao_id, p.pago_em, ${colunasDeNumero('i')},
             (SELECT registrado_em FROM checkins ck WHERE ck.ingresso_id = i.id AND ck.escopo = 'entrada' AND ck.resultado = 'aceito') AS utilizado_em,
             COALESCE((SELECT json_agg(json_build_object('nome', ib.nome, 'resgatado_em', ib.resgatado_em) ORDER BY ib.nome)
                         FROM ingresso_beneficios ib WHERE ib.ingresso_id = i.id), '[]') AS beneficios
@@ -339,9 +341,39 @@ async function painel(c) {
        JOIN participantes pa ON pa.id = i.participante_id
        JOIN edicoes ed ON ed.id = i.edicao_id JOIN eventos ev ON ev.id = ed.evento_id
       WHERE p.cliente_id = $1
-      ORDER BY ed.inicio_em NULLS LAST, i.id`,
+      ORDER BY ed.inicio_em NULLS LAST, ed.id, p.pago_em NULLS LAST, p.criado_em, numero, i.id`,
     [c.id],
   );
+  // Ingresso principal = o do titular: por edição, o primeiro ingresso não
+  // cancelado do primeiro pedido pago da conta (o número 1 dele, se não foi
+  // cancelado). É só nele que aparece o benefício do TITULAR — hoje, a
+  // recompensa de indicação da conta naquela edição —, nunca nos outros
+  // ingressos do mesmo pedido. O benefício de cada ingresso (Open Bar, copão)
+  // é da unidade e aparece só nela.
+  const principal = new Map();
+  for (const i of rows) {
+    if (i.pedido_status === 'pago' && i.status !== 'cancelado' && !principal.has(Number(i.edicao_id))) {
+      principal.set(Number(i.edicao_id), Number(i.id));
+    }
+  }
+  const { rows: doTitular } = principal.size
+    ? await consultar(
+        `SELECT ca.edicao_id, ca.recompensa AS nome,
+                count(*) FILTER (WHERE r.status = 'concedida')::int AS a_retirar,
+                count(*) FILTER (WHERE r.status = 'entregue')::int AS entregues
+           FROM recompensas_indicacao r
+           JOIN campanhas_indicacao ca ON ca.id = r.campanha_id
+           JOIN indicadores ind ON ind.id = r.indicador_id
+          WHERE ind.cliente_id = $1 AND r.status <> 'revogada' AND ca.edicao_id = ANY($2::bigint[])
+          GROUP BY ca.edicao_id, ca.recompensa
+          ORDER BY ca.recompensa`,
+        [c.id, [...principal.keys()]],
+      )
+    : { rows: [] };
+  const beneficiosDoTitular = (edicaoId) =>
+    doTitular
+      .filter((b) => Number(b.edicao_id) === Number(edicaoId))
+      .map((b) => ({ nome: b.nome, origem: 'indicacao', a_retirar: b.a_retirar, entregues: b.entregues }));
   const localDe = (r) =>
     [r.local_nome, r.cidade && `${r.cidade}${r.uf ? `/${r.uf}` : ''}`].filter(Boolean).join(' · ') || null;
   const ingressos = await Promise.all(
@@ -354,11 +386,16 @@ async function painel(c) {
       endereco_publico: `/ticket/${i.evento_slug}/${i.edicao_slug}`,
       pedido: i.pedido_id.slice(0, 8).toUpperCase(),
       pedido_id: i.pedido_id,
+      numero: i.numero,
+      numero_de: i.numero_de,
       categoria: i.categoria,
       participante: i.participante,
       status: i.status,
       utilizado_em: i.utilizado_em,
       beneficios: i.beneficios,
+      principal: principal.get(Number(i.edicao_id)) === Number(i.id),
+      beneficios_do_titular:
+        principal.get(Number(i.edicao_id)) === Number(i.id) ? beneficiosDoTitular(i.edicao_id) : [],
       qr:
         i.status === 'valido' && !i.utilizado_em && i.pedido_status === 'pago'
           ? await qrDataUrl(conteudoDoQr(i.codigo_publico, i.codigo))

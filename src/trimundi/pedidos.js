@@ -4,6 +4,7 @@ const { erro } = require('./lib/erros');
 const { token, hashToken } = require('./lib/codigos');
 const { medir } = require('./lib/registro');
 const { conteudoDoQr, qrDataUrl } = require('./lib/qr');
+const { colunasDeNumero } = require('./lib/numeracao');
 const config = require('./config');
 const { travarEdicao } = require('./eventos');
 const { origemDaConta } = require('./indicacao');
@@ -325,11 +326,18 @@ async function criar(corpo, contexto = {}) {
       if (aberto[0]) return { pedidoPendente: aberto[0].id };
     }
     const m = await montar(cliente, ed, pedido);
-    if (participantes.length !== m.vagas.length) {
+    // Venda pela conta (pedido do dono, 10/11/2026): sem a lista, TODOS os
+    // ingressos ficam no nome do titular da conta — sem formulário de
+    // acompanhante. Cada um continua sendo uma unidade: um participante, uma
+    // vaga, um ingresso, um QR. A lista explícita segue aceita (`{ conta: true }`
+    // ou nome, CPF e e-mail), para quem ainda a manda.
+    const lista =
+      origem === 'venda' && participantes.length === 0 ? m.vagas.map(() => ({ conta: true })) : participantes;
+    if (lista.length !== m.vagas.length) {
       throw erro(400, 'Preencha os dados de cada participante.', { codigo: 'participantes' });
     }
     // `{ conta: true }`: o ingresso é de quem compra — os dados vêm da conta.
-    const pessoas = participantes.map((p, i) =>
+    const pessoas = lista.map((p, i) =>
       p?.conta === true && origem === 'venda'
         ? { nome: comprador.nome, cpf: comprador.cpf, email: comprador.email }
         : lerPessoa(p, `do participante ${i + 1}`),
@@ -578,7 +586,7 @@ async function paraComprador(pedidoId, tk) {
   if (['pago', 'estornado', 'pago_sem_vaga'].includes(p.status)) {
     const { rows: ing } = await consultar(
       `SELECT i.id, i.codigo, i.codigo_curto, i.status, c.nome AS categoria, pa.nome AS participante,
-              pr.nome AS promocao,
+              pr.nome AS promocao, ${colunasDeNumero('i')},
               (SELECT registrado_em FROM checkins ck WHERE ck.ingresso_id = i.id AND ck.escopo = 'entrada' AND ck.resultado = 'aceito') AS utilizado_em,
               COALESCE((SELECT json_agg(ib.nome ORDER BY ib.nome) FROM ingresso_beneficios ib WHERE ib.ingresso_id = i.id), '[]') AS beneficios
          FROM ingressos i JOIN categorias c ON c.id = i.categoria_id
@@ -592,6 +600,8 @@ async function paraComprador(pedidoId, tk) {
     ingressos = await Promise.all(
       ing.map(async (i) => ({
         codigo_curto: i.codigo_curto,
+        numero: i.numero,
+        numero_de: i.numero_de,
         categoria: i.categoria,
         promocao: i.promocao,
         participante: i.participante,

@@ -383,17 +383,37 @@
     estornado: 'erro',
   };
 
-  // Um ingresso do pedido: tipo, participante, QR (só válido e não usado) e
-  // a situação. Usado aparece diferente de válido.
+  // Um ingresso = uma unidade (pedido do dono, 10/11/2026): número no pedido
+  // (fixo — não é o lote), nome do titular, tipo, QR próprio (só válido, pago
+  // e não usado) e a situação. Os benefícios DESTE ingresso aparecem nele; o
+  // benefício do titular da conta (recompensa de indicação) aparece só no
+  // ingresso principal, nunca repetido nos outros.
+  const textoDoNumero = (i) =>
+    i.numero ? `Ingresso ${i.numero}${i.numero_de ? ` de ${i.numero_de}` : ''}` : 'Ingresso';
+  const textoDoTitular = (b) =>
+    [
+      b.a_retirar ? `${b.a_retirar} para retirar` : null,
+      b.entregues ? `${b.entregues} ${b.entregues === 1 ? 'entregue' : 'entregues'}` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
   function ingresso(i) {
     const usado = Boolean(i.utilizado_em);
     const situacao = usado
       ? ['Utilizado', `Entrada em ${dataCurta(i.utilizado_em)}`]
       : { valido: ['Válido'], bloqueado: ['Bloqueado'], cancelado: ['Cancelado'] }[i.status] || [i.status];
     const classe = usado ? 'usado' : i.status === 'valido' ? 'valido' : 'inativo';
+    const doTitular = i.principal ? i.beneficios_do_titular || [] : [];
     return el(
       'div',
-      { class: `ingresso ${classe}` },
+      { class: `ingresso ${classe}${i.principal ? ' principal' : ''}`, dataset: { numero: String(i.numero ?? '') } },
+      el(
+        'div',
+        { class: 'ingresso-numero' },
+        el('span', { text: textoDoNumero(i) }),
+        i.principal ? el('span', { class: 'selo titular', text: 'Principal · titular' }) : null,
+      ),
       el(
         'div',
         { class: 'ingresso-topo' },
@@ -403,9 +423,15 @@
           text: situacao[0],
         }),
       ),
-      el('div', { class: 'discreto', text: `Participante: ${i.participante}` }),
+      el('div', { class: 'discreto', text: `Nome: ${i.participante}` }),
       i.qr
-        ? el('img', { class: 'qr', src: i.qr, alt: `QR Code do ingresso ${i.codigo_curto}`, width: 240, height: 240 })
+        ? el('img', {
+            class: 'qr',
+            src: i.qr,
+            alt: `QR Code do ${textoDoNumero(i).toLowerCase()} (${i.codigo_curto})`,
+            width: 240,
+            height: 240,
+          })
         : el('div', {
             class: 'qr-vazio',
             text: usado ? situacao[1] : 'Este ingresso não vale para entrar.',
@@ -413,10 +439,27 @@
       el('div', { class: 'codigo', text: i.codigo_curto }),
       i.beneficios?.length
         ? el(
-            'ul',
-            { class: 'chips' },
-            i.beneficios.map((b) =>
-              el('li', { class: 'chip', text: b.resgatado_em ? `${b.nome} — resgatado` : `Direito a: ${b.nome}` }),
+            'div',
+            { class: 'beneficios-ingresso' },
+            el('span', { class: 'rotulo-beneficio', text: 'Benefícios deste ingresso' }),
+            el(
+              'ul',
+              { class: 'chips' },
+              i.beneficios.map((b) =>
+                el('li', { class: 'chip', text: b.resgatado_em ? `${b.nome} — resgatado` : b.nome }),
+              ),
+            ),
+          )
+        : null,
+      doTitular.length
+        ? el(
+            'div',
+            { class: 'beneficios-titular' },
+            el('span', { class: 'rotulo-beneficio', text: 'Benefício do titular (indicação)' }),
+            el(
+              'ul',
+              { class: 'chips' },
+              doTitular.map((b) => el('li', { class: 'chip destaque', text: `${b.nome} — ${textoDoTitular(b)}` })),
             ),
           )
         : null,
