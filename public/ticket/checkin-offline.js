@@ -276,7 +276,13 @@
     pendentes,
     totalPendente,
     limparAoSair,
-    guardarOperador: (o) => gravar(`${PREFIXO}:operador`, o),
+    // A lista de quem o operador indicou (nomes de clientes) não fica no
+    // aparelho: sem internet, a área mostra só os números e os links.
+    guardarOperador: (o) =>
+      gravar(`${PREFIXO}:operador`, {
+        ...o,
+        indicacao: o?.indicacao ? { ...o.indicacao, indicados: undefined } : o?.indicacao,
+      }),
     operadorGuardado: () => ler(`${PREFIXO}:operador`),
     suportaAssinatura: async () => {
       try {
