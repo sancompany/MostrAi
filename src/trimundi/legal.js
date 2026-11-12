@@ -12,8 +12,24 @@ const path = require('node:path');
 
 // 1.1: o nome público passa a ser TICK (10/11/2026).
 // 1.2: textos oficiais do advogado (10/11/2026).
-const VERSAO = '1.2';
-const VIGENCIA = '10/11/2026';
+// 1.3: identificação da operadora pelo MEI (pedido do dono, 11/11/2026) — o
+//      resto do texto, palavra por palavra, igual à 1.2.
+const VERSAO = '1.3';
+const VIGENCIA = '11/11/2026';
+
+// Quem opera a TICK (fornecedora da plataforma e controladora dos dados) —
+// os dados que o dono confirmou em 11/11/2026. A TICK continua sendo a
+// marca; quem organiza cada evento é outra responsabilidade. Endereço
+// completo, telefone e inscrições NÃO estão aqui porque não foram informados
+// (pendência em docs/trimundi/pendencias.md) — não inventar.
+const OPERADORA = Object.freeze({
+  nome_empresarial: '68.949.029 BRUNO HENRIQUE SANCHES',
+  cnpj: '68.949.029/0001-58',
+  natureza: 'Empresário Individual — MEI',
+  titular: 'Bruno Henrique Sanches',
+});
+// A linha que aparece no rodapé das páginas e dos e-mails.
+const linhaDaOperadora = () => `TICK é uma plataforma de ${OPERADORA.nome_empresarial} · CNPJ: ${OPERADORA.cnpj}`;
 
 const PAGINAS = path.join(__dirname, 'paginas');
 let hash = null;
@@ -37,4 +53,4 @@ function contato() {
   ).trim();
 }
 
-module.exports = { VERSAO, VIGENCIA, contato, hashDocumentos };
+module.exports = { VERSAO, VIGENCIA, OPERADORA, linhaDaOperadora, contato, hashDocumentos };

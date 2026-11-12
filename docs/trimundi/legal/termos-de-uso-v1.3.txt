@@ -1,0 +1,65 @@
+Termos de Uso
+Versão 1.3 · Atualizada e em vigor para o ecossistema SAN & CO.
+
+1. Quem somos
+A TICK é a plataforma oficial de venda de ingressos para eventos, operada por 68.949.029 BRUNO HENRIQUE SANCHES, CNPJ: 68.949.029/0001-58, Empresário Individual — MEI, titular e responsável legal Bruno Henrique Sanches, sob o nome comercial SAN & CO., com sede em Matão-SP. Contato: admin@sancocore.com.br.
+Cada evento possui regulamentos próprios e específicos (como horários de blocos, setores, políticas de menores e itens permitidos), descritos na página oficial do evento no momento da compra e aceitos a cada pedido. Em caso de divergência, as regras específicas do evento prevalecem sobre estes Termos no que tange à dinâmica da festa; estes Termos aplicam-se a todo o restante.
+
+2. Idade mínima para conta, compra e participação
+A criação de conta e a realização de compras na plataforma são permitidas apenas a maiores de 18 anos, civilmente capazes.
+
+Compra para Terceiros e Menores: Um usuário maior de idade pode adquirir ingressos para outros participantes. Ao fazê-lo, o comprador declara expressamente que cada participante cumpre a faixa etária e as condições específicas da modalidade de ingresso escolhida.
+
+Eventos com Faixas Etárias Mistas (Ex: Treemundo): Quando o evento permitir expressamente a entrada de menores (ex: faixa etária de 16 a 18 anos incompletos), a participação do menor fica estritamente restrita aos setores de Pista / Sem Álcool, sendo absolutamente proibida a sua circulação ou permanência em áreas VIP ou setores de Open Bar, sob pena de expulsão imediata do evento sem direito a reembolso.
+
+3. Classificação etária, horários e dinâmica de acesso
+A classificação e as regras de cada setor constam na página do evento. A organização exige a apresentação de documento de identidade oficial com foto na portaria. A ausência de documento ou o enquadramento incorreto na faixa etária/setor implica a recusa de entrada, sem direito a reembolso.
+
+Eventos com Blocos Horários e Viradas (Ex: Treemundo):
+
+Ingressos voltados a blocos específicos (como o Pagonejo, válidos das 19h às 23h) dão acesso exclusivo ao período determinado. Às 23h, ocorrerá a transição técnica da casa: os portadores destas modalidades deverão realizar o upgrade de ingresso (mediante pagamento da diferença nos guichês autorizados) ou retirar-se do recinto.
+
+O descumprimento dos horários ou a recusa em realizar o acerto de upgrade ensejará a retirada do participante pelo serviço de segurança, sem reembolso.
+
+4. A conta do usuário
+O cadastro exige nome completo, CPF válido, e-mail e senha. O e-mail deve ser confirmado antes da primeira transação.
+
+É permitida apenas uma conta por CPF. A senha é pessoal e intransferível; o titular responde por todas as atividades realizadas em sua conta.
+
+A conta permanece ativa para eventos futuros da TICK até que o usuário solicite o seu encerramento pelo e-mail de suporte.
+
+5. Compra, lotes e pagamentos
+Os ingressos são vendidos por lotes progressivos com quantidades limitadas. O lote vigente encerra-se automaticamente ao esgotar a quantidade estipulada ou na data limite, abrindo-se o lote subsequente.
+
+Ao avançar para o pagamento, os ingressos ficam reservados pelo prazo de 30 minutos. Caso o pagamento não seja confirmado nesse intervalo, a reserva expira e os ingressos retornam automaticamente para o inventário de vendas.
+
+O processamento financeiro é realizado de forma segura pelo San Checkout em parceria com a Asaas. Eventuais taxas aplicáveis ao meio de pagamento serão informadas na tela de checkout antes da conclusão.
+
+Após a confirmação do pagamento, o ingresso digital contendo um QR Code único é disponibilizado na conta do usuário. O QR Code é pessoal e válido para uma única entrada; cópias ou tentativas de reutilização serão bloqueadas automaticamente pela portaria.
+
+6. Benefícios do ingresso
+Eventuais benefícios vinculados a lotes específicos (como copos personalizados ou brindes) são limitados ao estoque estipulado, disponibilizados unicamente de forma presencial no evento e destinados ao portador legal do ingresso. Não há conversão de benefícios em dinheiro.
+
+7. Programas de indicação (Indique e Ganhe)
+Campanhas de indicação seguem estritamente as regras vigentes divulgadas em cada promoção. Fraudes, autorreferências ou pedidos reembolsados/contestados invalidam automaticamente a premiação ou comissão associada.
+
+8. Cancelamento, arrependimento e política de reembolso
+O reembolso é estritamente restrito às hipóteses legais e operacionais abaixo:
+
+Direito de Arrependimento (CDC, art. 49): Desistência manifestada em até 7 (sete) dias corridos contados a partir da data da compra, solicitada exclusivamente pelo canal oficial de atendimento (admin@sancocore.com.br), desde que requerida antes da realização do evento.
+
+Cancelamento do Evento: Em caso de cancelamento integral pela organização, o valor nominal dos ingressos é devolvido.
+
+Pagamentos sem vaga: Estorno integral caso o pagamento seja processado após o esgotamento dos estoques por concorrência de tempo.Não há hipótese de reembolso para: não comparecimento (no-show), atraso, arrependimento fora do prazo legal de 7 dias, recusa de entrada por falta de documentação, violação de faixa etária, tentativa de acesso a áreas restritas (como menores em áreas de Open Bar) ou expulsão decorrente de infração às regras de segurança e conduta do evento. Os estornos são realizados pelo mesmo meio de pagamento original.
+
+9. Condutas proibidas
+É expressamente vedado o uso da TICK para fraudes, engenharia social, revenda clandestina de ingressos com ágio abusivo, burlas de limites de compra por CPF, criação de cadastros falsos ou ataques cibernéticos à infraestrutura. Violações resultam no cancelamento sumário dos ingressos, banimento da conta e adoção de medidas legais cabíveis.
+
+10. Limitação de responsabilidade
+A TICK atua como plataforma tecnológica de comercialização de ingressos e controle de acesso. A concepção, produção, segurança física, execução artística, fornecimento de bebidas (incluindo Open Bar) e cumprimento das normas de salubridade do evento são de inteira e exclusiva responsabilidade da organização promotora do evento (SAN & CO.). Ressalvam-se os direitos indisponíveis garantidos pelo Código de Defesa do Consumidor.
+
+11. Dados pessoais (Privacidade)
+O tratamento de dados e informações cadastrais rege-se pela Política de Privacidade da plataforma, parte integrante destes Termos.
+
+12. Alterações e Foro
+Estes Termos podem ser atualizados periodicamente para refletir melhorias sistêmicas ou exigências legais. Versões atualizadas aplicam-se a compras futuras. Fica eleito o foro da comarca de domicílio do consumidor para dirimir quaisquer controvérsias oriundas deste instrumento.
