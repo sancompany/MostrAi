@@ -111,3 +111,21 @@ test('operador comprando com a própria conta de cliente (mesmo e-mail) não con
     [bia.nome],
   );
 });
+
+test('operador logado na portaria pelo próprio link: não conta acesso nem mostra a indicação', async () => {
+  const pronta = await apoio.edicaoPronta();
+  const op = await apoio.operadorLogado(srv, [pronta.edicao.id]);
+  const portaria = apoio.cliente(srv, { cookie: op.cookie });
+  const { codigo } = (await portaria.get('/ticket/api/operador')).json.indicacao;
+  const geral = await portaria.post('/ticket/api/indicacao/visita', { codigo, visitante: visitante() });
+  assert.equal(geral.json.indicacao, null);
+  const daEdicao = await portaria.post(`/ticket/api/edicoes/${pronta.slugEvento}/${pronta.slugEdicao}/indicacao`, {
+    codigo,
+    visitante: visitante(),
+  });
+  assert.equal(daEdicao.json.indicacao, null);
+  assert.equal((await portaria.get('/ticket/api/operador')).json.indicacao.numeros.acessos, 0);
+  // Outro navegador, sem sessão, conta normalmente.
+  await apoio.cliente(srv).post('/ticket/api/indicacao/visita', { codigo, visitante: visitante() });
+  assert.equal((await portaria.get('/ticket/api/operador')).json.indicacao.numeros.acessos, 1);
+});
