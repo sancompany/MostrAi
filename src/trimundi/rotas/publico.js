@@ -79,6 +79,7 @@ router.post('/ticket/api/edicoes/:evento/:edicao/indicacao', async (req, res) =>
   if (!ed || ed.status === 'rascunho') throw erro(404, 'evento não encontrado');
   const indicacao = await require('../indicacao').quemIndicou({
     clienteId: cliente?.id || null,
+    operadorId: await operadorDaSessao(req),
     edicaoId: ed.id,
     codigo: req.body?.codigo,
     visitante: req.body?.visitante,
@@ -87,12 +88,22 @@ router.post('/ticket/api/edicoes/:evento/:edicao/indicacao', async (req, res) =>
   res.json({ indicacao });
 });
 
+// O operador logado na portaria (mesmo sem conta de cliente): o próprio link
+// dele não conta acesso nem mostra "você chegou por indicação" (11/11/2026).
+const operadorDaSessao = async (req) =>
+  (
+    await require('../operadores')
+      .daSessao(req)
+      .catch(() => null)
+  )?.id ?? null;
+
 // Link geral (/tic/eventos?ind=): quem indicou e a visita, sem edição.
 router.post('/ticket/api/indicacao/visita', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const cliente = await require('../clientes').daSessao(req);
   const indicacao = await require('../indicacao').quemIndicou({
     clienteId: cliente?.id || null,
+    operadorId: await operadorDaSessao(req),
     codigo: req.body?.codigo,
     visitante: req.body?.visitante,
     contarVisita: Boolean(req.body?.visitante) && contaVisita(req),

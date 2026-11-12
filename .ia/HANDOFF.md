@@ -1,6 +1,11 @@
 # Current Handoff
 
 ## Updated
+2026-11-11 — **TICK: autoindicação do operador**, branch
+`claude/beautiful-faraday-cjq1nt-autoindicacao`. Operador e conta de cliente
+são tabelas separadas (o mesmo e-mail pode existir nas duas); o e-mail é o
+que liga as duas contas da mesma pessoa — `indicadorValido` recusa o link de
+operador para a conta de cliente com o e-mail dele. Não desfazer sem contexto.
 2026-11-11 — **TICK: identificação da operadora pelo MEI**, branch
 `claude/beautiful-faraday-cjq1nt-mei`, PR em rascunho. Termos e Política
 v1.3 (só a linha de identificação e o número da versão mudaram; v1.2 fica em
