@@ -3,6 +3,7 @@ const v = require('./lib/validacao');
 const { auditar } = require('./lib/registro');
 const { hmac } = require('./lib/chaves');
 const { PRAZOS_PROVISORIOS } = require('./retencao');
+const { OPERADORA } = require('./legal');
 
 // Pedido do titular (LGPD, art. 18): o Admin consulta por CPF o que a
 // Trimundi guarda da pessoa (exportação) e anonimiza o que não tem guarda
@@ -44,7 +45,8 @@ async function exportar(cpfBruto) {
   return {
     gerado_em: new Date().toISOString(),
     contas,
-    controlador: 'TICK (San & Co.)',
+    // Quem responde pelos dados (Política, seção 1): o MEI que opera a TICK.
+    controlador: `TICK — ${OPERADORA.nome_empresarial}, CNPJ: ${OPERADORA.cnpj} (${OPERADORA.natureza}; titular e responsável legal: ${OPERADORA.titular})`,
     compradores: compradores.map(({ id, ...c }) => c),
     participantes,
   };

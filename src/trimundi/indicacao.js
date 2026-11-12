@@ -98,7 +98,7 @@ async function indicadorValido(cliente, onde, { compradorClienteId = null, edica
       if (comp[0]?.cpf === ind.indicador_cpf) return null;
     }
   }
-  return { id: ind.id, nome: ind.nome, tipo: ind.operador_id ? 'operador' : 'comprador' };
+  return { id: ind.id, nome: ind.nome, tipo: ind.operador_id ? 'operador' : 'comprador', operador_id: ind.operador_id };
 }
 
 const normalizarCodigo = (codigo) => {
@@ -169,9 +169,18 @@ async function registrarVisita(cliente, { indicadorId, visitante, edicaoId = nul
 // Logado, registra a origem (a mesma regra do pedido); sem login, só mostra
 // de quem é o código. Nome e tipo — nada mais do indicador. Com `visitante`,
 // conta a visita pelo link do código que veio (não o da origem).
-async function quemIndicou({ clienteId = null, edicaoId = null, codigo, visitante = null, contarVisita = true }) {
+async function quemIndicou({
+  clienteId = null,
+  operadorId = null,
+  edicaoId = null,
+  codigo,
+  visitante = null,
+  contarVisita = true,
+}) {
   return emTransacao(async (cliente) => {
-    const doCodigo = await indicadorDoCodigo(cliente, codigo, clienteId, edicaoId);
+    let doCodigo = await indicadorDoCodigo(cliente, codigo, clienteId, edicaoId);
+    // O próprio operador, logado na portaria, pelo próprio link: não é visita.
+    if (doCodigo && operadorId && Number(doCodigo.operador_id) === Number(operadorId)) doCodigo = null;
     if (doCodigo && visitante && contarVisita) {
       await registrarVisita(cliente, { indicadorId: doCodigo.id, visitante, edicaoId, clienteId });
     }

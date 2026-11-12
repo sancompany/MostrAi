@@ -20,9 +20,11 @@ function modelo(nome) {
 const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ESCAPES[c]);
 
-// `{{chave}}` no modelo vira o valor escapado.
+// `{{chave}}` no modelo vira o valor escapado. `{{operadora}}` (rodapé de
+// todas as páginas da TICK) vem sempre de legal.js.
 function enviar(res, nome, valores = {}, { status = 200, cache: politica = 'no-cache' } = {}) {
-  const html = modelo(nome).replace(/\{\{(\w+)\}\}/g, (_, k) => esc(valores[k] ?? ''));
+  const todos = { operadora: require('./legal').linhaDaOperadora(), ...valores };
+  const html = modelo(nome).replace(/\{\{(\w+)\}\}/g, (_, k) => esc(todos[k] ?? ''));
   res.status(status);
   res.set('Cache-Control', comSemTransformacao(politica));
   res.type('html').send(html);

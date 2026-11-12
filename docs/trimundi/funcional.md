@@ -382,7 +382,7 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
   - Instalável como app (PWA): manifest e service worker próprios do
     check-in; a casca da página abre sem internet.
 - **RN-T34 Aceite dos Termos com histórico** (10/11/2026).
-  - Textos oficiais v1.2 em `docs/trimundi/legal/` (exatamente como o dono
+  - Textos oficiais em `docs/trimundi/legal/` (v1.3 vigente desde 11/11/2026; v1.2 guardada) (exatamente como o dono
     entregou); as páginas `/ticket/termos` e `/ticket/privacidade` dizem o
     mesmo texto, conferido por teste palavra por palavra.
   - O aceite só vale para a versão que a página apresentou: a página manda
@@ -453,6 +453,16 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
   - Quem ativou antes com senha só da portaria segue entrando em
     `/ticket/entrar` até receber um código novo e ativar na conta.
   - Sair da portaria encerra a sessão inteira (é a mesma conta).
+- **RN-T37 Quem opera a TICK** (11/11/2026).
+  - A TICK é a marca; quem a opera (fornecedora da plataforma e controladora
+    dos dados) é o MEI 68.949.029 BRUNO HENRIQUE SANCHES, CNPJ
+    68.949.029/0001-58, titular e responsável legal Bruno Henrique Sanches
+    (`src/trimundi/legal.js`, `OPERADORA`).
+  - Aparece no rodapé de todas as páginas públicas, no fim de todo e-mail da
+    TICK, nos Termos e na Política (v1.3) e na exportação de dados do
+    titular. Nunca no lugar do nome do comprador ou do titular do ingresso.
+  - Quem organiza cada evento é outra responsabilidade (Termos, seção 7); a
+    TICK não guarda esse dado hoje (pendência).
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.

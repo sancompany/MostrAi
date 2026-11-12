@@ -44,11 +44,11 @@ const linhasOficiais = (arquivo) =>
     .map((l) => l.trim())
     .filter(Boolean);
 
-test('Termos e Política: a página diz exatamente o texto oficial (v1.2), sem uma palavra a mais ou a menos', async () => {
-  assert.equal(legal.VERSAO, '1.2');
+test('Termos e Política: a página diz exatamente o texto oficial (v1.3), sem uma palavra a mais ou a menos', async () => {
+  assert.equal(legal.VERSAO, '1.3');
   for (const [caminho, arquivo] of [
-    ['/ticket/termos', 'termos-de-uso-v1.2.txt'],
-    ['/ticket/privacidade', 'politica-de-privacidade-v1.2.txt'],
+    ['/ticket/termos', 'termos-de-uso-v1.3.txt'],
+    ['/ticket/privacidade', 'politica-de-privacidade-v1.3.txt'],
   ]) {
     const r = await fetch(`${srv.base}${caminho}`);
     assert.equal(r.status, 200);
@@ -66,14 +66,14 @@ test('Termos e Política: a página diz exatamente o texto oficial (v1.2), sem u
   }
   // A página da conta diz qual versão o aceite vai mandar.
   const conta = await (await fetch(`${srv.base}/ticket/conta`)).text();
-  assert.match(conta, /<meta name="tick-termos" content="1\.2">/);
+  assert.match(conta, /<meta name="tick-termos" content="1\.3">/);
 });
 
 test('aceite: só vale a versão apresentada; cada aceite fica no histórico, que não muda nem se apaga', async () => {
   const c = apoio.cliente(srv);
   const p = apoio.pessoa('Hist');
   const base = { ...p, senha: SENHA, senha_confirmacao: SENHA, maioridade: true, aceite_termos: true };
-  const velha = await c.post('/ticket/api/conta/cadastro', { ...base, versao_termos: '1.1' });
+  const velha = await c.post('/ticket/api/conta/cadastro', { ...base, versao_termos: '1.2' });
   assert.equal(velha.status, 409, 'versão que não é a vigente não vale');
   assert.equal(velha.json.codigo, 'versao_termos');
   assert.equal((await c.post('/ticket/api/conta/cadastro', base)).status, 409, 'sem dizer a versão, também não');
@@ -81,7 +81,7 @@ test('aceite: só vale a versão apresentada; cada aceite fica no histórico, qu
 
   const ok = await c.post(
     '/ticket/api/conta/cadastro',
-    { ...base, versao_termos: '1.2' },
+    { ...base, versao_termos: '1.3' },
     { 'user-agent': 'ua-teste' },
   );
   assert.equal(ok.status, 201, ok.texto);
@@ -92,7 +92,7 @@ test('aceite: só vale a versão apresentada; cada aceite fica no histórico, qu
   assert.equal(h.length, 1);
   assert.deepEqual(
     [h[0].versao, h[0].origem, h[0].maioridade_declarada, h[0].user_agent],
-    ['1.2', 'cadastro', true, 'ua-teste'],
+    ['1.3', 'cadastro', true, 'ua-teste'],
   );
   assert.equal(h[0].documentos_hash, legal.hashDocumentos(), 'guarda o hash do texto apresentado');
   const esperado = crypto.createHash('sha256');
@@ -101,7 +101,7 @@ test('aceite: só vale a versão apresentada; cada aceite fica no histórico, qu
   assert.equal(h[0].documentos_hash, esperado.digest('hex'));
 
   // Versão antiga na conta: aceite de novo — o primeiro aceite fica.
-  await consultar("UPDATE clientes SET termos_versao = '1.1', email_confirmado_em = now() WHERE id = $1", [
+  await consultar("UPDATE clientes SET termos_versao = '1.2', email_confirmado_em = now() WHERE id = $1", [
     conta[0].id,
   ]);
   const entrada = await c.post('/ticket/api/conta/entrar', { email: p.email, senha: SENHA });
@@ -109,12 +109,12 @@ test('aceite: só vale a versão apresentada; cada aceite fica no histórico, qu
   const logado = apoio.cliente(srv, { cookie: entrada.cookies });
   assert.equal((await logado.get('/ticket/api/conta')).json.conta.aceite_pendente, true);
   assert.equal(
-    (await logado.post('/ticket/api/conta/aceite', { maioridade: true, aceite_termos: true, versao_termos: '1.1' }))
+    (await logado.post('/ticket/api/conta/aceite', { maioridade: true, aceite_termos: true, versao_termos: '1.2' }))
       .status,
     409,
   );
   assert.equal(
-    (await logado.post('/ticket/api/conta/aceite', { maioridade: true, aceite_termos: true, versao_termos: '1.2' }))
+    (await logado.post('/ticket/api/conta/aceite', { maioridade: true, aceite_termos: true, versao_termos: '1.3' }))
       .status,
     200,
   );
