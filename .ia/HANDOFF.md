@@ -1,6 +1,13 @@
 # Current Handoff
 
 ## Updated
+2026-11-11 — **TICK: operador na conta TICK**, branch
+`claude/beautiful-faraday-cjq1nt-operador-conta` (sobre a de autoindicação,
+PR #148). Migration 012 (`operadores.cliente_id`). Não desfazer sem
+contexto: `operadores.daSessao` aceita a conta logada ligada a um operador
+ativo; `vincular` exige o mesmo e-mail do convite e nunca transfere vínculo;
+`reativar` de operador ligado volta para 'ativo' (não pede código).
+
 2026-11-11 — **TICK: autoindicação do operador**, branch
 `claude/beautiful-faraday-cjq1nt-autoindicacao`. Operador e conta de cliente
 são tabelas separadas (o mesmo e-mail pode existir nas duas); o e-mail é o

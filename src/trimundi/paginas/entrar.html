@@ -17,7 +17,11 @@
 
   <main class="pagina estreita">
     <h1>Entrar na portaria</h1>
-    <p>Acesso de operador de check-in. A conta é criada por quem organiza o evento.</p>
+    <p>O acesso de operador fica na sua conta TICK — o mesmo e-mail e a mesma senha dos seus ingressos.</p>
+    <a class="btn primario grande" href="/ticket/conta?volta=%2Fticket%2Fcheckin">Entrar com a minha conta TICK</a>
+    <p class="discreto">Recebeu um código de ativação? <a href="/ticket/ativar">Ative na sua conta</a>.</p>
+    <h2>Acesso antigo da portaria</h2>
+    <p class="discreto">Só para quem ativou antes com uma senha só da portaria. Para passar a usar a conta TICK, peça um código novo a quem organiza o evento.</p>
     <form class="cartao" id="formEntrar" novalidate>
       <div class="campo">
         <label for="email">E-mail</label>
@@ -30,7 +34,6 @@
       <p class="mensagem" id="msg" role="status" aria-live="polite"></p>
       <button class="btn primario grande" type="submit">Entrar</button>
     </form>
-    <p class="discreto">Primeiro acesso? <a href="/ticket/ativar">Ative com o código que você recebeu</a>.</p>
   </main>
 
   <footer class="rodape">

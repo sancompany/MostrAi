@@ -62,7 +62,7 @@ const indicadorDoOperador = (cliente, operadorId) => criarIndicador(cliente, 'op
 // nunca impede a compra.
 async function indicadorValido(cliente, onde, { compradorClienteId = null, edicaoId }) {
   const { rows } = await cliente.query(
-    `SELECT i.id, i.cliente_id, i.operador_id, o.status AS operador_status, o.email_normalizado AS operador_email,
+    `SELECT i.id, i.cliente_id, i.operador_id, o.status AS operador_status, o.email_normalizado AS operador_email, o.cliente_id AS operador_cliente_id,
             cl.cpf AS indicador_cpf,
             cl.anonimizado_em AS cliente_anonimizado, COALESCE(cl.nome, o.nome) AS nome,
             EXISTS (SELECT 1 FROM operador_permissoes op WHERE op.operador_id = i.operador_id
@@ -81,6 +81,9 @@ async function indicadorValido(cliente, onde, { compradorClienteId = null, edica
   // Operador comprando com a própria conta de cliente (mesmo e-mail, 11/11/2026):
   // é autoindicação — o operador não tem CPF, então o e-mail é o que liga as
   // duas contas da mesma pessoa. Não conta a compra nem a visita.
+  if (ind.operador_id && compradorClienteId && Number(ind.operador_cliente_id) === Number(compradorClienteId)) {
+    return null; // operador ligado a esta mesma conta TICK
+  }
   if (ind.operador_id && compradorClienteId && ind.operador_email) {
     const { rows: comp } = await cliente.query('SELECT lower(trim(email)) AS email FROM clientes WHERE id = $1', [
       compradorClienteId,
