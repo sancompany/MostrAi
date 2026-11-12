@@ -6,6 +6,13 @@
 são tabelas separadas (o mesmo e-mail pode existir nas duas); o e-mail é o
 que liga as duas contas da mesma pessoa — `indicadorValido` recusa o link de
 operador para a conta de cliente com o e-mail dele. Não desfazer sem contexto.
+2026-11-11 — **TICK: identificação da operadora pelo MEI**, branch
+`claude/beautiful-faraday-cjq1nt-mei`, PR em rascunho. Termos e Política
+v1.3 (só a linha de identificação e o número da versão mudaram; v1.2 fica em
+`docs/trimundi/legal/`). Não desfazer sem contexto: os dados do MEI moram
+só em `legal.js` (`OPERADORA`); o rodapé usa `{{operadora}}`, preenchido
+por `paginas.enviar`; endereço, telefone e inscrições não existem no código
+porque não foram informados.
 
 2026-11-11 — **TICK: olho na senha do operador e "Indique e acompanhe" na
 portaria**, branch `claude/beautiful-faraday-cjq1nt-olho-operador`. O
