@@ -287,6 +287,7 @@
       ['Lote', i.lote ? `${i.lote}º lote` : i.cortesia ? 'Cortesia' : null],
       ['Número', i.numero ? `Ingresso ${i.numero}${i.numero_de ? ` de ${i.numero_de}` : ''}` : null],
       ['Pulseira', i.pulseira],
+      ['Indicados', Number.isInteger(i.indicados) ? `${i.indicados} com compra confirmada` : null],
       ['Combo', i.promocao],
       ['Código', i.codigo_curto],
     ].filter(([, valor]) => valor);
@@ -332,8 +333,7 @@
           }),
         );
       }
-      if (i.beneficios?.length) linhas.push(listaDeEntregas(i, r.resultado, 'beneficio'));
-      if (i.recompensas_indicacao?.length) linhas.push(listaDeEntregas(i, r.resultado, 'recompensa'));
+      if (i.beneficios?.length || i.recompensas_indicacao?.length) linhas.push(listaDeEntregas(i, r.resultado));
       if (i.combo?.ingressos?.length > 1) linhas.push(listaDoCombo(i.combo));
       if ((r.resultado === 'bloqueado' || r.resultado === 'cancelado') && i.motivo)
         linhas.push(el('p', { text: `Motivo: ${i.motivo}` }));
@@ -397,42 +397,51 @@
     );
   }
 
-  // Benefícios do ingresso e recompensas de indicação (no ingresso principal
-  // de quem indicou), com "Confirmar entrega": uma vez só, registrada com o
-  // operador e a hora, independente da entrada.
-  function listaDeEntregas(i, resultado, tipo) {
+  // "RECOMPENSAS DE <TITULAR>" (§6.5): o benefício do ingresso e as
+  // recompensas de indicação (só no ingresso principal de quem indicou), cada
+  // uma LIBERADO ou JÁ RETIRADA, com "CONFIRMAR ENTREGA": uma vez só,
+  // registrada com operador e hora, independente da entrada.
+  function listaDeEntregas(i, resultado) {
     const podeEntregar = ['valido', 'entrada_registrada', 'ja_utilizado'].includes(resultado);
-    const itens = tipo === 'beneficio' ? i.beneficios : i.recompensas_indicacao;
-    const titulo = tipo === 'beneficio' ? 'Benefícios do ingresso' : 'Recompensas de indicação';
+    const itens = [
+      ...(i.beneficios || []).map((b) => ({ ...b, tipo: 'beneficio' })),
+      ...(i.recompensas_indicacao || []).map((b) => ({ ...b, nome: `${b.nome} (indicação)`, tipo: 'recompensa' })),
+    ];
+    const retirada = (quando, quem) => `JÁ RETIRADA em ${dataEHora(quando)}${quem ? ` por ${quem}` : ''}`;
     return el(
       'div',
       { class: 'entregas' },
-      el('p', { class: 'rotulo', text: titulo }),
+      el('p', { class: 'rotulo', text: `RECOMPENSAS DE ${String(i.participante || '').toUpperCase()}` }),
       el(
         'ul',
         { class: 'beneficios' },
         itens.map((b) => {
           const quando = b.resgatado_em || b.entregue_em;
           const quem = b.resgatado_por || b.entregue_por;
-          const item = el('li', { class: 'chip', text: b.nome });
-          if (quando) {
-            item.append(` — entregue em ${dataEHora(quando)}${quem ? ` por ${quem}` : ''}`);
-          } else if (podeEntregar) {
+          const situacao = el('b', { text: quando ? retirada(quando, quem) : 'LIBERADO' });
+          const item = el('li', { class: 'chip' }, `${b.nome} — `, situacao);
+          if (!quando && podeEntregar) {
             const botao = el('button', { class: 'btn mini', type: 'button', text: 'CONFIRMAR ENTREGA' });
             botao.addEventListener('click', async () => {
               try {
                 const corpo =
-                  tipo === 'beneficio'
+                  b.tipo === 'beneficio'
                     ? { edicao_id: edicaoAtual(), ingresso_id: i.id, beneficio_id: b.id }
                     : { edicao_id: edicaoAtual(), ingresso_id: i.id, recompensa_id: b.id };
                 const r = await enviando(botao, 'Registrando...', () =>
-                  chamar(`/ticket/api/checkin/${tipo}`, { metodo: 'POST', corpo }),
+                  chamar(`/ticket/api/checkin/${b.tipo}`, { metodo: 'POST', corpo }),
                 );
                 const em = r.resgatado_em || r.entregue_em;
-                if (tipo === 'beneficio') b.resgatado_em = em;
-                else b.entregue_em = em;
+                const original = (b.tipo === 'beneficio' ? i.beneficios : i.recompensas_indicacao).find(
+                  (x) => x.id === b.id,
+                );
+                if (original) {
+                  if (b.tipo === 'beneficio') original.resgatado_em = em;
+                  else original.entregue_em = em;
+                }
                 const ja = r.resultado === 'ja_resgatado' || r.resultado === 'ja_entregue';
-                botao.replaceWith(` — ${ja ? 'já tinha sido entregue' : 'entregue agora'} (${dataEHora(em)})`);
+                situacao.textContent = ja ? retirada(em, r.entregue_por) : `ENTREGUE AGORA (${dataEHora(em)})`;
+                botao.remove();
               } catch (err) {
                 $('msgCamera').textContent = err.message;
               }

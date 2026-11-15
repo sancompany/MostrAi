@@ -92,6 +92,25 @@ async function recompensasDaConta(cliente, clienteId, edicaoId, { travar = false
   return rows;
 }
 
+// "Número de indicados, quando disponível" (§6.1): pessoas que a conta do
+// ingresso principal indicou com compra confirmada nesta edição (a mesma
+// regra do "Indique e acompanhe"); nulo se não é o principal ou se a conta
+// nunca teve link. Roda FORA da transação da entrada: a contagem usa outra
+// conexão do pool, e pedir uma segunda conexão segurando a primeira trava a
+// portaria quando o pool está cheio.
+async function comIndicados(resposta) {
+  const i = resposta?.ingresso;
+  const conta = i?.[CONTA_PRINCIPAL];
+  if (!conta) return resposta;
+  const { rows } = await consultar('SELECT id FROM indicadores WHERE cliente_id = $1', [conta.clienteId]);
+  if (rows[0]) {
+    const { indicadosPor } = require('./desempenho');
+    i.indicados = (await indicadosPor(rows[0].id, conta.edicaoId)).totais.pessoas;
+  }
+  return resposta;
+}
+const CONTA_PRINCIPAL = Symbol('conta do ingresso principal');
+
 async function detalhes(cliente, ingresso) {
   const { rows } = await cliente.query(
     `SELECT i.id, i.codigo_curto, i.origem, i.status, i.motivo_status, i.pedido_id, i.reserva_id, i.edicao_id,
@@ -150,7 +169,7 @@ async function detalhes(cliente, ingresso) {
     ? (await principalDaConta(cliente, d.cliente_id, d.edicao_id)) === Number(d.id)
     : false;
   const recompensas = principal ? await recompensasDaConta(cliente, d.cliente_id, d.edicao_id) : [];
-  return {
+  const saida = {
     id: d.id,
     codigo_curto: d.codigo_curto,
     // Titular (quem entra) e comprador (quem pagou); cortesia não tem comprador.
@@ -171,6 +190,8 @@ async function detalhes(cliente, ingresso) {
     combo,
     cortesia: d.origem === 'cortesia',
     beneficios: d.beneficios,
+    // Preenchido por comIndicados, fora da transação.
+    indicados: null,
     recompensas_indicacao: recompensas.map((r) => ({
       id: r.id,
       nome: r.nome,
@@ -183,6 +204,9 @@ async function detalhes(cliente, ingresso) {
     utilizado_por: d.utilizado_por,
     tentativas_recusadas: d.tentativas,
   };
+  // Símbolo: não sai no JSON da resposta.
+  if (principal) saida[CONTA_PRINCIPAL] = { clienteId: d.cliente_id, edicaoId: d.edicao_id };
+  return saida;
 }
 
 // Tentativa recusada de um ingresso desta edição (já utilizado, cancelado,
@@ -219,13 +243,18 @@ async function consultarIngresso(operador, edicaoId, entrada, { aparelho = null 
     await registrarRecusa(cliente, d.id, ed.id, operador.id, resultado, aparelho);
     d = await detalhes(cliente, achado.ingresso);
   }
-  return { resultado, mensagem: RESULTADOS[resultado], ingresso: d, classificacao_etaria: ed.classificacao_etaria };
+  return comIndicados({
+    resultado,
+    mensagem: RESULTADOS[resultado],
+    ingresso: d,
+    classificacao_etaria: ed.classificacao_etaria,
+  });
 }
 
 async function confirmar(operador, edicaoId, ingressoId, { aparelho = null, lidoEm = null } = {}) {
   const ed = await permitida(operador, v.id(edicaoId, 'edição'));
   const id = v.id(ingressoId, 'ingresso');
-  return emTransacao(async (cliente) => {
+  const resposta = await emTransacao(async (cliente) => {
     const { rows } = await cliente.query('SELECT * FROM ingressos WHERE id = $1 FOR UPDATE', [id]);
     const ing = rows[0];
     if (!ing) return { resultado: 'invalido', mensagem: RESULTADOS.invalido };
@@ -254,6 +283,7 @@ async function confirmar(operador, edicaoId, ingressoId, { aparelho = null, lido
     const depois = await detalhes(cliente, ing);
     return { resultado: 'entrada_registrada', mensagem: 'Entrada registrada', ingresso: depois };
   });
+  return comIndicados(resposta);
 }
 
 // Entrega do benefício do ingresso (ex.: copão): uma vez só. A linha do
