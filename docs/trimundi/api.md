@@ -80,6 +80,8 @@ pelo Cloudflare Access, que cobre `/admin`. Toda escrita grava o histórico
 | Método e rota | O que faz |
 |---|---|
 | `GET /admin/trimundi/edicoes/:id/participantes` | `?filtro=todos\|pagos\|cortesias\|testes\|cancelados\|utilizados&busca=&pagina=` → `{ itens, total, pagina, por_pagina }` (RN-T22). CPF mascarado (`***.456.789-**`); a busca aceita o CPF inteiro |
+| `GET /admin/trimundi/edicoes/:id/desempenho-lotes` | "Desempenho de vendas — lotes do evento" (§7): `{ config: { cores: { amarelo, laranja }, alertas[], padrao }, resumo: { capacidade, teto_da_edicao, vendidos, cortesias, reservas_ativas, disponiveis, sobra_em_lotes_encerrados, cancelamentos, reembolsos, percentual, cor }, lotes[]: { tipo, tipo_ativo, numero, quantidade, vendidos, reservados, disponiveis, sobra, situacao, percentual, cor, esgotado, alerta }, alertas[], atualizado_em }`. Vendido = pago; pendente não conta; combo não duplica; capacidade = soma dos lotes dos tipos ativos; teste fora |
+| `POST /admin/trimundi/edicoes/:id/desempenho-lotes/config` | `{ cores: { amarelo, laranja }, alertas: [até 6, de 1 a 100] }` ou `{ padrao: true }` → a configuração; 400 se as faixas não sobem (amarelo < laranja < 100); auditoria `monitor_lotes_alterado` |
 | `GET /admin/trimundi/edicoes/:id/resumo` | números da edição (D1): pagos, cortesias, participantes, entradas, receita confirmada, reembolsado, receita líquida, cancelados, reembolsos, chargebacks — teste fora |
 | `GET /admin/trimundi/edicoes/:id/avisos` | o que pede ação: sem vaga, valor divergente, pagamento duplicado, devolução feita fora, aviso morto, reembolso recusado ou a reenviar, chargeback |
 | `GET /admin/trimundi/pedidos/:pedido` | ficha do pedido: itens, ingressos, reembolsos |

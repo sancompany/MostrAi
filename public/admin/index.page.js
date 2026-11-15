@@ -794,6 +794,11 @@ const MODULOS = [
         render: (el, resto) => window.renderTrimundiOperadores(el, resto),
       },
       { id: 'indicacao', nome: 'Indicação', render: (el, resto) => window.renderTrimundiIndicacao(el, resto) },
+      {
+        id: 'desempenho',
+        nome: 'Desempenho de vendas',
+        render: (el, resto) => window.renderTrimundiDesempenho(el, resto),
+      },
     ],
   },
   { id: 'midiamostrai', nome: 'Mídia Mostraí', destaque: true, render: renderMidiaMostrai },
@@ -834,6 +839,7 @@ const SUBTITULOS = {
   'trimundi/promocoes': 'Combos: usam o estoque dos ingressos que os compõem e viram um ingresso por posição.',
   'trimundi/participantes': 'Ingressos emitidos, cortesias, pedidos e reembolsos — e os números da edição.',
   'trimundi/operadores': 'Quem faz o check-in na portaria. O acesso para na hora ao desativar.',
+  'trimundi/desempenho': 'Vendas por lote, em tempo real: só pago conta como vendido; cores e alertas configuráveis.',
   'trimundi/indicacao':
     'Link de indicação de cada cliente: conta o pedido pago de quem chegou por ele, e a recompensa sai enquanto houver.',
 };

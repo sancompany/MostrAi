@@ -611,3 +611,77 @@
   justify-self: start;
   padding: 0;
 }
+
+/* Desempenho de vendas — lotes do evento (§7). A cor sempre vem com o
+   percentual e o nome da cor escritos ao lado (não só cor). */
+.tm-barra {
+  height: 14px;
+  border-radius: 999px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  margin: 6px 0;
+}
+
+.tm-barra-preenche {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.tm-cor-verde {
+  background: #15803d;
+}
+
+.tm-cor-amarelo {
+  background: #ca8a04;
+}
+
+.tm-cor-laranja {
+  background: #ea580c;
+}
+
+.tm-cor-vermelho {
+  background: #dc2626;
+}
+
+.tm-lote-desempenho + .tm-lote-desempenho {
+  margin-top: 14px;
+}
+
+.tm-lote-topo {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.tm-esgotado {
+  margin: 4px 0;
+  font-weight: 800;
+  color: var(--err);
+}
+
+.tm-alertas {
+  display: grid;
+  gap: 6px;
+}
+
+.tm-alerta {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 4px solid;
+  border-radius: 6px;
+  background: var(--bg-alt);
+}
+
+.tm-cor-borda-amarelo {
+  border-left-color: #ca8a04;
+}
+
+.tm-cor-borda-laranja {
+  border-left-color: #ea580c;
+}
+
+.tm-cor-borda-vermelho {
+  border-left-color: #dc2626;
+}

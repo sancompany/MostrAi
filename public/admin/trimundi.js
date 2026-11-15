@@ -2153,6 +2153,136 @@
     });
   }
 
+  // =========================================== Desempenho de vendas (§7)
+  // "DESEMPENHO DE VENDAS — LOTES DO EVENTO": barra geral e por lote, com as
+  // cores e os alertas da edição (só no painel). Os números vêm do estoque
+  // real a cada leitura; a tela se atualiza sozinha a cada 30 s.
+  const NOME_COR = { verde: 'Verde', amarelo: 'Amarelo', laranja: 'Laranja', vermelho: 'Vermelho' };
+  function barra(percentual, cor, rotulo) {
+    return `<div class="tm-barra" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percentual}" aria-label="${esc(rotulo)}: ${percentual}% vendido">
+        <div class="tm-barra-preenche tm-cor-${cor}" data-pct="${percentual}"></div>
+      </div>`;
+  }
+  async function renderDesempenho(el, resto) {
+    const edicoes = await lerOuAvisar(el, () => pegar(`${R}/edicoes`));
+    if (!edicoes) return;
+    const ed = escolherEdicao(edicoes, resto);
+    if (!ed) {
+      el.innerHTML = semEdicao();
+      return ligarSemEdicao(el);
+    }
+    const d = await lerOuAvisar(el, () => pegar(`${R}/edicoes/${ed.id}/desempenho-lotes`));
+    if (!d) return;
+    const r = d.resumo;
+    const indicador = (valor, rotulo) => `<div class="mini-indicador"><b>${valor}</b><span>${rotulo}</span></div>`;
+    const porTipo = new Map();
+    for (const l of d.lotes) {
+      if (!porTipo.has(l.tipo_id)) porTipo.set(l.tipo_id, { nome: l.tipo, ativo: l.tipo_ativo, lotes: [] });
+      porTipo.get(l.tipo_id).lotes.push(l);
+    }
+    const linhaLote = (l) => `<div class="tm-lote-desempenho">
+        <div class="tm-lote-topo">
+          <b>${l.numero}º lote</b>
+          <span class="tm-lote-num">${num(l.vendidos)} de ${num(l.quantidade)} vendidos · <b>${l.percentual}%</b> · ${NOME_COR[l.cor]}</span>
+        </div>
+        ${barra(l.percentual, l.cor, `${l.tipo}, ${l.numero}º lote`)}
+        ${l.esgotado ? '<p class="tm-esgotado">LOTE ESGOTADO — 100% VENDIDO</p>' : ''}
+        <p class="u-dim">${esc(SITUACAO_LOTE[l.situacao]?.[1] || l.situacao)} · reservas ativas ${num(l.reservados)} · disponíveis ${num(l.disponiveis)}${l.sobra ? ` · sobra não vendida ${num(l.sobra)} (não passa para outro lote)` : ''}</p>
+      </div>`;
+    const alertas = d.alertas.length
+      ? `<div class="tm-alertas" role="status">${d.alertas
+          .map(
+            (a) =>
+              `<p class="tm-alerta tm-cor-borda-${a.percentual >= 100 ? 'vermelho' : a.alerta >= 90 ? 'laranja' : 'amarelo'}"><b>${esc(a.tipo)}, ${a.numero}º lote:</b> ${a.esgotado ? 'LOTE ESGOTADO — 100% VENDIDO' : `atingiu ${a.alerta}% (agora ${a.percentual}%)`}</p>`,
+          )
+          .join('')}</div>`
+      : '<p class="u-dim">Nenhum lote atingiu os alertas configurados.</p>';
+    el.innerHTML = `
+      <div class="barra-pagina">${seletorEdicao(edicoes, ed, 'desempenho')}
+        <div class="tm-acoes"><button type="button" class="btn ghost" id="tmConfigLotes">Cores e alertas</button>
+          <button type="button" class="btn ghost" id="tmAtualizarLotes">Atualizar</button></div></div>
+      <section class="secao-pagina">
+        <h3>DESEMPENHO DE VENDAS — LOTES DO EVENTO</h3>
+        <div class="tm-lote-topo"><b>Geral</b><span class="tm-lote-num">${num(r.vendidos)} de ${num(r.capacidade)} vendidos · <b>${r.percentual}%</b> · ${NOME_COR[r.cor]}</span></div>
+        ${barra(r.percentual, r.cor, 'Geral')}
+        <div class="mini-indicadores">
+          ${indicador(num(r.capacidade), 'capacidade comercial')}
+          ${indicador(num(r.vendidos), 'ingressos pagos')}
+          ${indicador(num(r.cortesias), 'cortesias')}
+          ${indicador(num(r.reservas_ativas), 'reservas ativas')}
+          ${indicador(num(r.disponiveis), 'disponíveis')}
+          ${indicador(num(r.cancelamentos), 'cancelamentos')}
+          ${indicador(num(r.reembolsos), 'reembolsos')}
+          ${indicador(`${r.percentual}%`, 'vendido')}
+        </div>
+        <p class="campo-ajuda">Capacidade comercial = soma dos lotes dos ingressos ativos. Vendido = pago; pagamento pendente fica em "reservas ativas" e não conta. Combo conta cada ingresso uma vez. Cortesia não sai de lote.${r.sobra_em_lotes_encerrados ? ` Sobra em lotes encerrados: ${num(r.sobra_em_lotes_encerrados)} (não migra; mude à mão em Criar ingressos).` : ''}${r.teto_da_edicao ? ` Teto da edição: ${num(r.teto_da_edicao)}.` : ''}</p>
+      </section>
+      <section class="secao-pagina"><h3>Alertas</h3>${alertas}</section>
+      ${
+        [...porTipo.values()]
+          .map(
+            (
+              t,
+            ) => `<section class="secao-pagina"><h3>${esc(t.nome)} ${t.ativo ? '' : '<span class="badge badge-neutro">Inativo — fora da capacidade</span>'}</h3>
+            ${t.lotes.map(linhaLote).join('')}</section>`,
+          )
+          .join('') || vazio('Nenhum ingresso nesta edição.')
+      }
+      <p class="campo-ajuda">Atualizado ${esc(quando(d.atualizado_em) || '')}. Cores: verde abaixo de ${d.config.cores.amarelo}%, amarelo de ${d.config.cores.amarelo}% a ${d.config.cores.laranja - 1}%, laranja de ${d.config.cores.laranja}% a 99%, vermelho em 100%. Alertas em ${d.config.alertas.map((a) => `${a}%`).join(', ') || 'nenhum'}${d.config.padrao ? ' (padrão)' : ''}.</p>`;
+    // Largura das barras pelo CSSOM: a CSP do Admin não aceita style="".
+    for (const b of el.querySelectorAll('.tm-barra-preenche[data-pct]')) b.style.width = `${b.dataset.pct}%`;
+    ligarSeletor(el);
+    el.querySelector('#tmAtualizarLotes').addEventListener('click', () => renderDesempenho(el, String(ed.id)));
+    el.querySelector('#tmConfigLotes').addEventListener('click', () =>
+      modalConfigLotes(ed, d.config, () => renderDesempenho(el, String(ed.id))),
+    );
+    // Atualiza sozinho enquanto a aba estiver aberta.
+    clearTimeout(el._tmTimer);
+    el._tmTimer = setTimeout(() => {
+      if (el.isConnected && el.querySelector('#tmAtualizarLotes')) renderDesempenho(el, String(ed.id)).catch(() => {});
+    }, 30000);
+  }
+
+  function modalConfigLotes(ed, cfg, depois) {
+    const { dlg, fechar } = abrirModal({
+      titulo: 'Cores e alertas dos lotes',
+      corpo: `<form id="tmFormLotes" novalidate>
+          <div class="campos">
+            <div class="campo-grupo"><label for="tmAmarelo">Amarelo a partir de (%)</label><input id="tmAmarelo" name="amarelo" type="number" min="1" max="99" value="${cfg.cores.amarelo}" required></div>
+            <div class="campo-grupo"><label for="tmLaranja">Laranja a partir de (%)</label><input id="tmLaranja" name="laranja" type="number" min="2" max="99" value="${cfg.cores.laranja}" required></div>
+          </div>
+          <div class="campo-grupo"><label for="tmAlertas">Alertas em (%), separados por vírgula</label><input id="tmAlertas" name="alertas" value="${cfg.alertas.join(', ')}"></div>
+          <p class="campo-ajuda">Verde abaixo do amarelo; vermelho em 100%. Até 6 alertas. Os alertas aparecem só neste painel.</p>
+          <p class="form-msg" data-msg></p>
+        </form>`,
+      rodape:
+        '<button type="button" class="btn ghost" data-padrao>Voltar ao padrão</button><button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="tmFormLotes" class="btn primary">Salvar</button>',
+    });
+    const salvar = async (corpo, botao) => {
+      await travado(botao, async () => {
+        const r = await escrever(`/edicoes/${ed.id}/desempenho-lotes/config`, 'POST', corpo);
+        if (!r.ok) return erroNoModal(dlg, r.erro);
+        fechar();
+        toast('Cores e alertas salvos.');
+        depois();
+      });
+    };
+    dlg.querySelector('[data-padrao]').addEventListener('click', (e) => salvar({ padrao: true }, e.currentTarget));
+    dlg.querySelector('form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const f = e.target.elements;
+      const alertas = f.alertas.value
+        .split(/[,;\s]+/)
+        .filter(Boolean)
+        .map(Number);
+      salvar(
+        { cores: { amarelo: Number(f.amarelo.value), laranja: Number(f.laranja.value) }, alertas },
+        dlg.querySelector('[type="submit"]'),
+      );
+    });
+  }
+
+  window.renderTrimundiDesempenho = renderDesempenho;
   window.renderTrimundiIndicacao = renderIndicacao;
   window.renderTrimundiEventos = renderEventos;
   window.renderTrimundiIngressos = renderIngressos;
