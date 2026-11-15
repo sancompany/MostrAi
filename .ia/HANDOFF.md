@@ -1,6 +1,14 @@
 # Current Handoff
 
 ## Updated
+2026-11-15 — **TICK: Admin reorganizado (§9)**, branch
+`claude/beautiful-faraday-cjq1nt-admin` (empilhada sobre a de lotes, PR #151).
+Sem migration. Não desfazer sem contexto: os ids das abas antigas ficaram
+(`promocoes` = Combos, `operadores` = Portaria, `desempenho` = Lotes,
+`indicacao` = Indicações) para não quebrar link; `campanhas` usa a mesma
+`renderIndicacao` com modo 'campanhas'. Promoters/Comissões/Relatórios/
+Configurações só entram quando construídos.
+
 2026-11-15 — **TICK: desempenho de vendas por lote (§7)**, branch
 `claude/beautiful-faraday-cjq1nt-lotes` (empilhada sobre a da portaria,
 PR #150). Migration 014 (`edicoes.monitor_lotes`, nula = padrão). Não

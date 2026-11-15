@@ -116,6 +116,7 @@ pelo Cloudflare Access, que cobre `/admin`. Toda escrita grava o histórico
 | `POST /admin/trimundi/edicoes/:id/campanhas` | `{ nome, recompensa, quantidade, indicacoes_por_recompensa, limite_por_indicador?, inicio?, fim?, ativo? }` → 201. 409 se já houver outra ativa na edição |
 | `PATCH /admin/trimundi/campanhas/:id` | altera; a quantidade não fica abaixo do concedido (409) |
 | `GET /admin/trimundi/campanhas/:id/indicadores` | quem indicou: nome, tipo, código, indicações pagas e recompensas (sem CPF nem e-mail) |
+| `GET /admin/trimundi/edicoes/:id/recompensas` | Admin → Recompensas (§9): `{ indicacao: { totais: { a_retirar, entregues, revogadas }, itens[]: { indicador, tipo, recompensa, campanha, status, concedida_em, entregue_em, entregue_por (operador pelo nome ou "Admin"), revogada_em } }, beneficios[]: { nome, total, entregues, pendentes } }` — só leitura, sem CPF; teste fora |
 | `POST /admin/trimundi/recompensas/:id/entregar` | marca entregue (uma vez; a segunda é 409) |
 | `GET /admin/trimundi/edicoes/:id/ranking` | ranking da edição: `[{ posicao, nome, categoria (comprador\|operador), pessoas, compras, ingressos }]` — só conversões confirmadas |
 | `GET /admin/trimundi/edicoes/:id/ranking.csv` | o mesmo em CSV (`;`, UTF-8 com BOM), sem CPF, e-mail nem código; nome com cara de fórmula ganha apóstrofo |

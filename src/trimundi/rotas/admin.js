@@ -14,6 +14,7 @@ const reembolsos = require('../reembolsos');
 const indicacao = require('../indicacao');
 const desempenho = require('../desempenho');
 const desempenhoLotes = require('../desempenho-lotes');
+const recompensas = require('../recompensas');
 
 // Admin da Trimundi — `/admin/trimundi/*` (api.md). O server.js já exige a
 // sessão do Admin em todo /admin, e o Cloudflare Access fica na frente; a
@@ -191,6 +192,10 @@ router.post('/admin/trimundi/clientes/:id/cpf', async (req, res) => {
 });
 router.get('/admin/trimundi/campanhas/:id/indicadores', async (req, res) =>
   res.json(await indicacao.indicadoresDaCampanha(id(req))),
+);
+// Recompensas da edição (§9): indicação uma a uma e benefícios por tipo.
+router.get('/admin/trimundi/edicoes/:id/recompensas', async (req, res) =>
+  res.json(await recompensas.daEdicao(id(req))),
 );
 router.post('/admin/trimundi/recompensas/:id/entregar', async (req, res) =>
   res.json(await indicacao.entregarRecompensa(id(req), autorDaRequisicao(req))),

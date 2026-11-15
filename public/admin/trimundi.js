@@ -1,10 +1,12 @@
 // Trimundi — Admin → Eventos (ADR-048; docs/trimundi/funcional.md, T1 a T5).
 //
-// Um item só no menu, "Eventos", com as abas: Criar evento (lista e ficha
-// da edição), Criar ingressos (tipos, lotes e benefícios), Criar promoção
-// (combos), Participantes (ingressos emitidos, cortesias, pedidos,
-// reembolsos e os números da edição), Adicionar operador (check-in) e
-// Indicação (campanhas e recompensas).
+// Um item só no menu, "Eventos", com as áreas do §9 (reorganização de
+// 15/11/2026): Visão geral (vendas, alertas e o que pede atenção), Eventos
+// (lista e ficha da edição), Ingressos (tipos e benefícios), Lotes
+// (desempenho por lote), Combos (era "Criar promoção"), Campanhas
+// (campanhas de indicação), Indicações (ranking), Recompensas,
+// Participantes (ingressos, cortesias, pedidos, reembolsos) e Portaria
+// (operadores de check-in).
 //
 // Arquivo próprio, carregado ANTES de index.page.js (o mesmo arranjo de
 // comunicados.js): o módulo `trimundi` de lá chama as funções daqui, e as
@@ -1010,7 +1012,7 @@
     });
   }
 
-  // ================================================= T3 — Criar promoção
+  // ======================================== T3 — Combos (era "Criar promoção")
   const SITUACAO_PROMO = {
     a_venda: ['badge-ok', 'Ativa'],
     inativa: ['badge-neutro', 'Inativa'],
@@ -1036,12 +1038,12 @@
     const validade = (p) => (p.inicio || p.fim ? `${quando(p.inicio) || 'já'} → ${quando(p.fim) || 'sem fim'}` : '—');
     el.innerHTML = `
       <div class="barra-pagina">${seletorEdicao(edicoes, ed, 'promocoes')}
-        ${soLeitura ? '' : `<button type="button" class="btn primary" id="tmNovaPromo" ${tipos.length ? '' : 'disabled title="Crie um ingresso antes da promoção."'}>+ Criar promoção</button>`}</div>
-      ${!tipos.length && !soLeitura ? '<p class="u-dim">Crie um ingresso antes da promoção.</p>' : ''}
+        ${soLeitura ? '' : `<button type="button" class="btn primary" id="tmNovaPromo" ${tipos.length ? '' : 'disabled title="Crie um ingresso antes do combo."'}>+ Criar combo</button>`}</div>
+      ${!tipos.length && !soLeitura ? '<p class="u-dim">Crie um ingresso antes do combo.</p>' : ''}
       ${
         promos.length
           ? `<div class="tabela-caixa"><div class="rolagem"><table>
-          <thead><tr><th>Promoção</th><th>Ingressos</th><th class="num">Preço</th><th class="num">Vendidos</th><th class="num">Disponíveis</th><th>Validade</th><th>Situação</th><th></th></tr></thead>
+          <thead><tr><th>Combo</th><th>Ingressos</th><th class="num">Preço</th><th class="num">Vendidos</th><th class="num">Disponíveis</th><th>Validade</th><th>Situação</th><th></th></tr></thead>
           <tbody>${promos
             .map(
               (p) => `<tr>
@@ -1056,7 +1058,7 @@
             )
             .join('')}</tbody></table></div></div>`
           : vazio(
-              'Nenhuma promoção nesta edição ainda.',
+              'Nenhum combo nesta edição ainda.',
               'Um combo junta ingressos por um preço só; cada posição vira um ingresso próprio.',
             )
       }`;
@@ -1089,11 +1091,11 @@
 
   function modalPromocao(ed, promo, tipos, beneficios, depois) {
     const { dlg, fechar } = abrirModal({
-      titulo: promo ? 'Editar promoção' : 'Nova promoção',
+      titulo: promo ? 'Editar combo' : 'Novo combo',
       largo: true,
       corpo: `<form id="tmFormPromo" novalidate>
           <div class="campos">
-            <div class="campo-grupo"><label for="tmPromoNome">Nome da promoção</label><input id="tmPromoNome" name="nome" maxlength="60" value="${esc(promo?.nome ?? '')}" required></div>
+            <div class="campo-grupo"><label for="tmPromoNome">Nome do combo</label><input id="tmPromoNome" name="nome" maxlength="60" value="${esc(promo?.nome ?? '')}" required></div>
             <div class="campo-grupo"><label for="tmPromoPreco">Preço total do combo (R$)</label><input id="tmPromoPreco" name="preco" inputmode="decimal" value="${reais(promo?.preco_total_centavos)}"></div>
             <div class="campo-grupo"><label for="tmPromoQtd">Quantidade de combos</label><input id="tmPromoQtd" name="combos" type="number" min="1" max="10000" value="${promo?.quantidade ?? ''}"></div>
           </div>
@@ -1110,7 +1112,7 @@
           <p class="form-msg" data-msg></p>
         </form>`,
       rodape:
-        '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="tmFormPromo" class="btn primary">Salvar promoção</button>',
+        '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="tmFormPromo" class="btn primary">Salvar combo</button>',
     });
     const itens = dlg.querySelector('[data-itens]');
     dlg
@@ -1144,7 +1146,7 @@
           : await escrever(`/edicoes/${ed.id}/promocoes`, 'POST', corpo);
         if (!r.ok) return erroNoModal(dlg, r.erro);
         fechar();
-        toast('Promoção salva.');
+        toast('Combo salvo.');
         depois();
       });
     });
@@ -1975,7 +1977,11 @@
   // =========================================================== Indicação
   // Campanha da edição (recompensa, quantas existem, quantas indicações valem
   // uma, limite por pessoa), quem indicou e a entrega da recompensa.
-  async function renderIndicacao(el, resto) {
+  // Indicações (ranking) e Campanhas (campanhas de indicação e quem indicou)
+  // são duas áreas do painel desde a reorganização do §9 (15/11/2026); a
+  // tela é a mesma, cada área mostra a sua parte.
+  async function renderIndicacao(el, resto, modo = 'indicacoes') {
+    const campanhasAqui = modo === 'campanhas';
     const edicoes = await lerOuAvisar(el, () => pegar(`${R}/edicoes`));
     if (!edicoes) return;
     const ed = escolherEdicao(edicoes, resto);
@@ -1992,9 +1998,12 @@
     const criterio = (c) =>
       `${c.indicacoes_por_recompensa === 1 ? 'Cada indicação paga' : `A cada ${c.indicacoes_por_recompensa} indicações pagas`} = 1 ${esc(c.recompensa)}${c.limite_por_indicador ? ` · até ${c.limite_por_indicador} por pessoa` : ''}`;
     el.innerHTML = `
-      <div class="barra-pagina">${seletorEdicao(edicoes, ed, 'indicacao')}
-        <button type="button" class="btn primary" id="tmNovaCampanha">+ Criar campanha</button></div>
-      <p class="campo-ajuda">Todo comprador tem um link próprio na conta, e todo operador, na tela de check-in (nas edições autorizadas). O primeiro link pelo qual a pessoa chegou fica como a origem dela nesta edição. Conta só a compra confirmada — pendente, expirada, cancelada ou reembolsada não entra. Recompensa só sai com campanha ativa.</p>
+      <div class="barra-pagina">${seletorEdicao(edicoes, ed, campanhasAqui ? 'campanhas' : 'indicacao')}
+        ${campanhasAqui ? '<button type="button" class="btn primary" id="tmNovaCampanha">+ Criar campanha</button>' : ''}</div>
+      ${
+        campanhasAqui
+          ? ''
+          : `<p class="campo-ajuda">Todo comprador tem um link próprio na conta, e todo operador, na tela de check-in (nas edições autorizadas). O primeiro link pelo qual a pessoa chegou fica como a origem dela nesta edição. Conta só a compra confirmada — pendente, expirada, cancelada ou reembolsada não entra. Recompensa só sai com campanha ativa (em Campanhas).</p>
       <section class="secao-pagina tm-ranking">
         <div class="secao-topo"><h3>Ranking de indicações</h3><span class="contagem">${ranking.length}</span>
           <div class="secao-acoes">
@@ -2026,11 +2035,13 @@
             : vazio('Nenhuma compra confirmada por indicação nesta edição ainda.')
         }
         <p class="campo-ajuda">Uma pessoa que comprou 4 ingressos conta como 1 pessoa indicada e 4 ingressos vendidos. O CSV traz nome, categoria e os números — sem CPF nem e-mail.</p>
-      </section>
-      <h3>Campanhas (promoções de indicação)</h3>
+      </section>`
+      }
       ${
-        campanhas.length
-          ? `<div class="tabela-caixa"><div class="rolagem"><table>
+        !campanhasAqui
+          ? ''
+          : campanhas.length
+            ? `<div class="tabela-caixa"><div class="rolagem"><table>
           <thead><tr><th>Campanha</th><th>Critério</th><th class="num">Indicações</th><th class="num">Concedidas</th><th class="num">Entregues</th><th>Período</th><th>Situação</th><th></th></tr></thead>
           <tbody>${campanhas
             .map(
@@ -2045,10 +2056,10 @@
             </tr>`,
             )
             .join('')}</tbody></table></div></div>`
-          : vazio('Nenhuma campanha nesta edição.', 'Ex.: 50 copos personalizados, 1 a cada 3 indicações pagas.')
+            : vazio('Nenhuma campanha nesta edição.', 'Ex.: 50 copos personalizados, 1 a cada 3 indicações pagas.')
       }
       ${
-        ativa
+        ativa && campanhasAqui
           ? `<h3>Quem indicou — ${esc(ativa.nome)}</h3>${
               indicadores.length
                 ? `<div class="tabela-caixa"><div class="rolagem"><table>
@@ -2085,8 +2096,8 @@
         });
       }),
     );
-    const recarregar = () => renderIndicacao(el, String(ed.id));
-    el.querySelector('#tmNovaCampanha').addEventListener('click', () => modalCampanha(ed, null, recarregar));
+    const recarregar = () => renderIndicacao(el, String(ed.id), modo);
+    el.querySelector('#tmNovaCampanha')?.addEventListener('click', () => modalCampanha(ed, null, recarregar));
     el.querySelectorAll('[data-editar-campanha]').forEach((b) =>
       b.addEventListener('click', () =>
         modalCampanha(
@@ -2283,6 +2294,170 @@
   }
 
   window.renderTrimundiDesempenho = renderDesempenho;
+  // ================================================ Recompensas (§9)
+  // O que foi conquistado na edição e o que já saiu: recompensas de indicação
+  // uma a uma (a retirar, entregue — quando e por quem — ou revogada) e os
+  // benefícios dos ingressos por tipo. A entrega é na portaria; aqui o Admin
+  // ainda pode marcar a recompensa de indicação (ex.: operador indicador,
+  // que não tem ingresso principal).
+  const SITUACAO_RECOMPENSA = {
+    concedida: ['badge-info', 'A retirar'],
+    entregue: ['badge-ok', 'Entregue'],
+    revogada: ['badge-neutro', 'Revogada'],
+  };
+  async function renderRecompensas(el, resto) {
+    const edicoes = await lerOuAvisar(el, () => pegar(`${R}/edicoes`));
+    if (!edicoes) return;
+    const ed = escolherEdicao(edicoes, resto);
+    if (!ed) {
+      el.innerHTML = semEdicao();
+      return ligarSemEdicao(el);
+    }
+    const d = await lerOuAvisar(el, () => pegar(`${R}/edicoes/${ed.id}/recompensas`));
+    if (!d) return;
+    const indicador = (valor, rotulo) => `<div class="mini-indicador"><b>${valor}</b><span>${rotulo}</span></div>`;
+    const t = d.indicacao.totais;
+    el.innerHTML = `
+      <div class="barra-pagina">${seletorEdicao(edicoes, ed, 'recompensas')}</div>
+      <section class="secao-pagina">
+        <h3>Recompensas de indicação</h3>
+        <div class="mini-indicadores">
+          ${indicador(num(t.a_retirar), 'a retirar')}
+          ${indicador(num(t.entregues), 'entregues')}
+          ${indicador(num(t.revogadas), 'revogadas (indicação reembolsada)')}
+        </div>
+        ${
+          d.indicacao.itens.length
+            ? `<div class="tabela-caixa"><div class="rolagem"><table>
+          <thead><tr><th>Quem indicou</th><th>Recompensa</th><th>Campanha</th><th>Conquistada</th><th>Situação</th><th>Entrega</th><th></th></tr></thead>
+          <tbody>${d.indicacao.itens
+            .map(
+              (
+                r,
+              ) => `<tr><td><b>${esc(r.indicador)}</b> <span class="u-dim">${r.tipo === 'operador' ? 'operador' : 'cliente'}</span></td>
+              <td>${esc(r.recompensa)}</td><td>${esc(r.campanha)}</td><td>${esc(quando(r.concedida_em) || '—')}</td>
+              <td>${selo(SITUACAO_RECOMPENSA[r.status] || ['badge-neutro', r.status])}</td>
+              <td>${r.entregue_em ? `${esc(quando(r.entregue_em))}${r.entregue_por ? ` por ${esc(r.entregue_por)}` : ''}` : r.revogada_em ? `revogada ${esc(quando(r.revogada_em))}` : '—'}</td>
+              <td class="u-ta-r">${r.status === 'concedida' ? `<button type="button" class="btn ghost mini" data-entregar="${r.id}">Marcar entregue</button>` : ''}</td></tr>`,
+            )
+            .join('')}</tbody></table></div></div>`
+            : vazio(
+                'Nenhuma recompensa de indicação nesta edição ainda.',
+                'Elas saem quando há campanha ativa (em Campanhas).',
+              )
+        }
+        <p class="campo-ajuda">A recompensa do cliente é entregue na portaria, na leitura do ingresso principal dele. A revogada (indicação reembolsada antes da entrega) fica só no histórico.</p>
+      </section>
+      <section class="secao-pagina">
+        <h3>Benefícios dos ingressos</h3>
+        ${
+          d.beneficios.length
+            ? `<div class="tabela-caixa"><div class="rolagem"><table>
+          <thead><tr><th>Benefício</th><th class="num">Ingressos com o benefício</th><th class="num">Retirados</th><th class="num">A retirar</th></tr></thead>
+          <tbody>${d.beneficios
+            .map(
+              (b) =>
+                `<tr><td><b>${esc(b.nome)}</b></td><td class="num">${num(b.total)}</td><td class="num">${num(b.entregues)}</td><td class="num">${num(b.pendentes)}</td></tr>`,
+            )
+            .join('')}</tbody></table></div></div>`
+            : vazio('Nenhum ingresso com benefício nesta edição.')
+        }
+        <p class="campo-ajuda">Conta ingressos não cancelados (pagos e cortesias). A retirada é na portaria, uma vez por ingresso.</p>
+      </section>`;
+    ligarSeletor(el);
+    el.querySelectorAll('[data-entregar]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const r = await travado(b, () => escrever(`/recompensas/${b.dataset.entregar}/entregar`, 'POST', {}));
+        if (!r.ok) return toast(r.erro, 'err');
+        toast('Recompensa marcada como entregue.');
+        renderRecompensas(el, String(ed.id));
+      }),
+    );
+  }
+
+  // ================================================ Visão geral (§7 e §9)
+  // A primeira tela da área: "DESEMPENHO DE VENDAS — LOTES DO EVENTO" (barra
+  // geral e alertas), os números da edição e o que precisa de atenção, sem
+  // abrir várias telas. O detalhe por lote fica em Lotes.
+  async function renderVisaoGeral(el, resto) {
+    const edicoes = await lerOuAvisar(el, () => pegar(`${R}/edicoes`));
+    if (!edicoes) return;
+    const ed = escolherEdicao(edicoes, resto);
+    if (!ed) {
+      el.innerHTML = semEdicao();
+      return ligarSemEdicao(el);
+    }
+    const dados = await lerOuAvisar(el, () =>
+      Promise.all([
+        pegar(`${R}/edicoes/${ed.id}/desempenho-lotes`),
+        pegar(`${R}/edicoes/${ed.id}/resumo`),
+        pegar(`${R}/edicoes/${ed.id}/avisos`),
+        pegar(`${R}/edicoes/${ed.id}/recompensas`),
+      ]),
+    );
+    if (!dados) return;
+    const [d, resumo, avisos, rec] = dados;
+    const r = d.resumo;
+    const indicador = (valor, rotulo) => `<div class="mini-indicador"><b>${valor}</b><span>${rotulo}</span></div>`;
+    const qtdAvisos = Array.isArray(avisos) ? avisos.length : Number(avisos?.total || 0);
+    el.innerHTML = `
+      <div class="barra-pagina">${seletorEdicao(edicoes, ed, 'visao')}
+        <div class="tm-acoes"><button type="button" class="btn ghost" data-ir="desempenho">Lotes em detalhe</button></div></div>
+      <section class="secao-pagina">
+        <h3>DESEMPENHO DE VENDAS — LOTES DO EVENTO</h3>
+        <div class="tm-lote-topo"><b>Geral</b><span class="tm-lote-num">${num(r.vendidos)} de ${num(r.capacidade)} vendidos · <b>${r.percentual}%</b> · ${NOME_COR[r.cor]}</span></div>
+        ${barra(r.percentual, r.cor, 'Geral')}
+        <div class="mini-indicadores">
+          ${indicador(num(r.capacidade), 'capacidade comercial')}
+          ${indicador(num(r.vendidos), 'ingressos pagos')}
+          ${indicador(num(r.cortesias), 'cortesias')}
+          ${indicador(num(r.reservas_ativas), 'reservas ativas')}
+          ${indicador(num(r.disponiveis), 'disponíveis')}
+          ${indicador(num(r.cancelamentos), 'cancelamentos')}
+          ${indicador(num(r.reembolsos), 'reembolsos')}
+          ${indicador(`${r.percentual}%`, 'vendido')}
+        </div>
+        ${
+          d.alertas.length
+            ? `<div class="tm-alertas" role="status">${d.alertas
+                .map(
+                  (a) =>
+                    `<p class="tm-alerta tm-cor-borda-${a.percentual >= 100 ? 'vermelho' : a.alerta >= 90 ? 'laranja' : 'amarelo'}"><b>${esc(a.tipo)}, ${a.numero}º lote:</b> ${a.esgotado ? 'LOTE ESGOTADO — 100% VENDIDO' : `atingiu ${a.alerta}% (agora ${a.percentual}%)`}</p>`,
+                )
+                .join('')}</div>`
+            : '<p class="u-dim">Nenhum lote atingiu os alertas configurados.</p>'
+        }
+      </section>
+      <section class="secao-pagina">
+        <h3>A edição</h3>
+        <div class="mini-indicadores">
+          ${indicador(num(resumo.entradas), 'entradas na portaria')}
+          ${indicador(fmt(resumo.receita_confirmada_centavos / 100), 'receita confirmada')}
+          ${indicador(fmt(resumo.receita_liquida_centavos / 100), 'receita líquida')}
+          ${indicador(num(rec.indicacao.totais.a_retirar), 'recompensas de indicação a retirar')}
+          ${indicador(num(qtdAvisos), 'avisos para resolver')}
+        </div>
+        <div class="tm-acoes">
+          ${qtdAvisos ? '<button type="button" class="btn ghost mini" data-ir="participantes">Ver avisos em Participantes</button>' : ''}
+          <button type="button" class="btn ghost mini" data-ir="recompensas">Recompensas</button>
+        </div>
+      </section>
+      <p class="campo-ajuda">Atualizado ${esc(quando(d.atualizado_em) || '')}. Vendido = pago; pendente fica em "reservas ativas". Cores e alertas: em Lotes.</p>`;
+    for (const b of el.querySelectorAll('.tm-barra-preenche[data-pct]')) b.style.width = `${b.dataset.pct}%`;
+    ligarSeletor(el);
+    el.querySelectorAll('[data-ir]').forEach((b) =>
+      b.addEventListener('click', () => irPara(`trimundi/${b.dataset.ir}/${ed.id}`)),
+    );
+    clearTimeout(el._tmTimer);
+    el._tmTimer = setTimeout(() => {
+      if (el.isConnected && el.querySelector('[data-ir="desempenho"]'))
+        renderVisaoGeral(el, String(ed.id)).catch(() => {});
+    }, 30000);
+  }
+
+  window.renderTrimundiVisaoGeral = renderVisaoGeral;
+  window.renderTrimundiRecompensas = renderRecompensas;
+  window.renderTrimundiCampanhas = (el, resto) => renderIndicacao(el, resto, 'campanhas');
   window.renderTrimundiIndicacao = renderIndicacao;
   window.renderTrimundiEventos = renderEventos;
   window.renderTrimundiIngressos = renderIngressos;

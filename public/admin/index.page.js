@@ -779,26 +779,27 @@ const MODULOS = [
   {
     id: 'trimundi',
     nome: 'Eventos',
+    // Áreas na ordem do §9 do prompt master (reorganização de 15/11/2026).
+    // Os ids antigos ficam (`eventos`, `ingressos`, `promocoes`,
+    // `participantes`, `operadores`, `indicacao`, `desempenho`): todo link e
+    // favorito continua abrindo a mesma tela. Só aparece área com dado real —
+    // Promoters, Comissões, Relatórios e Configurações entram quando forem
+    // construídos (fases seguintes), não antes.
     abas: [
-      { id: 'eventos', nome: 'Criar evento', render: (el, resto) => window.renderTrimundiEventos(el, resto) },
-      { id: 'ingressos', nome: 'Criar ingressos', render: (el, resto) => window.renderTrimundiIngressos(el, resto) },
-      { id: 'promocoes', nome: 'Criar promoção', render: (el, resto) => window.renderTrimundiPromocoes(el, resto) },
+      { id: 'visao', nome: 'Visão geral', render: (el, resto) => window.renderTrimundiVisaoGeral(el, resto) },
+      { id: 'eventos', nome: 'Eventos', render: (el, resto) => window.renderTrimundiEventos(el, resto) },
+      { id: 'ingressos', nome: 'Ingressos', render: (el, resto) => window.renderTrimundiIngressos(el, resto) },
+      { id: 'desempenho', nome: 'Lotes', render: (el, resto) => window.renderTrimundiDesempenho(el, resto) },
+      { id: 'promocoes', nome: 'Combos', render: (el, resto) => window.renderTrimundiPromocoes(el, resto) },
+      { id: 'campanhas', nome: 'Campanhas', render: (el, resto) => window.renderTrimundiCampanhas(el, resto) },
+      { id: 'indicacao', nome: 'Indicações', render: (el, resto) => window.renderTrimundiIndicacao(el, resto) },
+      { id: 'recompensas', nome: 'Recompensas', render: (el, resto) => window.renderTrimundiRecompensas(el, resto) },
       {
         id: 'participantes',
         nome: 'Participantes',
         render: (el, resto) => window.renderTrimundiParticipantes(el, resto),
       },
-      {
-        id: 'operadores',
-        nome: 'Adicionar operador',
-        render: (el, resto) => window.renderTrimundiOperadores(el, resto),
-      },
-      { id: 'indicacao', nome: 'Indicação', render: (el, resto) => window.renderTrimundiIndicacao(el, resto) },
-      {
-        id: 'desempenho',
-        nome: 'Desempenho de vendas',
-        render: (el, resto) => window.renderTrimundiDesempenho(el, resto),
-      },
+      { id: 'operadores', nome: 'Portaria', render: (el, resto) => window.renderTrimundiOperadores(el, resto) },
     ],
   },
   { id: 'midiamostrai', nome: 'Mídia Mostraí', destaque: true, render: renderMidiaMostrai },
@@ -834,14 +835,18 @@ const SUBTITULOS = {
   meusanuncios: 'Vídeo institucional e mídias próprias da rede.',
   pendencias:
     'As mesmas filas da Visão geral, juntas numa lista só — sem os números do mês, só o que precisa de você agora.',
+  'trimundi/visao': 'O essencial da edição numa tela: vendas por lote, alertas, receita e o que pede atenção.',
   'trimundi/eventos': 'Trimundi: cada evento tem edições, e cada edição vende no próprio endereço /ticket/.',
   'trimundi/ingressos': 'Tipos de ingresso da edição, com até 10 lotes cada. O próximo lote abre sozinho.',
   'trimundi/promocoes': 'Combos: usam o estoque dos ingressos que os compõem e viram um ingresso por posição.',
   'trimundi/participantes': 'Ingressos emitidos, cortesias, pedidos e reembolsos — e os números da edição.',
-  'trimundi/operadores': 'Quem faz o check-in na portaria. O acesso para na hora ao desativar.',
-  'trimundi/desempenho': 'Vendas por lote, em tempo real: só pago conta como vendido; cores e alertas configuráveis.',
+  'trimundi/operadores': 'Portaria: quem faz o check-in. O acesso para na hora ao desativar.',
+  'trimundi/campanhas': 'Campanhas de indicação da edição: recompensa, critério, estoque, período — e quem já ganhou.',
+  'trimundi/recompensas': 'O que foi conquistado e o que já saiu: recompensas de indicação e benefícios dos ingressos.',
+  'trimundi/desempenho':
+    'Lotes: vendas por lote em tempo real — só pago conta como vendido; cores e alertas configuráveis.',
   'trimundi/indicacao':
-    'Link de indicação de cada cliente: conta o pedido pago de quem chegou por ele, e a recompensa sai enquanto houver.',
+    'Ranking de quem indica: cada cliente e operador tem um link, e só conta o pedido pago de quem chegou por ele.',
 };
 
 let RESUMO = null;
