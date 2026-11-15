@@ -2337,7 +2337,7 @@
               ) => `<tr><td><b>${esc(r.indicador)}</b> <span class="u-dim">${r.tipo === 'operador' ? 'operador' : 'cliente'}</span></td>
               <td>${esc(r.recompensa)}</td><td>${esc(r.campanha)}</td><td>${esc(quando(r.concedida_em) || '—')}</td>
               <td>${selo(SITUACAO_RECOMPENSA[r.status] || ['badge-neutro', r.status])}</td>
-              <td>${r.entregue_em ? `${esc(quando(r.entregue_em))}${r.entregue_por ? ` por ${esc(r.entregue_por)}` : ''}` : r.revogada_em ? `revogada ${esc(quando(r.revogada_em))}` : '—'}</td>
+              <td>${r.entregue_em ? `${esc(quando(r.entregue_em))}${r.entregue_por ? ` por ${esc(r.entregue_por)}` : ''}` : r.revogada_em ? `revogada ${esc(quando(r.revogada_em))}` : r.entrega === 'so_admin' ? '<span class="badge badge-info">só pelo Admin</span>' : 'portaria ou Admin'}</td>
               <td class="u-ta-r">${r.status === 'concedida' ? `<button type="button" class="btn ghost mini" data-entregar="${r.id}">Marcar entregue</button>` : ''}</td></tr>`,
             )
             .join('')}</tbody></table></div></div>`
@@ -2346,7 +2346,7 @@
                 'Elas saem quando há campanha ativa (em Campanhas).',
               )
         }
-        <p class="campo-ajuda">A recompensa do cliente é entregue na portaria, na leitura do ingresso principal dele. A revogada (indicação reembolsada antes da entrega) fica só no histórico.</p>
+        <p class="campo-ajuda">A recompensa do cliente é entregue na portaria, na leitura do ingresso principal dele. A do operador indicador (o ingresso dele é cortesia, sem pedido) é entregue só aqui, pelo Admin — a portaria não a mostra. A revogada (indicação reembolsada antes da entrega) fica só no histórico.</p>
       </section>
       <section class="secao-pagina">
         <h3>Benefícios dos ingressos</h3>

@@ -43,6 +43,10 @@ async function daEdicao(edicaoId) {
     ),
   ]);
   const conta = (s) => indicacao.filter((r) => r.status === s).length;
+  // Onde a recompensa sai (decisão do dono, 15/11/2026): a do cliente, na
+  // portaria (ingresso principal) ou pelo Admin; a do operador indicador —
+  // ingresso dele é cortesia, sem pedido — só pelo Admin.
+  for (const r of indicacao) r.entrega = r.tipo === 'operador' ? 'so_admin' : 'portaria_ou_admin';
   return {
     indicacao: {
       totais: { a_retirar: conta('concedida'), entregues: conta('entregue'), revogadas: conta('revogada') },

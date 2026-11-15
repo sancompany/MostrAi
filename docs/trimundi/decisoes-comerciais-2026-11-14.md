@@ -75,3 +75,19 @@ sem substituir os degraus de comissão.
 Cada fase: branch própria, PR em rascunho, testes automatizados, auditoria
 quando envolver dinheiro, ingresso, recompensa, permissão ou titularidade.
 Sem merge nem deploy sem autorização expressa do dono.
+
+## Decisões de 15/11/2026 (revisão dos PRs #150–#152)
+
+1. **Capacidade comercial** = soma de **todos** os lotes dos tipos ativos da
+   edição, inclusive os encerrados. A sobra não vendida dos encerrados aparece
+   à parte e não é transferida automaticamente para outro lote.
+2. **Nome do comprador na portaria:** aprovado, junto ao do titular. CPF e
+   e-mail continuam ocultos.
+3. **Recompensa de operador indicador** (ingresso dele é cortesia, sem
+   pedido): entregue **exclusivamente pelo Admin**. O sistema não a apresenta
+   como disponível para retirada na portaria (a portaria não a mostra nem a
+   entrega; a área do operador diz "entrega pelo Admin, não na portaria"; o
+   Admin → Recompensas marca "só pelo Admin").
+4. **Campanhas (§3):** antes de implementar, o desenho técnico completo vai
+   para aprovação do dono. Nada da fase começa sem ela. Padrão do projeto:
+   desenvolvimento por fases, com aprovação antes de cada etapa sensível.

@@ -89,3 +89,45 @@ test('recompensas da edição: a retirar, entregue pela portaria (com nome), rev
   );
   assert.equal(JSON.stringify(d).includes(ana.cpf), false, 'sem CPF');
 });
+
+test('recompensa de operador indicador: só pelo Admin — a portaria não mostra nem entrega', async () => {
+  const pronta = await apoio.edicaoPronta();
+  await indicacao.criarCampanha(
+    pronta.edicao.id,
+    { nome: 'Indique', recompensa: 'Copão', quantidade: 10, indicacoes_por_recompensa: 1 },
+    apoio.AUTOR,
+  );
+  // Operador ligado à própria conta TICK, com um ingresso PAGO dele também.
+  const op = await apoio.operadorLogado(srv, [pronta.edicao.id]);
+  const portaria = apoio.cliente(srv, { cookie: op.cookie });
+  const { codigo } = (await portaria.get('/ticket/api/operador')).json.indicacao;
+  const amigo = await apoio.novoPedido(pronta, apoio.itensDe(pronta.tipo, 1), {
+    comprador: apoio.pessoa('Amigo'),
+    indicacao: codigo,
+  });
+  await apoio.pagar(amigo.pedido_id);
+  const d = (await admin.get(`/admin/trimundi/edicoes/${pronta.edicao.id}/recompensas`)).json;
+  const [r] = d.indicacao.itens;
+  assert.deepEqual([r.tipo, r.status, r.entrega], ['operador', 'concedida', 'so_admin']);
+
+  // Nenhum ingresso da edição mostra essa recompensa na portaria, e a rota da
+  // portaria não a entrega.
+  const { rows } = await consultar('SELECT id, codigo_curto FROM ingressos WHERE edicao_id = $1', [pronta.edicao.id]);
+  for (const i of rows) {
+    const lido = (
+      await portaria.post('/ticket/api/checkin/consultar', { edicao_id: pronta.edicao.id, entrada: i.codigo_curto })
+    ).json.ingresso;
+    assert.deepEqual(lido.recompensas_indicacao, []);
+    const tentou = await portaria.post('/ticket/api/checkin/recompensa', {
+      edicao_id: pronta.edicao.id,
+      ingresso_id: i.id,
+      recompensa_id: r.id,
+    });
+    assert.ok([404, 409].includes(tentou.status), `portaria não entrega (${tentou.status})`);
+  }
+  // O Admin entrega, com auditoria.
+  assert.equal((await admin.post(`/admin/trimundi/recompensas/${r.id}/entregar`, {})).status, 200);
+  const depois = (await admin.get(`/admin/trimundi/edicoes/${pronta.edicao.id}/recompensas`)).json.indicacao.itens[0];
+  assert.equal(depois.status, 'entregue');
+  assert.equal(depois.entregue_por, 'Admin');
+});
