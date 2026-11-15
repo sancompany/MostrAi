@@ -2,7 +2,7 @@
 // o texto do QR; com internet, quem decide é o servidor (assinatura, edição,
 // status, uso único). Sem internet, o aparelho decide com o pacote baixado
 // (checkin-offline.js) e as entradas sobem quando a conexão volta. Dois
-// passos: consultar mostra quem é; "Confirmar entrada" registra.
+// passos: consultar mostra quem é; "VALIDAR INGRESSO" registra a entrada.
 // Leitor: BarcodeDetector quando o navegador tem; senão, jsQR (servido pelo
 // próprio site — /ticket/jsqr.js — por causa da CSP).
 (() => {
@@ -26,7 +26,7 @@
   const TITULOS = {
     valido: 'Ingresso válido',
     entrada_registrada: 'Entrada registrada',
-    ja_utilizado: 'Ingresso já utilizado',
+    ja_utilizado: 'INGRESSO JÁ UTILIZADO — ENTRADA NÃO AUTORIZADA',
     cancelado: 'Ingresso cancelado',
     bloqueado: 'Ingresso bloqueado',
     outra_edicao: 'Ingresso de outra edição',
@@ -260,25 +260,67 @@
     } catch {}
   }
 
+  // "14/11/2026 às 22:15" (horário de Brasília).
+  function dataEHora(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const fuso = { timeZone: 'America/Sao_Paulo' };
+    const data = d.toLocaleDateString('pt-BR', { ...fuso, day: '2-digit', month: '2-digit', year: 'numeric' });
+    return `${data} às ${d.toLocaleTimeString('pt-BR', { ...fuso, hour: '2-digit', minute: '2-digit' })}`;
+  }
+
+  function validadeDe(v) {
+    if (!v?.inicio_em) return 'A definir';
+    const fim = v.fim_em ? ` até ${dataEHora(v.fim_em)}` : '';
+    return `${dataEHora(v.inicio_em)}${fim}`;
+  }
+
+  // Ficha do ingresso lido: evento, validade, titular, comprador, tipo,
+  // lote, número, pulseira, combo e código (§6). Sem CPF nem e-mail.
+  function fichaDoIngresso(i, offline) {
+    const linhas = [
+      ['Evento', i.evento ? (i.edicao ? `${i.evento} — ${i.edicao}` : i.evento) : null],
+      ['Validade', i.validade ? validadeDe(i.validade) : null],
+      ['Titular', i.participante],
+      ['Comprador', i.cortesia ? 'Cortesia (emitida pelo Admin)' : offline ? null : i.comprador],
+      ['Tipo', i.categoria],
+      ['Lote', i.lote ? `${i.lote}º lote` : i.cortesia ? 'Cortesia' : null],
+      ['Número', i.numero ? `Ingresso ${i.numero}${i.numero_de ? ` de ${i.numero_de}` : ''}` : null],
+      ['Pulseira', i.pulseira],
+      ['Combo', i.promocao],
+      ['Código', i.codigo_curto],
+    ].filter(([, valor]) => valor);
+    return el(
+      'dl',
+      { class: 'ficha-ingresso' },
+      linhas.flatMap(([rotulo, valor]) => [el('dt', { text: rotulo }), el('dd', { text: valor })]),
+    );
+  }
+
   function mostrarResultado(r) {
     const caixa = $('resultado');
     const i = r.ingresso;
     const linhas = [el('div', { class: 'titulo', text: TITULOS[r.resultado] || r.mensagem })];
     if (i) {
-      linhas.push(el('p', { class: 'contador', text: i.participante }));
-      linhas.push(
-        el('p', {
-          text: [
-            i.numero ? `Ingresso ${i.numero}${i.numero_de ? ` de ${i.numero_de}` : ''}` : null,
-            i.categoria,
-            i.promocao ? `promoção ${i.promocao}` : null,
-            i.cortesia ? 'cortesia' : null,
-            i.codigo_curto || null,
-          ]
-            .filter(Boolean)
-            .join(' · '),
-        }),
-      );
+      // Já utilizado: a primeira entrada, com data, hora e operador, logo
+      // abaixo do aviso vermelho.
+      if (r.offline && i.utilizado_aqui) {
+        linhas.push(
+          el('p', { class: 'primeira-entrada', text: `Entrou por este aparelho em ${dataEHora(i.utilizado_em)}.` }),
+        );
+      } else if (r.resultado === 'ja_utilizado' && i.utilizado_em) {
+        linhas.push(
+          el('p', {
+            class: 'primeira-entrada',
+            text: `Primeira entrada: ${dataEHora(i.utilizado_em)}${i.utilizado_por ? ` · por ${i.utilizado_por}` : ''}.`,
+          }),
+        );
+        if (i.tentativas_recusadas)
+          linhas.push(
+            el('p', { class: 'discreto', text: `Tentativas recusadas registradas: ${i.tentativas_recusadas}.` }),
+          );
+      }
+      linhas.push(fichaDoIngresso(i, r.offline));
       // Evento com idade mínima: o operador confere o documento com foto.
       const edicao = operador.edicoes.find((e) => Number(e.id) === edicaoAtual());
       const idade = r.classificacao_etaria || edicao?.classificacao_etaria;
@@ -290,16 +332,9 @@
           }),
         );
       }
-      if (i.beneficios?.length) linhas.push(listaDeBeneficios(i, r.resultado));
-      if (r.offline && i.utilizado_aqui) {
-        linhas.push(el('p', { text: `Entrou por este aparelho em ${dataCurta(i.utilizado_em)}.` }));
-      } else if (r.resultado === 'ja_utilizado' && i.utilizado_em) {
-        linhas.push(
-          el('p', {
-            text: `Entrou em ${dataCurta(i.utilizado_em)}${i.utilizado_por ? `, por ${i.utilizado_por}` : ''}.`,
-          }),
-        );
-      }
+      if (i.beneficios?.length) linhas.push(listaDeEntregas(i, r.resultado, 'beneficio'));
+      if (i.recompensas_indicacao?.length) linhas.push(listaDeEntregas(i, r.resultado, 'recompensa'));
+      if (i.combo?.ingressos?.length > 1) linhas.push(listaDoCombo(i.combo));
       if ((r.resultado === 'bloqueado' || r.resultado === 'cancelado') && i.motivo)
         linhas.push(el('p', { text: `Motivo: ${i.motivo}` }));
     }
@@ -312,15 +347,15 @@
               ? 'Validado sem internet: este código não está nos dados baixados (ingresso emitido depois, ou falso). Não libere; confira quando a internet voltar.'
               : r.resultado === 'entrada_registrada'
                 ? 'Registrada sem internet: sobe para o servidor quando a conexão voltar.'
-                : `Validado sem internet${r.assinatura === 'conferida' ? ' · assinatura do QR conferida' : ''}. Benefícios só com internet.`,
+                : `Validado sem internet${r.assinatura === 'conferida' ? ' · assinatura do QR conferida' : ''}. Benefícios, recompensas e comprador só com internet.`,
         }),
       );
     }
     const acoes = el('div', { class: 'acoes' });
     if (r.resultado === 'valido') {
-      const confirmar = el('button', { class: 'btn primario grande', type: 'button', text: 'Confirmar entrada' });
-      confirmar.addEventListener('click', () => (r.offline ? confirmarLocal(i.id) : confirmarEntrada(confirmar, i.id)));
-      acoes.append(confirmar);
+      const validar = el('button', { class: 'btn validar grande', type: 'button', text: 'VALIDAR INGRESSO' });
+      validar.addEventListener('click', () => (r.offline ? confirmarLocal(i.id) : confirmarEntrada(validar, i.id)));
+      acoes.append(validar);
       acoes.append(el('button', { class: 'btn', type: 'button', text: 'Cancelar', onclick: proximo }));
     } else {
       acoes.append(el('button', { class: 'btn primario grande', type: 'button', text: 'Próximo', onclick: proximo }));
@@ -332,36 +367,81 @@
     avisar(r.resultado);
   }
 
-  // Benefícios do ingresso com a entrega na hora (uma vez só, registrada).
-  function listaDeBeneficios(i, resultado) {
-    const podeEntregar = ['valido', 'entrada_registrada', 'ja_utilizado'].includes(resultado);
+  // Os ingressos do mesmo combo, um a um: cada QR é validado sozinho; aqui só
+  // se vê quem já entrou.
+  function listaDoCombo(combo) {
+    const situacao = (x) =>
+      x.status !== 'valido' ? x.status : x.utilizado_em ? `entrou ${dataCurta(x.utilizado_em)}` : 'não entrou';
     return el(
-      'ul',
-      { class: 'beneficios' },
-      i.beneficios.map((b) => {
-        const item = el('li', { class: 'chip', text: b.nome });
-        if (b.resgatado_em) {
-          item.append(` — entregue ${dataCurta(b.resgatado_em)}${b.resgatado_por ? ` por ${b.resgatado_por}` : ''}`);
-        } else if (podeEntregar) {
-          const botao = el('button', { class: 'btn mini', type: 'button', text: 'Entregar' });
-          botao.addEventListener('click', async () => {
-            try {
-              const r = await enviando(botao, 'Registrando...', () =>
-                chamar('/ticket/api/checkin/beneficio', {
-                  metodo: 'POST',
-                  corpo: { edicao_id: edicaoAtual(), ingresso_id: i.id, beneficio_id: b.id },
-                }),
-              );
-              b.resgatado_em = r.resgatado_em;
-              botao.replaceWith(` — ${r.resultado === 'ja_resgatado' ? 'já tinha sido entregue' : 'entregue agora'}`);
-            } catch (err) {
-              $('msgCamera').textContent = err.message;
-            }
-          });
-          item.append(' ', botao);
-        }
-        return item;
-      }),
+      'div',
+      { class: 'combo-ingressos' },
+      el('p', { class: 'rotulo', text: `Ingressos do combo ${combo.nome} neste pedido` }),
+      el(
+        'ul',
+        {},
+        combo.ingressos.map((x) =>
+          el('li', {
+            class: x.este ? 'este' : '',
+            text: [
+              x.numero ? `${x.numero}${x.numero_de ? `/${x.numero_de}` : ''}` : null,
+              x.participante,
+              x.categoria,
+              situacao(x),
+              x.este ? 'este ingresso' : null,
+            ]
+              .filter(Boolean)
+              .join(' · '),
+          }),
+        ),
+      ),
+    );
+  }
+
+  // Benefícios do ingresso e recompensas de indicação (no ingresso principal
+  // de quem indicou), com "Confirmar entrega": uma vez só, registrada com o
+  // operador e a hora, independente da entrada.
+  function listaDeEntregas(i, resultado, tipo) {
+    const podeEntregar = ['valido', 'entrada_registrada', 'ja_utilizado'].includes(resultado);
+    const itens = tipo === 'beneficio' ? i.beneficios : i.recompensas_indicacao;
+    const titulo = tipo === 'beneficio' ? 'Benefícios do ingresso' : 'Recompensas de indicação';
+    return el(
+      'div',
+      { class: 'entregas' },
+      el('p', { class: 'rotulo', text: titulo }),
+      el(
+        'ul',
+        { class: 'beneficios' },
+        itens.map((b) => {
+          const quando = b.resgatado_em || b.entregue_em;
+          const quem = b.resgatado_por || b.entregue_por;
+          const item = el('li', { class: 'chip', text: b.nome });
+          if (quando) {
+            item.append(` — entregue em ${dataEHora(quando)}${quem ? ` por ${quem}` : ''}`);
+          } else if (podeEntregar) {
+            const botao = el('button', { class: 'btn mini', type: 'button', text: 'CONFIRMAR ENTREGA' });
+            botao.addEventListener('click', async () => {
+              try {
+                const corpo =
+                  tipo === 'beneficio'
+                    ? { edicao_id: edicaoAtual(), ingresso_id: i.id, beneficio_id: b.id }
+                    : { edicao_id: edicaoAtual(), ingresso_id: i.id, recompensa_id: b.id };
+                const r = await enviando(botao, 'Registrando...', () =>
+                  chamar(`/ticket/api/checkin/${tipo}`, { metodo: 'POST', corpo }),
+                );
+                const em = r.resgatado_em || r.entregue_em;
+                if (tipo === 'beneficio') b.resgatado_em = em;
+                else b.entregue_em = em;
+                const ja = r.resultado === 'ja_resgatado' || r.resultado === 'ja_entregue';
+                botao.replaceWith(` — ${ja ? 'já tinha sido entregue' : 'entregue agora'} (${dataEHora(em)})`);
+              } catch (err) {
+                $('msgCamera').textContent = err.message;
+              }
+            });
+            item.append(' ', botao);
+          }
+          return item;
+        }),
+      ),
     );
   }
 
@@ -427,8 +507,11 @@
       mostrarResultado(r);
       if (r.resultado === 'entrada_registrada') off.marcarUtilizado(edicaoAtual(), ingressoId);
       atualizarContador();
-      // Com benefício a entregar, a tela fica parada até o operador seguir.
-      const pendente = r.ingresso?.beneficios?.some((b) => !b.resgatado_em);
+      // Com benefício ou recompensa a entregar, a tela fica parada até o
+      // operador seguir.
+      const pendente =
+        r.ingresso?.beneficios?.some((b) => !b.resgatado_em) ||
+        r.ingresso?.recompensas_indicacao?.some((b) => !b.entregue_em);
       if (r.resultado === 'entrada_registrada' && lendo && !pendente) setTimeout(proximo, 1800);
     } catch (err) {
       $('msgCamera').textContent = err.message;

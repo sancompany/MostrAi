@@ -132,7 +132,8 @@ router.post('/ticket/api/sair', (req, res) => {
 });
 
 router.post('/ticket/api/checkin/consultar', exigirOperador, ritmo, async (req, res) => {
-  res.json(await checkin.consultarIngresso(req.operador, req.body?.edicao_id, req.body?.entrada));
+  const aparelho = String(req.get('user-agent') || '').slice(0, 120);
+  res.json(await checkin.consultarIngresso(req.operador, req.body?.edicao_id, req.body?.entrada, { aparelho }));
 });
 
 router.post('/ticket/api/checkin/confirmar', exigirOperador, ritmo, async (req, res) => {
@@ -152,6 +153,13 @@ router.post('/ticket/api/checkin/beneficio', exigirOperador, ritmo, async (req, 
 
 // Check-in offline: o pacote da edição (baixado antes de perder a conexão)
 // e a sincronização das entradas registradas sem internet.
+// Recompensa de indicação entregue na leitura do ingresso principal (item H).
+router.post('/ticket/api/checkin/recompensa', exigirOperador, ritmo, async (req, res) => {
+  res.json(
+    await checkin.entregarRecompensa(req.operador, req.body?.edicao_id, req.body?.ingresso_id, req.body?.recompensa_id),
+  );
+});
+
 router.get('/ticket/api/checkin/pacote', exigirOperador, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(await require('../checkin-offline').pacote(req.operador, req.query.edicao));

@@ -806,7 +806,7 @@
           <div class="secao-acoes">${soLeitura ? '' : `<button type="button" class="btn ghost mini" data-editar-tipo="${t.id}">Editar</button>`}</div>
         </div>
         ${t.descricao ? `<p class="u-dim">${esc(t.descricao)}</p>` : ''}
-        <p class="u-dim">${t.limite_por_comprador ? `Até ${t.limite_por_comprador} por comprador. ` : ''}${t.beneficios.length ? `Benefícios: ${t.beneficios.map((b) => esc(b.nome)).join(', ')}.` : ''}
+        <p class="u-dim">${t.limite_por_comprador ? `Até ${t.limite_por_comprador} por comprador. ` : ''}${t.pulseira ? `Pulseira: ${esc(t.pulseira)}. ` : ''}${t.beneficios.length ? `Benefícios: ${t.beneficios.map((b) => esc(b.nome)).join(', ')}.` : ''}
           Disponível agora: <b>${num(t.disponivel_agora)}</b>.</p>
         <div class="tabela-caixa"><div class="rolagem"><table>
           <thead><tr><th>Lote</th><th class="num">Preço</th><th class="num">Quantidade</th><th class="num">Vendidos</th><th class="num">Reservados</th><th class="num">Disponíveis</th><th>Benefício</th><th>Período</th><th>Situação</th><th></th></tr></thead>
@@ -942,6 +942,7 @@
           <div class="campos">
             <div class="campo-grupo"><label for="tmTipoNome">Nome do ingresso</label><input id="tmTipoNome" name="nome" maxlength="60" value="${esc(tipo?.nome ?? '')}" required></div>
             <div class="campo-grupo"><label for="tmTipoLimite">Limite por comprador (opcional)</label><input id="tmTipoLimite" name="limite" type="number" min="1" max="20" value="${tipo?.limite_por_comprador ?? ''}"></div>
+            <div class="campo-grupo"><label for="tmTipoPulseira">Pulseira (opcional)</label><input id="tmTipoPulseira" name="pulseira" maxlength="40" placeholder="Cor ou código, ex.: Azul" value="${esc(tipo?.pulseira ?? '')}"><span class="campo-ajuda">Aparece para a portaria na leitura do ingresso.</span></div>
           </div>
           <div class="campo-grupo"><label for="tmTipoDesc">Descrição</label><textarea id="tmTipoDesc" name="descricao" rows="2" maxlength="500">${esc(tipo?.descricao ?? '')}</textarea></div>
           ${alternar({ nome: 'ativo', marcado: tipo ? tipo.ativo : true, texto: 'Ativo' })}
@@ -992,6 +993,7 @@
         nome: f.nome.value,
         descricao: f.descricao.value,
         limite_por_comprador: f.limite.value === '' ? null : f.limite.value,
+        pulseira: f.pulseira.value.trim() || null,
         ativo: f.ativo.checked,
         beneficios: [...dlg.querySelectorAll('[name="beneficio"]:checked')].map((c) => Number(c.value)),
         lotes: lista,

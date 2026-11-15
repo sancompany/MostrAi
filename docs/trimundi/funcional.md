@@ -463,6 +463,29 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
   - Quem ativou antes com senha só da portaria segue entrando em
     `/ticket/entrar` até receber um código novo e ativar na conta.
   - Sair da portaria encerra a sessão inteira (é a mesma conta).
+- **RN-T39 Portaria completa** (decisões do dono de 14/11/2026, itens F, G
+  e H; §6 do prompt master).
+  - A leitura mostra: evento, validade (data e horário da edição), titular,
+    comprador (cortesia: "emitida pelo Admin"), tipo, lote, número
+    ("Ingresso 2 de 4"), pulseira do tipo (campo opcional no Admin, cor ou
+    código), combo, código, benefícios e recompensas de indicação. Nunca CPF
+    nem e-mail.
+  - Válido: botão azul "VALIDAR INGRESSO" registra a entrada (única por
+    ingresso, como sempre).
+  - Já utilizado: aviso vermelho "INGRESSO JÁ UTILIZADO — ENTRADA NÃO
+    AUTORIZADA", com a data, a hora e o operador da primeira entrada. Cada
+    tentativa recusada (já utilizado, cancelado, bloqueado) fica gravada já na
+    leitura, com operador e hora; a mesma leitura repetida pelo mesmo
+    operador em 10 s conta uma vez.
+  - Combo: os ingressos do mesmo combo no pedido aparecem um a um, com quem
+    já entrou; cada QR continua validado sozinho.
+  - Benefício do ingresso e recompensa de indicação: "CONFIRMAR ENTREGA",
+    uma vez só, independente da entrada, com operador e hora. A recompensa
+    de indicação aparece só no ingresso principal da conta que indicou (o
+    mesmo da "Minha conta"); revogada (indicação reembolsada antes da
+    entrega) não aparece. Entrega pela portaria entra na auditoria.
+  - Sem internet: ficha com tipo, lote, número, pulseira e validade (o
+    comprador, os benefícios e as recompensas só com internet).
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.
