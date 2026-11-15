@@ -468,8 +468,9 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
   - A leitura mostra: evento, validade (data e horário da edição), titular,
     comprador (cortesia: "emitida pelo Admin"), tipo, lote, número
     ("Ingresso 2 de 4"), pulseira do tipo (campo opcional no Admin, cor ou
-    código), combo, código, benefícios e recompensas de indicação. Nunca CPF
-    nem e-mail.
+    código), combo, código, número de indicados (no ingresso principal da
+    conta: pessoas com compra confirmada pelo link dela nesta edição),
+    benefícios e recompensas de indicação. Nunca CPF nem e-mail.
   - Válido: botão azul "VALIDAR INGRESSO" registra a entrada (única por
     ingresso, como sempre).
   - Já utilizado: aviso vermelho "INGRESSO JÁ UTILIZADO — ENTRADA NÃO
@@ -479,7 +480,9 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     operador em 10 s conta uma vez.
   - Combo: os ingressos do mesmo combo no pedido aparecem um a um, com quem
     já entrou; cada QR continua validado sozinho.
-  - Benefício do ingresso e recompensa de indicação: "CONFIRMAR ENTREGA",
+  - "RECOMPENSAS DE <TITULAR>": benefício do ingresso e recompensa de
+    indicação, cada um "LIBERADO" ou "JÁ RETIRADA" (data, hora, quem), com
+    "CONFIRMAR ENTREGA",
     uma vez só, independente da entrada, com operador e hora. A recompensa
     de indicação aparece só no ingresso principal da conta que indicou (o
     mesmo da "Minha conta"); revogada (indicação reembolsada antes da

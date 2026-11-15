@@ -218,6 +218,7 @@ test('recompensa de indicação: aparece só no ingresso principal de quem indic
   const p = await portaria(pronta);
 
   const lido = await p.ler(principal.qr);
+  assert.equal(lido.json.ingresso.indicados, 1, 'número de indicados com compra confirmada');
   const [rec] = lido.json.ingresso.recompensas_indicacao;
   assert.equal(lido.json.ingresso.recompensas_indicacao.length, 1);
   assert.deepEqual([rec.nome, rec.entregue_em], ['Copão', null]);
@@ -228,6 +229,7 @@ test('recompensa de indicação: aparece só no ingresso principal de quem indic
 
   // No outro ingresso do pedido, não aparece e não se entrega.
   assert.deepEqual((await p.ler(outro.qr)).json.ingresso.recompensas_indicacao, []);
+  assert.equal((await p.ler(outro.qr)).json.ingresso.indicados, null, 'indicados só no principal');
   const errado = await p.entregar(outro.id, rec.id);
   assert.equal(errado.status, 409);
 
@@ -242,6 +244,10 @@ test('recompensa de indicação: aparece só no ingresso principal de quem indic
   assert.equal(depois.recompensas_indicacao[0].entregue_por, p.op.nome);
   assert.ok(depois.recompensas_indicacao[0].entregue_em);
   assert.equal(depois.utilizado_em, null, 'entregar não registra entrada');
+  // Validar o principal (dentro da transação da entrada) traz os indicados.
+  const validado = await p.validar(principal.id);
+  assert.equal(validado.json.resultado, 'entrada_registrada');
+  assert.equal(validado.json.ingresso.indicados, 1);
   // No banco: entregue pelo operador, com auditoria.
   const { rows } = await consultar('SELECT status, entregue_por FROM recompensas_indicacao WHERE id = $1', [rec.id]);
   assert.deepEqual([rows[0].status, rows[0].entregue_por], ['entregue', `operador:${p.op.id}`]);
@@ -313,4 +319,62 @@ test('pulseira do tipo: opcional, até 40 caracteres, some quando apagada, com a
     [String(pronta.tipo.id)],
   );
   assert.ok(rows.some((r) => r.detalhe.campos.includes('pulseira')));
+});
+
+test('duas portarias ao mesmo tempo: o mesmo prêmio é entregue uma vez só (benefício e recompensa)', async () => {
+  const pronta = await apoio.edicaoPronta();
+  const catalogoBenef = await catalogo.criarBeneficio(pronta.edicao.id, { nome: 'Copão' }, apoio.AUTOR);
+  await catalogo.atualizarTipo(pronta.tipo.id, { beneficios: [catalogoBenef.id] }, apoio.AUTOR);
+  await indicacao.criarCampanha(
+    pronta.edicao.id,
+    { nome: 'Indique', recompensa: 'Pulseira exclusiva', quantidade: 10, indicacoes_por_recompensa: 1 },
+    apoio.AUTOR,
+  );
+  const ana = apoio.pessoa('Ana');
+  const contaAna = apoio.cliente(srv, { cookie: await apoio.entrarCliente(srv, ana) });
+  const { codigo } = (await contaAna.get('/ticket/api/conta')).json.indicacao;
+  const dela = await apoio.novoPedido(pronta, apoio.itensDe(pronta.tipo, 1), {
+    comprador: ana,
+    participantes: [{ conta: true }],
+  });
+  await apoio.pagar(dela.pedido_id);
+  const bia = await apoio.novoPedido(pronta, apoio.itensDe(pronta.tipo, 1), {
+    comprador: apoio.pessoa('Bia'),
+    indicacao: codigo,
+  });
+  await apoio.pagar(bia.pedido_id);
+  const [ing] = await ingressosDo(dela.pedido_id);
+  const portarias = [await portaria(pronta), await portaria(pronta), await portaria(pronta)];
+  const lido = (await portarias[0].ler(ing.qr)).json.ingresso;
+  const [benef] = lido.beneficios;
+  const [rec] = lido.recompensas_indicacao;
+  assert.ok(benef && rec);
+
+  const recompensas = await Promise.all(portarias.map((x) => x.entregar(ing.id, rec.id)));
+  assert.deepEqual(
+    recompensas.map((r) => r.status),
+    [200, 200, 200],
+  );
+  assert.equal(recompensas.filter((r) => r.json.resultado === 'entregue').length, 1, 'uma entrega só');
+  assert.equal(recompensas.filter((r) => r.json.resultado === 'ja_entregue').length, 2);
+
+  const beneficios = await Promise.all(
+    portarias.map((x) =>
+      apoio.cliente(srv, { cookie: x.op.cookie }).post('/ticket/api/checkin/beneficio', {
+        edicao_id: pronta.edicao.id,
+        ingresso_id: ing.id,
+        beneficio_id: benef.id,
+      }),
+    ),
+  );
+  assert.equal(beneficios.filter((r) => r.json.resultado === 'resgatado').length, 1, 'um resgate só');
+  const { rows } = await consultar(
+    `SELECT count(*)::int AS n FROM auditoria WHERE acao = 'recompensa_entregue' AND entidade_id = $1`,
+    [String(rec.id)],
+  );
+  assert.equal(rows[0].n, 1, 'uma linha de auditoria');
+  const { rows: entradas } = await consultar('SELECT count(*)::int AS n FROM checkins WHERE ingresso_id = $1', [
+    ing.id,
+  ]);
+  assert.equal(entradas[0].n, 0, 'entregar não registra entrada');
 });
