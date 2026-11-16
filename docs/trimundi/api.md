@@ -194,6 +194,13 @@ scripts das páginas ficam em `public/ticket/`.
 | `GET /ticket/recuperar` | página T11 |
 | `GET /ticket/dev/pagamento/:id`, `POST /ticket/api/dev/pagamento/:id` | só com `TRIMUNDI_PAGAMENTO_SIMULADO=1` fora de produção (404 no resto) |
 
+### Promoter na conta (RN-T51)
+
+| Método e rota | O que faz |
+|---|---|
+| `GET /ticket/api/conta/promoter` | Conta logada: `{ promoter, candidatura_aberta, links: { venda, recrutamento } \| null }`. `promoter` é `null`, só a situação (candidato, recusado) ou o painel completo (ativo, suspenso, encerrado). Sem dado de comprador |
+| `POST /ticket/api/conta/promoter` | `{ recrutador? }` (código do link de convite). **409 enquanto `TRIMUNDI_PROMOTERS_CANDIDATURA` não for `1`**. 201 para o pedido novo; 200 se já existia |
+
 ## Home pública — `/tic`
 
 | Método e rota | O que faz |

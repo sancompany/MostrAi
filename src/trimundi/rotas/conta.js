@@ -113,6 +113,32 @@ router.get('/ticket/api/conta', exigirCliente, async (req, res) => {
   res.json(await clientes.painel(req.clienteTrimundi));
 });
 
+// Promoter (RN-T51): o painel de quem é promoter e a candidatura — esta só
+// com as candidaturas abertas (TRIMUNDI_PROMOTERS_CANDIDATURA=1, depois do
+// termo, P-8). Nada de comprador aparece no painel.
+router.get('/ticket/api/conta/promoter', exigirCliente, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const promoters = require('../promoters');
+  const painel = await promoters.painelDaConta(req.clienteTrimundi.id);
+  const site = require('../config').urlDoSite();
+  const codigo = painel.promoter?.situacao === 'ativo' ? painel.promoter.codigo : null;
+  res.json({
+    ...painel,
+    candidatura_aberta: promoters.candidaturaAberta(),
+    links: codigo
+      ? { venda: `${site}/tic/eventos?ind=${codigo}`, recrutamento: `${site}/ticket/conta?promoter=${codigo}` }
+      : null,
+  });
+});
+router.post('/ticket/api/conta/promoter', exigirCliente, async (req, res) => {
+  const r = await require('../promoters').candidatar(
+    req.clienteTrimundi.id,
+    { recrutador: req.body?.recrutador },
+    { pelaConta: true },
+  );
+  res.status(r.novo ? 201 : 200).json({ situacao: r.situacao, novo: r.novo });
+});
+
 // "Continuar pagamento" de um pedido da própria conta.
 router.post('/ticket/api/conta/pedidos/:id/link', exigirCliente, async (req, res) => {
   res.set('Cache-Control', 'no-store');

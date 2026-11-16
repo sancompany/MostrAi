@@ -275,11 +275,18 @@ async function livroDaEdicao(promoterId, edicaoId) {
 }
 
 // ------------------------------------------------------- candidatura (conta)
+// Fechada por padrão: abre com TRIMUNDI_PROMOTERS_CANDIDATURA=1, decisão do
+// dono depois do termo do promoter (P-8). Fechada, ninguém novo entra pela
+// conta; quem já é promoter segue com o painel.
+const candidaturaAberta = () => process.env.TRIMUNDI_PROMOTERS_CANDIDATURA === '1';
+
 // A conta (e-mail confirmado) pede para ser promoter; opcionalmente pelo
 // link de recrutamento de alguém (código do link do recrutador). Um
 // recrutador por pessoa, nunca a própria conta; sem cadeia (só o direto
 // ganha o crédito).
-async function candidatar(clienteId, { recrutador } = {}) {
+async function candidatar(clienteId, { recrutador } = {}, { pelaConta = false } = {}) {
+  if (pelaConta && !candidaturaAberta())
+    throw erro(409, 'As candidaturas a promoter ainda não estão abertas. Fale com a organização.');
   return emTransacao(async (c) => {
     const { rows: cl } = await c.query('SELECT id, email_confirmado_em, anonimizado_em FROM clientes WHERE id = $1', [
       clienteId,
@@ -575,6 +582,7 @@ async function painelDaConta(clienteId) {
 
 module.exports = {
   META,
+  candidaturaAberta,
   situacaoDaVenda,
   SELOS,
   percentualDaVenda,

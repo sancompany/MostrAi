@@ -429,6 +429,7 @@
   }
 
   window.trimundi = {
+    botoesDoLink,
     indiqueEAcompanhe,
     visitante,
     guardarIndicacaoGeral,
