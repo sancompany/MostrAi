@@ -121,6 +121,7 @@ async function montar(cliente, ed, pedido, { clienteId = null } = {}) {
           campanha_nome: p.campanha?.nome ?? null,
           relampago: Boolean(p.campanha?.relampago),
           preco_original_centavos: p.campanha ? Number(parte.lote.preco_centavos) : null,
+          preteridas: p.preteridas || [],
           descricao: (p.campanha ? `${lote} · ${p.campanha.nome}` : lote).slice(0, 160),
           quantidade: p.quantidade,
           preco_unitario_centavos: p.preco,
@@ -458,6 +459,15 @@ async function criar(corpo, contexto = {}) {
           l.preco_original_centavos ?? null,
         ],
       );
+      // P2: a promoção que valeu e as que ficaram de fora neste item.
+      for (const x of l.preteridas || []) {
+        await cliente.query(
+          `INSERT INTO campanha_disputas (pedido_item_id, vencedora_id, preterida_id, preco_vencedora_centavos,
+                                          preco_preterida_centavos)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [pi[0].id, l.campanha_id, x.campanha_id, l.preco_unitario_centavos, x.preco],
+        );
+      }
       for (const [posicao, r] of l.reservas.entries()) {
         const p = pessoas[vaga++];
         const { rows: part } = await cliente.query(

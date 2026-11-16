@@ -650,17 +650,26 @@ function descontosDoLote(vigentes, catId, lote) {
 
 // Divide `quantidade` ingressos de UM lote em partes com e sem desconto. Gasta
 // o `cabe` das campanhas (o chamador segura a trava da edição na criação).
+// Cada parte com desconto leva as promoções PRETERIDAS (P2, decisão de
+// 16/11/2026: o histórico guarda qual venceu e qual deixou de conceder): as
+// que alcançavam o mesmo lote e ainda tinham quantidade, mas perderam no
+// preço ou no desempate.
 function repartirComDesconto(vigentes, catId, lote, quantidade) {
   const partes = [];
   let resta = quantidade;
-  for (const { campanha, preco } of descontosDoLote(vigentes, catId, lote)) {
+  const candidatas = descontosDoLote(vigentes, catId, lote);
+  for (const [i, { campanha, preco }] of candidatas.entries()) {
     if (!resta) break;
     const n = Math.min(resta, campanha.cabe);
     if (n <= 0) continue;
+    const preteridas = candidatas
+      .slice(i + 1)
+      .filter((x) => x.campanha.cabe > 0)
+      .map((x) => ({ campanha_id: Number(x.campanha.id), preco: x.preco }));
     campanha.cabe -= n;
     campanha.restam -= n;
     resta -= n;
-    partes.push({ quantidade: n, preco, campanha });
+    partes.push({ quantidade: n, preco, campanha, preteridas });
   }
   if (resta) partes.push({ quantidade: resta, preco: Number(lote.preco_centavos), campanha: null });
   return partes;
@@ -670,25 +679,39 @@ function repartirComDesconto(vigentes, catId, lote, quantidade) {
 // promoção ainda estiver aberta (ativa, na janela) e com quantidade
 // promocional para ela — a mesma regra do lote. Senão, "pago sem vaga".
 // Roda sob a trava da edição (pagamentos.aplicar), como a criação do pedido.
-async function descontoAindaCabe(cliente, pedidoId) {
+async function faltaNoDesconto(cliente, pedidoId) {
   const { rows } = await cliente.query(
     `SELECT r.campanha_id, count(*)::int AS n FROM reservas r
-      WHERE r.pedido_id = $1 AND r.campanha_id IS NOT NULL GROUP BY r.campanha_id`,
+      WHERE r.pedido_id = $1 AND r.campanha_id IS NOT NULL GROUP BY r.campanha_id ORDER BY r.campanha_id`,
     [pedidoId],
   );
-  if (!rows.length) return true;
+  if (!rows.length) return null;
   const ids = rows.map((r) => Number(r.campanha_id));
   const { rows: cs } = await cliente.query(
-    `SELECT id, quantidade_promocional FROM campanhas WHERE id = ANY($1::bigint[]) AND status = 'ativa'
-        AND (inicio IS NULL OR inicio <= now()) AND (fim IS NULL OR fim > now())`,
+    `SELECT id, nome, quantidade_promocional,
+            (status = 'ativa' AND (inicio IS NULL OR inicio <= now()) AND (fim IS NULL OR fim > now())) AS aberta
+       FROM campanhas WHERE id = ANY($1::bigint[])`,
     [ids],
   );
-  if (cs.length !== ids.length) return false;
   const usos = await usosDe(cliente, ids);
-  return rows.every((r) => {
+  for (const r of rows) {
     const c = cs.find((x) => Number(x.id) === Number(r.campanha_id));
-    return (usos.get(Number(r.campanha_id)) || 0) + r.n <= c.quantidade_promocional;
-  });
+    if (!c.aberta)
+      return {
+        motivo: 'promocao_encerrada',
+        campanha_id: c.id,
+        detalhe: `${c.nome}: fora do prazo, pausada ou encerrada`,
+      };
+    const restam = c.quantidade_promocional - (usos.get(Number(c.id)) || 0);
+    if (restam < r.n) {
+      return {
+        motivo: 'promocao_sem_quantidade',
+        campanha_id: c.id,
+        detalhe: `${c.nome}: restavam ${Math.max(0, restam)} de ${r.n}`,
+      };
+    }
+  }
+  return null;
 }
 
 function lerCampanha(d = {}, parcial = false) {
@@ -1273,8 +1296,52 @@ async function detalhe(id) {
     [id],
   );
   const extra =
-    c.modalidade === 'desconto' ? { usados: await usosDoDesconto({ query: (s, p) => consultar(s, p) }, id) } : {};
+    c.modalidade === 'desconto'
+      ? { usados: await usosDoDesconto({ query: (s, p) => consultar(s, p) }, id), ...(await vendasDoDesconto(id)) }
+      : {};
+  // P2: brinde de primeiros N que ficou de fora por esta campanha (ou o
+  // contrário) já aparece nas posições ("valeu <campanha>").
   return { ...c, ...extra, em_uso: await emUso({ query: (s, p) => consultar(s, p) }, id), posicoes, premios };
+}
+
+// Promoção de preço no detalhe do Admin: cada unidade (reserva) com o preço
+// cheio e o pago, e o histórico das disputas (P2) — contra outras promoções de
+// preço (campanha_disputas) e contra brindes de primeiros N (posições em que
+// esta foi a vencedora). Sem CPF nem e-mail.
+async function vendasDoDesconto(id) {
+  const { rows: vendas } = await consultar(
+    `SELECT upper(left(p.id::text, 8)) AS pedido, cat.nome AS tipo, pi.preco_original_centavos, r.valor_centavos,
+            CASE WHEN i.id IS NOT NULL AND i.status = 'cancelado' THEN 'reembolsado'
+                 WHEN i.id IS NOT NULL THEN 'vendido'
+                 WHEN p.status = 'aguardando_pagamento' AND p.reserva_expira_em > now() THEN 'reservado'
+                 WHEN p.status = 'pago_sem_vaga' THEN 'pago_sem_vaga'
+                 ELSE 'devolvido_ao_estoque' END AS situacao,
+            p.criado_em AS em, i.codigo_curto
+       FROM reservas r JOIN pedidos p ON p.id = r.pedido_id JOIN pedido_itens pi ON pi.id = r.pedido_item_id
+       JOIN categorias cat ON cat.id = r.categoria_id LEFT JOIN ingressos i ON i.reserva_id = r.id
+      WHERE r.campanha_id = $1 ORDER BY p.criado_em DESC, r.id LIMIT 2000`,
+    [id],
+  );
+  // Disputas contam só unidades vendidas (ingresso emitido).
+  const { rows: disputas } = await consultar(
+    `SELECT CASE WHEN d.vencedora_id = $1 THEN 'venceu' ELSE 'perdeu' END AS lado,
+            o.nome AS outra, count(i.id)::int AS unidades
+       FROM campanha_disputas d JOIN reservas r ON r.pedido_item_id = d.pedido_item_id
+       JOIN ingressos i ON i.reserva_id = r.id
+       JOIN campanhas o ON o.id = CASE WHEN d.vencedora_id = $1 THEN d.preterida_id ELSE d.vencedora_id END
+      WHERE d.vencedora_id = $1 OR d.preterida_id = $1
+      GROUP BY 1, 2 ORDER BY 1 DESC, 2`,
+    [id],
+  );
+  const { rows: brindes } = await consultar(
+    `SELECT c.nome AS outra, count(*)::int AS unidades FROM campanha_posicoes po JOIN campanhas c ON c.id = po.campanha_id
+      WHERE po.vencedora_id = $1 AND po.resultado = 'nao_acumulavel' GROUP BY c.nome ORDER BY c.nome`,
+    [id],
+  );
+  return {
+    vendas,
+    disputas: [...disputas, ...brindes.map((b) => ({ lado: 'venceu_brinde', outra: b.outra, unidades: b.unidades }))],
+  };
 }
 
 // ------------------------------------------------ portaria e Minha Conta (PR 3)
@@ -1592,7 +1659,7 @@ module.exports = {
   paraVitrine,
   descontosDoLote,
   repartirComDesconto,
-  descontoAindaCabe,
+  faltaNoDesconto,
   usosDoDesconto,
   premiosDoIngresso,
   daConta,

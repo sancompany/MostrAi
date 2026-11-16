@@ -511,3 +511,177 @@ test('compra que atravessa dois lotes: a mesma quantidade promocional vale para 
   ]);
   assert.equal(await usados(c), 3);
 });
+
+// ------------------------------------------------------------------ P2 e P5
+// Decisões do dono de 16/11/2026: P2 com histórico de quem venceu e quem
+// deixou de conceder; P5 com fila de exceções no Admin (pedido, comprador,
+// valor, campanha, motivo, conciliação e histórico), sem emitir ingresso nem
+// consumir estoque.
+
+test('P2 — histórico das disputas: a promoção que valeu e a que deixou de conceder ficam gravadas (e não se apagam)', async () => {
+  const pronta = await edicao();
+  const melhor = await desconto(pronta, { nome: 'Melhor', desconto_valor: 40, quantidade_promocional: 5 });
+  const pior = await desconto(pronta, { nome: 'Pior', desconto_valor: 20, quantidade_promocional: 5 });
+  const r = await pedido(pronta, 2);
+  await pagar(r.pedido_id);
+  const { rows } = await consultar(
+    `SELECT d.* FROM campanha_disputas d JOIN pedido_itens pi ON pi.id = d.pedido_item_id WHERE pi.pedido_id = $1`,
+    [r.pedido_id],
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(Number(rows[0].vencedora_id), Number(melhor.id));
+  assert.equal(Number(rows[0].preterida_id), Number(pior.id));
+  assert.deepEqual([Number(rows[0].preco_vencedora_centavos), Number(rows[0].preco_preterida_centavos)], [6000, 8000]);
+  await assert.rejects(consultar('DELETE FROM campanha_disputas WHERE id = $1', [rows[0].id]));
+  await assert.rejects(
+    consultar('UPDATE campanha_disputas SET preterida_id = vencedora_id WHERE id = $1', [rows[0].id]),
+  );
+  const dm = await campanhas.detalhe(melhor.id);
+  assert.deepEqual(dm.disputas, [{ lado: 'venceu', outra: 'Pior', unidades: 2 }]);
+  assert.equal(dm.vendas.length, 2);
+  assert.ok(dm.vendas.every((v) => v.situacao === 'vendido' && Number(v.valor_centavos) === 6000));
+  const dp = await campanhas.detalhe(pior.id);
+  assert.deepEqual(dp.disputas, [{ lado: 'perdeu', outra: 'Melhor', unidades: 2 }]);
+  // Promoção esgotada não "perde disputa": não tinha quantidade.
+  const p2 = await edicao();
+  await desconto(p2, { desconto_valor: 40, quantidade_promocional: 1 });
+  const so = await desconto(p2, { desconto_valor: 20, quantidade_promocional: 5 });
+  await pagar((await pedido(p2, 1)).pedido_id);
+  const r2 = await pedido(p2, 1);
+  assert.equal((await itensDo(r2.pedido_id))[0].campanha, Number(so.id));
+  const { rows: d2 } = await consultar(
+    'SELECT 1 FROM campanha_disputas d JOIN pedido_itens pi ON pi.id = d.pedido_item_id WHERE pi.pedido_id = $1',
+    [r2.pedido_id],
+  );
+  assert.equal(d2.length, 0);
+});
+
+test('P2 — desconto × brinde: o detalhe do desconto mostra o brinde que deixou de sair; o do brinde, a campanha que valeu', async () => {
+  const pronta = await edicao();
+  const d = await desconto(pronta, { nome: 'Promo não acumulável', quantidade_promocional: 1 });
+  const brinde = await campanhas.criar(
+    pronta.edicao.id,
+    {
+      modalidade: 'ordem_compra',
+      nome: 'Primeiros 10',
+      regras: 'Regulamento de teste.',
+      faixas: [{ de: 1, ate: 10, premio: 'Copão' }],
+    },
+    AUTOR,
+  );
+  await campanhas.marcarRegrasRevisadas(brinde.id, { revisor: 'Jurídico de teste' }, AUTOR);
+  await campanhas.mudarStatus(brinde.id, 'ativar', AUTOR);
+  await pagar((await pedido(pronta, 1)).pedido_id);
+  const dd = await campanhas.detalhe(d.id);
+  assert.deepEqual(dd.disputas, [{ lado: 'venceu_brinde', outra: 'Primeiros 10', unidades: 1 }]);
+  const db = await campanhas.detalhe(brinde.id);
+  assert.equal(db.posicoes[0].resultado, 'nao_acumulavel');
+  assert.equal(db.posicoes[0].vencedora, 'Promo não acumulável');
+});
+
+test('P5 — fila de pagos sem vaga: motivo, campanha, valor, conciliação e histórico; nada emitido nem consumido', async () => {
+  const admin = apoio.cliente(srv, { cookie: await apoio.entrarAdmin(srv) });
+  const pronta = await edicao();
+  const c = await desconto(pronta, { nome: 'Só uma', quantidade_promocional: 1 });
+  const a = await pedido(pronta, 1);
+  await vencer(a.pedido_id);
+  await pagar((await pedido(pronta, 1)).pedido_id);
+  assert.equal(await pagar(a.pedido_id), 'sem_vaga');
+  // Reprocessar o mesmo pagamento não duplica nada.
+  await pagar(a.pedido_id);
+  const { rows: ing } = await consultar('SELECT count(*)::int AS n FROM ingressos WHERE pedido_id = $1', [a.pedido_id]);
+  assert.equal(ing[0].n, 0, 'nenhum ingresso emitido');
+  assert.equal(await usados(c), 1, 'nada consumido da quantidade promocional');
+
+  let fila = (await admin.get(`/admin/trimundi/edicoes/${pronta.edicao.id}/sem-vaga`)).json;
+  assert.equal(fila.abertos, 1);
+  const item = fila.itens[0];
+  assert.equal(item.pedido_id, a.pedido_id);
+  assert.equal(item.motivo, 'promocao_sem_quantidade');
+  assert.equal(item.campanha.nome, 'Só uma');
+  assert.equal(item.total_centavos, 7000, 'o preço do pedido (com o desconto)');
+  assert.ok(item.valor_recebido_centavos >= 7000, 'o que o comprador pagou, com as taxas do meio de pagamento');
+  assert.equal(item.situacao, 'a_devolver');
+  assert.ok(item.comprador);
+  assert.ok(!JSON.stringify(fila).match(/\d{11}/), 'sem CPF');
+
+  // Anotação do Admin entra no histórico.
+  const nota = await admin.post(`/admin/trimundi/pedidos/${a.pedido_id}/sem-vaga/anotar`, {
+    nota: 'Comprador avisado por e-mail.',
+  });
+  assert.equal(nota.status, 200, nota.texto);
+  // Devolução pedida: a situação muda; confirmada pelo Checkout: devolvido.
+  require('../src/trimundi/checkout/cliente').substituir({
+    estornar: async () => ({ status: 202, ok: true, corpo: { status: 'processando' } }),
+  });
+  try {
+    await require('../src/trimundi/reembolsos').solicitar(a.pedido_id, { motivo: 'pago sem vaga' }, AUTOR);
+  } finally {
+    require('../src/trimundi/checkout/cliente').substituir(null);
+  }
+  fila = (await admin.get(`/admin/trimundi/edicoes/${pronta.edicao.id}/sem-vaga`)).json;
+  assert.equal(fila.itens[0].situacao, 'devolucao_solicitada');
+  const acoes = fila.itens[0].historico.map((h) => h.acao);
+  assert.deepEqual(acoes, ['Pagamento recebido sem vaga', 'Anotação', 'Devolução pedida']);
+  assert.equal(fila.itens[0].historico[1].nota, 'Comprador avisado por e-mail.');
+  assert.equal(fila.itens[0].historico[2].nota, 'pago sem vaga');
+  await estornar(a.pedido_id);
+  fila = (await admin.get(`/admin/trimundi/edicoes/${pronta.edicao.id}/sem-vaga`)).json;
+  assert.equal(fila.itens[0].situacao, 'devolvido');
+  assert.equal(fila.abertos, 0);
+  assert.equal(await usados(c), 1);
+
+  // Os outros motivos: lote e promoção encerrada.
+  const p2 = await edicao([{ preco_centavos: 10000, quantidade: 1 }]);
+  const b = await pedido(p2, 1);
+  await vencer(b.pedido_id);
+  await pagar((await pedido(p2, 1)).pedido_id);
+  assert.equal(await pagar(b.pedido_id), 'sem_vaga');
+  const f2 = (await admin.get(`/admin/trimundi/edicoes/${p2.edicao.id}/sem-vaga`)).json;
+  assert.equal(f2.itens[0].motivo, 'lote');
+  assert.equal(f2.itens[0].campanha, null);
+  const p3 = await edicao();
+  const c3 = await desconto(p3);
+  const e = await pedido(p3, 1);
+  await vencer(e.pedido_id);
+  await campanhas.mudarStatus(c3.id, 'pausar', AUTOR);
+  assert.equal(await pagar(e.pedido_id), 'sem_vaga');
+  const f3 = (await admin.get(`/admin/trimundi/edicoes/${p3.edicao.id}/sem-vaga`)).json;
+  assert.equal(f3.itens[0].motivo, 'promocao_encerrada');
+  // O motivo gravado não muda (imutável) e a anotação só vale para a fila.
+  await assert.rejects(consultar("UPDATE pedidos_sem_vaga SET motivo = 'lote' WHERE pedido_id = $1", [e.pedido_id]));
+  const fora = await pedido(p3, 1);
+  assert.equal(
+    (await admin.post(`/admin/trimundi/pedidos/${fora.pedido_id}/sem-vaga/anotar`, { nota: 'teste' })).status,
+    404,
+  );
+});
+
+test('reembolso de UM ingresso com desconto devolve o preço pago (não o cheio); a unidade promocional não volta (P1)', async () => {
+  const pronta = await edicao();
+  const c = await desconto(pronta, { quantidade_promocional: 3 });
+  const r = await pedido(pronta, 2);
+  await pagar(r.pedido_id);
+  const { rows: ings } = await consultar('SELECT id FROM ingressos WHERE pedido_id = $1 ORDER BY id', [r.pedido_id]);
+  const chamadas = [];
+  require('../src/trimundi/checkout/cliente').substituir({
+    estornar: async (dados) => {
+      chamadas.push(dados);
+      return { status: 202, ok: true, corpo: { status: 'processando' } };
+    },
+  });
+  try {
+    await require('../src/trimundi/reembolsos').solicitar(
+      r.pedido_id,
+      { motivo: 'desistência', ingresso_id: ings[0].id },
+      AUTOR,
+    );
+  } finally {
+    require('../src/trimundi/checkout/cliente').substituir(null);
+  }
+  assert.equal(chamadas[0].valor, 70, 'R$ 70,00 — o preço com desconto');
+  await aplicar(await apoio.aviso(r.pedido_id, 'estornado_parcialmente', { valorEstornado: 70 }));
+  assert.equal(await usados(c), 2);
+  const { rows } = await consultar('SELECT status FROM ingressos WHERE id = $1', [ings[0].id]);
+  assert.equal(rows[0].status, 'cancelado');
+});

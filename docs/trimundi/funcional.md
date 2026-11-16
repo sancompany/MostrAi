@@ -592,7 +592,15 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     o ingresso o preço efetivamente pago.
   - Promoção de preço não acumulável vence o brinde não acumulável de
     primeiros N no mesmo ingresso (o ingresso ainda ocupa a posição — C1);
-    acumulável deixa os dois.
+    acumulável deixa os dois. O histórico guarda quem venceu e quem deixou
+    de conceder (P2): o detalhe da promoção no Admin lista as unidades
+    (preço cheio, pago, situação) e as disputas — "valeu esta no lugar de
+    X", "valeu X no lugar desta", "o brinde X deixou de sair".
+  - **Pagos sem vaga** (P5): Admin → Participantes mostra a fila com pedido,
+    comprador, valor recebido, campanha, motivo (lote, capacidade, promoção
+    encerrada ou sem quantidade), situação da conciliação (a devolver,
+    devolução pedida, reenviar, recusada, devolvido) e o histórico; o Admin
+    abre o pedido para devolver e anota o que combinou. Nada é emitido.
   - Página de venda: no card do ingresso, selo "PROMOÇÃO RELÂMPAGO" (ou
     "Promoção"), preço cheio riscado, preço promocional, % de desconto,
     quanto resta com desconto, prazo, limite por pessoa e o regulamento.

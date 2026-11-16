@@ -15,6 +15,11 @@ Não desfazer sem contexto:
   (P5) dentro de `pagamentos.aindaCabe`;
 - a vitrine (`campanhas.paraVitrine`) só mostra campanha com C7; P7 nas
   decisões.
+- P1–P7 APROVADAS pelo dono (16/11). Migration 019: `campanha_disputas`
+  (P2) e `pedidos_sem_vaga` (P5, motivo gravado em `pagamentos.confirmar`
+  via `faltaDeVaga`); fila em `src/trimundi/sem-vaga.js`, Admin →
+  Participantes → "Pagos sem vaga". Merge, migrations em produção, deploy e
+  campanha pública continuam NÃO autorizados.
 
 2026-11-16 — **TICK: campanhas — PR 3 (portaria e Minha Conta)**, branch
 `claude/beautiful-faraday-cjq1nt-campanhas-conta` (sobre a do Admin, PR #154).
