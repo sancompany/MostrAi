@@ -2571,11 +2571,7 @@
       return [
         `<button type="button" class="btn ghost mini" data-detalhe="${c.id}">Detalhes</button>`,
         `<button type="button" class="btn ghost mini" data-editar="${c.id}">Editar</button>`,
-        c.status === 'rascunho' && c.modalidade === 'desconto' && !c.desconto_disponivel
-          ? '<span class="badge badge-neutro">Ativa quando o desconto no checkout estiver ligado</span>'
-          : c.status === 'rascunho'
-            ? b('ativar', 'Ativar')
-            : '',
+        c.status === 'rascunho' ? b('ativar', 'Ativar') : '',
         c.status === 'ativa' ? b('pausar', 'Pausar') : '',
         c.status === 'pausada' ? b('retomar', 'Retomar') : '',
         `<button type="button" class="btn ghost mini" data-revisar="${c.id}">Regulamento revisado</button>`,

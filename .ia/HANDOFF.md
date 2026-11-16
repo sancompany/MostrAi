@@ -1,6 +1,21 @@
 # Current Handoff
 
 ## Updated
+2026-11-16 — **TICK: campanhas — PR 4 (venda, desconto no checkout e
+relâmpago)**, branch `claude/beautiful-faraday-cjq1nt-campanhas-venda` (sobre
+a da conta, PR #155). Migration 018 (colunas opcionais `campanha_id` e
+`preco_original_centavos` em `pedido_itens`; `campanha_id` em `reservas`).
+Não desfazer sem contexto:
+- o preço com desconto nasce em `pedidos.montar` (via
+  `campanhas.repartirComDesconto`); na criação, sob a trava da edição — é
+  ela que impede passar da quantidade promocional;
+- `ligarDescontoNoCheckout` e os ganchos `definirUso*` do PR 2 saíram: a
+  promoção de preço ativa normalmente;
+- pagamento atrasado com desconto passa por `campanhas.descontoAindaCabe`
+  (P5) dentro de `pagamentos.aindaCabe`;
+- a vitrine (`campanhas.paraVitrine`) só mostra campanha com C7; P7 nas
+  decisões.
+
 2026-11-16 — **TICK: campanhas — PR 3 (portaria e Minha Conta)**, branch
 `claude/beautiful-faraday-cjq1nt-campanhas-conta` (sobre a do Admin, PR #154).
 Sem migration. Não desfazer sem contexto:

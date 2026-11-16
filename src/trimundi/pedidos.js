@@ -57,7 +57,11 @@ function lerItens(itens = {}) {
 
 // Monta o pedido em memória com o estoque de agora. `marcar` = criação: os
 // lotes que esgotarem são devolvidos para gravar a marca.
-async function montar(cliente, ed, pedido) {
+// Promoção de preço (campanhas de desconto, PR 4): o preço com desconto sai
+// daqui, do servidor — o corpo do pedido nunca traz preço. Só ingresso
+// individual (tipo), nunca combo. Na criação (trava da edição segura) a
+// quantidade promocional e o limite por conta são conferidos sem corrida.
+async function montar(cliente, ed, pedido, { clienteId = null } = {}) {
   const { tipos, combos } = pedido;
   const { rows: categorias } = await cliente.query('SELECT * FROM categorias WHERE edicao_id = $1 ORDER BY ordem, id', [
     ed.id,
@@ -97,6 +101,9 @@ async function montar(cliente, ed, pedido) {
   const numeroDoLote = (catId, loteId) =>
     (alocador.estado(catId)?.lotes.findIndex((l) => Number(l.id) === Number(loteId)) ?? -1) + 1;
 
+  const campanhas = require('./campanhas');
+  const vigentes = tipos.size ? await campanhas.descontosVigentes(cliente, ed.id, { clienteId }) : [];
+
   const linhas = [];
   const vagas = [];
   const tiposOrdenados = [...tipos.entries()].sort(
@@ -105,24 +112,32 @@ async function montar(cliente, ed, pedido) {
   for (const [catId, q] of tiposOrdenados) {
     const cat = catPorId.get(catId);
     for (const parte of alocador.tirar(catId, q, cat.nome)) {
-      const linha = {
-        lote_id: parte.lote.id,
-        promocao_id: null,
-        descricao: `${cat.nome} — ${numeroDoLote(catId, parte.lote.id)}º lote`,
-        quantidade: parte.quantidade,
-        preco_unitario_centavos: parte.lote.preco_centavos,
-        reservas: [],
-      };
-      for (let i = 0; i < parte.quantidade; i++) {
-        linha.reservas.push({
-          categoria_id: catId,
+      const lote = `${cat.nome} — ${numeroDoLote(catId, parte.lote.id)}º lote`;
+      for (const p of campanhas.repartirComDesconto(vigentes, catId, parte.lote, parte.quantidade)) {
+        const linha = {
           lote_id: parte.lote.id,
-          promocao_item_id: null,
-          valor_centavos: parte.lote.preco_centavos,
-        });
-        vagas.push({ categoria_id: catId, categoria_nome: cat.nome, origem: 'tipo', combo_nome: null });
+          promocao_id: null,
+          campanha_id: p.campanha?.id ?? null,
+          campanha_nome: p.campanha?.nome ?? null,
+          relampago: Boolean(p.campanha?.relampago),
+          preco_original_centavos: p.campanha ? Number(parte.lote.preco_centavos) : null,
+          descricao: (p.campanha ? `${lote} · ${p.campanha.nome}` : lote).slice(0, 160),
+          quantidade: p.quantidade,
+          preco_unitario_centavos: p.preco,
+          reservas: [],
+        };
+        for (let i = 0; i < p.quantidade; i++) {
+          linha.reservas.push({
+            categoria_id: catId,
+            lote_id: parte.lote.id,
+            promocao_item_id: null,
+            campanha_id: linha.campanha_id,
+            valor_centavos: p.preco,
+          });
+          vagas.push({ categoria_id: catId, categoria_nome: cat.nome, origem: 'tipo', combo_nome: null });
+        }
+        linhas.push(linha);
       }
-      linhas.push(linha);
     }
   }
   for (const promo of promos) {
@@ -161,6 +176,7 @@ async function montar(cliente, ed, pedido) {
               categoria_id: Number(it.categoria_id),
               lote_id: parte.lote.id,
               promocao_item_id: it.id,
+              campanha_id: null,
               valor_centavos: base + (posicaoNoCombo === 1 ? resto : 0),
             });
             vagas.push({
@@ -208,16 +224,22 @@ function linhasPublicas(linhas) {
     quantidade: l.quantidade,
     preco_unitario_centavos: l.preco_unitario_centavos,
     total_centavos: l.quantidade * l.preco_unitario_centavos,
+    // Com desconto: o preço cheio (riscado) e a promoção que deu o desconto.
+    preco_original_centavos: l.preco_original_centavos ?? null,
+    promocao_de_preco: l.campanha_nome ?? null,
+    relampago: l.relampago ?? false,
   }));
 }
 
 // O que o comprador confere antes de aceitar os termos (sem reservar nada).
-async function cotar(corpo) {
+// Sem a trava: é a prévia. Na criação, o servidor confere de novo — se a
+// promoção acabou no meio, vale o que ele calcular ali.
+async function cotar(corpo, contexto = {}) {
   const pedido = lerItens(corpo?.itens);
   const cliente = { query: (s, p) => consultar(s, p) };
   const ed = await edicaoPorEndereco(cliente, corpo?.evento, corpo?.edicao);
   conferirVenda(ed);
-  const m = await montar(cliente, ed, pedido);
+  const m = await montar(cliente, ed, pedido, { clienteId: contexto.clienteId || null });
   return {
     itens: linhasPublicas(m.linhas),
     total_centavos: m.total,
@@ -325,7 +347,7 @@ async function criar(corpo, contexto = {}) {
       );
       if (aberto[0]) return { pedidoPendente: aberto[0].id };
     }
-    const m = await montar(cliente, ed, pedido);
+    const m = await montar(cliente, ed, pedido, { clienteId: contexto.cliente?.id || null });
     // Venda pela conta (pedido do dono, 10/11/2026): sem a lista, TODOS os
     // ingressos ficam no nome do titular da conta — sem formulário de
     // acompanhante. Cada um continua sendo uma unidade: um participante, uma
@@ -420,8 +442,9 @@ async function criar(corpo, contexto = {}) {
     let vaga = 0;
     for (const [ordem, l] of m.linhas.entries()) {
       const { rows: pi } = await cliente.query(
-        `INSERT INTO pedido_itens (pedido_id, lote_id, promocao_id, descricao, quantidade, preco_unitario_centavos, total_centavos, ordem)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+        `INSERT INTO pedido_itens (pedido_id, lote_id, promocao_id, descricao, quantidade, preco_unitario_centavos,
+                                   total_centavos, ordem, campanha_id, preco_original_centavos)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
         [
           pedidoId,
           l.lote_id,
@@ -431,6 +454,8 @@ async function criar(corpo, contexto = {}) {
           l.preco_unitario_centavos,
           l.quantidade * l.preco_unitario_centavos,
           ordem + 1,
+          l.campanha_id ?? null,
+          l.preco_original_centavos ?? null,
         ],
       );
       for (const [posicao, r] of l.reservas.entries()) {
@@ -440,8 +465,9 @@ async function criar(corpo, contexto = {}) {
           [ed.id, p.nome, p.cpf, p.email],
         );
         await cliente.query(
-          `INSERT INTO reservas (pedido_id, pedido_item_id, posicao, categoria_id, lote_id, promocao_item_id, participante_id, valor_centavos)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          `INSERT INTO reservas (pedido_id, pedido_item_id, posicao, categoria_id, lote_id, promocao_item_id, participante_id,
+                                 valor_centavos, campanha_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
           [
             pedidoId,
             pi[0].id,
@@ -451,6 +477,7 @@ async function criar(corpo, contexto = {}) {
             r.promocao_item_id,
             part[0].id,
             r.valor_centavos,
+            r.campanha_id,
           ],
         );
       }
@@ -472,6 +499,7 @@ async function criar(corpo, contexto = {}) {
       ingressos_quantidade: m.vagas.length,
       total_centavos: m.total,
       origem,
+      com_desconto: m.linhas.filter((l) => l.campanha_id).reduce((n, l) => n + l.quantidade, 0),
     });
     return {
       pedido_id: pedidoId,
@@ -579,7 +607,7 @@ async function paraComprador(pedidoId, tk) {
   );
   const p = rows[0];
   const { rows: itens } = await consultar(
-    'SELECT descricao, quantidade, preco_unitario_centavos, total_centavos FROM pedido_itens WHERE pedido_id = $1 ORDER BY ordem',
+    'SELECT descricao, quantidade, preco_unitario_centavos, total_centavos, preco_original_centavos FROM pedido_itens WHERE pedido_id = $1 ORDER BY ordem',
     [id],
   );
   let ingressos = [];

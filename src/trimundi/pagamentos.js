@@ -52,6 +52,8 @@ async function aindaCabe(cliente, pedido) {
     const l = e.lotes.find((y) => Number(y.id) === Number(x.lote_id));
     if (!l || l.fechado || l.disponivel < x.n) return false;
   }
+  // Vaga com desconto (P5): a promoção precisa estar aberta e com quantidade.
+  if (!(await require('./campanhas').descontoAindaCabe(cliente, pedido.id))) return false;
   const { rows: ed } = await cliente.query('SELECT capacidade FROM edicoes WHERE id = $1', [pedido.edicao_id]);
   if (ed[0].capacidade) {
     const total = vagas.reduce((s, x) => s + x.n, 0);

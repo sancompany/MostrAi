@@ -551,8 +551,8 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     texto derruba a revisão. Configuração contraditória é recusada. Em uso,
     a configuração que decide quem ganha não muda.
   - A promoção de preço mostra a prévia do preço (o servidor calcula de
-    verdade) e só ativa quando o desconto estiver ligado ao checkout (PR 4) —
-    até lá, a tela diz isso e não mostra "Ativar".
+    verdade). Desde o PR 4 ela ativa como as outras (regulamento revisado,
+    preços válidos e quantidade promocional dentro do estoque real).
   - Cadastro do benefício de lote traz o aviso de C5: "primeiros N" e posição
     de compra se configuram em Campanhas.
   - Admin → Recompensas mostra também os brindes de primeiros N, por
@@ -570,6 +570,37 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     campanhas de primeiros N e o brinde; o histórico das recompensas
     (liberado, retirado, revogado, expirado — e por onde). Só dados da
     própria conta. O cartão do ingresso mostra o brinde de campanha dele.
+- **RN-T45 Página de venda e promoção de preço no pedido** (PR 4,
+  16/11/2026).
+  - O preço com desconto sai do servidor, na criação do pedido, sob a trava
+    da edição; o navegador nunca manda preço (o que mandar é ignorado). Só
+    ingresso individual — combo nunca leva promoção de preço.
+  - Cada ingresso leva no máximo uma promoção de preço: a de menor preço
+    (empate: prioridade, depois a mais antiga — P2). Acabando a quantidade
+    promocional, o resto da mesma compra sai pelo preço do lote, ou pela
+    próxima promoção que ainda tiver quantidade.
+  - Quantidade promocional usada = ingressos emitidos com a promoção (mesmo
+    reembolsados — P1) + reservas vivas. Reserva vencida devolve. Limite
+    por pessoa pela conta compradora, contando só o que está de pé (P7).
+  - Compras simultâneas nunca passam da quantidade (trava da edição);
+    reprocessar o aviso de pagamento não gasta de novo; pagamento depois de
+    a reserva vencer só vale com a promoção aberta e com quantidade (P5),
+    senão "pago sem vaga".
+  - Reserva feita durante a promoção mantém o preço até vencer, mesmo que a
+    promoção seja pausada ou encerrada depois.
+  - O pedido grava a promoção e o preço cheio no item, a promoção na vaga, e
+    o ingresso o preço efetivamente pago.
+  - Promoção de preço não acumulável vence o brinde não acumulável de
+    primeiros N no mesmo ingresso (o ingresso ainda ocupa a posição — C1);
+    acumulável deixa os dois.
+  - Página de venda: no card do ingresso, selo "PROMOÇÃO RELÂMPAGO" (ou
+    "Promoção"), preço cheio riscado, preço promocional, % de desconto,
+    quanto resta com desconto, prazo, limite por pessoa e o regulamento.
+    Esgotada ou encerrada (por 24 h) aparece assim, sem preço. Seção
+    "Brindes desta edição" com as campanhas de primeiros N (faixas, quanto
+    resta, prazo). Só aparece campanha com o regulamento revisado (C7);
+    rascunho e pausada nunca; venda pausada não oferece nada. O resumo do
+    pedido e a página do pedido mostram "de R$ X por R$ Y".
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.

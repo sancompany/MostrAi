@@ -167,8 +167,15 @@ confirmação de pagamento — sem mecanismo paralelo de desconto.
   exige do preço de lote. Ingresso grátis é cortesia, não desconto.
 - **P4. Arredondamento do percentual:** ao centavo, meio centavo para cima.
 - **P5. Pagamento que chega depois de a reserva vencer** (pedido com
-  desconto): vale a mesma regra do lote — só se ainda houver quantidade
-  promocional; senão o pedido fica "pago sem vaga" e o Admin devolve.
+  desconto): vale a mesma regra do lote — só se a promoção ainda estiver
+  aberta (ativa, dentro do prazo) e com quantidade promocional; senão o
+  pedido fica "pago sem vaga" e o Admin devolve. (Reserva ainda viva
+  mantém o preço combinado, mesmo com a promoção pausada ou encerrada no
+  meio.)
+- **P7. Limite por pessoa da promoção de preço:** conta pela conta
+  compradora (C3) e só o que está de pé (R3, por analogia): ingresso
+  reembolsado libera o limite da pessoa, mas não devolve a unidade
+  promocional (P1).
 - **P6. Regulamento revisado (C7)** é exigido para ativar **toda** campanha
   criada pelo Admin → Campanhas, inclusive as de indicação novas. As
   campanhas de indicação antigas (formato "a cada N", pelas rotas antigas)

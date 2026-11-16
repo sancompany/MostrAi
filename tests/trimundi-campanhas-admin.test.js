@@ -11,8 +11,8 @@ const catalogo = require('../src/trimundi/catalogo');
 // edição das três modalidades (promoção de preço em ingresso individual,
 // primeiros N, indicação), validações contra configurações contraditórias,
 // C7 (regulamento revisado antes de ativar), travas de justiça com a
-// campanha em uso, duplicar/pausar/retomar/encerrar, detalhe e CSV, e a
-// promoção de preço que ainda não ativa (o desconto no checkout é o PR 4).
+// campanha em uso, duplicar/pausar/retomar/encerrar, detalhe e CSV. O
+// desconto no pedido tem o próprio arquivo (trimundi-campanhas-venda).
 
 let srv;
 let admin;
@@ -245,7 +245,7 @@ test('C7: só ativa com regulamento escrito e revisado; mudar o texto derruba a 
   assert.ok(rows.some((x) => x.acao === 'campanha_regras_revisadas'));
 });
 
-test('promoção de preço: cadastra, revisa — e ainda não ativa (o desconto no checkout entra no PR 4)', async () => {
+test('promoção de preço: cadastra, revisa e ativa (o desconto vale no checkout desde o PR 4)', async () => {
   const pronta = await edicao();
   const [l1] = pronta.tipo.lotes;
   const c = (
@@ -259,11 +259,11 @@ test('promoção de preço: cadastra, revisa — e ainda não ativa (o desconto 
       alvos: [{ categoria_id: pronta.tipo.id, lote_id: l1.id }],
     })
   ).json;
+  assert.equal((await acao(c.id, 'ativar')).status, 409, 'sem revisão jurídica (C7) não ativa');
   await revisar(c.id);
   const r = await acao(c.id, 'ativar');
-  assert.equal(r.status, 409);
-  assert.equal(r.json.codigo, 'desconto_indisponivel');
-  assert.equal((await consultar('SELECT status FROM campanhas WHERE id = $1', [c.id])).rows[0].status, 'rascunho');
+  assert.equal(r.status, 200, r.texto);
+  assert.equal((await consultar('SELECT status FROM campanhas WHERE id = $1', [c.id])).rows[0].status, 'ativa');
 });
 
 test('travas de justiça: em uso, faixas/alvos/acumulação não mudam; estoque só sobe; fim só prorroga', async () => {

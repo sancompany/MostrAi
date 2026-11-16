@@ -326,6 +326,81 @@ p {
   opacity: 0.75;
 }
 
+/* Promoção de preço e brindes de campanha na página de venda (PR 4). */
+.oferta.com-promocao {
+  border-color: var(--preco);
+}
+
+.oferta.relampago {
+  border: 2px solid var(--alerta);
+  background: var(--alerta-fundo);
+}
+
+.selo.promocao {
+  background: var(--preco);
+  color: var(--cartao);
+}
+
+.selo.relampago {
+  background: var(--alerta);
+  color: var(--cartao);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.promo {
+  margin-top: 0.4rem;
+}
+
+.promo-nome {
+  margin: 0.2rem 0 0;
+  font-weight: 750;
+}
+
+.promo-linha {
+  margin: 0.3rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.promo-linha.forte {
+  font-weight: 700;
+}
+
+.promo.fim .promo-linha {
+  color: var(--suave);
+}
+
+.preco-cheio {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  color: var(--suave);
+  font-size: 0.85rem;
+}
+
+.preco-cheio .pct {
+  color: var(--ok);
+  font-weight: 800;
+}
+
+.regulamento-promo {
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.regulamento-promo .texto {
+  white-space: pre-wrap;
+  color: var(--suave);
+  margin-top: 0.3rem;
+}
+
+.promo-item {
+  display: block;
+  color: var(--ok);
+  font-weight: 600;
+}
+
 /* Conferência antes do pagamento: os ingressos, todos no nome do titular. */
 .lista-ingressos {
   margin: 0.5rem 0 0.85rem;

@@ -118,10 +118,16 @@
   };
   const ingressosNoCarrinho = () =>
     [...qtd].reduce((s, [k, n]) => s + n * (k[0] === 'c' ? itemDaChave(k)?.ingressos_por_combo || 1 : 1), 0);
+  // Estimativa (o total que vale vem da cotação do servidor): com promoção de
+  // preço, até o que resta dela pelo preço promocional, o resto pelo do lote.
   const subtotal = () =>
     [...qtd].reduce((s, [k, n]) => {
       const item = itemDaChave(k);
-      return s + n * (k[0] === 'c' ? item.preco_total_centavos : item.preco_centavos || 0);
+      if (k[0] === 'c') return s + n * item.preco_total_centavos;
+      const pr = item.promocao?.situacao === 'ativa' ? item.promocao : null;
+      const comDesconto = pr ? Math.min(n, pr.restam) : 0;
+      const promocional = pr ? comDesconto * pr.preco_centavos : 0;
+      return s + promocional + (n - comDesconto) * (item.preco_centavos || 0);
     }, 0);
 
   function cabecalho() {
@@ -213,14 +219,20 @@
   // 10 ou menos (o servidor manda `restantes_no_lote` só nesse caso).
   const escassez = (n) => (n === 1 ? 'Último ingresso' : `Últimos ${n} ingressos`);
 
-  function cardDeOferta({ nome, selo, corpo, preco, legenda, alerta, seletorDaOferta }) {
-    return el('article', { class: `oferta${seletorDaOferta ? '' : ' fora'}` }, [
+  function cardDeOferta({ nome, selo, corpo, preco, cheio, legenda, alerta, seletorDaOferta, destaque }) {
+    return el('article', { class: `oferta${seletorDaOferta ? '' : ' fora'}${destaque ? ` ${destaque}` : ''}` }, [
       el('div', { class: 'oferta-topo' }, [el('h3', { class: 'nome', text: nome }), selo]),
       ...corpo,
       seletorDaOferta
         ? el('div', { class: 'oferta-rodape' }, [
             el('div', { class: 'valor' }, [
-              el('span', { class: 'preco', text: preco }),
+              cheio
+                ? el('span', { class: 'preco-cheio' }, [
+                    el('s', { text: cheio.de, 'aria-label': `De ${cheio.de}` }),
+                    el('span', { class: 'pct', text: cheio.pct }),
+                  ])
+                : null,
+              el('span', { class: 'preco', text: preco, 'aria-label': cheio ? `Por ${preco}` : null }),
               legenda ? el('span', { class: alerta ? 'escassez' : 'legenda', text: legenda }) : null,
             ]),
             seletorDaOferta,
@@ -236,12 +248,21 @@
     const beneficios = [...(t.beneficios || []), ...(aVenda && t.beneficio_do_lote ? [t.beneficio_do_lote.nome] : [])];
     const limitado = t.beneficios_limitados || (aVenda && t.beneficio_do_lote?.limitado);
     const pouco = aVenda && t.restantes_no_lote !== null && t.restantes_no_lote !== undefined;
+    const pr = aVenda ? t.promocao : null;
+    const valendo = pr?.situacao === 'ativa';
     return cardDeOferta({
       nome: t.nome,
-      selo: aVenda
-        ? el('span', { class: 'selo ok', text: 'Disponível' })
-        : el('span', { class: `selo ${t.situacao === 'esgotado' ? 'erro' : 'alerta'}`, text: situacao }),
+      destaque: valendo ? (pr.relampago ? 'com-promocao relampago' : 'com-promocao') : null,
+      selo: valendo
+        ? el('span', {
+            class: `selo ${pr.relampago ? 'relampago' : 'promocao'}`,
+            text: pr.relampago ? 'Promoção relâmpago' : 'Promoção',
+          })
+        : aVenda
+          ? el('span', { class: 'selo ok', text: 'Disponível' })
+          : el('span', { class: `selo ${t.situacao === 'esgotado' ? 'erro' : 'alerta'}`, text: situacao }),
       corpo: [
+        pr ? blocoDaPromocao(pr) : null,
         t.descricao ? el('p', { class: 'detalhe', text: t.descricao }) : null,
         beneficios.length
           ? el(
@@ -255,11 +276,103 @@
           ? el('p', { class: 'detalhe', text: `Até ${t.limite_por_comprador} por comprador.` })
           : null,
       ],
-      preco: moeda(t.preco_centavos),
+      preco: moeda(valendo ? pr.preco_centavos : t.preco_centavos),
+      cheio: valendo ? { de: moeda(pr.preco_original_centavos), pct: `−${pr.percentual}%` } : null,
       legenda: pouco ? escassez(t.restantes_no_lote) : t.lote,
       alerta: pouco,
       seletorDaOferta: aVenda ? seletor(`t:${t.id}`, t) : null,
     });
+  }
+
+  // Promoção de preço no card do ingresso (campanha com regulamento revisado).
+  // Nunca promete o que acabou: esgotada e encerrada aparecem como tais, sem
+  // preço; o preço que vale é o que o servidor calcula no pedido.
+  const prazo = (iso) => (iso ? `até ${dataHora(iso)}` : null);
+  function blocoDaPromocao(pr) {
+    const regulamento = pr.regras
+      ? el('details', { class: 'regulamento-promo' }, [
+          el('summary', { text: 'Regulamento da promoção' }),
+          el('div', { class: 'texto', text: pr.regras }),
+        ])
+      : null;
+    if (pr.situacao === 'esgotada' || pr.situacao === 'encerrada') {
+      return el('div', { class: 'promo fim' }, [
+        el('p', {
+          class: 'promo-linha',
+          text: `${pr.nome}: promoção ${pr.situacao === 'esgotada' ? 'esgotada' : 'encerrada'}. Vale o preço do lote.`,
+        }),
+      ]);
+    }
+    if (pr.situacao === 'em_breve') {
+      return el('div', { class: 'promo' }, [
+        el('p', {
+          class: 'promo-linha',
+          text: `${pr.nome}: ${moeda(pr.preco_centavos)} (−${pr.percentual}%) a partir de ${dataHora(pr.inicio)}${pr.fim ? `, ${prazo(pr.fim)}` : ''}.`,
+        }),
+        regulamento,
+      ]);
+    }
+    const condicoes = [
+      pr.restam === 1 ? 'Resta 1 com desconto' : `Restam ${pr.restam} com desconto`,
+      prazo(pr.fim),
+      pr.limite_por_pessoa ? `até ${pr.limite_por_pessoa} por pessoa` : null,
+    ].filter(Boolean);
+    return el('div', { class: 'promo' }, [
+      el('p', { class: 'promo-nome', text: pr.nome }),
+      pr.descricao ? el('p', { class: 'detalhe', text: pr.descricao }) : null,
+      el('p', { class: 'promo-linha forte', text: `${condicoes.join(' · ')}.` }),
+      el('p', {
+        class: 'detalhe',
+        text: `Acabando a quantidade promocional, os próximos saem pelo preço do lote.${pr.acumula ? '' : ' Não acumula com brindes de outras campanhas.'}`,
+      }),
+      regulamento,
+    ]);
+  }
+
+  // Brindes por ordem de compra ("os primeiros N ganham…").
+  function cardDeCampanha(c) {
+    const faixas = c.premios
+      .map(
+        (f) =>
+          `${f.de === f.ate ? `${f.de}º` : `${f.de}º ao ${f.ate}º`}: ${f.quantidade > 1 ? `${f.quantidade}× ` : ''}${f.premio}`,
+      )
+      .join(' · ');
+    const rotulo = { ativa: null, esgotada: 'Esgotada', encerrada: 'Encerrada', em_breve: 'Em breve' }[c.situacao];
+    const condicoes = [
+      c.situacao === 'ativa' ? (c.restam === 1 ? 'Resta 1 brinde' : `Restam ${c.restam} brindes`) : null,
+      c.situacao === 'em_breve' && c.inicio ? `a partir de ${dataHora(c.inicio)}` : null,
+      c.situacao === 'ativa' || c.situacao === 'em_breve' ? prazo(c.fim) : null,
+      c.tipos ? `vale para ${c.tipos}` : null,
+      c.inclui_combos ? null : 'combos não entram',
+      c.limite_por_pessoa ? `até ${c.limite_por_pessoa} por pessoa` : null,
+    ].filter(Boolean);
+    return el(
+      'article',
+      { class: `oferta campanha${c.situacao === 'ativa' ? (c.relampago ? ' relampago' : '') : ' fora'}` },
+      [
+        el('div', { class: 'oferta-topo' }, [
+          el('h3', { class: 'nome', text: c.nome }),
+          rotulo
+            ? el('span', { class: `selo ${c.situacao === 'em_breve' ? 'alerta' : 'erro'}`, text: rotulo })
+            : el('span', {
+                class: `selo ${c.relampago ? 'relampago' : 'promocao'}`,
+                text: c.relampago ? 'Promoção relâmpago' : 'Brinde',
+              }),
+        ]),
+        c.descricao ? el('p', { class: 'detalhe', text: c.descricao }) : null,
+        el('p', { class: 'promo-linha', text: `Por ordem de pagamento confirmado — ${faixas}.` }),
+        condicoes.length ? el('p', { class: 'promo-linha forte', text: `${condicoes.join(' · ')}.` }) : null,
+        c.acumula
+          ? null
+          : el('p', { class: 'detalhe', text: 'Não acumula com outras campanhas: vale a de maior valor.' }),
+        c.regras
+          ? el('details', { class: 'regulamento-promo' }, [
+              el('summary', { text: 'Regulamento da campanha' }),
+              el('div', { class: 'texto', text: c.regras }),
+            ])
+          : null,
+      ],
+    );
   }
 
   function ofertaDeCombo(c) {
@@ -327,6 +440,14 @@
         : el('p', { class: 'discreto', text: 'Os ingressos desta edição ainda não estão à venda.' }),
     ]);
     blocos.push(ofertas);
+    if (dados.campanhas?.length) {
+      blocos.push(
+        el('section', { class: 'cartao', 'aria-labelledby': 'tituloCampanhas' }, [
+          el('h2', { id: 'tituloCampanhas', text: 'Brindes desta edição' }),
+          dados.campanhas.map(cardDeCampanha),
+        ]),
+      );
+    }
     if (dados.combos.length) {
       blocos.push(
         el('section', { class: 'cartao', 'aria-labelledby': 'tituloCombos' }, [
@@ -421,7 +542,15 @@
           {},
           cotacao.itens.map((i) =>
             el('tr', {}, [
-              el('td', { text: i.descricao }),
+              el('td', {}, [
+                i.descricao,
+                i.preco_original_centavos
+                  ? el('small', {
+                      class: 'promo-item',
+                      text: `${i.relampago ? 'Promoção relâmpago' : 'Promoção'}: de ${moeda(i.preco_original_centavos)} por ${moeda(i.preco_unitario_centavos)} cada`,
+                    })
+                  : null,
+              ]),
               el('td', { class: 'num', text: String(i.quantidade) }),
               el('td', { class: 'num', text: moeda(i.total_centavos) }),
             ]),

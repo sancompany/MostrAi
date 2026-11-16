@@ -128,8 +128,11 @@ async function posicionarPedido(cliente, pedido, p, campanhas, { instante, check
   const alvos = await alvosDe(cliente, ids);
   // Cada ingresso pago é uma posição (decisão I), na ordem da numeração.
   const { rows: ingressos } = await cliente.query(
-    `SELECT i.id, i.categoria_id, i.lote_id, i.promocao_id, ${colunasDeNumero('i')}
-       FROM ingressos i WHERE i.pedido_id = $1 AND i.origem = 'pago' AND i.status = 'valido'
+    `SELECT i.id, i.categoria_id, i.lote_id, i.promocao_id, ${colunasDeNumero('i')},
+            d.id AS desconto_id, d.acumula AS desconto_acumula
+       FROM ingressos i JOIN reservas r ON r.id = i.reserva_id
+       LEFT JOIN campanhas d ON d.id = r.campanha_id
+      WHERE i.pedido_id = $1 AND i.origem = 'pago' AND i.status = 'valido'
       ORDER BY numero, i.id`,
     [pedido.id],
   );
@@ -156,7 +159,14 @@ async function posicionarPedido(cliente, pedido, p, campanhas, { instante, check
       posicoes.push(pos);
     }
     if (!posicoes.length) continue;
-    escolherVencedoras(posicoes.filter((x) => !x.resultado));
+    // P2: ingresso comprado com desconto NÃO acumulável — o desconto é a
+    // campanha vencedora dele; brinde não acumulável não vem junto (a posição
+    // continua ocupada — C1). Desconto acumulável não interfere.
+    const desconto = ing.desconto_id && !ing.desconto_acumula ? { campanha: { id: ing.desconto_id } } : null;
+    escolherVencedoras(
+      posicoes.filter((x) => !x.resultado),
+      desconto,
+    );
     for (const pos of posicoes) {
       const { rows: pr } = await cliente.query(
         `INSERT INTO campanha_posicoes (campanha_id, posicao, ingresso_id, pedido_id, comprador_cliente_id, faixa_id,
@@ -214,11 +224,13 @@ async function posicionarPedido(cliente, pedido, p, campanhas, { instante, check
 
 // C1 + J: das não acumuláveis, uma vencedora (valor, prioridade, antiguidade);
 // as acumuláveis somam-se, sem repetir o mesmo brinde no ingresso.
-function escolherVencedoras(candidatas) {
+function escolherVencedoras(candidatas, jaVenceu = null) {
   const naoAcumulaveis = candidatas.filter((x) => !x.campanha.acumula).sort(melhorPrimeiro);
-  const vencedora = naoAcumulaveis[0] || null;
-  for (const perdeu of naoAcumulaveis.slice(1)) Object.assign(perdeu, { resultado: 'nao_acumulavel', vencedora });
-  const levadas = vencedora ? [vencedora] : [];
+  const vencedora = jaVenceu || naoAcumulaveis[0] || null;
+  for (const perdeu of naoAcumulaveis.filter((x) => x !== vencedora)) {
+    Object.assign(perdeu, { resultado: 'nao_acumulavel', vencedora });
+  }
+  const levadas = vencedora && !jaVenceu ? [vencedora] : [];
   for (const x of candidatas.filter((y) => y.campanha.acumula).sort(melhorPrimeiro)) {
     const mesmoBrinde = levadas.find((l) => l.brinde === x.brinde);
     if (mesmoBrinde) Object.assign(x, { resultado: 'nao_acumulavel', vencedora: mesmoBrinde });
@@ -554,21 +566,129 @@ const MODALIDADES = ['ordem_compra', 'indicacao', 'desconto'];
 // O mesmo piso de preço do lote (lotes.preco_centavos >= 500): desconto nunca
 // leva o ingresso abaixo de R$ 5,00. Ingresso grátis é cortesia, não desconto.
 const PRECO_MINIMO = 500;
-// A aplicação do desconto no pedido chega com a migration 018 (PR 4). Até lá,
-// a campanha de desconto pode ser cadastrada, mas não ativada — nada na tela
-// promete um desconto que o checkout ainda não aplica.
-let descontoNoCheckout = false;
-const ligarDescontoNoCheckout = (sim = true) => {
-  descontoNoCheckout = sim;
-};
-
 // Preço final de UM ingresso na campanha de desconto (calculado sempre no
-// servidor). Percentual: arredonda ao centavo (meio para cima).
+// servidor). Percentual: arredonda ao centavo (meio para cima — P4).
 function precoComDesconto(c, precoLote) {
   const p = Number(precoLote);
   if (c.desconto_tipo === 'percentual') return Math.round((p * (100 - Number(c.desconto_valor))) / 100);
   if (c.desconto_tipo === 'valor') return p - Number(c.desconto_valor);
   return Number(c.desconto_valor);
+}
+
+// ------------------------------------------- desconto no pedido (PR 4, 018)
+// Unidade promocional USADA (P1): vaga com a campanha cujo ingresso foi
+// emitido — mesmo que depois reembolsado ou cancelado, a unidade não volta —
+// mais vaga de pedido aguardando pagamento com a reserva viva. Reserva
+// vencida sem pagamento não conta (nunca foi vendida).
+const SQL_USOS = `
+  SELECT r.campanha_id, count(*)::int AS n
+    FROM reservas r JOIN pedidos p ON p.id = r.pedido_id
+    LEFT JOIN ingressos i ON i.reserva_id = r.id
+   WHERE r.campanha_id = ANY($1::bigint[])
+     AND (i.id IS NOT NULL OR (p.status = 'aguardando_pagamento' AND p.reserva_expira_em > now()))
+   GROUP BY r.campanha_id`;
+// Limite por pessoa do desconto: pela CONTA COMPRADORA (C3), contando só o
+// que está de pé (R3, por analogia — P7): ingresso válido ou reserva viva.
+const SQL_USOS_DA_CONTA = `
+  SELECT r.campanha_id, count(*)::int AS n
+    FROM reservas r JOIN pedidos p ON p.id = r.pedido_id
+    LEFT JOIN ingressos i ON i.reserva_id = r.id
+   WHERE r.campanha_id = ANY($1::bigint[]) AND p.cliente_id = $2
+     AND ((i.id IS NOT NULL AND i.status <> 'cancelado')
+       OR (p.status = 'aguardando_pagamento' AND p.reserva_expira_em > now()))
+   GROUP BY r.campanha_id`;
+
+async function usosDe(cliente, ids, clienteId = null) {
+  if (!ids.length) return new Map();
+  const { rows } = await cliente.query(clienteId ? SQL_USOS_DA_CONTA : SQL_USOS, clienteId ? [ids, clienteId] : [ids]);
+  return new Map(rows.map((r) => [Number(r.campanha_id), r.n]));
+}
+
+async function usosDoDesconto(cliente, campanhaId) {
+  return (await usosDe(cliente, [Number(campanhaId)])).get(Number(campanhaId)) || 0;
+}
+
+// Promoções de preço valendo AGORA na edição (ativas, dentro da janela), com
+// alvos, quanto resta da quantidade promocional e quanto resta para a conta.
+async function descontosVigentes(cliente, edicaoId, { clienteId = null } = {}) {
+  const { rows } = await cliente.query(
+    `SELECT * FROM campanhas WHERE edicao_id = $1 AND modalidade = 'desconto' AND status = 'ativa'
+        AND (inicio IS NULL OR inicio <= now()) AND (fim IS NULL OR fim > now())
+      ORDER BY id`,
+    [edicaoId],
+  );
+  if (!rows.length) return [];
+  const ids = rows.map((c) => Number(c.id));
+  const alvos = await alvosDe(cliente, ids);
+  const usos = await usosDe(cliente, ids);
+  const daConta = clienteId ? await usosDe(cliente, ids, clienteId) : new Map();
+  return rows.map((c) => {
+    const id = Number(c.id);
+    const restam = Math.max(0, c.quantidade_promocional - (usos.get(id) || 0));
+    const daPessoa = c.limite_por_pessoa ? Math.max(0, c.limite_por_pessoa - (daConta.get(id) || 0)) : Infinity;
+    return { ...c, alvos: alvos.get(id), restam, cabe: Math.min(restam, clienteId ? daPessoa : restam) };
+  });
+}
+
+// Preço do lote para a vitrine e para o pedido: a melhor promoção que alcança
+// este lote (P2 — dois descontos nunca se somam: vale o menor preço; empate,
+// prioridade, depois a mais antiga). Promoção que deixaria o preço igual ou
+// acima do lote, ou abaixo do piso, não vale (o lote pode ter mudado de preço
+// depois da ativação).
+function descontosDoLote(vigentes, catId, lote) {
+  return vigentes
+    .filter((c) => qualifica({ inclui_combos: false }, c.alvos, { categoria_id: catId, lote_id: lote.id }))
+    .map((c) => ({ campanha: c, preco: precoComDesconto(c, lote.preco_centavos) }))
+    .filter((x) => x.preco < Number(lote.preco_centavos) && x.preco >= PRECO_MINIMO)
+    .sort(
+      (a, b) =>
+        a.preco - b.preco ||
+        b.campanha.prioridade - a.campanha.prioridade ||
+        Number(a.campanha.id) - Number(b.campanha.id),
+    );
+}
+
+// Divide `quantidade` ingressos de UM lote em partes com e sem desconto. Gasta
+// o `cabe` das campanhas (o chamador segura a trava da edição na criação).
+function repartirComDesconto(vigentes, catId, lote, quantidade) {
+  const partes = [];
+  let resta = quantidade;
+  for (const { campanha, preco } of descontosDoLote(vigentes, catId, lote)) {
+    if (!resta) break;
+    const n = Math.min(resta, campanha.cabe);
+    if (n <= 0) continue;
+    campanha.cabe -= n;
+    campanha.restam -= n;
+    resta -= n;
+    partes.push({ quantidade: n, preco, campanha });
+  }
+  if (resta) partes.push({ quantidade: resta, preco: Number(lote.preco_centavos), campanha: null });
+  return partes;
+}
+
+// Pagamento depois de a reserva vencer (P5): a vaga com desconto só vale se a
+// promoção ainda estiver aberta (ativa, na janela) e com quantidade
+// promocional para ela — a mesma regra do lote. Senão, "pago sem vaga".
+// Roda sob a trava da edição (pagamentos.aplicar), como a criação do pedido.
+async function descontoAindaCabe(cliente, pedidoId) {
+  const { rows } = await cliente.query(
+    `SELECT r.campanha_id, count(*)::int AS n FROM reservas r
+      WHERE r.pedido_id = $1 AND r.campanha_id IS NOT NULL GROUP BY r.campanha_id`,
+    [pedidoId],
+  );
+  if (!rows.length) return true;
+  const ids = rows.map((r) => Number(r.campanha_id));
+  const { rows: cs } = await cliente.query(
+    `SELECT id, quantidade_promocional FROM campanhas WHERE id = ANY($1::bigint[]) AND status = 'ativa'
+        AND (inicio IS NULL OR inicio <= now()) AND (fim IS NULL OR fim > now())`,
+    [ids],
+  );
+  if (cs.length !== ids.length) return false;
+  const usos = await usosDe(cliente, ids);
+  return rows.every((r) => {
+    const c = cs.find((x) => Number(x.id) === Number(r.campanha_id));
+    return (usos.get(Number(r.campanha_id)) || 0) + r.n <= c.quantidade_promocional;
+  });
 }
 
 function lerCampanha(d = {}, parcial = false) {
@@ -850,16 +970,11 @@ async function emUso(cliente, id) {
     `SELECT EXISTS (SELECT 1 FROM campanha_posicoes WHERE campanha_id = $1)
          OR EXISTS (SELECT 1 FROM campanha_premios WHERE campanha_id = $1)
          OR EXISTS (SELECT 1 FROM campanha_indicacoes WHERE campanha_id = $1)
-         OR ${usoDeDescontoSql('$1')} AS uso`,
+         OR EXISTS (SELECT 1 FROM reservas WHERE campanha_id = $1) AS uso`,
     [id],
   );
   return rows[0].uso;
 }
-// Trocado na 018 (PR 4), quando a reserva passa a guardar a campanha.
-let usoDeDescontoSql = () => 'false';
-const definirUsoDeDesconto = (fn) => {
-  usoDeDescontoSql = fn;
-};
 
 const EDITAVEIS_EM_USO = new Set([
   'nome',
@@ -994,15 +1109,6 @@ async function conferirAtivacao(cliente, c) {
   }
   if (c.fim && new Date(c.fim) <= new Date()) throw erro(409, 'O fim desta campanha já passou.');
   if (c.modalidade === 'desconto') {
-    if (!descontoNoCheckout) {
-      throw erro(
-        409,
-        'A promoção de preço ainda não pode ser ativada: o desconto no checkout entra na próxima etapa.',
-        {
-          codigo: 'desconto_indisponivel',
-        },
-      );
-    }
     await conferirPrecos(cliente, c);
     const lotes = await lotesDoDesconto(cliente, c.id);
     const { carregarLotes, estadoDaCategoria } = require('./disponibilidade');
@@ -1024,11 +1130,6 @@ async function conferirAtivacao(cliente, c) {
     }
   }
 }
-// Ingressos que já usaram o desconto (pago e reservas vivas). Trocado na 018.
-let usosDoDesconto = async () => 0;
-const definirUsosDoDesconto = (fn) => {
-  usosDoDesconto = fn;
-};
 
 async function mudarStatus(id, acao, autor) {
   const t = TRANSICOES[acao];
@@ -1214,6 +1315,127 @@ const quemFez = (autor) =>
 // "MINHAS PROMOÇÕES E RECOMPENSAS" (§4): só o que é da conta — posições dos
 // ingressos que ela comprou, o andamento das campanhas de indicação do link
 // dela e o histórico dos prêmios. Nada de outras pessoas.
+// ------------------------------------------------- vitrine (página de venda)
+// O que a página pública mostra das campanhas (PR 4). Só campanha com o
+// regulamento revisado pelo jurídico (C7) aparece — rascunho, pausada e sem
+// revisão nunca. Indicação fica na Minha Conta. Nada é prometido além do que
+// existe: esgotada aparece como esgotada, e o preço com desconto é o mesmo
+// cálculo do pedido (precoComDesconto). Encerrada aparece por 24 h, como aviso.
+const VITRINE_ENCERRADA_MS = 24 * 3600 * 1000;
+
+function situacaoNaVitrine(c, agora) {
+  const fim = c.encerrada_em || c.fim;
+  if (c.status === 'encerrada' || (fim && new Date(fim) <= agora)) return 'encerrada';
+  if (c.inicio && new Date(c.inicio) > agora) return 'em_breve';
+  return 'ativa';
+}
+
+async function paraVitrine(edicaoId, tipos) {
+  const agora = new Date();
+  const { rows } = await consultar(
+    `SELECT * FROM campanhas
+      WHERE edicao_id = $1 AND modalidade IN ('desconto', 'ordem_compra') AND regras_revisadas_em IS NOT NULL
+        AND (status = 'ativa' OR (status = 'encerrada' AND encerrada_em > now() - interval '24 hours'))
+      ORDER BY relampago DESC, id`,
+    [edicaoId],
+  );
+  const visiveis = rows.filter((c) => {
+    const fim = c.encerrada_em || c.fim;
+    return !fim || new Date(fim) > agora - VITRINE_ENCERRADA_MS;
+  });
+  const ids = visiveis.map((c) => Number(c.id));
+  const db = { query: (s, p) => consultar(s, p) };
+  const alvos = await alvosDe(db, ids);
+  const usos = await usosDe(db, ids);
+  const faixas = await faixasDe(db, ids);
+  const { rows: porFaixa } = ids.length
+    ? await consultar(
+        'SELECT faixa_id, count(*)::int AS n FROM campanha_premios WHERE campanha_id = ANY($1::bigint[]) GROUP BY faixa_id',
+        [ids],
+      )
+    : { rows: [] };
+  const concedidas = new Map(porFaixa.map((x) => [Number(x.faixa_id), x.n]));
+  const nomeDoTipo = new Map(tipos.map((t) => [Number(t.id), t.nome]));
+  const nomesDosAlvos = (lista) =>
+    [...new Set(lista.map((a) => nomeDoTipo.get(Number(a.categoria_id))).filter(Boolean))].join(', ') || null;
+  const base = (c) => ({
+    id: c.id,
+    nome: c.nome,
+    descricao: c.descricao || null,
+    regras: c.regras,
+    relampago: c.relampago,
+    acumula: c.acumula,
+    inicio: c.inicio,
+    fim: c.encerrada_em || c.fim,
+    limite_por_pessoa: c.limite_por_pessoa,
+    situacao: situacaoNaVitrine(c, agora),
+  });
+
+  // Promoção de preço por tipo: a melhor que alcança o lote à venda agora.
+  const descontos = visiveis.filter((c) => c.modalidade === 'desconto');
+  const porTipo = new Map();
+  for (const t of tipos) {
+    const lote = t.vigente;
+    if (!lote) continue;
+    const doLote = descontos
+      .filter((c) =>
+        qualifica({ inclui_combos: false }, alvos.get(Number(c.id)), { categoria_id: t.id, lote_id: lote.id }),
+      )
+      .map((c) => {
+        const preco = precoComDesconto(c, lote.preco_centavos);
+        const restam = Math.max(0, c.quantidade_promocional - (usos.get(Number(c.id)) || 0));
+        const v = base(c);
+        if (v.situacao === 'ativa' && !restam) v.situacao = 'esgotada';
+        return { ...v, preco, restam };
+      })
+      .filter((x) => x.preco < Number(lote.preco_centavos) && x.preco >= PRECO_MINIMO);
+    // Valendo agora primeiro (menor preço, P2); depois em breve; depois o
+    // aviso de esgotada/encerrada.
+    const peso = { ativa: 0, em_breve: 1, esgotada: 2, encerrada: 3 };
+    doLote.sort((a, b) => peso[a.situacao] - peso[b.situacao] || a.preco - b.preco || Number(a.id) - Number(b.id));
+    const m = doLote[0];
+    if (!m) continue;
+    const original = Number(lote.preco_centavos);
+    porTipo.set(Number(t.id), {
+      ...m,
+      preco_original_centavos: original,
+      preco_centavos: m.situacao === 'ativa' || m.situacao === 'em_breve' ? m.preco : null,
+      percentual:
+        m.situacao === 'ativa' || m.situacao === 'em_breve'
+          ? Math.round(((original - m.preco) / original) * 100)
+          : null,
+      restam: m.situacao === 'ativa' ? m.restam : 0,
+      preco: undefined,
+    });
+  }
+
+  // Ordem de compra: brinde para as posições, com quanto ainda resta.
+  const brindes = visiveis
+    .filter((c) => c.modalidade === 'ordem_compra')
+    .map((c) => {
+      const prox = Number(c.proxima_posicao);
+      let restam = 0;
+      const premios = faixas.get(Number(c.id)).map((f) => {
+        const posicoes = Math.max(0, f.ate - Math.max(f.de, prox) + 1);
+        const r = f.estoque
+          ? Math.min(posicoes, Math.max(0, f.estoque - (concedidas.get(Number(f.id)) || 0)))
+          : posicoes;
+        restam += r;
+        return { de: f.de, ate: f.ate, premio: f.premio, quantidade: f.quantidade };
+      });
+      const v = base(c);
+      if (v.situacao === 'ativa' && !restam) v.situacao = 'esgotada';
+      return {
+        ...v,
+        premios,
+        restam: v.situacao === 'ativa' ? restam : 0,
+        tipos: nomesDosAlvos(alvos.get(Number(c.id))),
+        inclui_combos: c.inclui_combos,
+      };
+    });
+  return { porTipo, brindes };
+}
+
 async function daConta(clienteId) {
   const { rows: posicoes } = await consultar(
     `SELECT po.posicao, po.resultado, c.id AS campanha_id, c.nome AS campanha, c.prazo_retirada, c.edicao_id,
@@ -1366,11 +1588,14 @@ module.exports = {
   detalhe,
   posicoesCsv,
   precoComDesconto,
-  ligarDescontoNoCheckout,
+  descontosVigentes,
+  paraVitrine,
+  descontosDoLote,
+  repartirComDesconto,
+  descontoAindaCabe,
+  usosDoDesconto,
   premiosDoIngresso,
   daConta,
-  definirUsoDeDesconto,
-  definirUsosDoDesconto,
   brindeDe,
   DE_PE,
   PRECO_MINIMO,
