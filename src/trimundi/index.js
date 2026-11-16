@@ -24,6 +24,14 @@ const desligada = (req, res, next) => {
 };
 router.use('/ticket', desligada);
 router.use('/tic', desligada);
+// Saúde pública (B13): o monitor externo e a tarefa agendada olham aqui.
+// 200 { ok: true } ou 503 { ok: false }, sem nenhum detalhe (o detalhe fica
+// no Admin). Desligada, o 503 vem do `desligada` acima.
+router.get('/ticket/api/saude', async (_req, res) => {
+  const ok = await require('./saude').estadoPublico();
+  res.set('Cache-Control', 'no-store');
+  res.status(ok ? 200 : 503).json({ ok });
+});
 router.use(require('./rotas/admin').router);
 router.use(require('./rotas/operador').router);
 router.use(require('./rotas/conta').router);
@@ -73,6 +81,13 @@ function iniciarProcessos() {
     if (!config.checkout().configurado) return;
     require('./checkout/conciliar').conciliarPendentes().catch(registrar('conciliação'));
   };
+  // Vigia da saúde (B13): a cada 5 min, sinal crítico vira e-mail — uma vez
+  // por problema, lembrete a cada 6 h, aviso de resolvido (alertas.js). As
+  // duas instâncias rodam, mas a trava do banco deixa uma só decidir.
+  const d = setInterval(() => require('./alertas').vigiar().catch(registrar('vigia da saúde')), 5 * 60000);
+  const primeiraVigia = setTimeout(() => require('./alertas').vigiar().catch(registrar('vigia da saúde')), 3 * 60000);
+  d.unref();
+  primeiraVigia.unref();
   const c = setInterval(conciliar, 6 * 3600000);
   const primeira = setTimeout(conciliar, 2 * 60000);
   a.unref();
