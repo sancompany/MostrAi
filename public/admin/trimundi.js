@@ -3198,6 +3198,16 @@
       confirmada_centavos: 'comissão confirmada',
       paga_centavos: 'comissão paga',
       estornada_centavos: 'comissão estornada',
+      pagos: 'pagos',
+      cortesias: 'cortesias',
+      entradas: 'entradas',
+      confirmado_centavos: 'reembolsado (confirmado)',
+      solicitado_centavos: 'reembolso pedido',
+      pedidos: 'pedidos',
+      recebido_centavos: 'recebido',
+      reembolsado_centavos: 'reembolsado',
+      liquido_centavos: 'líquido',
+      atencao: 'precisam de atenção',
     };
     const totais = Object.entries(d.totais || {})
       .map(

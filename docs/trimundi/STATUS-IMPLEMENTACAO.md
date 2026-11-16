@@ -37,6 +37,7 @@ Storage, celular): isso é a homologação de `pendencias.md`.
 | Promoters — banco e motor (PR 1, RN-T49): candidatura, aprovação com histórico, livro de comissões só de acréscimo, estorno, crédito de recrutamento, pagamento manual desligado (migration 021) | feito (PR aberto) | `promoters.js`, `pagamentos.js` | `trimundi-promoters` |
 | Promoters — Admin e relatórios (PR 2, RN-T50): aba Promoters, ficha, decisões, crédito emitido, relatórios 1 e 15 com CSV | feito (PR aberto) | `rotas/admin.js`, `relatorios.js`, `public/admin/trimundi.js` | `trimundi-promoters-admin` + navegador |
 | Promoters — Minha Conta (PR 3, RN-T51): painel do promoter, links de venda e de convite, candidatura pela conta **fechada por padrão** (P-8) | feito (PR aberto) | `rotas/conta.js`, `public/ticket/conta.page.js` | `trimundi-promoters-conta` + navegador |
+| Relatórios complementares 16 a 20 (RN-T52): participantes, reembolsos, financeiro, conciliação, desempenho por edição — números iguais aos das outras telas | feito (PR aberto) | `relatorios.js` | `trimundi-relatorios-extras` + navegador |
 | Login próprio do operador (`/ticket/entrar`); login da Mostraí restaurado | feito | `rotas/operador.js` | `trimundi-checkin` |
 | Um pedido aguardando pagamento por conta e edição (sem reter estoque) | feito | `pedidos.js` | `trimundi-conta` |
 | Página de erro e 404 próprias em `/ticket` | feito | `index.js`, `paginas/erro.html` | `trimundi-identidade` |

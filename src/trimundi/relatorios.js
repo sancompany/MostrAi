@@ -632,6 +632,243 @@ async function vendasPorPromoter(edicaoId, f) {
   };
 }
 
+// ------------------------------------- 16 a 20. complementares (C8)
+// Mesmas definições das outras telas: as somas do financeiro batem com o
+// resumo de Participantes (participantes.resumo: recebido = pedidos de venda
+// pagos, estornados ou pagos sem vaga; líquido = recebido − reembolsos
+// confirmados). Sem CPF nem e-mail.
+
+const ROTULO_INGRESSO = { valido: 'válido', bloqueado: 'bloqueado', cancelado: 'cancelado' };
+
+// 16. Participantes: um ingresso por linha (pago ou cortesia), com a entrada.
+async function participantes(edicaoId, f) {
+  const params = [edicaoId];
+  const extra = condicoes({ tipo: f.tipo }, { tipo: 'i.categoria_id' }, params);
+  const { rows } = await consultar(
+    `SELECT i.codigo_curto, pa.nome AS titular, c.nome AS tipo, i.origem, i.status, i.valor_centavos,
+            upper(left(i.pedido_id::text, 8)) AS pedido, i.emitido_em,
+            (SELECT ck.registrado_em FROM checkins ck WHERE ck.ingresso_id = i.id AND ck.escopo = 'entrada'
+                AND ck.resultado = 'aceito' LIMIT 1) AS entrou_em
+       FROM ingressos i JOIN participantes pa ON pa.id = i.participante_id JOIN categorias c ON c.id = i.categoria_id
+       LEFT JOIN pedidos p ON p.id = i.pedido_id
+      WHERE i.edicao_id = $1 AND (p.id IS NULL OR p.origem = 'venda')${extra}
+      ORDER BY pa.nome, i.id${limiteSql(f)}`,
+    params,
+  );
+  const linhas = cortar(rows, f).map((r) => ({
+    ...r,
+    origem: r.origem === 'cortesia' ? 'cortesia' : 'pago',
+    status: ROTULO_INGRESSO[r.status] || r.status,
+    pedido: r.pedido || '—',
+  }));
+  return {
+    colunas: [
+      col('codigo_curto', 'Ingresso'),
+      col('titular', 'Titular'),
+      col('tipo', 'Tipo'),
+      col('origem', 'Origem'),
+      col('status', 'Situação'),
+      col('valor_centavos', 'Valor pago', 'moeda'),
+      col('pedido', 'Pedido'),
+      col('emitido_em', 'Emitido em', 'data'),
+      col('entrou_em', 'Entrou em', 'data'),
+    ],
+    linhas,
+    totais: {
+      total: linhas.length,
+      pagos: linhas.filter((l) => l.origem === 'pago' && l.status !== 'cancelado').length,
+      cortesias: linhas.filter((l) => l.origem === 'cortesia' && l.status !== 'cancelado').length,
+      entradas: linhas.filter((l) => l.entrou_em).length,
+    },
+    cortado: foiCortado(rows, f),
+  };
+}
+
+const ROTULO_REEMBOLSO = { solicitado: 'solicitado', confirmado: 'confirmado', negado: 'negado', falhou: 'falhou' };
+
+// 17. Reembolsos: cada pedido de devolução, com a situação no Checkout.
+async function reembolsos(edicaoId, f) {
+  const params = [edicaoId];
+  const extra = condicoes({ de: f.de, ate: f.ate }, { de: 'r.criado_em', ate: 'r.criado_em' }, params);
+  const { rows } = await consultar(
+    `SELECT upper(left(r.pedido_id::text, 8)) AS pedido, i.codigo_curto, r.valor_centavos, r.motivo, r.status,
+            r.solicitado_por, r.criado_em, r.confirmado_em, r.ultimo_erro
+       FROM reembolsos r JOIN pedidos p ON p.id = r.pedido_id LEFT JOIN ingressos i ON i.id = r.ingresso_id
+      WHERE p.edicao_id = $1 AND p.origem = 'venda'${extra}
+      ORDER BY r.criado_em DESC, r.id DESC${limiteSql(f)}`,
+    params,
+  );
+  const linhas = cortar(rows, f).map((r) => ({
+    ...r,
+    codigo_curto: r.codigo_curto || 'pedido inteiro',
+    status: ROTULO_REEMBOLSO[r.status] || r.status,
+    ultimo_erro: r.ultimo_erro || '',
+  }));
+  const soma = (st) => linhas.filter((l) => l.status === st).reduce((t, l) => t + Number(l.valor_centavos), 0);
+  return {
+    colunas: [
+      col('pedido', 'Pedido'),
+      col('codigo_curto', 'Ingresso'),
+      col('valor_centavos', 'Valor', 'moeda'),
+      col('motivo', 'Motivo'),
+      col('status', 'Situação'),
+      col('solicitado_por', 'Pedido por'),
+      col('criado_em', 'Pedido em', 'data'),
+      col('confirmado_em', 'Confirmado em', 'data'),
+      col('ultimo_erro', 'Último erro'),
+    ],
+    linhas,
+    totais: {
+      total: linhas.length,
+      confirmado_centavos: soma('confirmado'),
+      solicitado_centavos: soma('solicitado'),
+    },
+    cortado: foiCortado(rows, f),
+  };
+}
+
+// 18. Financeiro por meio de pagamento. Recebido (preço dos ingressos) e
+// cobrado (com as taxas pagas pelo comprador, como o Checkout informou).
+// Os totais batem com o resumo de Participantes.
+async function financeiro(edicaoId) {
+  const { rows } = await consultar(
+    `SELECT COALESCE(p.metodo_pagamento, '(não informado)') AS meio,
+            count(*)::int AS pedidos,
+            COALESCE(sum(p.total_centavos), 0)::bigint AS recebido_centavos,
+            COALESCE(sum(p.valor_cobrado_centavos), 0)::bigint AS cobrado_centavos,
+            count(*) FILTER (WHERE p.valor_cobrado_centavos IS NULL)::int AS sem_valor_cobrado,
+            COALESCE(sum((SELECT COALESCE(sum(r.valor_centavos), 0) FROM reembolsos r
+                           WHERE r.pedido_id = p.id AND r.status = 'confirmado')), 0)::bigint AS reembolsado_centavos
+       FROM pedidos p
+      WHERE p.edicao_id = $1 AND p.origem = 'venda' AND p.status IN ('pago', 'estornado', 'pago_sem_vaga')
+      GROUP BY 1 ORDER BY recebido_centavos DESC`,
+    [edicaoId],
+  );
+  const linhas = rows.map((r) => ({
+    ...r,
+    recebido_centavos: Number(r.recebido_centavos),
+    cobrado_centavos: Number(r.cobrado_centavos),
+    reembolsado_centavos: Number(r.reembolsado_centavos),
+    liquido_centavos: Number(r.recebido_centavos) - Number(r.reembolsado_centavos),
+    // O cobrado inclui as taxas do comprador; se o Checkout não informou o
+    // cobrado de algum pedido, a diferença não é calculada ("—").
+    taxas: r.sem_valor_cobrado
+      ? '—'
+      : ((Number(r.cobrado_centavos) - Number(r.recebido_centavos)) / 100).toFixed(2).replace('.', ','),
+  }));
+  return {
+    colunas: [
+      col('meio', 'Meio de pagamento'),
+      col('pedidos', 'Pedidos', 'numero'),
+      col('recebido_centavos', 'Recebido (ingressos)', 'moeda'),
+      col('reembolsado_centavos', 'Reembolsado', 'moeda'),
+      col('liquido_centavos', 'Líquido', 'moeda'),
+      col('cobrado_centavos', 'Cobrado do comprador', 'moeda'),
+      col('taxas', 'Taxas pagas pelo comprador'),
+    ],
+    linhas: linhas.map(({ sem_valor_cobrado, ...l }) => l),
+    totais: somar(linhas, ['pedidos', 'recebido_centavos', 'reembolsado_centavos', 'liquido_centavos']),
+  };
+}
+
+// 19. Conciliação: cada pedido que recebeu aviso de pagamento, com o último
+// aviso, a situação do processamento e o que precisa de atenção.
+async function conciliacao(edicaoId, f) {
+  const params = [edicaoId];
+  const extra = condicoes({ de: f.de, ate: f.ate }, { de: 'u.recebido_em', ate: 'u.recebido_em' }, params);
+  const { rows } = await consultar(
+    `WITH u AS (
+       SELECT DISTINCT ON (pe.pedido_id) pe.pedido_id, pe.status, pe.resultado, pe.processamento, pe.provedor,
+              pe.recebido_em, pe.tentativas
+         FROM pagamento_eventos pe ORDER BY pe.pedido_id, pe.id DESC)
+     SELECT upper(left(p.id::text, 8)) AS pedido, p.status AS pedido_status, p.total_centavos, p.valor_cobrado_centavos,
+            p.metodo_pagamento, u.status AS aviso, u.resultado, u.processamento, u.provedor, u.recebido_em,
+            (SELECT count(*)::int FROM pagamento_eventos x WHERE x.pedido_id = p.id) AS avisos,
+            (SELECT count(*)::int FROM pagamento_eventos x WHERE x.pedido_id = p.id AND x.processamento = 'morto') AS mortos
+       FROM pedidos p JOIN u ON u.pedido_id = p.id
+      WHERE p.edicao_id = $1 AND p.origem = 'venda'${extra}
+      ORDER BY u.recebido_em DESC${limiteSql(f)}`,
+    params,
+  );
+  const ATENCAO = ['valor_divergente', 'pagamento_duplicado', 'parcial_sem_pedido', 'sem_vaga'];
+  const linhas = cortar(rows, f).map((r) => ({
+    ...r,
+    provedor:
+      r.provedor === 'conciliacao' ? 'conciliação' : r.provedor === 'san_checkout' ? 'aviso do Checkout' : r.provedor,
+    resultado: r.resultado || '—',
+    atencao: r.mortos || ATENCAO.includes(r.resultado) || r.pedido_status === 'pago_sem_vaga' ? 'sim' : '',
+  }));
+  return {
+    colunas: [
+      col('pedido', 'Pedido'),
+      col('pedido_status', 'Situação do pedido'),
+      col('total_centavos', 'Valor do pedido', 'moeda'),
+      col('valor_cobrado_centavos', 'Cobrado', 'moeda'),
+      col('metodo_pagamento', 'Meio'),
+      col('aviso', 'Último aviso'),
+      col('resultado', 'Resultado'),
+      col('processamento', 'Processamento'),
+      col('provedor', 'Origem do aviso'),
+      col('recebido_em', 'Recebido em', 'data'),
+      col('avisos', 'Avisos', 'numero'),
+      col('atencao', 'Precisa de atenção'),
+    ],
+    linhas,
+    totais: { total: linhas.length, atencao: linhas.filter((l) => l.atencao).length },
+    cortado: foiCortado(rows, f),
+  };
+}
+
+// 20. Desempenho por edição: todas as edições lado a lado (o filtro de
+// edição da tela não muda este). Mesmas definições: vendido = pago de venda
+// e não cancelado; receita = valor pago; capacidade = soma dos lotes dos
+// tipos ativos (decisão E/15-11).
+async function desempenhoPorEdicao() {
+  const { rows } = await consultar(
+    `SELECT ed.id, ev.nome || ' — ' || ed.nome AS edicao, ed.status, ed.inicio_em,
+            (SELECT COALESCE(sum(i.valor_centavos), 0)::bigint FROM ingressos i JOIN pedidos p ON p.id = i.pedido_id
+              WHERE i.edicao_id = ed.id AND ${VENDIDO}) AS receita_centavos,
+            (SELECT count(*)::int FROM checkins ck WHERE ck.edicao_id = ed.id AND ck.escopo = 'entrada' AND ck.resultado = 'aceito') AS entradas
+       FROM edicoes ed JOIN eventos ev ON ev.id = ed.evento_id
+      WHERE ed.status <> 'rascunho'
+      ORDER BY ed.inicio_em DESC NULLS LAST, ed.id DESC
+      LIMIT 200`,
+  );
+  // Capacidade, vendidos e cortesias: os MESMOS números do painel de lotes
+  // (desempenho-lotes.painel), para não haver dois cálculos.
+  const { painel } = require('./desempenho-lotes');
+  const linhas = [];
+  for (const r of rows) {
+    const d = (await painel(r.id)).resumo;
+    linhas.push({
+      edicao: r.edicao,
+      status: r.status,
+      inicio_em: r.inicio_em,
+      capacidade: d.capacidade,
+      vendidos: d.vendidos,
+      vendido_percentual: `${d.percentual}%`,
+      receita_centavos: Number(r.receita_centavos),
+      cortesias: d.cortesias,
+      entradas: r.entradas,
+    });
+  }
+  return {
+    colunas: [
+      col('edicao', 'Edição'),
+      col('status', 'Situação'),
+      col('inicio_em', 'Data', 'data'),
+      col('capacidade', 'Capacidade', 'numero'),
+      col('vendidos', 'Vendidos', 'numero'),
+      col('vendido_percentual', '% vendido'),
+      col('receita_centavos', 'Receita', 'moeda'),
+      col('cortesias', 'Cortesias', 'numero'),
+      col('entradas', 'Entradas', 'numero'),
+    ],
+    linhas,
+    totais: somar(linhas, ['vendidos', 'receita_centavos', 'cortesias', 'entradas']),
+  };
+}
+
 function somar(linhas, campos) {
   const t = {};
   for (const c of campos) t[c] = linhas.reduce((s, l) => s + Number(l[c] || 0), 0);
@@ -675,6 +912,11 @@ const RELATORIOS = {
   },
   duplicadas: { n: 14, nome: 'Tentativas duplicadas', fn: duplicadas, filtros: ['tipo', 'operador', 'periodo'] },
   'comissoes-promoter': { n: 15, nome: 'Comissões de promoters', fn: comissoes, filtros: ['periodo'] },
+  participantes: { n: 16, nome: 'Participantes', fn: participantes, filtros: ['tipo'] },
+  reembolsos: { n: 17, nome: 'Reembolsos', fn: reembolsos, filtros: ['periodo'] },
+  financeiro: { n: 18, nome: 'Financeiro por meio de pagamento', fn: financeiro, filtros: [] },
+  conciliacao: { n: 19, nome: 'Conciliação de pagamentos', fn: conciliacao, filtros: ['periodo'] },
+  'desempenho-edicoes': { n: 20, nome: 'Desempenho por edição', fn: desempenhoPorEdicao, filtros: [] },
 };
 
 async function gerar(edicaoId, nome, query, { semLimite = false, limite = LIMITE } = {}) {

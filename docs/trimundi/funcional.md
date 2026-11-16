@@ -689,6 +689,14 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     de vendas (tipo, lote, base, percentual, comissão, situação);
     pagamentos; convidados (primeiro nome e situação); créditos. Nada de
     quem comprou (nem nome, nem e-mail, nem CPF).
+- **RN-T52 Relatórios complementares** (16 a 20, 16/11/2026). Na mesma aba
+  Relatórios, com CSV: **16 Participantes** (um ingresso por linha, entrada,
+  sem CPF nem e-mail), **17 Reembolsos**, **18 Financeiro por meio de
+  pagamento** (recebido, reembolsado e líquido iguais ao resumo de
+  Participantes; taxas do comprador só quando o Checkout informou),
+  **19 Conciliação de pagamentos** (último aviso por pedido e o que precisa de
+  atenção) e **20 Desempenho por edição** (todas as edições; capacidade,
+  vendidos e cortesias vêm do painel de Lotes — um cálculo só).
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.

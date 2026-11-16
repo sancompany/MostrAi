@@ -243,7 +243,7 @@ test('CSV seguro, filtros validados, catálogo, relatório desconhecido e acesso
   const cat = (await admin.get('/admin/trimundi/relatorios')).json;
   assert.deepEqual(
     cat.map((c) => c.numero),
-    [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
   );
   const anon = apoio.cliente(srv);
   assert.notEqual((await anon.get(`/admin/trimundi/edicoes/${pronta.edicao.id}/relatorios/vendas-lote`)).status, 200);
