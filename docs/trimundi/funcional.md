@@ -609,6 +609,22 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     resta, prazo). Só aparece campanha com o regulamento revisado (C7);
     rascunho e pausada nunca; venda pausada não oferece nada. O resumo do
     pedido e a página do pedido mostram "de R$ X por R$ Y".
+- **RN-T47 Saúde da TICK** (C3 do plano de lançamento, 16/11/2026).
+  - Conferência só de leitura do que pode parar sem barulho. **Crítico**:
+    Checkout ou e-mail não configurados; aviso de pagamento esperando há
+    mais de 10 min (a fila parou); pedido pago há mais de 10 min sem
+    ingresso; e-mail na fila há mais de 10 min; e-mail guardado sem
+    provedor. **Atenção**: reserva vencida há mais de 15 min ainda
+    aguardando (a expiração parou); aviso de pagamento morto; reembolso
+    pedido há mais de 2 dias sem confirmação; e-mail que falhou nos últimos
+    30 dias; e cada tipo de aviso aberto do "Precisa de você" (mesma regra
+    de `participantes.avisos`, sem os resolvidos).
+  - Admin → Eventos → Visão geral mostra o bloco "Saúde do sistema" só
+    quando há sinal; se a conferência falhar, a tela abre e diz que não
+    conseguiu conferir. Nada é corrigido sozinho: cada sinal diz onde olhar
+    (RUNBOOK §11.5).
+  - `npm run trimundi:saude` imprime o mesmo e sai com 1 só quando há sinal
+    crítico (para um agendador avisar).
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.
