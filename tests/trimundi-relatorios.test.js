@@ -219,6 +219,10 @@ test('CSV seguro, filtros validados, catálogo, relatório desconhecido e acesso
     'moeda com vírgula',
   );
   assert.equal((await rel(pronta, 'nao-existe')).status, 404);
+  // Nome de propriedade herdada não passa pelo catálogo (era 500).
+  for (const nome of ['constructor', 'toString', '__proto__', 'hasOwnProperty'])
+    assert.equal((await rel(pronta, nome)).status, 404, nome);
+  assert.equal((await admin.get(`/admin/trimundi/edicoes/${pronta.edicao.id}/relatorios/constructor.csv`)).status, 404);
   assert.equal((await rel(pronta, 'vendas-lote', 'tipo=abc')).status, 400);
   assert.equal((await rel(pronta, 'validacoes', 'resultado=talvez')).status, 400);
   assert.equal((await rel(pronta, 'vendas-lote', 'de=2026-12-01T00:00:00Z&ate=2026-11-01T00:00:00Z')).status, 400);

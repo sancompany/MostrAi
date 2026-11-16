@@ -525,7 +525,7 @@ const RELATORIOS = {
 };
 
 async function gerar(edicaoId, nome, query) {
-  const r = RELATORIOS[nome];
+  const r = Object.hasOwn(RELATORIOS, nome) ? RELATORIOS[nome] : null;
   if (!r) throw erro(404, 'relatório não encontrado');
   const { rows } = await consultar('SELECT id FROM edicoes WHERE id = $1', [edicaoId]);
   if (!rows[0]) throw erro(404, 'edição não encontrada');
