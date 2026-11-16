@@ -485,6 +485,153 @@ async function indicados(edicaoId, f) {
   };
 }
 
+// ------------------------------------------- 1 e 15. promoters (RN-T49)
+// Mesmas definições do livro de comissões (promoters.js): venda de pé =
+// venda sem estorno; situação derivada na leitura (provisória abaixo de 10
+// de pé na edição, retida com ingresso bloqueado, paga, estornada).
+const SQL_PROMOTER_DE_PE = `
+  (SELECT count(*)::int FROM promoter_comissoes x
+    WHERE x.promoter_id = c.promoter_id AND x.edicao_id = c.edicao_id AND x.tipo = 'venda'
+      AND NOT EXISTS (SELECT 1 FROM promoter_comissoes e2 WHERE e2.origem_id = x.id))`;
+
+const ROTULO_SITUACAO_VENDA = {
+  provisoria: 'provisória',
+  confirmada: 'confirmada',
+  retida: 'retida (ingresso bloqueado)',
+  paga: 'paga',
+  estornada: 'estornada',
+  estornada_apos_pagamento: 'estornada após o pagamento',
+};
+
+async function comissoesDaEdicao(edicaoId, f) {
+  const params = [edicaoId];
+  const extra = condicoes({ de: f.de, ate: f.ate }, { de: 'c.registrado_em', ate: 'c.registrado_em' }, params);
+  const { rows } = await consultar(
+    `SELECT c.id, c.promoter_id, cl.nome AS promoter, upper(left(c.pedido_id::text, 8)) AS pedido, i.codigo_curto,
+            cat.nome AS tipo, l.ordem AS lote, c.venda_numero, c.valor_bruto_pedido_centavos, c.taxas_centavos,
+            c.base_centavos, c.percentual, c.comissao_centavos, c.registrado_em, i.status AS ingresso_status,
+            e.id AS estorno_id, pi.pagamento_id, ${SQL_PROMOTER_DE_PE} AS de_pe
+       FROM promoter_comissoes c
+       JOIN promoters pr ON pr.id = c.promoter_id JOIN clientes cl ON cl.id = pr.cliente_id
+       JOIN ingressos i ON i.id = c.ingresso_id JOIN categorias cat ON cat.id = i.categoria_id
+       LEFT JOIN lotes l ON l.id = i.lote_id
+       LEFT JOIN promoter_comissoes e ON e.origem_id = c.id
+       LEFT JOIN promoter_pagamento_itens pi ON pi.comissao_id = c.id
+      WHERE c.edicao_id = $1 AND c.tipo = 'venda'${extra}
+      ORDER BY cl.nome, c.promoter_id, c.venda_numero, c.id${limiteSql(f)}`,
+    params,
+  );
+  const { situacaoDaVenda } = require('./promoters');
+  return { rows, situacao: (r) => situacaoDaVenda(r, r.de_pe) };
+}
+
+// 15. Comissões de promoters: o livro, venda a venda.
+async function comissoes(edicaoId, f) {
+  const { rows, situacao } = await comissoesDaEdicao(edicaoId, f);
+  const linhas = cortar(rows, f).map((r) => ({
+    promoter: r.promoter,
+    pedido: r.pedido,
+    codigo_curto: r.codigo_curto,
+    tipo: r.tipo,
+    lote: r.lote ? `${r.lote}º lote` : '—',
+    venda_numero: r.venda_numero,
+    valor_bruto_pedido_centavos: r.valor_bruto_pedido_centavos,
+    // Taxa que o Checkout não informou fica "—" (regra 4), nunca zero inventado.
+    taxas: r.taxas_centavos === null ? '—' : (Number(r.taxas_centavos) / 100).toFixed(2).replace('.', ','),
+    base_centavos: r.base_centavos,
+    percentual: `${Number(r.percentual)}%`,
+    comissao_centavos: r.comissao_centavos,
+    situacao: ROTULO_SITUACAO_VENDA[situacao(r)],
+    registrado_em: r.registrado_em,
+    _situacao: situacao(r),
+  }));
+  const soma = (s) =>
+    linhas.filter((l) => s.includes(l._situacao)).reduce((t, l) => t + Number(l.comissao_centavos), 0);
+  return {
+    colunas: [
+      col('promoter', 'Promoter'),
+      col('pedido', 'Pedido'),
+      col('codigo_curto', 'Ingresso'),
+      col('tipo', 'Tipo'),
+      col('lote', 'Lote'),
+      col('venda_numero', 'Venda nº', 'numero'),
+      col('valor_bruto_pedido_centavos', 'Valor bruto do pedido', 'moeda'),
+      col('taxas', 'Taxas'),
+      col('base_centavos', 'Base da comissão', 'moeda'),
+      col('percentual', 'Percentual'),
+      col('comissao_centavos', 'Comissão', 'moeda'),
+      col('situacao', 'Situação'),
+      col('registrado_em', 'Registrada em', 'data'),
+    ],
+    linhas: linhas.map(({ _situacao, ...l }) => l),
+    totais: {
+      vendas: linhas.length,
+      provisoria_centavos: soma(['provisoria']),
+      confirmada_centavos: soma(['confirmada']),
+      paga_centavos: soma(['paga']),
+      estornada_centavos: soma(['estornada', 'estornada_apos_pagamento']),
+    },
+    cortado: foiCortado(rows, f),
+  };
+}
+
+// 1. Vendas por promoter: um por linha, com a faixa e as comissões.
+async function vendasPorPromoter(edicaoId, f) {
+  const { rows, situacao } = await comissoesDaEdicao(edicaoId, { ...f, limite: null });
+  const { percentualDaVenda, META } = require('./promoters');
+  const por = new Map();
+  for (const r of rows) {
+    const k = String(r.promoter_id);
+    if (!por.has(k))
+      por.set(k, {
+        promoter: r.promoter,
+        vendas: 0,
+        receita_centavos: 0,
+        provisoria_centavos: 0,
+        confirmada_centavos: 0,
+        paga_centavos: 0,
+        estornada_centavos: 0,
+        de_pe: r.de_pe,
+      });
+    const x = por.get(k);
+    const s = situacao(r);
+    if (!s.startsWith('estornada')) {
+      x.vendas += 1;
+      x.receita_centavos += Number(r.base_centavos);
+    }
+    const campo = s.startsWith('estornada') ? 'estornada_centavos' : s === 'retida' ? null : `${s}_centavos`;
+    if (campo) x[campo] += Number(r.comissao_centavos);
+  }
+  const linhas = [...por.values()]
+    .map(({ de_pe, ...x }) => ({
+      ...x,
+      situacao: de_pe >= META ? 'oficial' : 'provisório',
+      percentual_atual: de_pe >= 1 ? `${percentualDaVenda(de_pe)}%` : '—',
+    }))
+    .sort((a, b) => b.vendas - a.vendas || a.promoter.localeCompare(b.promoter));
+  return {
+    colunas: [
+      col('promoter', 'Promoter'),
+      col('situacao', 'Na edição'),
+      col('vendas', 'Vendas de pé', 'numero'),
+      col('receita_centavos', 'Receita (base)', 'moeda'),
+      col('percentual_atual', 'Percentual atual'),
+      col('provisoria_centavos', 'Comissão provisória', 'moeda'),
+      col('confirmada_centavos', 'Comissão confirmada', 'moeda'),
+      col('paga_centavos', 'Comissão paga', 'moeda'),
+      col('estornada_centavos', 'Comissão estornada', 'moeda'),
+    ],
+    linhas,
+    totais: somar(linhas, [
+      'vendas',
+      'receita_centavos',
+      'provisoria_centavos',
+      'confirmada_centavos',
+      'paga_centavos',
+    ]),
+  };
+}
+
 function somar(linhas, campos) {
   const t = {};
   for (const c of campos) t[c] = linhas.reduce((s, l) => s + Number(l[c] || 0), 0);
@@ -494,6 +641,7 @@ function somar(linhas, campos) {
 // Catálogo: o número do §8, o nome e a função. 4 (ranking de indicação) já
 // existe em Indicações; 1 e 15 dependem do módulo de Promoters.
 const RELATORIOS = {
+  'vendas-promoter': { n: 1, nome: 'Vendas por promoter', fn: vendasPorPromoter, filtros: ['periodo'] },
   'vendas-lote': { n: 2, nome: 'Vendas por lote', fn: vendasPorLote, filtros: ['tipo', 'lote', 'periodo'] },
   'vendas-tipo': { n: 3, nome: 'Vendas por tipo de ingresso', fn: vendasPorTipo, filtros: ['tipo', 'periodo'] },
   indicados: { n: 5, nome: 'Clientes indicados', fn: indicados, filtros: ['periodo'] },
@@ -526,6 +674,7 @@ const RELATORIOS = {
     filtros: ['tipo', 'operador', 'resultado', 'periodo'],
   },
   duplicadas: { n: 14, nome: 'Tentativas duplicadas', fn: duplicadas, filtros: ['tipo', 'operador', 'periodo'] },
+  'comissoes-promoter': { n: 15, nome: 'Comissões de promoters', fn: comissoes, filtros: ['periodo'] },
 };
 
 async function gerar(edicaoId, nome, query, { semLimite = false, limite = LIMITE } = {}) {

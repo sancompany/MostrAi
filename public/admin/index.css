@@ -299,6 +299,9 @@ input[type="radio"] {
   gap: 22px;
   margin-bottom: 20px;
   border-bottom: 1px solid var(--border);
+  /* Muitas abas (Eventos tem 12): a fileira rola dentro dela, nunca a
+     página inteira de lado. */
+  overflow-x: auto;
 }
 .modulo-aba {
   display: flex;
@@ -314,6 +317,8 @@ input[type="radio"] {
   font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .modulo-aba:hover {
   color: var(--text);
@@ -329,11 +334,7 @@ input[type="radio"] {
 }
 @media (max-width: 860px) {
   .modulo-abas {
-    overflow-x: auto;
     gap: 18px;
-  }
-  .modulo-aba {
-    white-space: nowrap;
   }
 }
 

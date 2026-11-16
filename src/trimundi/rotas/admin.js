@@ -252,6 +252,26 @@ router.get('/admin/trimundi/edicoes/:id/relatorios/:nome', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(await require('../relatorios').gerar(id(req), req.params.nome, req.query));
 });
+// Promoters (RN-T49): candidaturas, decisões com histórico, ficha com o livro
+// de comissões, crédito de recrutamento e pagamento manual (desligado até
+// P-1/P-9). `edicao` escolhe a edição dos números.
+const promoters = () => require('../promoters');
+const edicaoDaQuery = (req) => (req.query.edicao ? v.id(req.query.edicao, 'edição') : null);
+router.get('/admin/trimundi/promoters', async (req, res) =>
+  res.json(await promoters().listar(edicaoDaQuery(req), { situacao: req.query.situacao || null })),
+);
+router.get('/admin/trimundi/promoters/:id', async (req, res) =>
+  res.json(await promoters().ficha(id(req), edicaoDaQuery(req))),
+);
+router.post('/admin/trimundi/promoters/:id/pagamentos', async (req, res) =>
+  res.status(201).json(await promoters().registrarPagamento(id(req), req.body, autor(req))),
+);
+router.post('/admin/trimundi/promoters/:id/:acao(aprovar|recusar|suspender|reativar|encerrar)', async (req, res) =>
+  res.json(await promoters().decidir(id(req), req.params.acao, req.body, autor(req))),
+);
+router.post('/admin/trimundi/promoter-creditos/:id/emitido', async (req, res) =>
+  res.json(await promoters().marcarCreditoEmitido(id(req), req.body, autor(req))),
+);
 router.get('/admin/trimundi/edicoes/:id/recompensas', async (req, res) =>
   res.json(await recompensas.daEdicao(id(req))),
 );

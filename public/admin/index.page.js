@@ -793,6 +793,7 @@ const MODULOS = [
       { id: 'promocoes', nome: 'Combos', render: (el, resto) => window.renderTrimundiPromocoes(el, resto) },
       { id: 'campanhas', nome: 'Campanhas', render: (el, resto) => window.renderTrimundiCampanhas(el, resto) },
       { id: 'indicacao', nome: 'Indicações', render: (el, resto) => window.renderTrimundiIndicacao(el, resto) },
+      { id: 'promoters', nome: 'Promoters', render: (el, resto) => window.renderTrimundiPromoters(el, resto) },
       { id: 'recompensas', nome: 'Recompensas', render: (el, resto) => window.renderTrimundiRecompensas(el, resto) },
       {
         id: 'participantes',
@@ -848,6 +849,8 @@ const SUBTITULOS = {
     'Lotes: vendas por lote em tempo real — só pago conta como vendido; cores e alertas configuráveis.',
   'trimundi/relatorios':
     'Relatórios da edição com filtros e CSV: vendas, recompensas, portaria, combos e indicados — só números do banco.',
+  'trimundi/promoters':
+    'Promoters: candidaturas, aprovação, vendas pelo link e comissões da edição — permissão separada da portaria.',
   'trimundi/indicacao':
     'Ranking de quem indica: cada cliente e operador tem um link, e só conta o pedido pago de quem chegou por ele.',
 };

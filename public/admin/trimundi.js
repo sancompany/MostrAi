@@ -3193,6 +3193,11 @@
       premios_entregues: 'prêmios entregues',
       premios_a_retirar: 'prêmios a retirar',
       desconto_centavos: 'desconto concedido',
+      vendas: 'vendas',
+      provisoria_centavos: 'comissão provisória',
+      confirmada_centavos: 'comissão confirmada',
+      paga_centavos: 'comissão paga',
+      estornada_centavos: 'comissão estornada',
     };
     const totais = Object.entries(d.totais || {})
       .map(
@@ -3261,6 +3266,213 @@
 
   window.renderTrimundiCampanhas = renderCampanhas;
   window.renderTrimundiRelatorios = renderRelatorios;
+  // ====================================================== Promoters (RN-T49)
+  // Admin → Eventos → Promoters: candidaturas, decisões com histórico, os
+  // números da edição (livro de comissões) e a ficha. Toda regra é do
+  // servidor (promoters.js); a tela só mostra e envia. Pagamento de comissão
+  // fica desligado até as decisões P-1 e P-9 — a tela diz isso.
+  const SITUACAO_PROMOTER = {
+    candidato: ['badge-alerta', 'candidato'],
+    ativo: ['badge-ok', 'ativo'],
+    recusado: ['badge-neutro', 'recusado'],
+    suspenso: ['badge-alerta', 'suspenso'],
+    encerrado: ['badge-neutro', 'encerrado'],
+  };
+  const SITUACAO_VENDA_PROMOTER = {
+    provisoria: ['badge-neutro', 'provisória'],
+    confirmada: ['badge-ok', 'confirmada'],
+    retida: ['badge-alerta', 'retida'],
+    paga: ['badge-info', 'paga'],
+    estornada: ['badge-neutro', 'estornada'],
+    estornada_apos_pagamento: ['badge-alerta', 'estornada após o pagamento'],
+  };
+  const ACOES_PROMOTER = {
+    candidato: [
+      ['aprovar', 'Aprovar', false],
+      ['recusar', 'Recusar', true],
+    ],
+    ativo: [
+      ['suspender', 'Suspender', true],
+      ['encerrar', 'Encerrar', true],
+    ],
+    suspenso: [
+      ['reativar', 'Reativar', false],
+      ['encerrar', 'Encerrar', true],
+    ],
+  };
+  const estadoProm = { situacao: '' };
+
+  async function renderPromoters(el, resto) {
+    const edicoes = await lerOuAvisar(el, () => pegar(`${R}/edicoes`));
+    if (!edicoes) return;
+    const ed = escolherEdicao(edicoes, resto);
+    const q = new URLSearchParams();
+    if (ed) q.set('edicao', String(ed.id));
+    if (estadoProm.situacao) q.set('situacao', estadoProm.situacao);
+    const lista = await lerOuAvisar(el, () => pegar(`${R}/promoters?${q}`));
+    if (!lista) return;
+    const candidatos = lista.filter((p) => p.situacao === 'candidato').length;
+    el.innerHTML = `
+      <div class="barra-pagina">${ed ? seletorEdicao(edicoes, ed, 'promoters') : ''}
+        <div class="campo-grupo painel-form"><label for="tmPromSit">Situação</label>
+          <select id="tmPromSit"><option value="">Todas</option>${Object.keys(SITUACAO_PROMOTER)
+            .map(
+              (k) =>
+                `<option value="${k}" ${estadoProm.situacao === k ? 'selected' : ''}>${esc(SITUACAO_PROMOTER[k][1])}</option>`,
+            )
+            .join('')}</select></div></div>
+      <p class="tm-alerta tm-cor-borda-amarelo" role="note"><b>Pagamento de comissão desligado</b> até as decisões sobre a liberação (P-1) e os dados para pagar (P-9). Termo do promoter pendente do advogado (P-8). As vendas e comissões abaixo já são registradas.</p>
+      <section class="secao-pagina">
+        <div class="secao-topo"><h3>Promoters</h3><span class="contagem">${num(lista.length)}</span>${candidatos ? `<span class="badge badge-alerta">${num(candidatos)} candidatura(s) para decidir</span>` : ''}</div>
+        ${
+          lista.length
+            ? `<div class="tabela-caixa"><div class="rolagem"><table>
+          <thead><tr><th>Promoter</th><th>Situação</th><th>Link</th><th>Recrutado por</th><th class="num">Vendas</th><th class="num">%</th><th class="num">Provisória</th><th class="num">Confirmada</th><th class="num">Paga</th><th></th></tr></thead>
+          <tbody>${lista
+            .map((p) => {
+              const e = p.edicao;
+              return `<tr><td><b>${esc(p.nome)}</b>${p.recrutados ? `<br><span class="u-dim">${num(p.recrutados)} recrutado(s)</span>` : ''}</td>
+              <td>${selo(SITUACAO_PROMOTER[p.situacao] || ['badge-neutro', p.situacao])}</td>
+              <td>${p.codigo ? `<code>${esc(p.codigo)}</code>` : '—'}</td><td>${esc(p.recrutador || '—')}</td>
+              <td class="num">${e ? `${num(e.vendas)}${e.oficial ? '' : ' <span class="u-dim">(provisório)</span>'}` : '—'}</td>
+              <td class="num">${e?.percentual_atual ? `${e.percentual_atual}%` : '—'}</td>
+              <td class="num">${e ? fmt(e.comissao.provisoria_centavos / 100) : '—'}</td>
+              <td class="num">${e ? fmt(e.comissao.confirmada_centavos / 100) : '—'}</td>
+              <td class="num">${e ? fmt(e.comissao.paga_centavos / 100) : '—'}</td>
+              <td class="u-ta-r">${(ACOES_PROMOTER[p.situacao] || [])
+                .map(
+                  ([acao, rotulo]) =>
+                    `<button type="button" class="btn ghost mini" data-prom="${p.id}" data-acao="${acao}">${rotulo}</button>`,
+                )
+                .join(' ')} <button type="button" class="btn ghost mini" data-ficha="${p.id}">Ficha</button></td></tr>`;
+            })
+            .join('')}</tbody></table></div></div>`
+            : vazio(
+                estadoProm.situacao ? 'Nenhum promoter nesta situação.' : 'Nenhum promoter ainda.',
+                'A pessoa pede pela própria conta TICK; a candidatura aparece aqui para aprovar.',
+              )
+        }
+        <p class="campo-ajuda">Os números são da edição escolhida. Venda = ingresso pago pelo link do promoter depois da aprovação; reembolso desconta. Comissão: 10% até a 19ª venda, +1 a cada 10, teto 15% na 60ª; abaixo de 10 vendas é provisória. Relatórios 1 e 15 têm o CSV.</p>
+      </section>`;
+    ligarSeletor(el);
+    el.querySelector('#tmPromSit').addEventListener('change', (e) => {
+      estadoProm.situacao = e.target.value;
+      renderPromoters(el, ed ? String(ed.id) : resto);
+    });
+    for (const b of el.querySelectorAll('[data-acao]'))
+      b.addEventListener('click', () =>
+        decidirPromoter(
+          el,
+          ed,
+          lista.find((p) => String(p.id) === b.dataset.prom),
+          b.dataset.acao,
+        ),
+      );
+    for (const b of el.querySelectorAll('[data-ficha]'))
+      b.addEventListener('click', () =>
+        fichaDoPromoter(b.dataset.ficha, ed, () => renderPromoters(el, ed ? String(ed.id) : resto)),
+      );
+  }
+
+  async function decidirPromoter(el, ed, p, acao) {
+    const pede = acao !== 'aprovar' && acao !== 'reativar';
+    const rotulo = {
+      aprovar: 'Aprovar',
+      recusar: 'Recusar',
+      suspender: 'Suspender',
+      reativar: 'Reativar',
+      encerrar: 'Encerrar',
+    }[acao];
+    const { dlg, fechar } = abrirModal({
+      titulo: `${rotulo} promoter`,
+      corpo: `<form id="tmFormProm" novalidate>
+          <p><b>${esc(p.nome)}</b> — ${acao === 'aprovar' ? 'passa a vender pelo link da própria conta; só contam vendas confirmadas a partir de agora.' : acao === 'suspender' ? 'deixa de ganhar vendas novas; o que já foi registrado fica.' : acao === 'encerrar' ? 'encerra de vez; o que já foi registrado fica.' : ''}</p>
+          <div class="campo-grupo"><label for="tmPromMotivo">Motivo${pede ? '' : ' (opcional)'}</label><input id="tmPromMotivo" name="motivo" maxlength="300" ${pede ? 'required' : ''}></div>
+          <p class="form-msg" data-msg></p></form>`,
+      rodape: `<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="tmFormProm" class="btn ${pede ? 'danger' : 'primary'}">${rotulo}</button>`,
+    });
+    dlg.querySelector('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await travado(dlg.querySelector('[type="submit"]'), async () => {
+        const r = await escrever(`/promoters/${p.id}/${acao}`, 'POST', { motivo: e.target.elements.motivo.value });
+        if (!r.ok) return erroNoModal(dlg, r.erro);
+        fechar();
+        toast(
+          `Promoter ${{ aprovar: 'aprovado', recusar: 'recusado', suspender: 'suspenso', reativar: 'reativado', encerrar: 'encerrado' }[acao]}.`,
+        );
+        renderPromoters(el, ed ? String(ed.id) : '');
+      });
+    });
+  }
+
+  async function fichaDoPromoter(promoterId, ed, depois) {
+    const f = await pegar(`${R}/promoters/${promoterId}${ed ? `?edicao=${ed.id}` : ''}`).catch(() => null);
+    if (!f) return toast('Não foi possível abrir a ficha agora.', 'err');
+    const r = f.edicao?.resumo;
+    const { dlg, fechar } = abrirModal({
+      titulo: `Promoter — ${esc(f.nome)}`,
+      corpo: `
+        <p>${selo(SITUACAO_PROMOTER[f.situacao] || ['badge-neutro', f.situacao])} ${f.codigo ? `Link: <code>${esc(f.codigo)}</code>` : ''} ${f.recrutador ? ` · recrutado por ${esc(f.recrutador)}` : ''}</p>
+        <p class="u-dim">Termo do promoter: ${f.termo ? `versão ${esc(f.termo.versao)}, aceito ${esc(quando(f.termo.aceito_em))}` : 'pendente (P-8)'}.</p>
+        ${
+          r
+            ? `<h4>${esc(nomeDaEdicao(ed))}</h4>
+        <div class="mini-indicadores">
+          <div class="mini-indicador"><b>${num(r.vendas)}</b><span>vendas de pé${r.oficial ? '' : ' (provisório)'}</span></div>
+          <div class="mini-indicador"><b>${r.percentual_atual ? `${r.percentual_atual}%` : '—'}</b><span>percentual atual</span></div>
+          <div class="mini-indicador"><b>${fmt(r.comissao.provisoria_centavos / 100)}</b><span>provisória</span></div>
+          <div class="mini-indicador"><b>${fmt(r.comissao.confirmada_centavos / 100)}</b><span>confirmada</span></div>
+          <div class="mini-indicador"><b>${fmt(r.comissao.paga_centavos / 100)}</b><span>paga</span></div>
+          <div class="mini-indicador"><b>${fmt(r.comissao.estornada_centavos / 100)}</b><span>estornada</span></div>
+        </div>
+        <p class="campo-ajuda">Selos: ${r.selos.length ? r.selos.join(', ') : 'nenhum ainda'}${r.proximo_selo ? ` · próximo: ${r.proximo_selo} vendas` : ''}${r.proxima_faixa ? ` · ${r.proxima_faixa.percentual}% a partir da venda ${r.proxima_faixa.venda}` : ''}.</p>
+        ${
+          f.edicao.linhas.length
+            ? `<div class="tabela-caixa"><div class="rolagem"><table><thead><tr><th class="num">Venda</th><th>Pedido</th><th>Ingresso</th><th class="num">Base</th><th class="num">%</th><th class="num">Comissão</th><th>Situação</th></tr></thead>
+          <tbody>${f.edicao.linhas
+            .map(
+              (l) =>
+                `<tr><td class="num">${num(l.venda_numero)}</td><td>${esc(l.pedido_codigo)}</td><td>${esc(l.codigo_curto)} <span class="u-dim">${esc(l.tipo_ingresso)}</span></td><td class="num">${fmt(Number(l.base_centavos) / 100)}</td><td class="num">${Number(l.percentual)}%</td><td class="num">${fmt(Number(l.comissao_centavos) / 100)}</td><td>${selo(SITUACAO_VENDA_PROMOTER[l.situacao] || ['badge-neutro', l.situacao])}</td></tr>`,
+            )
+            .join('')}</tbody></table></div></div>`
+            : vazio('Nenhuma venda nesta edição.')
+        }`
+            : '<p class="u-dim">Escolha uma edição para ver as vendas.</p>'
+        }
+        <h4>Créditos de recrutamento</h4>
+        ${
+          f.creditos.length
+            ? `<ul>${f.creditos
+                .map(
+                  (c) =>
+                    `<li>${esc(c.recrutado)} — ${esc(c.situacao)}${c.nota ? ` <span class="u-dim">(${esc(c.nota)})</span>` : ''} ${c.situacao === 'pendente' ? `<span class="tm-acoes"><input data-nota="${c.id}" maxlength="300" placeholder="Qual cortesia (código)" aria-label="Cortesia emitida para ${esc(c.recrutado)}"> <button type="button" class="btn ghost mini" data-credito="${c.id}">Marcar cortesia emitida</button></span>` : ''}</li>`,
+                )
+                .join(
+                  '',
+                )}</ul><p class="campo-ajuda">O crédito é 1 ingresso: emita a cortesia nominal em Participantes → "+ Emitir cortesia" e marque aqui qual foi.</p>`
+            : '<p class="u-dim">Nenhum crédito.</p>'
+        }
+        <h4>Pagamentos</h4>
+        ${f.pagamentos.length ? `<ul>${f.pagamentos.map((p) => `<li>${esc(p.pago_em)} · ${fmt(Number(p.valor_centavos) / 100)} · ${esc(p.meio)}${p.referencia ? ` · ${esc(p.referencia)}` : ''}</li>`).join('')}</ul>` : '<p class="u-dim">Nenhum pagamento registrado.</p>'}
+        ${f.pagamentos_ligados ? '' : '<p class="campo-ajuda">Registro de pagamento desligado até as decisões P-1 e P-9.</p>'}
+        <h4>Histórico</h4>
+        <ul>${f.eventos.map((e) => `<li>${esc(quando(e.ocorrido_em))} — ${esc(e.acao)}${e.motivo ? `: ${esc(e.motivo)}` : ''} <span class="u-dim">(${esc(e.autor)})</span></li>`).join('')}</ul>`,
+      rodape: '<button type="button" class="btn ghost" data-fechar>Fechar</button>',
+    });
+    for (const b of dlg.querySelectorAll('[data-credito]'))
+      b.addEventListener('click', async () => {
+        const nota = dlg.querySelector(`[data-nota="${b.dataset.credito}"]`)?.value.trim();
+        if (!nota) return toast('Diga qual cortesia foi emitida.', 'err');
+        const r = await travado(b, () => escrever(`/promoter-creditos/${b.dataset.credito}/emitido`, 'POST', { nota }));
+        if (!r.ok) return toast(r.erro, 'err');
+        toast('Crédito marcado como emitido.');
+        fechar();
+        depois();
+      });
+  }
+
+  window.renderTrimundiPromoters = renderPromoters;
+
   window.renderTrimundiIndicacao = renderIndicacao;
   window.renderTrimundiEventos = renderEventos;
   window.renderTrimundiIngressos = renderIngressos;

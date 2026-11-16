@@ -109,6 +109,16 @@ pelo Cloudflare Access, que cobre `/admin`. Toda escrita grava o histórico
 | `POST /admin/trimundi/operadores/:id/desativar` | desativa |
 | `POST /admin/trimundi/operadores/:id/reativar` | volta a ativo (ou a aguardando ativação, se nunca ativou) |
 
+### Promoters (RN-T49, RN-T50)
+
+| Método e rota | O que faz |
+|---|---|
+| `GET /admin/trimundi/promoters?edicao=&situacao=` | Lista (candidatos primeiro), com os números da edição: `{ vendas, oficial, percentual_atual, selos, comissao: { provisoria_centavos, confirmada_centavos, retida_centavos, paga_centavos, estornada_centavos } }` |
+| `GET /admin/trimundi/promoters/:id?edicao=` | Ficha: histórico, recrutados, créditos, pagamentos, `pagamentos_ligados`, e o livro da edição (venda a venda, com a situação) |
+| `POST /admin/trimundi/promoters/:id/(aprovar\|recusar\|suspender\|reativar\|encerrar)` | `{ motivo }` (obrigatório em recusar, suspender e encerrar). Transição inválida → 409 |
+| `POST /admin/trimundi/promoters/:id/pagamentos` | `{ edicao_id, comissoes: [ids], pago_em: AAAA-MM-DD, meio, referencia?, observacao? }`. **409 enquanto `TRIMUNDI_PROMOTER_PAGAMENTOS` não for `1`** (P-1/P-9). Só vendas confirmadas, cada uma uma vez |
+| `POST /admin/trimundi/promoter-creditos/:id/emitido` | `{ nota }` — a cortesia nominal emitida para o crédito de recrutamento |
+
 ### Indicação
 
 | Método e rota | O que faz |
