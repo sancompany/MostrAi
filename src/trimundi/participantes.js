@@ -307,6 +307,7 @@ module.exports = {
   listar,
   resumo,
   avisos,
+  TEXTO_AVISO,
   resolverAviso,
   qrDoIngresso,
   linkDoPedido,

@@ -631,10 +631,11 @@ A ticketeira Trimundi é outro projeto da San & Co. e mora neste repositório
 e neste serviço. Os dados dela ficam no banco da Mostraí, no **esquema
 próprio `trimundi`** (nunca no `public`) — `docs/trimundi/README.md`.
 
-**Hoje (09/11/2026) a Trimundi tem código na branch
-`claude/beautiful-faraday-cjq1nt`, mas nada dela está em produção.** Sem
-`TRIMUNDI_ATIVA=1`, o módulo fica desligado: `/ticket/*` e
-`/admin/trimundi/*` respondem 503. O login da Mostraí não conhece a
+**Em produção** (`TRIMUNDI_ATIVA=1`), com as migrations 001–019 aplicadas
+(a última em 16/11/2026, junto com Campanhas — `docs/trimundi/relatorio-campanhas-2026-11-16.md`).
+Sem `TRIMUNDI_ATIVA=1`, o módulo fica desligado: `/ticket/*` e
+`/admin/trimundi/*` respondem 503. O acompanhamento do lançamento está em
+`docs/trimundi/PLANO-DE-LANCAMENTO.md`. O login da Mostraí não conhece a
 Trimundi (operador e cliente entram nas telas dela).
 Estado de cada parte: `docs/trimundi/STATUS-IMPLEMENTACAO.md`.
 
@@ -723,3 +724,41 @@ Mostraí.
 
 O que precisa existir antes de ligar em produção está em
 `docs/trimundi/pendencias.md`.
+
+### 11.5 Monitoramento (saúde da TICK)
+O `/health` só diz que o processo está de pé — não toca o banco nem as
+filas. O que pode parar sem barulho (fila de avisos de pagamento, fila de
+e-mail, expiração de pedidos, emissão) é conferido pela **saúde da TICK**,
+só leitura, sem dado pessoal (contagens e códigos curtos de pedido):
+- **Admin → Eventos → Visão geral**: o bloco "Saúde do sistema" aparece
+  sozinho quando há sinal (vermelho = crítico, laranja = atenção).
+- **No serviço** (ou em qualquer máquina com o `DATABASE_URL`):
+  ```bash
+  npm run trimundi:saude
+  ```
+  Sai com 1 só quando há sinal crítico — pronto para virar job agendado.
+  **O job no Northflank ainda não existe**: criar é mudança de produção e
+  espera a autorização do dono (plano de lançamento, C3).
+
+| Sinal | Nível | Significa | Primeira ação |
+|---|---|---|---|
+| `checkout_ausente` | crítico | `TRIMUNDI_CHECKOUT_*` incompleto: ninguém compra | conferir as variáveis (§11.1); só nomes, nunca valores no chat |
+| `email_ausente` | crítico | sem SMTP/remetente: ingresso não sai por e-mail | §11.1; os e-mails ficam guardados e saem quando voltar |
+| `fila_pagamento_parada` | crítico | aviso de pagamento vencido há 10+ min sem ser tratado: a rotina de 30 s parou | logs (`trimundi: fila de pagamento`); reiniciar o serviço só com autorização; os avisos ficam gravados e são aplicados quando a fila voltar |
+| `pago_sem_ingresso` | crítico | pedido `pago` há 10+ min sem nenhum ingresso | abrir o pedido no Admin; conferir o pagamento no Checkout; **não emitir à mão** sem entender a causa — investigar como incidente de integridade |
+| `fila_email_parada` | crítico | e-mail na fila há 10+ min | logs (`trimundi: fila de e-mail`); provedor SMTP fora? |
+| `email_guardado` | crítico sem provedor, atenção com | e-mails em `aguardando_provedor` | com o provedor configurado, a fila os pega na próxima volta |
+| `expiracao_parada` | atenção | reserva vencida há 15+ min ainda aguardando: vaga presa | logs (`trimundi: expiração de pedidos`) |
+| `pagamento_morto` | atenção | aviso que falhou 6 vezes (inclui os já resolvidos no Admin) | §11.4; "Precisa de você" mostra os abertos |
+| `reembolso_sem_resposta` | atenção | reembolso pedido há 2+ dias sem confirmação | `npm run trimundi:conciliar`; depois o painel do Checkout |
+| `email_falhou` | atenção | e-mail que falhou 6 vezes nos últimos 30 dias | logs; o comprador pede o link de novo ou o Admin gera o link do pedido |
+| `aviso_<tipo>` | atenção | aviso aberto do "Precisa de você" (sem vaga, valor divergente, duplicado, reembolso recusado, chargeback) | Admin → Participantes → "Precisa de você" |
+
+**Rotina enquanto houver venda aberta** (até existir o job e o alerta
+externo): uma vez por dia, abrir a Visão geral; no dia do evento, antes de
+abrir a portaria e a cada hora. Logs: Northflank → serviço `mostrai` →
+Observe → Logs, filtrando por `trimundi:`.
+
+**Ainda falta (fornecedor/dono):** alerta externo de "caiu" que chegue ao
+celular (monitor de uptime no `/health` e na home `/tic/eventos`) e o job
+agendado do `trimundi:saude` com aviso de falha.

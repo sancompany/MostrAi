@@ -33,6 +33,10 @@ router.use('/admin/trimundi', (req, res, next) => {
 const id = (req, nome = 'id') => v.id(req.params[nome]);
 const autor = (req) => autorDaRequisicao(req);
 
+// Saúde da TICK (C3): só leitura, contagens e códigos curtos de pedido —
+// nenhum dado pessoal. Mesmo conteúdo do `npm run trimundi:saude`.
+router.get('/admin/trimundi/saude', async (_req, res) => res.json(await require('../saude').verificar()));
+
 router.get('/admin/trimundi/estado', (_req, res) => {
   res.json({
     configurada: true,

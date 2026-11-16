@@ -36,6 +36,7 @@ pelo Cloudflare Access, que cobre `/admin`. Toda escrita grava o histórico
 | Método e rota | O que faz |
 |---|---|
 | `GET /admin/trimundi/estado` | `{ configurada }`, o banco existe |
+| `GET /admin/trimundi/saude` | Saúde da TICK (C3, RN-T47), só leitura: `{ verificado_em, nivel: ok\|atencao\|critico, sinais: [{ chave, nivel, quantidade, texto, acao, pedidos? }] }`. Só contagens e códigos curtos de pedido; nenhum dado pessoal. Mesmo conteúdo do `npm run trimundi:saude` |
 
 ### Evento e edição — T1 e T1a
 

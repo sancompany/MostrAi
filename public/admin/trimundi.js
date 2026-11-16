@@ -2494,7 +2494,10 @@
     if (!edicoes) return;
     const ed = escolherEdicao(edicoes, resto);
     if (!ed) {
-      el.innerHTML = semEdicao();
+      // Sem edição a saúde vale do mesmo jeito: Checkout ou e-mail faltando
+      // é justamente o que se descobre na montagem.
+      const saude = await pegar(`${R}/saude`).catch(() => null);
+      el.innerHTML = `${blocoSaude(saude)}${semEdicao()}`;
       return ligarSemEdicao(el);
     }
     const dados = await lerOuAvisar(el, () =>
@@ -2503,16 +2506,20 @@
         pegar(`${R}/edicoes/${ed.id}/resumo`),
         pegar(`${R}/edicoes/${ed.id}/avisos`),
         pegar(`${R}/edicoes/${ed.id}/recompensas`),
+        // A saúde não derruba a tela: se a conferência falhar, a Visão geral
+        // abre do mesmo jeito e diz que não conseguiu conferir.
+        pegar(`${R}/saude`).catch(() => null),
       ]),
     );
     if (!dados) return;
-    const [d, resumo, avisos, rec] = dados;
+    const [d, resumo, avisos, rec, saude] = dados;
     const r = d.resumo;
     const indicador = (valor, rotulo) => `<div class="mini-indicador"><b>${valor}</b><span>${rotulo}</span></div>`;
     const qtdAvisos = Array.isArray(avisos) ? avisos.length : Number(avisos?.total || 0);
     el.innerHTML = `
       <div class="barra-pagina">${seletorEdicao(edicoes, ed, 'visao')}
         <div class="tm-acoes"><button type="button" class="btn ghost" data-ir="desempenho">Lotes em detalhe</button></div></div>
+      ${blocoSaude(saude)}
       <section class="secao-pagina">
         <h3>DESEMPENHO DE VENDAS — LOTES DO EVENTO</h3>
         <div class="tm-lote-topo"><b>Geral</b><span class="tm-lote-num">${num(r.vendidos)} de ${num(r.capacidade)} vendidos · <b>${r.percentual}%</b> · ${NOME_COR[r.cor]}</span></div>
@@ -2563,6 +2570,26 @@
       if (el.isConnected && el.querySelector('[data-ir="desempenho"]'))
         renderVisaoGeral(el, String(ed.id)).catch(() => {});
     }, 30000);
+  }
+
+  // Saúde do sistema (C3): só aparece quando há o que olhar. Vale para toda a
+  // TICK, não só para a edição escolhida — a fila de pagamento e a de e-mail
+  // são uma só.
+  function blocoSaude(saude) {
+    if (!saude)
+      return '<p class="tm-alerta tm-cor-borda-amarelo" role="status">Não foi possível conferir a saúde do sistema agora.</p>';
+    if (saude.nivel === 'ok' || !saude.sinais?.length) return '';
+    const critico = saude.nivel === 'critico';
+    return `<section class="secao-pagina tm-saude" role="status">
+        <div class="secao-topo"><h3>${critico ? 'Saúde do sistema — CRÍTICO' : 'Saúde do sistema — atenção'}</h3><span class="contagem">${saude.sinais.length}</span></div>
+        ${saude.sinais
+          .map(
+            (s) =>
+              `<p class="tm-alerta tm-cor-borda-${s.nivel === 'critico' ? 'vermelho' : 'laranja'}"><b>${num(s.quantidade)} · ${esc(s.texto)}</b>${s.pedidos ? ` Pedidos: ${esc(s.pedidos.join(', '))}.` : ''}<br><span class="u-dim">${esc(s.acao)}</span></p>`,
+          )
+          .join('')}
+        <p class="campo-ajuda">Conferido ${esc(quando(saude.verificado_em) || '')}. O que fazer em cada caso: RUNBOOK §11.5.</p>
+      </section>`;
   }
 
   window.renderTrimundiVisaoGeral = renderVisaoGeral;
