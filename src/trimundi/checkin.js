@@ -3,7 +3,7 @@ const v = require('./lib/validacao');
 const { erro } = require('./lib/erros');
 const { lerQr } = require('./lib/qr');
 const { normalizarCodigoCurto } = require('./lib/codigos');
-const { historicoDoIngresso, medir } = require('./lib/registro');
+const { auditar, historicoDoIngresso, medir } = require('./lib/registro');
 const { edicoesPermitidas } = require('./operadores');
 const { colunasDeNumero } = require('./lib/numeracao');
 
@@ -55,15 +55,79 @@ async function acharIngresso(cliente, ed, entrada) {
   return rows[0] ? { ingresso: rows[0] } : { resultado: 'invalido' };
 }
 
+// Quem entregou: o operador pelo nome; quem não é operador (Admin) aparece
+// como "Admin". `coluna` guarda 'operador:<id>' ou o autor do Admin.
+const entreguePor = (coluna) => `CASE WHEN ${coluna} IS NULL THEN NULL
+  WHEN ${coluna} LIKE 'operador:%' THEN (SELECT nome FROM operadores WHERE 'operador:' || operadores.id = ${coluna})
+  ELSE 'Admin' END`;
+
+// Ingresso principal da conta na edição (o mesmo critério da "Minha conta",
+// clientes.painel): o primeiro ingresso não cancelado do primeiro pedido pago
+// da conta. É nele que a recompensa de indicação da conta é entregue
+// (decisão do dono, 14/11/2026, item H).
+async function principalDaConta(cliente, clienteId, edicaoId) {
+  if (!clienteId) return null;
+  const { rows } = await cliente.query(
+    `SELECT i.id, ${colunasDeNumero('i')}
+       FROM ingressos i JOIN pedidos p ON p.id = i.pedido_id
+      WHERE p.cliente_id = $1 AND i.edicao_id = $2 AND p.status = 'pago' AND i.status <> 'cancelado'
+      ORDER BY p.pago_em NULLS LAST, p.criado_em, numero, i.id
+      LIMIT 1`,
+    [clienteId, edicaoId],
+  );
+  return rows[0] ? Number(rows[0].id) : null;
+}
+
+// Recompensas de indicação da conta nesta edição, uma a uma (não revogadas).
+async function recompensasDaConta(cliente, clienteId, edicaoId, { travar = false } = {}) {
+  const { rows } = await cliente.query(
+    `SELECT r.id, ca.recompensa AS nome, r.status, r.entregue_em, ${entreguePor('r.entregue_por')} AS entregue_por
+       FROM recompensas_indicacao r
+       JOIN campanhas_indicacao ca ON ca.id = r.campanha_id
+       JOIN indicadores ind ON ind.id = r.indicador_id
+      WHERE ind.cliente_id = $1 AND ca.edicao_id = $2 AND r.status <> 'revogada'
+      ORDER BY r.concedida_em, r.id${travar ? ' FOR UPDATE OF r' : ''}`,
+    [clienteId, edicaoId],
+  );
+  return rows;
+}
+
+// "Número de indicados, quando disponível" (§6.1): pessoas que a conta do
+// ingresso principal indicou com compra confirmada nesta edição (a mesma
+// regra do "Indique e acompanhe"); nulo se não é o principal ou se a conta
+// nunca teve link. Roda FORA da transação da entrada: a contagem usa outra
+// conexão do pool, e pedir uma segunda conexão segurando a primeira trava a
+// portaria quando o pool está cheio.
+async function comIndicados(resposta) {
+  const i = resposta?.ingresso;
+  const conta = i?.[CONTA_PRINCIPAL];
+  if (!conta) return resposta;
+  const { rows } = await consultar('SELECT id FROM indicadores WHERE cliente_id = $1', [conta.clienteId]);
+  if (rows[0]) {
+    const { indicadosPor } = require('./desempenho');
+    i.indicados = (await indicadosPor(rows[0].id, conta.edicaoId)).totais.pessoas;
+  }
+  return resposta;
+}
+const CONTA_PRINCIPAL = Symbol('conta do ingresso principal');
+
 async function detalhes(cliente, ingresso) {
   const { rows } = await cliente.query(
-    `SELECT i.id, i.codigo_curto, i.origem, i.status, i.motivo_status, pa.nome AS participante, c.nome AS categoria,
+    `SELECT i.id, i.codigo_curto, i.origem, i.status, i.motivo_status, i.pedido_id, i.reserva_id, i.edicao_id,
+            pa.nome AS participante, c.nome AS categoria, c.pulseira, co.nome AS comprador, p.cliente_id,
             pr.nome AS promocao, ${colunasDeNumero('i')},
+            ev.nome AS evento, ed.nome AS edicao, ed.inicio_em, ed.fim_em,
+            (SELECT count(*)::int FROM lotes l2 WHERE l2.categoria_id = l.categoria_id AND l2.ordem <= l.ordem) AS lote,
             COALESCE((SELECT json_agg(json_build_object('id', ib.beneficio_id, 'nome', ib.nome, 'resgatado_em', ib.resgatado_em,
-                        'resgatado_por', (SELECT nome FROM operadores WHERE 'operador:' || operadores.id = ib.resgatado_por))
+                        'resgatado_por', ${entreguePor('ib.resgatado_por')})
                         ORDER BY ib.nome) FROM ingresso_beneficios ib WHERE ib.ingresso_id = i.id), '[]') AS beneficios,
-            ck.registrado_em AS utilizado_em, op.nome AS utilizado_por
+            ck.registrado_em AS utilizado_em, op.nome AS utilizado_por,
+            (SELECT count(*)::int FROM checkins t WHERE t.ingresso_id = i.id AND t.escopo = 'entrada' AND t.resultado = 'recusado') AS tentativas
        FROM ingressos i JOIN participantes pa ON pa.id = i.participante_id JOIN categorias c ON c.id = i.categoria_id
+       JOIN edicoes ed ON ed.id = i.edicao_id JOIN eventos ev ON ev.id = ed.evento_id
+       LEFT JOIN lotes l ON l.id = i.lote_id
+       LEFT JOIN pedidos p ON p.id = i.pedido_id
+       LEFT JOIN compradores co ON co.id = p.comprador_id
        LEFT JOIN promocoes pr ON pr.id = i.promocao_id
        LEFT JOIN checkins ck ON ck.ingresso_id = i.id AND ck.escopo = 'entrada' AND ck.resultado = 'aceito'
        LEFT JOIN operadores op ON op.id = ck.operador_id
@@ -71,23 +135,92 @@ async function detalhes(cliente, ingresso) {
     [ingresso.id],
   );
   const d = rows[0];
-  return {
+  // Combo: os outros ingressos da mesma linha de combo do pedido, um a um —
+  // cada QR continua sendo validado sozinho; a lista só mostra quem já entrou.
+  let combo = null;
+  if (d.promocao && d.reserva_id) {
+    const { rows: doCombo } = await cliente.query(
+      `SELECT i.id, pa.nome AS participante, c.nome AS categoria, i.status, ${colunasDeNumero('i')},
+              ck.registrado_em AS utilizado_em
+         FROM reservas eu JOIN reservas r ON r.pedido_item_id = eu.pedido_item_id
+         JOIN ingressos i ON i.reserva_id = r.id
+         JOIN participantes pa ON pa.id = i.participante_id JOIN categorias c ON c.id = i.categoria_id
+         LEFT JOIN checkins ck ON ck.ingresso_id = i.id AND ck.escopo = 'entrada' AND ck.resultado = 'aceito'
+        WHERE eu.id = $1
+        ORDER BY numero, i.id`,
+      [d.reserva_id],
+    );
+    combo = {
+      nome: d.promocao,
+      ingressos: doCombo.map((x) => ({
+        id: x.id,
+        este: Number(x.id) === Number(d.id),
+        numero: x.numero,
+        numero_de: x.numero_de,
+        participante: x.participante,
+        categoria: x.categoria,
+        status: x.status,
+        utilizado_em: x.utilizado_em,
+      })),
+    };
+  }
+  // Recompensa de indicação: só no ingresso principal da conta que indicou.
+  const principal = d.cliente_id
+    ? (await principalDaConta(cliente, d.cliente_id, d.edicao_id)) === Number(d.id)
+    : false;
+  const recompensas = principal ? await recompensasDaConta(cliente, d.cliente_id, d.edicao_id) : [];
+  const saida = {
     id: d.id,
     codigo_curto: d.codigo_curto,
+    // Titular (quem entra) e comprador (quem pagou); cortesia não tem comprador.
     participante: d.participante,
+    comprador: d.comprador,
+    evento: d.evento,
+    edicao: d.edicao,
+    // Validade do ingresso = data e horário da edição (item F).
+    validade: { inicio_em: d.inicio_em, fim_em: d.fim_em },
     // "Ingresso 2 de 4" do pedido: cada QR é uma unidade; validar um não
     // mexe nos outros do mesmo pedido.
     numero: d.numero,
     numero_de: d.numero_de,
     categoria: d.categoria,
+    lote: d.lote,
+    pulseira: d.pulseira,
     promocao: d.promocao,
+    combo,
     cortesia: d.origem === 'cortesia',
     beneficios: d.beneficios,
+    // Preenchido por comIndicados, fora da transação.
+    indicados: null,
+    recompensas_indicacao: recompensas.map((r) => ({
+      id: r.id,
+      nome: r.nome,
+      entregue_em: r.entregue_em,
+      entregue_por: r.entregue_por,
+    })),
     status: d.status,
     motivo: d.motivo_status,
     utilizado_em: d.utilizado_em,
     utilizado_por: d.utilizado_por,
+    tentativas_recusadas: d.tentativas,
   };
+  // Símbolo: não sai no JSON da resposta.
+  if (principal) saida[CONTA_PRINCIPAL] = { clienteId: d.cliente_id, edicaoId: d.edicao_id };
+  return saida;
+}
+
+// Tentativa recusada de um ingresso desta edição (já utilizado, cancelado,
+// bloqueado), registrada na consulta e na confirmação. A mesma leitura
+// repetida pelo mesmo operador em 10 s (o QR parado na frente da câmera, ou
+// a consulta seguida da confirmação) conta uma vez só.
+async function registrarRecusa(cliente, ingressoId, edicaoId, operadorId, motivo, aparelho = null) {
+  await cliente.query(
+    `INSERT INTO checkins (ingresso_id, edicao_id, operador_id, resultado, motivo, aparelho)
+     SELECT $1, $2, $3, 'recusado', $4, $5
+      WHERE NOT EXISTS (SELECT 1 FROM checkins WHERE ingresso_id = $1 AND operador_id = $3 AND escopo = 'entrada'
+                           AND resultado = 'recusado' AND motivo = $4 AND registrado_em > now() - interval '10 seconds')`,
+    [ingressoId, edicaoId, operadorId, motivo, aparelho],
+  );
 }
 
 function resultadoDe(d) {
@@ -97,20 +230,31 @@ function resultadoDe(d) {
   return 'valido';
 }
 
-async function consultarIngresso(operador, edicaoId, entrada) {
+async function consultarIngresso(operador, edicaoId, entrada, { aparelho = null } = {}) {
   const ed = await permitida(operador, v.id(edicaoId, 'edição'));
   const cliente = { query: (s, p) => consultar(s, p) };
   const achado = await acharIngresso(cliente, ed, entrada);
   if (!achado.ingresso) return { resultado: achado.resultado, mensagem: RESULTADOS[achado.resultado] };
-  const d = await detalhes(cliente, achado.ingresso);
+  let d = await detalhes(cliente, achado.ingresso);
   const resultado = resultadoDe(d);
-  return { resultado, mensagem: RESULTADOS[resultado], ingresso: d, classificacao_etaria: ed.classificacao_etaria };
+  if (resultado !== 'valido') {
+    // Tentativa de entrada com ingresso já usado (ou cancelado/bloqueado):
+    // fica registrada já na leitura, com operador e hora (§6).
+    await registrarRecusa(cliente, d.id, ed.id, operador.id, resultado, aparelho);
+    d = await detalhes(cliente, achado.ingresso);
+  }
+  return comIndicados({
+    resultado,
+    mensagem: RESULTADOS[resultado],
+    ingresso: d,
+    classificacao_etaria: ed.classificacao_etaria,
+  });
 }
 
 async function confirmar(operador, edicaoId, ingressoId, { aparelho = null, lidoEm = null } = {}) {
   const ed = await permitida(operador, v.id(edicaoId, 'edição'));
   const id = v.id(ingressoId, 'ingresso');
-  return emTransacao(async (cliente) => {
+  const resposta = await emTransacao(async (cliente) => {
     const { rows } = await cliente.query('SELECT * FROM ingressos WHERE id = $1 FOR UPDATE', [id]);
     const ing = rows[0];
     if (!ing) return { resultado: 'invalido', mensagem: RESULTADOS.invalido };
@@ -119,12 +263,8 @@ async function confirmar(operador, edicaoId, ingressoId, { aparelho = null, lido
     const antes = await detalhes(cliente, ing);
     const r = resultadoDe(antes);
     if (r !== 'valido') {
-      await cliente.query(
-        `INSERT INTO checkins (ingresso_id, edicao_id, operador_id, resultado, motivo, aparelho)
-         VALUES ($1, $2, $3, 'recusado', $4, $5)`,
-        [id, ed.id, operador.id, r, aparelho],
-      );
-      return { resultado: r, mensagem: RESULTADOS[r], ingresso: antes };
+      await registrarRecusa(cliente, id, ed.id, operador.id, r, aparelho);
+      return { resultado: r, mensagem: RESULTADOS[r], ingresso: await detalhes(cliente, ing) };
     }
     const { rows: ins } = await cliente.query(
       `INSERT INTO checkins (ingresso_id, edicao_id, operador_id, resultado, aparelho, lido_no_aparelho_em)
@@ -134,6 +274,7 @@ async function confirmar(operador, edicaoId, ingressoId, { aparelho = null, lido
       [id, ed.id, operador.id, aparelho, lidoEm],
     );
     if (!ins[0]) {
+      await registrarRecusa(cliente, id, ed.id, operador.id, 'ja_utilizado', aparelho);
       const depois = await detalhes(cliente, ing);
       return { resultado: 'ja_utilizado', mensagem: RESULTADOS.ja_utilizado, ingresso: depois };
     }
@@ -142,6 +283,7 @@ async function confirmar(operador, edicaoId, ingressoId, { aparelho = null, lido
     const depois = await detalhes(cliente, ing);
     return { resultado: 'entrada_registrada', mensagem: 'Entrada registrada', ingresso: depois };
   });
+  return comIndicados(resposta);
 }
 
 // Entrega do benefício do ingresso (ex.: copão): uma vez só. A linha do
@@ -172,6 +314,61 @@ async function resgatarBeneficio(operador, edicaoId, ingressoId, beneficioId) {
   });
 }
 
+// Entrega da recompensa de indicação na portaria (decisão do dono,
+// 14/11/2026, item H): na leitura do ingresso principal da conta que indicou,
+// uma vez só, independente da entrada. Registra quem entregou e quando, com
+// auditoria. Recompensa revogada (indicação reembolsada antes da entrega) não
+// se entrega.
+async function entregarRecompensa(operador, edicaoId, ingressoId, recompensaId) {
+  const ed = await permitida(operador, v.id(edicaoId, 'edição'));
+  const id = v.id(ingressoId, 'ingresso');
+  const rid = v.id(recompensaId, 'recompensa');
+  return emTransacao(async (cliente) => {
+    const { rows } = await cliente.query(
+      `SELECT i.id, i.edicao_id, i.status, p.cliente_id FROM ingressos i LEFT JOIN pedidos p ON p.id = i.pedido_id
+        WHERE i.id = $1 FOR UPDATE OF i`,
+      [id],
+    );
+    const ing = rows[0];
+    if (!ing || Number(ing.edicao_id) !== Number(ed.id)) throw erro(404, 'ingresso não encontrado');
+    if (ing.status !== 'valido')
+      throw erro(409, 'Ingresso cancelado ou bloqueado: a recompensa não pode ser entregue.');
+    if (!ing.cliente_id || (await principalDaConta(cliente, ing.cliente_id, ed.id)) !== Number(ing.id)) {
+      throw erro(409, 'A recompensa de indicação é entregue no ingresso principal de quem indicou.');
+    }
+    const r = (await recompensasDaConta(cliente, ing.cliente_id, ed.id, { travar: true })).find(
+      (x) => Number(x.id) === rid,
+    );
+    if (!r) throw erro(404, 'Esta recompensa não é deste ingresso.');
+    if (r.status === 'entregue') {
+      return {
+        resultado: 'ja_entregue',
+        mensagem: `${r.nome}: já entregue`,
+        entregue_em: r.entregue_em,
+        entregue_por: r.entregue_por,
+      };
+    }
+    const autor = `operador:${operador.id}`;
+    const { rows: ok } = await cliente.query(
+      `UPDATE recompensas_indicacao SET status = 'entregue', entregue_em = now(), entregue_por = $2
+        WHERE id = $1 AND status = 'concedida' RETURNING entregue_em`,
+      [rid, autor],
+    );
+    await auditar(cliente, { autor }, 'recompensa_entregue', 'recompensa_indicacao', rid, {
+      via: 'portaria',
+      ingresso_id: id,
+      edicao_id: ed.id,
+    });
+    await medir(cliente, 'acesso:recompensa_entrega', ed.id, { recompensa_id: rid });
+    return {
+      resultado: 'entregue',
+      mensagem: `${r.nome}: entregue`,
+      entregue_em: ok[0].entregue_em,
+      entregue_por: operador.nome,
+    };
+  });
+}
+
 // Contador da portaria: entradas registradas e ingressos válidos da edição.
 async function contador(operador, edicaoId) {
   const ed = await permitida(operador, v.id(edicaoId, 'edição'));
@@ -183,4 +380,4 @@ async function contador(operador, edicaoId) {
   return rows[0];
 }
 
-module.exports = { consultarIngresso, confirmar, contador, resgatarBeneficio, RESULTADOS };
+module.exports = { consultarIngresso, confirmar, contador, resgatarBeneficio, entregarRecompensa, RESULTADOS };

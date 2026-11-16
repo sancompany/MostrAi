@@ -1,6 +1,17 @@
 # Current Handoff
 
 ## Updated
+2026-11-15 — **TICK: portaria completa (§6)**, branch
+`claude/beautiful-faraday-cjq1nt-portaria`. Decisões comerciais aprovadas pelo
+dono em 14/11/2026: `docs/trimundi/decisoes-comerciais-2026-11-14.md` — é a
+fonte das fases seguintes (lotes §7, Admin §9, campanhas, promotores); nada
+fora dela entra sem o dono. Migration 013 (`categorias.pulseira`). Não desfazer
+sem contexto: a consulta da portaria grava tentativa recusada (já utilizado,
+cancelado, bloqueado) com dedupe de 10 s por operador; a recompensa de
+indicação só aparece/entrega no ingresso principal da conta
+(`checkin.principalDaConta`, mesmo critério de `clientes.painel`). Os 7
+operadores de produção ficam só com portaria (decisão B).
+
 2026-11-11 — **TICK: operador na conta TICK**, branch
 `claude/beautiful-faraday-cjq1nt-operador-conta` (sobre a de autoindicação,
 PR #148). Migration 012 (`operadores.cliente_id`). Não desfazer sem

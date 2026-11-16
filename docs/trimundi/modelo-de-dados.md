@@ -48,7 +48,7 @@ Os números de regra (RN-T…) são de `funcional.md`.
 - **`beneficios`**
   - `id`, `edicao_id`, `nome` (1–60), `descricao` (até 300), `ativo`.
 - **`categorias`** (tipo de ingresso)
-  - `id`, `edicao_id`, `nome` (1–60), `descricao` (até 500), `limite_por_comprador` (nulo ou 1–20), `ativo`, `ordem`.
+  - `id`, `edicao_id`, `nome` (1–60), `descricao` (até 500), `limite_por_comprador` (nulo ou 1–20), `pulseira` (nulo ou 1–40: cor ou código entregue na portaria — migration 013), `ativo`, `ordem`.
   - Único: (`edicao_id`, `lower(nome)`).
 - **`categoria_beneficios`**
   - (`categoria_id`, `beneficio_id`).

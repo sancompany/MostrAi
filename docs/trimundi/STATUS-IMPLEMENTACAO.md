@@ -26,6 +26,7 @@ Storage, celular): isso é a homologação de `pendencias.md`.
 | Conta do cliente (nome, CPF, e-mail, senha; e-mail confirmado; compra exige conta; minha conta com ingressos e QR) | feito | `clientes.js`, `rotas/conta.js`, `conta.page.js` | `trimundi-conta` |
 | Benefício por lote com quantidade; entrega única na portaria | feito | `emissao.js`, `catalogo.js`, `checkin.js` | `trimundi-beneficios` |
 | Indicação (link, conversão paga, recompensa por campanha, entrega no Admin) | feito | `indicacao.js`, aba Indicação | `trimundi-indicacao` |
+| Portaria completa (15/11/2026, RN-T39): ficha com comprador, titular, tipo, lote, número, validade, evento, pulseira; VALIDAR INGRESSO; já utilizado em vermelho com a primeira entrada; tentativas recusadas gravadas; combo um a um; CONFIRMAR ENTREGA de benefício e de recompensa de indicação | feito | `checkin.js`, `checkin.page.js`, migration 013 | `trimundi-portaria` |
 | Login próprio do operador (`/ticket/entrar`); login da Mostraí restaurado | feito | `rotas/operador.js` | `trimundi-checkin` |
 | Um pedido aguardando pagamento por conta e edição (sem reter estoque) | feito | `pedidos.js` | `trimundi-conta` |
 | Página de erro e 404 próprias em `/ticket` | feito | `index.js`, `paginas/erro.html` | `trimundi-identidade` |

@@ -18,6 +18,9 @@
   --erro: #b91c1c;
   --erro-fundo: #fee2e2;
   --preco: #1d4ed8;
+  /* Botão "VALIDAR INGRESSO" da portaria (azul, §6). */
+  --validar: #1d4ed8;
+  --sobre-validar: #ffffff;
   --raio: 14px;
   --sombra: 0 1px 2px rgb(13 15 19 / 6%), 0 4px 16px rgb(13 15 19 / 7%);
   color-scheme: light;
@@ -41,6 +44,8 @@
     --erro: #f87171;
     --erro-fundo: #3b1414;
     --preco: #8ec5ff;
+    --validar: #2563eb;
+    --sobre-validar: #ffffff;
     --sombra: none;
     color-scheme: dark;
   }
@@ -724,12 +729,13 @@ details.termo .texto {
   background: var(--ok-fundo);
 }
 
-.resultado.ja_utilizado,
 .resultado.bloqueado {
   border-color: var(--alerta);
   background: var(--alerta-fundo);
 }
 
+/* Já utilizado: vermelho — entrada não autorizada (§6). */
+.resultado.ja_utilizado,
 .resultado.cancelado,
 .resultado.outra_edicao,
 .resultado.invalido {
@@ -741,6 +747,57 @@ details.termo .texto {
   font-size: 1.4rem;
   font-weight: 800;
   margin-bottom: 0.25rem;
+}
+
+.resultado.ja_utilizado .titulo {
+  color: var(--erro);
+  font-size: 1.25rem;
+  line-height: 1.25;
+}
+
+.resultado .primeira-entrada {
+  font-weight: 800;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.btn.validar {
+  background: var(--validar);
+  border-color: var(--validar);
+  color: var(--sobre-validar);
+  letter-spacing: 0.02em;
+}
+
+/* Ficha do ingresso lido na portaria. */
+.ficha-ingresso {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.2rem 0.75rem;
+  margin: 0.5rem 0;
+}
+
+.ficha-ingresso dt {
+  color: var(--suave);
+  font-size: 0.9rem;
+}
+
+.ficha-ingresso dd {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.resultado .rotulo {
+  margin: 0.75rem 0 0.25rem;
+  font-weight: 800;
+}
+
+.combo-ingressos ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.combo-ingressos li.este {
+  font-weight: 800;
 }
 
 .contador {

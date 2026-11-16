@@ -49,14 +49,16 @@ async function permitida(operador, edicaoId) {
 async function pacote(operador, edicaoId) {
   const ed = await permitida(operador, v.id(edicaoId, 'edição'));
   const { rows } = await consultar(
-    `SELECT i.id, i.codigo, i.codigo_curto, i.status, c.nome AS categoria, pa.nome, ${colunasDeNumero('i')},
+    `SELECT i.id, i.codigo, i.codigo_curto, i.status, c.nome AS categoria, c.pulseira, pa.nome, ${colunasDeNumero('i')},
+            (SELECT count(*)::int FROM lotes l2 JOIN lotes l ON l.id = i.lote_id
+              WHERE l2.categoria_id = l.categoria_id AND l2.ordem <= l.ordem) AS lote,
             EXISTS (SELECT 1 FROM checkins ck WHERE ck.ingresso_id = i.id AND ck.escopo = 'entrada' AND ck.resultado = 'aceito') AS utilizado
        FROM ingressos i JOIN categorias c ON c.id = i.categoria_id JOIN participantes pa ON pa.id = i.participante_id
       WHERE i.edicao_id = $1
       ORDER BY i.id`,
     [ed.id],
   );
-  const { rows: agora } = await consultar('SELECT now() AS agora');
+  const { rows: agora } = await consultar('SELECT now() AS agora, fim_em FROM edicoes WHERE id = $1', [ed.id]);
   return {
     versao: 1,
     gerado_em: agora[0].agora,
@@ -65,6 +67,9 @@ async function pacote(operador, edicaoId) {
       nome: `${ed.evento} — ${ed.nome}`,
       codigo_publico: ed.codigo_publico,
       classificacao_etaria: ed.classificacao_etaria,
+      // Validade do ingresso = data e horário da edição.
+      inicio_em: ed.inicio_em,
+      fim_em: agora[0].fim_em,
     },
     // SPKI DER (base64url) da chave pública Ed25519 da edição.
     chave_publica: chavePublicaDaEdicao(ed.codigo_publico),
@@ -79,6 +84,9 @@ async function pacote(operador, edicaoId) {
       // Número do ingresso no pedido e quantos o pedido tem (cortesia: nulos).
       o: r.numero,
       q: r.numero_de,
+      // Número do lote no tipo (nulo na cortesia) e a pulseira do tipo.
+      l: r.lote || null,
+      p: r.pulseira || null,
     })),
   };
 }

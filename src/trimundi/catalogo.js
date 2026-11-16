@@ -137,6 +137,9 @@ function lerTipo(d = {}, parcial = false) {
       obrigatorio: false,
     });
   }
+  // Pulseira que a portaria entrega a quem entra com este tipo (cor ou
+  // código), opcional — decisão do dono de 14/11/2026 (item G).
+  if (tem('pulseira')) out.pulseira = v.texto(d.pulseira, { campo: 'a pulseira', max: 40 }) || null;
   if (Object.hasOwn(d, 'ativo')) out.ativo = v.booleano(d.ativo, true);
   if (tem('beneficios')) out.beneficios = Array.isArray(d.beneficios) ? d.beneficios : [];
   if (tem('lotes')) {
@@ -179,6 +182,7 @@ async function listarTipos(edicaoId, cliente = null) {
       nome: c.nome,
       descricao: c.descricao,
       limite_por_comprador: c.limite_por_comprador,
+      pulseira: c.pulseira,
       ativo: c.ativo,
       beneficios: benef
         .filter((b) => Number(b.categoria_id) === Number(c.id))
@@ -222,10 +226,10 @@ async function criarTipo(edicaoId, dados, autor) {
     const beneficios = await conferirBeneficios(cliente, edicaoId, t.beneficios);
     await conferirBeneficios(cliente, edicaoId, t.lotes.map((l) => l.beneficio_id).filter(Boolean));
     const { rows } = await cliente.query(
-      `INSERT INTO categorias (edicao_id, nome, descricao, limite_por_comprador, ativo, ordem)
-       VALUES ($1, $2, $3, $4, $5, (SELECT COALESCE(max(ordem), 0) + 1 FROM categorias WHERE edicao_id = $1))
+      `INSERT INTO categorias (edicao_id, nome, descricao, limite_por_comprador, ativo, pulseira, ordem)
+       VALUES ($1, $2, $3, $4, $5, $6, (SELECT COALESCE(max(ordem), 0) + 1 FROM categorias WHERE edicao_id = $1))
        RETURNING id`,
-      [edicaoId, t.nome, t.descricao || '', t.limite_por_comprador ?? null, t.ativo ?? true],
+      [edicaoId, t.nome, t.descricao || '', t.limite_por_comprador ?? null, t.ativo ?? true, t.pulseira ?? null],
     );
     const id = rows[0].id;
     await gravarBeneficiosDoTipo(cliente, id, beneficios);
@@ -249,7 +253,7 @@ async function atualizarTipo(id, dados, autor) {
     if (!atual) throw erro(404, 'ingresso não encontrado');
     await edicaoEditavel(cliente, atual.edicao_id);
     if (t.nome !== undefined) await nomeLivre(cliente, atual.edicao_id, t.nome, id);
-    const campos = ['nome', 'descricao', 'limite_por_comprador', 'ativo'].filter((k) => t[k] !== undefined);
+    const campos = ['nome', 'descricao', 'limite_por_comprador', 'pulseira', 'ativo'].filter((k) => t[k] !== undefined);
     if (campos.length) {
       await cliente.query(
         `UPDATE categorias SET ${campos.map((k, i) => `${k} = $${i + 2}`).join(', ')}, atualizado_em = now() WHERE id = $1`,
