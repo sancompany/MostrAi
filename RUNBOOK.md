@@ -796,6 +796,12 @@ Variáveis: `NODE_ENV`, `SITE_URL`, `DATABASE_URL`, `SMTP_HOST`, `SMTP_PORT`,
 `SMTP_USER`, `SMTP_PASS`, `MOSTRAI_EMAIL_FROM`, `MOSTRAI_EMAIL_CONTATO` (e
 `TRIMUNDI_ALERTA_EMAIL`, se o dono quiser outro destinatário). Pausar:
 Northflank → job → Suspend. Rodar à mão: Northflank → job → Run.
+Criada pela API em 16/11/2026, 21:17 UTC. **Lição:** a agenda só passou a
+valer depois de reaplicar as configurações (`POST
+/v1/projects/mostrai/jobs/sentinelatick/settings` com o mesmo `schedule`). As
+execuções agendadas das 21:30 e 21:40 não aconteceram; a das 21:50 rodou. Ao
+recriar a tarefa, conferir a primeira execução agendada na lista de execuções
+do job.
 
 **Rotina manual** (complementa os alertas): uma vez por dia com venda
 aberta, abrir a Visão geral; no dia do evento, antes de abrir a portaria e

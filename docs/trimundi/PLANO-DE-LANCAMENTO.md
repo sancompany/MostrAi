@@ -156,6 +156,7 @@ correção de código, o teste novo falhava antes e passa depois.
 - 21:29 UTC — execução normal: e-mail "[TICK] Resolvido: 2 problema(s)", alertas marcados como resolvidos, saída 0.
 - **Os dois e-mails do teste chegaram ao e-mail de contato** (`MOSTRAI_EMAIL_CONTATO`). Bruno: conferir se chegaram e se não caíram no spam.
 - O vigia (dentro do serviço) não tem sinal crítico para avisar em produção; o caminho dele é coberto por teste automatizado (`trimundi-alertas`).
+- **Agenda:** as execuções das 21:30 e 21:40 não aconteceram. A tarefa criada pela API não registrou a agenda até as configurações serem reaplicadas, às 21:42 (`POST …/jobs/sentinelatick/settings`). Depois disso, **21:50 UTC: execução agendada, SUCCESS**. A lição ficou no RUNBOOK §11.5.
 
 ## 7. Riscos encontrados
 
