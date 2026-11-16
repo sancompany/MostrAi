@@ -685,3 +685,26 @@ test('reembolso de UM ingresso com desconto devolve o preço pago (não o cheio)
   const { rows } = await consultar('SELECT status FROM ingressos WHERE id = $1', [ings[0].id]);
   assert.equal(rows[0].status, 'cancelado');
 });
+
+test('P5 com espera na trava: o prazo que vence enquanto o pagamento espera vale (horário depois da trava)', async () => {
+  const pronta = await edicao();
+  const fim = new Date(Date.now() + 4000).toISOString();
+  await desconto(pronta, { relampago: true, fim, quantidade_promocional: 5 });
+  const r = await pedido(pronta, 1);
+  await vencer(r.pedido_id);
+  const { obterPool } = require('../src/trimundi/db/conexao');
+  const segura = await obterPool().connect();
+  try {
+    await segura.query('BEGIN');
+    await segura.query('SELECT 1 FROM edicoes WHERE id = $1 FOR UPDATE', [pronta.edicao.id]);
+    // O pagamento começa ANTES do fim e fica esperando a trava da edição.
+    const pagando = pagar(r.pedido_id);
+    await new Promise((ok) => setTimeout(ok, Math.max(0, new Date(fim) - Date.now()) + 800));
+    await segura.query('COMMIT');
+    assert.equal(await pagando, 'sem_vaga', 'a promoção já tinha acabado quando a trava saiu');
+  } finally {
+    segura.release();
+  }
+  const { rows } = await consultar('SELECT motivo FROM pedidos_sem_vaga WHERE pedido_id = $1', [r.pedido_id]);
+  assert.equal(rows[0].motivo, 'promocao_encerrada');
+});

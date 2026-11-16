@@ -585,7 +585,7 @@ const SQL_USOS = `
     FROM reservas r JOIN pedidos p ON p.id = r.pedido_id
     LEFT JOIN ingressos i ON i.reserva_id = r.id
    WHERE r.campanha_id = ANY($1::bigint[])
-     AND (i.id IS NOT NULL OR (p.status = 'aguardando_pagamento' AND p.reserva_expira_em > now()))
+     AND (i.id IS NOT NULL OR (p.status = 'aguardando_pagamento' AND p.reserva_expira_em > clock_timestamp()))
    GROUP BY r.campanha_id`;
 // Limite por pessoa do desconto: pela CONTA COMPRADORA (C3), contando só o
 // que está de pé (R3, por analogia — P7): ingresso válido ou reserva viva.
@@ -595,7 +595,7 @@ const SQL_USOS_DA_CONTA = `
     LEFT JOIN ingressos i ON i.reserva_id = r.id
    WHERE r.campanha_id = ANY($1::bigint[]) AND p.cliente_id = $2
      AND ((i.id IS NOT NULL AND i.status <> 'cancelado')
-       OR (p.status = 'aguardando_pagamento' AND p.reserva_expira_em > now()))
+       OR (p.status = 'aguardando_pagamento' AND p.reserva_expira_em > clock_timestamp()))
    GROUP BY r.campanha_id`;
 
 async function usosDe(cliente, ids, clienteId = null) {
@@ -614,7 +614,7 @@ async function descontosVigentes(cliente, edicaoId, { clienteId = null } = {}) {
   const { rows } = await cliente.query(
     `SELECT * FROM campanhas WHERE edicao_id = $1 AND modalidade = 'desconto' AND status = 'ativa'
         AND regras_revisadas_em IS NOT NULL
-        AND (inicio IS NULL OR inicio <= now()) AND (fim IS NULL OR fim > now())
+        AND (inicio IS NULL OR inicio <= clock_timestamp()) AND (fim IS NULL OR fim > clock_timestamp())
       ORDER BY id`,
     [edicaoId],
   );
@@ -676,6 +676,10 @@ function repartirComDesconto(vigentes, catId, lote, quantidade) {
   return partes;
 }
 
+// Horário de referência das checagens de desconto: clock_timestamp(), o
+// instante DEPOIS da trava da edição (como o R2) — now() seria o começo da
+// transação e deixaria passar um prazo vencido durante a espera da trava
+// (revisão do Codex no #156).
 // Pagamento depois de a reserva vencer (P5): a vaga com desconto só vale se a
 // promoção ainda estiver aberta (ativa, na janela) e com quantidade
 // promocional para ela — a mesma regra do lote. Senão, "pago sem vaga".
@@ -690,7 +694,7 @@ async function faltaNoDesconto(cliente, pedidoId) {
   const ids = rows.map((r) => Number(r.campanha_id));
   const { rows: cs } = await cliente.query(
     `SELECT id, nome, quantidade_promocional,
-            (status = 'ativa' AND (inicio IS NULL OR inicio <= now()) AND (fim IS NULL OR fim > now())) AS aberta
+            (status = 'ativa' AND (inicio IS NULL OR inicio <= clock_timestamp()) AND (fim IS NULL OR fim > clock_timestamp())) AS aberta
        FROM campanhas WHERE id = ANY($1::bigint[])`,
     [ids],
   );
