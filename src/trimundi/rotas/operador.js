@@ -160,6 +160,12 @@ router.post('/ticket/api/checkin/recompensa', exigirOperador, ritmo, async (req,
   );
 });
 
+// Rota única de entrega de prêmio (PR 3): campanha por ordem de compra do
+// ingresso ou indicação no ingresso principal.
+router.post('/ticket/api/checkin/premio', exigirOperador, ritmo, async (req, res) => {
+  res.json(await checkin.entregarPremio(req.operador, req.body?.edicao_id, req.body?.ingresso_id, req.body?.premio_id));
+});
+
 router.get('/ticket/api/checkin/pacote', exigirOperador, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(await require('../checkin-offline').pacote(req.operador, req.query.edicao));

@@ -404,6 +404,22 @@ async function painel(c) {
     doTitular
       .filter((b) => Number(b.edicao_id) === Number(edicaoId))
       .map((b) => ({ nome: b.nome, origem: 'indicacao', a_retirar: b.a_retirar, entregues: b.entregues }));
+  // Brindes de campanha por ordem de compra, por ingresso (PR 3).
+  const { rows: premiosCampanha } = rows.length
+    ? await consultar(
+        `SELECT pr.ingresso_id, pr.premio AS nome, pr.status, pr.entregue_em, c.nome AS campanha, c.prazo_retirada,
+                po.posicao
+           FROM campanha_premios pr JOIN campanhas c ON c.id = pr.campanha_id
+           LEFT JOIN campanha_posicoes po ON po.id = pr.posicao_id
+          WHERE pr.ingresso_id = ANY($1::bigint[]) AND pr.status IN ('concedido', 'entregue', 'expirado')
+          ORDER BY pr.id`,
+        [rows.map((r) => r.id)],
+      )
+    : { rows: [] };
+  const premiosDe = (ingressoId) =>
+    premiosCampanha
+      .filter((x) => Number(x.ingresso_id) === Number(ingressoId))
+      .map(({ ingresso_id, ...resto }) => resto);
   const localDe = (r) =>
     [r.local_nome, r.cidade && `${r.cidade}${r.uf ? `/${r.uf}` : ''}`].filter(Boolean).join(' · ') || null;
   const ingressos = await Promise.all(
@@ -426,6 +442,7 @@ async function painel(c) {
       principal: principal.get(Number(i.edicao_id)) === Number(i.id),
       beneficios_do_titular:
         principal.get(Number(i.edicao_id)) === Number(i.id) ? beneficiosDoTitular(i.edicao_id) : [],
+      premios_campanha: premiosDe(i.id),
       qr:
         i.status === 'valido' && !i.utilizado_em && i.pedido_status === 'pago'
           ? await qrDataUrl(conteudoDoQr(i.codigo_publico, i.codigo))
@@ -475,6 +492,8 @@ async function painel(c) {
     edicoes: [...edicoes.values()],
     ingressos,
     indicacao,
+    // "MINHAS PROMOÇÕES E RECOMPENSAS" (§4, PR 3).
+    promocoes: await require('./campanhas').daConta(c.id),
     operador: await areaDoOperador(c.id),
   };
 }

@@ -1571,3 +1571,60 @@ button.link-suave {
   justify-content: center;
   margin: 0.85rem 0 0;
 }
+
+/* Minhas promoções e recompensas (PR 3). */
+.cartao.promocao {
+  margin-bottom: 0.75rem;
+}
+
+.progresso {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--marca-clara);
+  border: 1px solid var(--linha);
+  overflow: hidden;
+  margin: 0.4rem 0 0.6rem;
+}
+
+.progresso-enche {
+  height: 100%;
+  width: 0;
+  background: var(--ok);
+  border-radius: 999px;
+}
+
+.niveis {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.niveis li {
+  padding-left: 1.4rem;
+  position: relative;
+}
+
+.niveis li::before {
+  content: '○';
+  position: absolute;
+  left: 0;
+  color: var(--suave);
+}
+
+.niveis li.atingido::before {
+  content: '●';
+  color: var(--ok);
+}
+
+details.promocao summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.mais-promocoes summary {
+  cursor: pointer;
+  margin: 0.25rem 0 0.75rem;
+  font-weight: 700;
+}
