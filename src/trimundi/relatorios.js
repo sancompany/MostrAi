@@ -18,6 +18,11 @@ const { INGRESSO_DE_PE } = require('./indicacao');
 
 const VENDIDO = "(i.origem = 'pago' AND p.origem = 'venda' AND p.status = 'pago' AND i.status <> 'cancelado')";
 const LIMITE = 5000;
+// Teto só da TELA (JSON): o CSV sai sem teto (`gerar(..., { semLimite: true })`),
+// senão a exportação de auditoria perderia linhas.
+const limiteSql = (f) => (f.limite ? ` LIMIT ${Number(f.limite) + 1}` : '');
+const cortar = (rows, f) => (f.limite ? rows.slice(0, f.limite) : rows);
+const foiCortado = (rows, f) => Boolean(f.limite && rows.length > f.limite);
 // Os mesmos rótulos da tela de Ingressos (o CSV sai legível, sem código interno).
 const SITUACAO_LOTE = {
   agendado: 'Agendado',
@@ -308,11 +313,10 @@ async function recompensas(edicaoId, f) {
         WHERE i.edicao_id = $1 AND i.status <> 'cancelado' AND (p.id IS NULL OR p.origem = 'venda')
      )
      SELECT * FROM x WHERE true${extra}${filtroSit}
-     ORDER BY (x.situacao = 'a retirar') DESC, x.concedido_em DESC NULLS LAST
-     LIMIT ${LIMITE + 1}`,
+     ORDER BY (x.situacao = 'a retirar') DESC, x.concedido_em DESC NULLS LAST${limiteSql(f)}`,
     params,
   );
-  const linhas = rows.slice(0, LIMITE).map((r) => ({ ...r, campanha: r.campanha || '—' }));
+  const linhas = cortar(rows, f).map((r) => ({ ...r, campanha: r.campanha || '—' }));
   const contar = (s) => linhas.filter((l) => l.situacao === s).length;
   return {
     colunas: [
@@ -328,7 +332,7 @@ async function recompensas(edicaoId, f) {
     ],
     linhas,
     totais: { total: linhas.length, a_retirar: contar('a retirar'), entregues: contar('entregue') },
-    cortado: rows.length > LIMITE,
+    cortado: foiCortado(rows, f),
   };
 }
 
@@ -363,10 +367,10 @@ async function validacoes(edicaoId, f) {
     params,
   );
   const { rows } = await consultar(
-    `${SQL_CHECKINS}${extra} ORDER BY ck.registrado_em DESC, ck.id DESC LIMIT ${LIMITE + 1}`,
+    `${SQL_CHECKINS}${extra} ORDER BY ck.registrado_em DESC, ck.id DESC${limiteSql(f)}`,
     params,
   );
-  const linhas = rows.slice(0, LIMITE).map((r) => ({
+  const linhas = cortar(rows, f).map((r) => ({
     ...r,
     escopo: r.escopo === 'beneficio' ? 'benefício' : 'entrada',
     motivo: r.motivo ? MOTIVO[r.motivo] || r.motivo : '',
@@ -391,7 +395,7 @@ async function validacoes(edicaoId, f) {
       aceitas: linhas.filter((l) => l.resultado === 'aceito').length,
       recusadas: linhas.filter((l) => l.resultado === 'recusado').length,
     },
-    cortado: rows.length > LIMITE,
+    cortado: foiCortado(rows, f),
   };
 }
 
@@ -425,10 +429,10 @@ async function duplicadas(edicaoId, f) {
        LEFT JOIN checkins pe ON pe.ingresso_id = ck.ingresso_id AND pe.escopo = 'entrada' AND pe.resultado = 'aceito'
        LEFT JOIN operadores po ON po.id = pe.operador_id
       WHERE ck.edicao_id = $1 AND ck.resultado = 'recusado' AND ck.motivo = 'ja_utilizado'${extra}
-      ORDER BY ck.registrado_em DESC, ck.id DESC LIMIT ${LIMITE + 1}`,
+      ORDER BY ck.registrado_em DESC, ck.id DESC${limiteSql(f)}`,
     params,
   );
-  const linhas = rows.slice(0, LIMITE);
+  const linhas = cortar(rows, f);
   return {
     colunas: [
       col('em', 'Tentativa em', 'data'),
@@ -442,7 +446,7 @@ async function duplicadas(edicaoId, f) {
     ],
     linhas,
     totais: { total: linhas.length, ingressos: new Set(linhas.map((l) => l.codigo_curto)).size },
-    cortado: rows.length > LIMITE,
+    cortado: foiCortado(rows, f),
   };
 }
 
@@ -524,12 +528,12 @@ const RELATORIOS = {
   duplicadas: { n: 14, nome: 'Tentativas duplicadas', fn: duplicadas, filtros: ['tipo', 'operador', 'periodo'] },
 };
 
-async function gerar(edicaoId, nome, query) {
+async function gerar(edicaoId, nome, query, { semLimite = false, limite = LIMITE } = {}) {
   const r = Object.hasOwn(RELATORIOS, nome) ? RELATORIOS[nome] : null;
   if (!r) throw erro(404, 'relatório não encontrado');
   const { rows } = await consultar('SELECT id FROM edicoes WHERE id = $1', [edicaoId]);
   if (!rows[0]) throw erro(404, 'edição não encontrada');
-  const filtros = lerFiltros(query);
+  const filtros = { ...lerFiltros(query), limite: semLimite ? null : limite };
   const dados = await r.fn(Number(edicaoId), filtros);
   return { relatorio: nome, numero: r.n, titulo: r.nome, filtros_aceitos: r.filtros, ...dados };
 }

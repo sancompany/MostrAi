@@ -155,6 +155,20 @@ test('portaria: utilizados, histórico de validações e tentativas duplicadas �
   // Conferência independente.
   const { rows } = await consultar('SELECT count(*)::int AS n FROM checkins WHERE edicao_id = $1', [ed]);
   assert.equal(v.totais.total, rows[0].n);
+
+  // Teto só na tela: com o teto em 1, a tela corta; o CSV traz as 2 leituras.
+  const relatorios = require('../src/trimundi/relatorios');
+  const tela = await relatorios.gerar(ed, 'validacoes', {}, { limite: 1 });
+  assert.equal(tela.linhas.length, 1);
+  assert.equal(tela.cortado, true);
+  const tudo = await relatorios.gerar(ed, 'validacoes', {}, { semLimite: true, limite: 1 });
+  assert.equal(tudo.linhas.length, 2);
+  assert.equal(tudo.cortado, false);
+  for (const nome of ['recompensas-concedidas', 'duplicadas', 'utilizados'])
+    assert.equal((await relatorios.gerar(ed, nome, {}, { semLimite: true })).cortado, false, nome);
+  const csv = await admin.get(`/admin/trimundi/edicoes/${ed}/relatorios/validacoes.csv`);
+  assert.equal(csv.status, 200);
+  assert.equal(csv.texto.trim().split(/\r?\n/).length, 1 + 2, 'cabeçalho + 2 leituras');
 });
 
 test('recompensas concedidas, entregues e pendentes; campanhas por conversão; indicados', async () => {

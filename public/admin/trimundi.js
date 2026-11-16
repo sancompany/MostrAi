@@ -3195,7 +3195,7 @@
       <section class="secao-pagina tm-relatorio">
         <h3>${num(d.numero)}. ${esc(d.titulo)} <span class="contagem">${num(d.linhas.length)}</span></h3>
         <div class="mini-indicadores">${totais}</div>
-        ${d.cortado ? '<p class="campo-ajuda">A tela mostra as 5.000 primeiras linhas; use os filtros ou o CSV para o resto.</p>' : ''}
+        ${d.cortado ? '<p class="campo-ajuda">A tela e os totais consideram as 5.000 primeiras linhas; o CSV traz todas.</p>' : ''}
         ${
           d.linhas.length
             ? `<div class="tabela-caixa"><div class="rolagem"><table>

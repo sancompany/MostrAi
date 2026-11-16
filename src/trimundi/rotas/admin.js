@@ -238,7 +238,8 @@ router.get('/admin/trimundi/campanhas/:id/indicadores', async (req, res) =>
 router.get('/admin/trimundi/relatorios', (_req, res) => res.json(require('../relatorios').catalogo()));
 router.get('/admin/trimundi/edicoes/:id/relatorios/:nome.csv', async (req, res) => {
   const rel = require('../relatorios');
-  const dados = await rel.gerar(id(req), req.params.nome, req.query);
+  // CSV sem o teto da tela: a exportação traz todas as linhas do recorte.
+  const dados = await rel.gerar(id(req), req.params.nome, req.query, { semLimite: true });
   res.set('Cache-Control', 'no-store');
   res.set('Content-Disposition', `attachment; filename="${req.params.nome}-edicao-${id(req)}.csv"`);
   res.type('text/csv; charset=utf-8').send(rel.paraCsv(dados));
