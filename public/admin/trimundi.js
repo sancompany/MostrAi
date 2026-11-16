@@ -2304,6 +2304,7 @@
     concedida: ['badge-info', 'A retirar'],
     entregue: ['badge-ok', 'Entregue'],
     revogada: ['badge-neutro', 'Revogada'],
+    expirada: ['badge-neutro', 'Expirada (prazo de retirada)'],
   };
   async function renderRecompensas(el, resto) {
     const edicoes = await lerOuAvisar(el, () => pegar(`${R}/edicoes`));

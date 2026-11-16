@@ -1,5 +1,17 @@
 # Campanhas (§3) — documento técnico para revisão final
 
+**Implementação:** R1–R3 aprovadas em 16/11/2026; PR 1 (banco e motor) em
+rascunho. Ajustes feitos na implementação, sem mudar regra comercial:
+(a) o prêmio da faixa tem **nome livre**, com vínculo **opcional** ao catálogo
+de benefícios — assim as campanhas de indicação de antes migram sem criar
+benefícios artificiais; (b) o livro de conversões é uma tabela **nova**,
+`campanha_indicacoes` (cópia fiel de `indicacoes`), porque reaproveitar
+`indicacoes` exigiria **remover** a FK e o índice único dela — e a decisão é
+nenhuma remoção; (c) o índice `ux_campanha_ativa` da tabela antiga **não** é
+removido (a tabela antiga só deixa de ser usada); (d) R1 é garantida por
+índice único parcial no banco (`ux_campanha_indicacao_exclusiva`), que vale
+também para duas ativações simultâneas.
+
 **Versão 2 — 16/11/2026.** A versão 1 (15/11) recebeu a aprovação da direção
 pelo dono, com as decisões C1–C7. Esta versão incorpora essas decisões e
 detalha C1 e C2 em concorrência, reembolso, acumulação e progressão de

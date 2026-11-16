@@ -2,7 +2,7 @@ const crypto = require('node:crypto');
 const { consultar, emTransacao } = require('./db/conexao');
 const v = require('./lib/validacao');
 const { erro } = require('./lib/erros');
-const { auditar, medir } = require('./lib/registro');
+const { auditar } = require('./lib/registro');
 const { ALFABETO } = require('./lib/codigos');
 const config = require('./config');
 
@@ -189,97 +189,19 @@ async function quemIndicou({
   });
 }
 
-// Campanha ativa da edição agora (no máximo uma).
-async function campanhaAtiva(cliente, edicaoId) {
-  const { rows } = await cliente.query(
-    `SELECT * FROM campanhas_indicacao WHERE edicao_id = $1 AND ativo
-        AND (inicio IS NULL OR inicio <= now()) AND (fim IS NULL OR fim > now())`,
-    [edicaoId],
-  );
-  return rows[0] || null;
-}
-
-// Recompensas de um indicador numa campanha: concede o que o critério manda
-// (dentro do estoque e do limite por pessoa) e revoga o que não vale mais.
-// Trava a linha da campanha: duas confirmações ao mesmo tempo não passam do
-// estoque.
-async function recalcular(cliente, campanhaId, indicadorId) {
-  const { rows: c } = await cliente.query('SELECT * FROM campanhas_indicacao WHERE id = $1 FOR UPDATE', [campanhaId]);
-  const camp = c[0];
-  const { rows: n } = await cliente.query(
-    `SELECT (SELECT count(*)::int FROM indicacoes WHERE campanha_id = $1 AND indicador_id = $2 AND valida) AS validas,
-            (SELECT count(*)::int FROM recompensas_indicacao WHERE campanha_id = $1 AND indicador_id = $2 AND status <> 'revogada') AS minhas,
-            (SELECT count(*)::int FROM recompensas_indicacao WHERE campanha_id = $1 AND status <> 'revogada') AS todas`,
-    [campanhaId, indicadorId],
-  );
-  const { validas, minhas, todas } = n[0];
-  let devidas = Math.floor(validas / camp.indicacoes_por_recompensa);
-  if (camp.limite_por_indicador) devidas = Math.min(devidas, camp.limite_por_indicador);
-  if (devidas > minhas) {
-    const novas = Math.min(devidas - minhas, Math.max(0, camp.quantidade - todas));
-    for (let i = 0; i < novas; i++) {
-      await cliente.query('INSERT INTO recompensas_indicacao (campanha_id, indicador_id) VALUES ($1, $2)', [
-        campanhaId,
-        indicadorId,
-      ]);
-      await medir(cliente, 'indicacao:recompensa_concedida', camp.edicao_id, { campanha_id: campanhaId });
-    }
-  } else if (devidas < minhas) {
-    // Só a não entregue volta; a entregue fica (não se desfaz um brinde dado).
-    await cliente.query(
-      `UPDATE recompensas_indicacao SET status = 'revogada', revogada_em = now()
-        WHERE id IN (SELECT id FROM recompensas_indicacao WHERE campanha_id = $1 AND indicador_id = $2 AND status = 'concedida'
-                      ORDER BY concedida_em DESC LIMIT $3)`,
-      [campanhaId, indicadorId, minhas - devidas],
-    );
-  }
-}
-
-// Estado da conversão a partir do pedido. Vale: pedido pago, com algum
-// ingresso de pé (válido, ou bloqueado só por reembolso ainda em pedido).
+// A conversão e os prêmios de indicação moram no modelo de Campanhas desde
+// 16/11/2026 (campanhas.js, migrations 015/016). O livro de conversões nasce
+// na confirmação do pagamento (campanhas.aoConfirmar, com a janela pelo
+// instante oficial — C4/R2 — e sem pausada — C6); daqui em diante, todo aviso
+// revisa: pago com ingresso de pé conta; reembolso, contestação ou baixa
+// desfeita tiram. As tabelas antigas (campanhas_indicacao, indicacoes,
+// recompensas_indicacao) ficam intactas, sem uso.
 async function revisarPedido(cliente, pedidoId) {
   const { rows } = await cliente.query(
-    `SELECT p.id, p.edicao_id, p.status, p.cliente_id, p.indicador_id, p.origem,
-            EXISTS (SELECT 1 FROM ingressos i WHERE i.pedido_id = p.id AND ${INGRESSO_DE_PE}) AS de_pe
-       FROM pedidos p WHERE p.id = $1`,
+    `SELECT EXISTS (SELECT 1 FROM ingressos i WHERE i.pedido_id = $1 AND ${INGRESSO_DE_PE}) AS de_pe`,
     [pedidoId],
   );
-  const p = rows[0];
-  if (!p?.indicador_id || !p.cliente_id || p.origem !== 'venda') return;
-  const vale = p.status === 'pago' && p.de_pe;
-  const { rows: existente } = await cliente.query('SELECT * FROM indicacoes WHERE pedido_id = $1', [p.id]);
-  let ind = existente[0];
-  if (!ind) {
-    if (!vale) return;
-    const camp = await campanhaAtiva(cliente, p.edicao_id);
-    if (!camp) return;
-    // A mesma pessoa já conta nesta campanha (outro pedido): não soma.
-    const { rows: ja } = await cliente.query(
-      'SELECT 1 FROM indicacoes WHERE campanha_id = $1 AND cliente_id = $2 AND valida',
-      [camp.id, p.cliente_id],
-    );
-    if (ja.length) return;
-    const { rows: nova } = await cliente.query(
-      `INSERT INTO indicacoes (campanha_id, indicador_id, pedido_id, cliente_id) VALUES ($1, $2, $3, $4)
-       ON CONFLICT DO NOTHING RETURNING *`,
-      [camp.id, p.indicador_id, p.id, p.cliente_id],
-    );
-    if (!nova[0]) return;
-    ind = nova[0];
-    await medir(cliente, 'indicacao:conversao', p.edicao_id, { campanha_id: camp.id });
-  } else if (ind.valida !== vale) {
-    if (vale) {
-      const { rows: ja } = await cliente.query(
-        'SELECT 1 FROM indicacoes WHERE campanha_id = $1 AND cliente_id = $2 AND valida AND id <> $3',
-        [ind.campanha_id, ind.cliente_id, ind.id],
-      );
-      if (ja.length) return;
-    }
-    await cliente.query('UPDATE indicacoes SET valida = $2, atualizado_em = now() WHERE id = $1', [ind.id, vale]);
-  } else {
-    return;
-  }
-  await recalcular(cliente, ind.campanha_id, ind.indicador_id);
+  await require('./campanhas').revisarPedido(cliente, pedidoId, { ingressoDePe: rows[0].de_pe });
 }
 
 // ------------------------------------------------------------------ Admin
@@ -312,23 +234,36 @@ function lerCampanha(d = {}, parcial = false) {
   return out;
 }
 
+// Campanha de indicação no formato de antes ("a cada N indicações pagas, 1
+// recompensa, até X por pessoa, Q no total"): no modelo novo é uma campanha
+// de indicação com UM nível que se repete (de = N, estoque = Q, limite = X).
+// As telas atuais (Admin → Campanhas e a conta) seguem com o mesmo formato.
 const SQL_CAMPANHA = `
-  SELECT c.*,
-         (SELECT count(*)::int FROM indicacoes WHERE campanha_id = c.id AND valida) AS conversoes,
-         (SELECT count(*)::int FROM recompensas_indicacao WHERE campanha_id = c.id AND status <> 'revogada') AS concedidas,
-         (SELECT count(*)::int FROM recompensas_indicacao WHERE campanha_id = c.id AND status = 'entregue') AS entregues
-    FROM campanhas_indicacao c`;
+  SELECT c.id, c.edicao_id, c.nome, f.premio AS recompensa, f.estoque AS quantidade, f.de AS indicacoes_por_recompensa,
+         c.limite_por_pessoa AS limite_por_indicador, c.inicio, c.fim, (c.status = 'ativa') AS ativo, c.status,
+         c.criado_em, c.atualizado_em,
+         (SELECT count(*)::int FROM campanha_indicacoes WHERE campanha_id = c.id AND valida) AS conversoes,
+         (SELECT count(*)::int FROM campanha_premios WHERE campanha_id = c.id AND status IN ('concedido', 'entregue')) AS concedidas,
+         (SELECT count(*)::int FROM campanha_premios WHERE campanha_id = c.id AND status = 'entregue') AS entregues
+    FROM campanhas c JOIN campanha_faixas f ON f.campanha_id = c.id AND f.ordem = 1`;
 
 async function listarCampanhas(edicaoId) {
-  const { rows } = await consultar(`${SQL_CAMPANHA} WHERE c.edicao_id = $1 ORDER BY c.ativo DESC, c.id DESC`, [
-    edicaoId,
-  ]);
+  const { rows } = await consultar(
+    `${SQL_CAMPANHA} WHERE c.edicao_id = $1 AND c.modalidade = 'indicacao' ORDER BY (c.status = 'ativa') DESC, c.id DESC`,
+    [edicaoId],
+  );
   return rows;
 }
 
+// R1 (16/11/2026): uma campanha de indicação não acumulável ativa por edição
+// (índice único no banco — vale também para duas ativações ao mesmo tempo).
 function ativaDuplicada(err) {
-  if (err.code === '23505' && /ux_campanha_ativa/.test(err.constraint || err.message)) {
-    throw erro(409, 'Já existe uma campanha ativa nesta edição — desative a outra antes.');
+  if (err.code === '23505' && /ux_campanha_indicacao_exclusiva/.test(err.constraint || err.message)) {
+    throw erro(
+      409,
+      'Já existe outra campanha de indicação não acumulável ativa nesta edição — pause ou encerre a outra antes.',
+      { codigo: 'indicacao_exclusiva' },
+    );
   }
   throw err;
 }
@@ -340,23 +275,20 @@ async function criarCampanha(edicaoId, dados, autor) {
     if (!ed[0]) throw erro(404, 'edição não encontrada');
     const { rows } = await cliente
       .query(
-        `INSERT INTO campanhas_indicacao (edicao_id, nome, recompensa, quantidade, indicacoes_por_recompensa,
-           limite_por_indicador, inicio, fim, ativo)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-        [
-          edicaoId,
-          c.nome,
-          c.recompensa,
-          c.quantidade,
-          c.indicacoes_por_recompensa,
-          c.limite_por_indicador,
-          c.inicio,
-          c.fim,
-          c.ativo ?? true,
-        ],
+        `INSERT INTO campanhas (edicao_id, modalidade, nome, status, inicio, fim, acumula, escada, limite_por_pessoa)
+         VALUES ($1, 'indicacao', $2, $3, $4, $5, false, 'cumulativa', $6) RETURNING id`,
+        [edicaoId, c.nome, (c.ativo ?? true) ? 'ativa' : 'pausada', c.inicio, c.fim, c.limite_por_indicador],
       )
       .catch(ativaDuplicada);
-    await auditar(cliente, autor, 'campanha_criada', 'campanha_indicacao', rows[0].id, { edicao_id: edicaoId });
+    await cliente.query(
+      `INSERT INTO campanha_faixas (campanha_id, ordem, de, repete, premio, quantidade, estoque)
+       VALUES ($1, 1, $2, true, $3, 1, $4)`,
+      [rows[0].id, c.indicacoes_por_recompensa, c.recompensa, c.quantidade],
+    );
+    await auditar(cliente, autor, 'campanha_criada', 'campanha', rows[0].id, {
+      edicao_id: edicaoId,
+      modalidade: 'indicacao',
+    });
     return (await cliente.query(`${SQL_CAMPANHA} WHERE c.id = $1`, [rows[0].id])).rows[0];
   });
 }
@@ -366,19 +298,41 @@ async function atualizarCampanha(id, dados, autor) {
   const campos = Object.keys(c);
   if (!campos.length) throw erro(400, 'nada para alterar');
   return emTransacao(async (cliente) => {
-    const { rows: atual } = await cliente.query(`${SQL_CAMPANHA} WHERE c.id = $1 FOR UPDATE OF c`, [id]);
+    const { rows: atual } = await cliente.query(
+      `${SQL_CAMPANHA} WHERE c.id = $1 AND c.modalidade = 'indicacao' FOR UPDATE OF c`,
+      [id],
+    );
     if (!atual[0]) throw erro(404, 'campanha não encontrada');
+    if (atual[0].status === 'encerrada') throw erro(409, 'Campanha encerrada fica só para consulta.');
     if (c.quantidade && c.quantidade < atual[0].concedidas) {
       throw erro(409, `A quantidade não pode ficar abaixo do que já foi concedido (${atual[0].concedidas}).`);
     }
-    await cliente
-      .query(
-        `UPDATE campanhas_indicacao SET ${campos.map((k, i) => `${k} = $${i + 2}`).join(', ')}, atualizado_em = now()
-          WHERE id = $1`,
-        [id, ...campos.map((k) => c[k])],
-      )
-      .catch(ativaDuplicada);
-    await auditar(cliente, autor, 'campanha_alterada', 'campanha_indicacao', id, { campos });
+    const daCampanha = { nome: 'nome', inicio: 'inicio', fim: 'fim', limite_por_indicador: 'limite_por_pessoa' };
+    const daFaixa = { recompensa: 'premio', quantidade: 'estoque', indicacoes_por_recompensa: 'de' };
+    const sets = campos.filter((k) => daCampanha[k]);
+    const valores = sets.map((k) => c[k]);
+    if (c.ativo !== undefined) {
+      sets.push('status');
+      valores.push(c.ativo ? 'ativa' : 'pausada');
+    }
+    if (sets.length) {
+      await cliente
+        .query(
+          `UPDATE campanhas SET ${sets.map((k, i) => `${daCampanha[k] || k} = $${i + 2}`).join(', ')}, atualizado_em = now()
+            WHERE id = $1`,
+          [id, ...valores],
+        )
+        .catch(ativaDuplicada);
+    }
+    const daF = campos.filter((k) => daFaixa[k]);
+    if (daF.length) {
+      await cliente.query(
+        `UPDATE campanha_faixas SET ${daF.map((k, i) => `${daFaixa[k]} = $${i + 2}`).join(', ')}
+          WHERE campanha_id = $1 AND ordem = 1`,
+        [id, ...daF.map((k) => c[k])],
+      );
+    }
+    await auditar(cliente, autor, 'campanha_alterada', 'campanha', id, { campos });
     return (await cliente.query(`${SQL_CAMPANHA} WHERE c.id = $1`, [id])).rows[0];
   });
 }
@@ -388,30 +342,31 @@ async function indicadoresDaCampanha(campanhaId) {
   const { rows } = await consultar(
     `SELECT i.id, i.codigo, COALESCE(cl.nome, o.nome, '(anonimizado)') AS nome,
             CASE WHEN i.operador_id IS NOT NULL THEN 'operador' ELSE 'cliente' END AS tipo,
-            (SELECT count(*)::int FROM indicacoes x WHERE x.campanha_id = $1 AND x.indicador_id = i.id AND x.valida) AS conversoes,
-            COALESCE((SELECT json_agg(json_build_object('id', r.id, 'status', r.status, 'concedida_em', r.concedida_em,
-                                                        'entregue_em', r.entregue_em) ORDER BY r.id)
-                        FROM recompensas_indicacao r WHERE r.campanha_id = $1 AND r.indicador_id = i.id AND r.status <> 'revogada'), '[]') AS recompensas
+            (SELECT count(*)::int FROM campanha_indicacoes x WHERE x.campanha_id = $1 AND x.indicador_id = i.id AND x.valida) AS conversoes,
+            COALESCE((SELECT json_agg(json_build_object('id', r.id,
+                                                        'status', CASE r.status WHEN 'concedido' THEN 'concedida' ELSE r.status END,
+                                                        'concedida_em', r.concedido_em, 'entregue_em', r.entregue_em)
+                                      ORDER BY r.id)
+                        FROM campanha_premios r WHERE r.campanha_id = $1 AND r.indicador_id = i.id
+                         AND r.status IN ('concedido', 'entregue')), '[]') AS recompensas
        FROM indicadores i LEFT JOIN clientes cl ON cl.id = i.cliente_id LEFT JOIN operadores o ON o.id = i.operador_id
-      WHERE EXISTS (SELECT 1 FROM indicacoes x WHERE x.campanha_id = $1 AND x.indicador_id = i.id)
+      WHERE EXISTS (SELECT 1 FROM campanha_indicacoes x WHERE x.campanha_id = $1 AND x.indicador_id = i.id)
       ORDER BY conversoes DESC, i.id`,
     [campanhaId],
   );
   return rows;
 }
 
-// Entrega da recompensa (registrada uma vez só).
+// Entrega pelo Admin (registrada uma vez só, com histórico e auditoria).
 async function entregarRecompensa(id, autor) {
   return emTransacao(async (cliente) => {
-    const { rows } = await cliente.query('SELECT * FROM recompensas_indicacao WHERE id = $1 FOR UPDATE', [id]);
-    const r = rows[0];
-    if (!r || r.status === 'revogada') throw erro(404, 'recompensa não encontrada');
-    if (r.status === 'entregue') throw erro(409, 'Esta recompensa já foi entregue.', { entregue_em: r.entregue_em });
-    await cliente.query(
-      "UPDATE recompensas_indicacao SET status = 'entregue', entregue_em = now(), entregue_por = $2 WHERE id = $1",
-      [id, String(autor?.autor || 'admin').slice(0, 200)],
-    );
-    await auditar(cliente, autor, 'recompensa_entregue', 'recompensa_indicacao', id, { campanha_id: r.campanha_id });
+    const r = await require('./campanhas').entregarPremio(cliente, id, {
+      autor: String(autor?.autor || 'admin').slice(0, 200),
+      via: 'admin',
+    });
+    if (r.resultado === 'ja_entregue') {
+      throw erro(409, 'Esta recompensa já foi entregue.', { entregue_em: r.entregue_em });
+    }
     return { ok: true };
   });
 }
@@ -445,12 +400,16 @@ async function andamento(cliente, indicador, operadorId = null) {
   const ids = edicoes.map((e) => e.id);
   const { rows } = await cliente.query(
     `SELECT c.*, ev.nome AS evento, ed.nome AS edicao, ev.slug AS evento_slug, ed.slug AS edicao_slug,
-            (SELECT count(*)::int FROM indicacoes x WHERE x.campanha_id = c.id AND x.indicador_id = $1 AND x.valida) AS minhas_conversoes,
-            (SELECT count(*)::int FROM recompensas_indicacao r WHERE r.campanha_id = c.id AND r.indicador_id = $1 AND r.status = 'concedida') AS a_retirar,
-            (SELECT count(*)::int FROM recompensas_indicacao r WHERE r.campanha_id = c.id AND r.indicador_id = $1 AND r.status = 'entregue') AS entregues,
-            (SELECT count(*)::int FROM recompensas_indicacao r WHERE r.campanha_id = c.id AND r.status <> 'revogada') AS concedidas
-       FROM campanhas_indicacao c JOIN edicoes ed ON ed.id = c.edicao_id JOIN eventos ev ON ev.id = ed.evento_id
-      WHERE c.ativo AND ed.status = 'publicado' AND (c.inicio IS NULL OR c.inicio <= now()) AND (c.fim IS NULL OR c.fim > now())
+            (SELECT count(*)::int FROM campanha_indicacoes x WHERE x.campanha_id = c.id AND x.indicador_id = $1 AND x.valida) AS minhas_conversoes,
+            (SELECT count(*)::int FROM campanha_premios r WHERE r.campanha_id = c.id AND r.indicador_id = $1 AND r.status = 'concedido') AS a_retirar,
+            (SELECT count(*)::int FROM campanha_premios r WHERE r.campanha_id = c.id AND r.indicador_id = $1 AND r.status = 'entregue') AS entregues,
+            COALESCE((SELECT json_agg(json_build_object('id', f.id, 'de', f.de, 'repete', f.repete, 'premio', f.premio,
+                        'estoque', f.estoque,
+                        'concedidas', (SELECT count(*)::int FROM campanha_premios r WHERE r.faixa_id = f.id AND r.status IN ('concedido', 'entregue')))
+                        ORDER BY f.ordem) FROM campanha_faixas f WHERE f.campanha_id = c.id), '[]') AS niveis
+       FROM campanhas c JOIN edicoes ed ON ed.id = c.edicao_id JOIN eventos ev ON ev.id = ed.evento_id
+      WHERE c.modalidade = 'indicacao' AND c.status = 'ativa' AND ed.status = 'publicado'
+        AND (c.inicio IS NULL OR c.inicio <= now()) AND (c.fim IS NULL OR c.fim > now())
         AND c.edicao_id = ANY($2::bigint[])
       ORDER BY ed.inicio_em NULLS LAST, c.id`,
     [indicador.id, ids],
@@ -468,21 +427,24 @@ async function andamento(cliente, indicador, operadorId = null) {
     })),
     campanhas: rows.map((c) => {
       const ganhas = c.a_retirar + c.entregues;
-      const noLimite = c.limite_por_indicador && ganhas >= c.limite_por_indicador;
+      const noLimite = c.limite_por_pessoa && ganhas >= c.limite_por_pessoa;
+      const n = c.minhas_conversoes;
+      // Nível que se repete (formato de antes) ou o próximo nível da escada.
+      const repete = c.niveis.length === 1 && c.niveis[0].repete ? c.niveis[0] : null;
+      const proximo = repete || c.niveis.find((f) => f.de > n) || null;
+      const restam = (f) => (f?.estoque ? Math.max(0, f.estoque - f.concedidas) : null);
       return {
         campanha: c.nome,
         evento: `${c.evento} — ${c.edicao}`,
-        recompensa: c.recompensa,
+        recompensa: (proximo || c.niveis[c.niveis.length - 1])?.premio,
         link: linkDaEdicao(indicador.codigo, c),
-        indicacoes_por_recompensa: c.indicacoes_por_recompensa,
-        limite_por_indicador: c.limite_por_indicador,
-        conversoes: c.minhas_conversoes,
+        indicacoes_por_recompensa: proximo?.de ?? null,
+        limite_por_indicador: c.limite_por_pessoa,
+        conversoes: n,
         recompensas_a_retirar: c.a_retirar,
         recompensas_entregues: c.entregues,
-        faltam_para_proxima: noLimite
-          ? null
-          : c.indicacoes_por_recompensa - (c.minhas_conversoes % c.indicacoes_por_recompensa),
-        restam_na_campanha: Math.max(0, c.quantidade - c.concedidas),
+        faltam_para_proxima: noLimite || !proximo ? null : repete ? repete.de - (n % repete.de) : proximo.de - n,
+        restam_na_campanha: repete ? restam(repete) : restam(proximo),
       };
     }),
   };

@@ -17,16 +17,20 @@ const quemEntregou = (coluna) => `CASE WHEN ${coluna} IS NULL THEN NULL
 async function daEdicao(edicaoId) {
   const [{ rows: indicacao }, { rows: beneficios }] = await Promise.all([
     consultar(
-      `SELECT r.id, r.status, r.concedida_em, r.entregue_em, r.revogada_em, ${quemEntregou('r.entregue_por')} AS entregue_por,
-              ca.nome AS campanha, ca.recompensa,
+      `SELECT r.id,
+              CASE r.status WHEN 'concedido' THEN 'concedida' WHEN 'revogado' THEN 'revogada'
+                            WHEN 'expirado' THEN 'expirada' ELSE r.status END AS status,
+              r.concedido_em AS concedida_em, r.entregue_em, r.revogado_em AS revogada_em, r.expirado_em AS expirada_em,
+              r.motivo, ${quemEntregou('r.entregue_por')} AS entregue_por,
+              ca.nome AS campanha, r.premio AS recompensa,
               COALESCE(cl.nome, o.nome, '(anonimizado)') AS indicador,
               CASE WHEN i.operador_id IS NOT NULL THEN 'operador' ELSE 'cliente' END AS tipo
-         FROM recompensas_indicacao r
-         JOIN campanhas_indicacao ca ON ca.id = r.campanha_id
+         FROM campanha_premios r
+         JOIN campanhas ca ON ca.id = r.campanha_id AND ca.modalidade = 'indicacao'
          JOIN indicadores i ON i.id = r.indicador_id
          LEFT JOIN clientes cl ON cl.id = i.cliente_id LEFT JOIN operadores o ON o.id = i.operador_id
         WHERE ca.edicao_id = $1
-        ORDER BY (r.status = 'concedida') DESC, r.concedida_em DESC, r.id DESC
+        ORDER BY (r.status = 'concedido') DESC, r.concedido_em DESC, r.id DESC
         LIMIT 1000`,
       [edicaoId],
     ),
@@ -49,7 +53,12 @@ async function daEdicao(edicaoId) {
   for (const r of indicacao) r.entrega = r.tipo === 'operador' ? 'so_admin' : 'portaria_ou_admin';
   return {
     indicacao: {
-      totais: { a_retirar: conta('concedida'), entregues: conta('entregue'), revogadas: conta('revogada') },
+      totais: {
+        a_retirar: conta('concedida'),
+        entregues: conta('entregue'),
+        revogadas: conta('revogada'),
+        expiradas: conta('expirada'),
+      },
       itens: indicacao,
     },
     beneficios: beneficios.map((b) => ({ ...b, pendentes: b.total - b.entregues })),

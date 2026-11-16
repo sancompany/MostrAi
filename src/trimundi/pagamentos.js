@@ -121,14 +121,20 @@ async function confirmar(cliente, pedido, p) {
     );
     return 'sem_vaga';
   }
+  // Instante oficial da confirmação (R2, 16/11/2026): clock_timestamp(), já
+  // com a trava da edição — é ele que ordena as posições das campanhas e decide
+  // a janela delas. (now() seria o início da transação, de antes da trava.)
   await cliente.query(
-    `UPDATE pedidos SET status = 'pago', pago_em = now(), encerrado_em = NULL, charge_id = $2, metodo_pagamento = $3,
-       valor_cobrado_centavos = $4 WHERE id = $1`,
+    `UPDATE pedidos SET status = 'pago', pago_em = clock_timestamp(), encerrado_em = NULL, charge_id = $2,
+       metodo_pagamento = $3, valor_cobrado_centavos = $4 WHERE id = $1`,
     dados,
   );
   pedido.status = 'pago';
   const emitidos = await emitirDoPedido(cliente, pedido, { autor: 'pagamento' });
   await marcarLotesDoPedido(cliente, pedido);
+  // Campanhas: posição de cada ingresso e prêmios, na mesma transação. A hora
+  // do Checkout (p.ocorridoEm) fica só para auditoria.
+  await require('./campanhas').aoConfirmar(cliente, pedido, { checkoutEm: p.ocorridoEm });
   await medir(cliente, 'venda:pagamento_confirma', pedido.edicao_id, {
     pedido_id: pedido.id,
     total_centavos: Number(pedido.total_centavos),
@@ -257,8 +263,9 @@ async function aplicar(cliente, ev) {
   const { rows } = await cliente.query('SELECT * FROM pedidos WHERE id = $1 FOR UPDATE', [pedidoId]);
   const pedido = rows[0];
   const resultado = await aplicarAoPedido(cliente, pedido, p, ev);
-  // A indicação segue o estado do pedido (pago conta; reembolso, contestação
-  // ou baixa desfeita tiram a conversão).
+  // Campanhas seguem o estado do pedido: indicação (pago conta; reembolso,
+  // contestação ou baixa desfeita tiram) e prêmios de ordem de compra
+  // (ingresso cancelado revoga o não entregue). Idempotente.
   await require('./indicacao').revisarPedido(cliente, pedido.id);
   return resultado;
 }

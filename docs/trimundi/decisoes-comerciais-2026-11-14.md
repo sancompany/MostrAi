@@ -118,3 +118,27 @@ auditável; reembolso sem transferência de posição; preservação das tabelas
 antigas; nenhuma migration destrutiva sem autorização; nenhum merge ou deploy
 sem autorização. Implementação só depois da revisão final do documento
 completo (versão 2), em 4 PRs na ordem proposta.
+
+## Decisões de 16/11/2026 — R1–R3 e autorização da fase de Campanhas
+
+- **R1.** Não permitir duas campanhas de indicação **não acumuláveis ativas**
+  ao mesmo tempo na mesma edição. O Admin bloqueia a ativação da segunda e
+  informa que já existe outra ativa. Ordem de compra e acumuláveis seguem as
+  regras já aprovadas.
+- **R2.** O horário oficial é o instante em que a TICK **aplica** a
+  confirmação do pagamento; ele define a ordem das posições e a entrada na
+  janela. A hora informada pelo Checkout é preservada só para auditoria e
+  investigação de atrasos, sem alterar a classificação.
+- **R3.** O limite por pessoa conta só recompensas **válidas** (de pé). Se uma
+  for revogada por reembolso, a pessoa pode voltar a recebê-la numa compra
+  futura, cumprindo de novo as regras; o histórico da concessão e da
+  revogação fica preservado.
+
+Com R1–R3, as regras comerciais da fase de Campanhas estão aprovadas.
+Autorizado o **PR 1 (banco de dados e regras de negócio, sem telas novas)**,
+em rascunho, com testes específicos para: ativação concorrente de campanhas
+de indicação; webhooks atrasados e reprocessados; pagamentos durante pausa e
+encerramento; reembolso e nova compra; progressão e regressão de níveis;
+indicações simultâneas; esgotamento simultâneo de estoque; integridade das
+posições e do histórico. Tabelas antigas preservadas, nenhuma remoção ou
+migração destrutiva, nada em produção sem autorização expressa.

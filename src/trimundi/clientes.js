@@ -388,15 +388,15 @@ async function painel(c) {
   }
   const { rows: doTitular } = principal.size
     ? await consultar(
-        `SELECT ca.edicao_id, ca.recompensa AS nome,
-                count(*) FILTER (WHERE r.status = 'concedida')::int AS a_retirar,
+        `SELECT ca.edicao_id, r.premio AS nome,
+                count(*) FILTER (WHERE r.status = 'concedido')::int AS a_retirar,
                 count(*) FILTER (WHERE r.status = 'entregue')::int AS entregues
-           FROM recompensas_indicacao r
-           JOIN campanhas_indicacao ca ON ca.id = r.campanha_id
+           FROM campanha_premios r
+           JOIN campanhas ca ON ca.id = r.campanha_id AND ca.modalidade = 'indicacao'
            JOIN indicadores ind ON ind.id = r.indicador_id
-          WHERE ind.cliente_id = $1 AND r.status <> 'revogada' AND ca.edicao_id = ANY($2::bigint[])
-          GROUP BY ca.edicao_id, ca.recompensa
-          ORDER BY ca.recompensa`,
+          WHERE ind.cliente_id = $1 AND r.status IN ('concedido', 'entregue') AND ca.edicao_id = ANY($2::bigint[])
+          GROUP BY ca.edicao_id, r.premio
+          ORDER BY r.premio`,
         [c.id, [...principal.keys()]],
       )
     : { rows: [] };

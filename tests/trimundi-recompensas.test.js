@@ -51,7 +51,7 @@ test('recompensas da edição: a retirar, entregue pela portaria (com nome), rev
   }
 
   let d = (await admin.get(rota)).json;
-  assert.deepEqual(d.indicacao.totais, { a_retirar: 1, entregues: 0, revogadas: 1 });
+  assert.deepEqual(d.indicacao.totais, { a_retirar: 1, entregues: 0, revogadas: 1, expiradas: 0 });
   assert.equal(d.indicacao.itens[0].status, 'concedida', 'a retirar primeiro');
   assert.equal(d.indicacao.itens[0].indicador, ana.nome);
   assert.equal(d.indicacao.itens[0].recompensa, 'Pulseira VIP');
@@ -79,7 +79,7 @@ test('recompensas da edição: a retirar, entregue pela portaria (com nome), rev
     beneficio_id: lido.beneficios[0].id,
   });
   d = (await admin.get(rota)).json;
-  assert.deepEqual(d.indicacao.totais, { a_retirar: 0, entregues: 1, revogadas: 1 });
+  assert.deepEqual(d.indicacao.totais, { a_retirar: 0, entregues: 1, revogadas: 1, expiradas: 0 });
   const entregue = d.indicacao.itens.find((r) => r.status === 'entregue');
   assert.equal(entregue.entregue_por, op.nome, 'quem entregou, pelo nome');
   assert.ok(entregue.entregue_em);
