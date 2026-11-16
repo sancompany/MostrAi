@@ -2315,11 +2315,24 @@
     el.querySelector('#tmConfigLotes').addEventListener('click', () =>
       modalConfigLotes(ed, d.config, () => renderDesempenho(el, String(ed.id))),
     );
-    // Atualiza sozinho enquanto a aba estiver aberta.
-    clearTimeout(el._tmTimer);
-    el._tmTimer = setTimeout(() => {
-      if (el.isConnected && el.querySelector('#tmAtualizarLotes')) renderDesempenho(el, String(ed.id)).catch(() => {});
-    }, 30000);
+    // Atualiza sozinho a cada 30 s enquanto a mesma tela estiver aberta (Lotes
+    // ou Visão geral). Uma falha — que lança ou que só mostra o aviso na tela —
+    // não interrompe o ciclo: a próxima tentativa sai do mesmo jeito.
+    const endereco = window.location.hash;
+    const naAba = () => el.isConnected && window.location.hash === endereco;
+    const agendar = () => {
+      clearTimeout(el._tmTimer);
+      const este = setTimeout(async () => {
+        if (!naAba()) return;
+        try {
+          await renderDesempenho(el, String(ed.id));
+        } catch {}
+        // A atualização que deu certo já agendou a próxima; senão, agenda aqui.
+        if (el._tmTimer === este && naAba()) agendar();
+      }, 30000);
+      el._tmTimer = este;
+    };
+    agendar();
   }
 
   function modalConfigLotes(ed, cfg, depois) {
