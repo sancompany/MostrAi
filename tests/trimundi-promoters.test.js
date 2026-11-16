@@ -315,3 +315,48 @@ test('painel da conta: sem dado de comprador; candidato vê só a situação', a
   assert.strictEqual(p2.promoter.codigo, null);
   assert.deepStrictEqual(await promoters.painelDaConta(-1), { promoter: null });
 });
+
+test('aviso reprocessado depois de reativar não credita venda paga durante a suspensão', async () => {
+  const pronta = await apoio.edicaoPronta({ lotes: [{ preco_centavos: 2000, quantidade: 50 }] });
+  const pr = await promoterAtivo();
+  await promoters.decidir(pr.id, 'suspender', { motivo: 'teste' }, apoio.AUTOR);
+  const ped = await comprar(pronta, pr.codigo, 1); // paga durante a suspensão
+  assert.strictEqual((await livro(pr.id, pronta.edicao.id)).length, 0);
+  await promoters.decidir(pr.id, 'reativar', {}, apoio.AUTOR);
+  // Reentrega do aviso de pagamento (ou qualquer reprocessamento do pedido).
+  const { rows: ev } = await consultar(
+    "SELECT payload FROM pagamento_eventos WHERE pedido_id = $1 AND processamento = 'processado' ORDER BY id LIMIT 1",
+    [ped.pedido_id],
+  );
+  await emTransacao((c) => pagamentos.aplicar(c, { evento_id: 'reentrega-suspensao', payload: ev[0].payload }));
+  await emTransacao((c) => promoters.revisarPedido(c, ped.pedido_id));
+  assert.strictEqual((await livro(pr.id, pronta.edicao.id)).length, 0, 'a venda da suspensão continua fora');
+});
+
+test('reembolso ao mesmo tempo que a emissão do crédito não revoga o crédito emitido', async () => {
+  const { Client } = require('pg');
+  const config = require('../src/trimundi/config');
+  const pronta = await apoio.edicaoPronta({ lotes: [{ preco_centavos: 1000, quantidade: 100 }] });
+  const recrutador = await promoterAtivo();
+  const recrutado = await promoterAtivo({ recrutador: recrutador.codigo });
+  await comprar(pronta, recrutado.codigo, 9);
+  const decima = await comprar(pronta, recrutado.codigo, 1);
+  const { rows: cr } = await consultar('SELECT id, situacao FROM promoter_creditos WHERE recrutado_id = $1', [
+    recrutado.id,
+  ]);
+  assert.strictEqual(cr[0].situacao, 'pendente');
+  // O Admin está emitindo (transação aberta, crédito travado)…
+  const admin = new Client({ connectionString: config.urlDoBanco() });
+  await admin.connect();
+  await admin.query(`SET search_path TO ${config.ESQUEMA}`);
+  await admin.query('BEGIN');
+  await admin.query("UPDATE promoter_creditos SET situacao = 'emitido', nota = 'cortesia X' WHERE id = $1", [cr[0].id]);
+  // …e o reembolso da 10ª venda chega ao mesmo tempo (fica esperando a trava).
+  const reembolso = apoio.aplicarAviso(await apoio.aviso(decima.pedido_id, 'estornado'));
+  await new Promise((r) => setTimeout(r, 300));
+  await admin.query('COMMIT');
+  await admin.end();
+  await reembolso;
+  const { rows: depois } = await consultar('SELECT situacao FROM promoter_creditos WHERE id = $1', [cr[0].id]);
+  assert.strictEqual(depois[0].situacao, 'emitido', 'emitido não volta atrás');
+});
