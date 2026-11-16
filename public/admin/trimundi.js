@@ -2494,7 +2494,10 @@
     if (!edicoes) return;
     const ed = escolherEdicao(edicoes, resto);
     if (!ed) {
-      el.innerHTML = semEdicao();
+      // Sem edição a saúde vale do mesmo jeito: Checkout ou e-mail faltando
+      // é justamente o que se descobre na montagem.
+      const saude = await pegar(`${R}/saude`).catch(() => null);
+      el.innerHTML = `${blocoSaude(saude)}${semEdicao()}`;
       return ligarSemEdicao(el);
     }
     const dados = await lerOuAvisar(el, () =>
