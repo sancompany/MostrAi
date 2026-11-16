@@ -40,6 +40,11 @@ async function edicaoPublica(evento, edicao) {
     listarPromocoes(ed.id),
   ]);
   const vendaAberta = ed.status === 'publicado';
+  // Campanhas com regulamento revisado (C7): promoção de preço por tipo e
+  // brindes por ordem de compra. Com a venda fechada, nada é oferecido.
+  const vitrine = vendaAberta
+    ? await require('./campanhas').paraVitrine(ed.id, tipos)
+    : { porTipo: new Map(), brindes: [] };
   const textos = Object.fromEntries(termos.rows.map((t) => [t.tipo, { id: t.id, versao: t.versao, texto: t.texto }]));
   return {
     evento: { nome: ed.evento_nome, slug: ed.evento_slug },
@@ -113,8 +118,13 @@ async function edicaoPublica(evento, edicao) {
             ? Math.min(t.disponivel_agora, t.limite_por_comprador || MAX_INGRESSOS, MAX_INGRESSOS)
             : 0,
         limite_por_comprador: t.limite_por_comprador,
+        // Promoção de preço no lote à venda (PROMOÇÃO RELÂMPAGO quando
+        // `relampago`): preço cheio, promocional, % e quanto resta. O preço
+        // que vale é o que o servidor calcula no pedido.
+        promocao: situacao === 'a_venda' ? vitrine.porTipo.get(Number(t.id)) || null : null,
       };
     }),
+    campanhas: vitrine.brindes,
     combos: promos
       .filter((p) => p.ativo)
       .map((p) => ({

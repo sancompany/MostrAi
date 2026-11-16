@@ -41,7 +41,9 @@ async function registrarEvento({ eventoId, provedor, payload }) {
 // vencida.) Confere LOTE A LOTE — o que não vendeu num lote não passa para
 // outro (regra do dono, 09/11/2026): o lote da reserva precisa estar aberto e
 // com vaga; e a capacidade da edição também. Nunca vende acima.
-async function aindaCabe(cliente, pedido) {
+// Devolve null (cabe) ou o motivo de não caber — gravado em pedidos_sem_vaga
+// para a fila de exceções do Admin (P5, 16/11/2026).
+async function faltaDeVaga(cliente, pedido) {
   const { rows: vagas } = await cliente.query(
     'SELECT categoria_id, lote_id, count(*)::int AS n FROM reservas WHERE pedido_id = $1 GROUP BY categoria_id, lote_id',
     [pedido.id],
@@ -50,14 +52,24 @@ async function aindaCabe(cliente, pedido) {
   for (const x of vagas) {
     const e = estadoDaCategoria(porCategoria.get(Number(x.categoria_id)) || []);
     const l = e.lotes.find((y) => Number(y.id) === Number(x.lote_id));
-    if (!l || l.fechado || l.disponivel < x.n) return false;
+    if (!l || l.fechado || l.disponivel < x.n) {
+      return {
+        motivo: 'lote',
+        detalhe: !l || l.fechado ? 'lote fechado' : `restavam ${Math.max(0, l.disponivel)} no lote`,
+      };
+    }
   }
+  // Vaga com desconto (P5): a promoção precisa estar aberta e com quantidade.
+  const promocao = await require('./campanhas').faltaNoDesconto(cliente, pedido.id);
+  if (promocao) return promocao;
   const { rows: ed } = await cliente.query('SELECT capacidade FROM edicoes WHERE id = $1', [pedido.edicao_id]);
   if (ed[0].capacidade) {
     const total = vagas.reduce((s, x) => s + x.n, 0);
-    if ((await ocupacaoDaEdicao(cliente, pedido.edicao_id)) + total > ed[0].capacidade) return false;
+    if ((await ocupacaoDaEdicao(cliente, pedido.edicao_id)) + total > ed[0].capacidade) {
+      return { motivo: 'capacidade', detalhe: 'capacidade da edição completa' };
+    }
   }
-  return true;
+  return null;
 }
 
 // Depois de emitir: os lotes deste pedido que ficaram completos por PAGOS
@@ -113,12 +125,21 @@ async function confirmar(cliente, pedido, p) {
   if (reais(p.valorComDesconto) !== Number(pedido.total_centavos)) return 'valor_divergente';
   const reservaViva = pedido.status === 'aguardando_pagamento' && new Date(pedido.reserva_expira_em) > new Date();
   const dados = [pedido.id, p.chargeId || null, p.metodoPagamento || null, reais(p.valorCobrado)];
-  if (!reservaViva && !(await aindaCabe(cliente, pedido))) {
+  const falta = reservaViva ? null : await faltaDeVaga(cliente, pedido);
+  if (falta) {
+    // Sem ingresso e sem estoque: o pedido entra na fila de exceções do Admin
+    // com o motivo (P5). Nada é emitido nem consumido.
     await cliente.query(
       `UPDATE pedidos SET status = 'pago_sem_vaga', pago_em = now(), charge_id = $2, metodo_pagamento = $3,
          valor_cobrado_centavos = $4 WHERE id = $1`,
       dados,
     );
+    await cliente.query(
+      `INSERT INTO pedidos_sem_vaga (pedido_id, motivo, campanha_id, detalhe) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (pedido_id) DO NOTHING`,
+      [pedido.id, falta.motivo, falta.campanha_id ?? null, falta.detalhe ? String(falta.detalhe).slice(0, 300) : null],
+    );
+    await medir(cliente, 'venda:pago_sem_vaga', pedido.edicao_id, { motivo: falta.motivo });
     return 'sem_vaga';
   }
   // Instante oficial da confirmação (R2, 16/11/2026): clock_timestamp(), já

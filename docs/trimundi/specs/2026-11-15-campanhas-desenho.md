@@ -502,6 +502,10 @@ Aviso fixo junto ao campo de benefício do lote, com o texto da seção 7.
 Campanha relâmpago ativa: destaque com nome, brinde e **"restam N"**, com N
 real calculado na hora; link "regras da campanha".
 
+> Implementado no PR 4 (RN-T45): promoção de preço no card do ingresso
+> (selo, preço riscado, %, restam, prazo, regulamento) e "Brindes desta
+> edição" para primeiros N; esgotada/encerrada sem preço; só com C7.
+
 ### Minha Conta → "MINHAS PROMOÇÕES E RECOMPENSAS" (§4)
 - Indicação: barra de progresso por nível ("6 de 10 para a Camiseta").
 - Ordem de compra: posição de cada ingresso e prêmio.

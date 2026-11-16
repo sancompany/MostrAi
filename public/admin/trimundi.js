@@ -1194,7 +1194,7 @@
       return ligarSemEdicao(el);
     }
     const q = new URLSearchParams({ filtro: estadoT4.filtro, busca: estadoT4.busca, pagina: String(estadoT4.pagina) });
-    const [lista, resumo, avisos, tipos, beneficios, estado, conflitos] = await Promise.all([
+    const [lista, resumo, avisos, tipos, beneficios, estado, conflitos, semVaga] = await Promise.all([
       pegar(`${R}/edicoes/${ed.id}/participantes?${q}`),
       pegar(`${R}/edicoes/${ed.id}/resumo`),
       pegar(`${R}/edicoes/${ed.id}/avisos`),
@@ -1202,6 +1202,7 @@
       pegar(`${R}/edicoes/${ed.id}/beneficios`),
       pegar(`${R}/estado`),
       pegar(`${R}/edicoes/${ed.id}/checkin/conflitos`),
+      pegar(`${R}/edicoes/${ed.id}/sem-vaga`),
     ]);
     const soLeitura = ed.status === 'encerrado';
     const indicador = (valor, rotulo) => `<div class="mini-indicador"><b>${valor}</b><span>${rotulo}</span></div>`;
@@ -1231,6 +1232,7 @@
           <ul>${avisos.map((a, n) => `<li><b>${esc(a.texto || a.tipo)}</b> Pedido ${esc(a.pedido_codigo || '—')}${a.desde ? ` · ${esc(quando(a.desde))}` : ''} ${a.pedido_id ? `<button type="button" class="btn ghost mini" data-pedido="${esc(a.pedido_id)}">Abrir pedido</button>` : ''} ${soLeitura ? '' : `<button type="button" class="btn ghost mini" data-resolver="${n}">Marcar como resolvido</button>`}</li>`).join('')}</ul></section>`
           : ''
       }
+      ${filaSemVaga(semVaga, soLeitura)}
       ${
         conflitos.length
           ? `<section class="secao-pagina tm-conflitos"><div class="secao-topo"><h3>Conflitos do check-in sem internet</h3><span class="contagem">${conflitos.length}</span></div>
@@ -1329,6 +1331,71 @@
     el.querySelectorAll('[data-resolver]').forEach((b) =>
       b.addEventListener('click', () => modalResolverAviso(ed, avisos[Number(b.dataset.resolver)], recarregar)),
     );
+    el.querySelectorAll('[data-anotar-sem-vaga]').forEach((b) =>
+      b.addEventListener('click', () => modalAnotarSemVaga(b.dataset.anotarSemVaga, b.dataset.codigo, recarregar)),
+    );
+  }
+
+  // Fila de exceções "pago sem vaga" (P5): o pagamento chegou depois de a
+  // reserva vencer e não havia mais vaga (lote, capacidade ou promoção). Nada
+  // foi emitido. O Admin devolve pelo pedido (Reembolsar pedido) e anota.
+  const COR_SEM_VAGA = {
+    a_devolver: 'badge-err',
+    devolucao_reenviar: 'badge-err',
+    devolucao_falhou: 'badge-err',
+    devolucao_solicitada: 'badge-pendente',
+    devolvido: 'badge-ok',
+  };
+  function filaSemVaga(fila, soLeitura) {
+    if (!fila?.itens?.length) return '';
+    const historico = (h) =>
+      h
+        .map(
+          (x) =>
+            `${esc(quando(x.em))} · ${esc(x.acao)}${x.nota ? ` — ${esc(x.nota)}` : ''} <span class="u-dim">(${esc(x.autor)})</span>`,
+        )
+        .join('<br>');
+    return `<section class="secao-pagina tm-sem-vaga"><div class="secao-topo"><h3>Pagos sem vaga</h3><span class="contagem">${num(fila.abertos)} em aberto</span></div>
+      <p class="campo-ajuda">O pagamento chegou depois de a reserva vencer e já não havia vaga. Nenhum ingresso foi emitido e nada saiu do estoque. Devolva o valor em "Abrir pedido" → "Reembolsar pedido" e anote o que foi combinado com o comprador.</p>
+      <div class="tabela-caixa"><div class="rolagem"><table>
+        <thead><tr><th>Pedido</th><th>Comprador</th><th class="num">Valor recebido</th><th>Campanha</th><th>Motivo</th><th>Conciliação</th><th>Histórico</th></tr></thead>
+        <tbody>${fila.itens
+          .map(
+            (i) => `<tr><td><b>${esc(i.codigo)}</b><br>
+              <button type="button" class="btn ghost mini" data-pedido="${esc(i.pedido_id)}">Abrir pedido</button>
+              ${soLeitura ? '' : `<button type="button" class="btn ghost mini" data-anotar-sem-vaga="${esc(i.pedido_id)}" data-codigo="${esc(i.codigo)}">Anotar</button>`}</td>
+            <td>${esc(i.comprador || '—')}${i.conta && i.conta !== i.comprador ? `<br><span class="u-dim">conta: ${esc(i.conta)}</span>` : ''}</td>
+            <td class="num">${fmt(i.valor_recebido_centavos / 100)}${i.valor_recebido_centavos !== i.total_centavos ? `<br><span class="u-dim">pedido ${fmt(i.total_centavos / 100)}</span>` : ''}<br><span class="u-dim">${esc(quando(i.recebido_em) || '')}</span></td>
+            <td>${i.campanha ? esc(i.campanha.nome) : '—'}</td>
+            <td>${esc(i.motivo_texto)}${i.detalhe ? `<br><span class="u-dim">${esc(i.detalhe)}</span>` : ''}</td>
+            <td><span class="badge ${COR_SEM_VAGA[i.situacao] || 'badge-neutro'}">${esc(i.situacao_texto)}</span></td>
+            <td class="u-dim"><details><summary>${num(i.historico.length)} registro${i.historico.length === 1 ? '' : 's'}</summary>${historico(i.historico)}</details></td></tr>`,
+          )
+          .join('')}</tbody></table></div></div></section>`;
+  }
+
+  function modalAnotarSemVaga(pedidoId, codigo, depois) {
+    const { dlg, fechar } = abrirModal({
+      titulo: `Anotar no pedido ${codigo}`,
+      corpo: `<form id="tmFormSemVaga" novalidate>
+        <p class="campo-ajuda">A anotação entra no histórico do caso, com seu nome e a hora. Não muda o pedido nem devolve o valor.</p>
+        <div class="campo-grupo"><label for="tmSemVagaNota">Anotação</label><input id="tmSemVagaNota" name="nota" maxlength="300" required placeholder="Ex.: comprador avisado por e-mail; devolução combinada"></div>
+        <p class="form-msg" data-msg></p></form>`,
+      rodape:
+        '<button type="button" class="btn ghost" data-fechar>Voltar</button><button type="submit" form="tmFormSemVaga" class="btn primary">Anotar</button>',
+    });
+    dlg.querySelector('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await travado(dlg.querySelector('[type="submit"]'), async () => {
+        const r = await escrever(`/pedidos/${pedidoId}/sem-vaga/anotar`, 'POST', {
+          nota: e.target.elements.nota.value,
+        });
+        if (!r.ok) return erroNoModal(dlg, r.erro);
+        fechar();
+        toast('Anotação registrada.');
+        depois();
+      });
+    });
   }
 
   function modalResolverAviso(ed, aviso, depois) {
@@ -2248,11 +2315,24 @@
     el.querySelector('#tmConfigLotes').addEventListener('click', () =>
       modalConfigLotes(ed, d.config, () => renderDesempenho(el, String(ed.id))),
     );
-    // Atualiza sozinho enquanto a aba estiver aberta.
-    clearTimeout(el._tmTimer);
-    el._tmTimer = setTimeout(() => {
-      if (el.isConnected && el.querySelector('#tmAtualizarLotes')) renderDesempenho(el, String(ed.id)).catch(() => {});
-    }, 30000);
+    // Atualiza sozinho a cada 30 s enquanto a mesma tela estiver aberta (Lotes
+    // ou Visão geral). Uma falha — que lança ou que só mostra o aviso na tela —
+    // não interrompe o ciclo: a próxima tentativa sai do mesmo jeito.
+    const endereco = window.location.hash;
+    const naAba = () => el.isConnected && window.location.hash === endereco;
+    const agendar = () => {
+      clearTimeout(el._tmTimer);
+      const este = setTimeout(async () => {
+        if (!naAba()) return;
+        try {
+          await renderDesempenho(el, String(ed.id));
+        } catch {}
+        // A atualização que deu certo já agendou a próxima; senão, agenda aqui.
+        if (el._tmTimer === este && naAba()) agendar();
+      }, 30000);
+      el._tmTimer = este;
+    };
+    agendar();
   }
 
   function modalConfigLotes(ed, cfg, depois) {
@@ -2573,11 +2653,7 @@
       return [
         `<button type="button" class="btn ghost mini" data-detalhe="${c.id}">Detalhes</button>`,
         `<button type="button" class="btn ghost mini" data-editar="${c.id}">Editar</button>`,
-        c.status === 'rascunho' && c.modalidade === 'desconto' && !c.desconto_disponivel
-          ? '<span class="badge badge-neutro">Ativa quando o desconto no checkout estiver ligado</span>'
-          : c.status === 'rascunho'
-            ? b('ativar', 'Ativar')
-            : '',
+        c.status === 'rascunho' ? b('ativar', 'Ativar') : '',
         c.status === 'ativa' ? b('pausar', 'Pausar') : '',
         c.status === 'pausada' ? b('retomar', 'Retomar') : '',
         `<button type="button" class="btn ghost mini" data-revisar="${c.id}">Regulamento revisado</button>`,
@@ -2855,10 +2931,13 @@
         descricao: f.descricao.value,
         regras: f.regras.value,
         fim: doCampoData(f.fim.value),
-        acumula: f.acumula.checked,
-        prioridade: f.prioridade.value === '' ? 0 : Number(f.prioridade.value),
-        limite_por_pessoa: f.limite_por_pessoa.value === '' ? null : f.limite_por_pessoa.value,
       };
+      // Campanha em uso: os campos travados (desabilitados) não vão no corpo.
+      if (!travar) corpo.acumula = f.acumula.checked;
+      if (!f.prioridade.disabled) corpo.prioridade = f.prioridade.value === '' ? 0 : Number(f.prioridade.value);
+      if (!f.limite_por_pessoa.disabled) {
+        corpo.limite_por_pessoa = f.limite_por_pessoa.value === '' ? null : f.limite_por_pessoa.value;
+      }
       if (!f.inicio.disabled) corpo.inicio = doCampoData(f.inicio.value);
       if (f.prazo_retirada) corpo.prazo_retirada = doCampoData(f.prazo_retirada.value);
       if (f.relampago) corpo.relampago = f.relampago.checked;
@@ -2937,6 +3016,41 @@
     });
   }
 
+  const SITUACAO_VENDA = {
+    vendido: 'vendido',
+    reservado: 'reservado (aguardando pagamento)',
+    reembolsado: 'reembolsado — a unidade não volta (P1)',
+    pago_sem_vaga: 'pago sem vaga',
+    devolvido_ao_estoque: 'reserva vencida — voltou à quantidade',
+  };
+  // Promoção de preço: as unidades e as disputas (P2 — quem venceu e quem
+  // deixou de conceder o benefício).
+  function vendasDoDesconto(d) {
+    const LADO = {
+      venceu: (x) => `valeu esta no lugar de <b>${esc(x.outra)}</b> (preço maior ou empate perdido)`,
+      perdeu: (x) => `valeu <b>${esc(x.outra)}</b> no lugar desta (preço menor ou desempate)`,
+      venceu_brinde: (x) =>
+        `o brinde não acumulável <b>${esc(x.outra)}</b> deixou de sair (o ingresso ocupou a posição)`,
+    };
+    const disputas = d.disputas?.length
+      ? `<h3>Disputas com outras campanhas</h3><ul>${d.disputas.map((x) => `<li>${num(x.unidades)} ingresso${x.unidades === 1 ? '' : 's'}: ${LADO[x.lado](x)}</li>`).join('')}</ul>`
+      : '';
+    const vendas = d.vendas?.length
+      ? `<div class="tabela-caixa"><div class="rolagem"><table><thead><tr><th>Pedido</th><th>Tipo</th><th class="num">Preço cheio</th><th class="num">Pago</th><th>Situação</th><th>Quando</th></tr></thead>
+        <tbody>${d.vendas
+          .slice(0, 300)
+          .map(
+            (
+              v,
+            ) => `<tr><td>${esc(v.pedido)}${v.codigo_curto ? ` <span class="u-dim">${esc(v.codigo_curto)}</span>` : ''}</td><td>${esc(v.tipo)}</td>
+              <td class="num">${fmt(Number(v.preco_original_centavos) / 100)}</td><td class="num">${fmt(Number(v.valor_centavos) / 100)}</td>
+              <td>${esc(SITUACAO_VENDA[v.situacao] || v.situacao)}</td><td>${esc(quando(v.em))}</td></tr>`,
+          )
+          .join('')}</tbody></table></div></div>`
+      : vazio('Nenhuma unidade vendida ainda.');
+    return `<h3>Unidades <span class="contagem">${num(d.vendas?.length || 0)}</span></h3>${vendas}${disputas}`;
+  }
+
   async function detalheCampanha(id, tipos, depois) {
     const d = await pegar(`${R}/campanhas/${id}/detalhe`);
     const historico = (h) =>
@@ -2983,6 +3097,7 @@
       corpo: `<p>${selo(MODALIDADE[d.modalidade])} ${selo(STATUS_CAMPANHA[d.status])} ${d.relampago ? '<span class="badge badge-atencao">Relâmpago</span>' : ''}</p>
         ${d.modalidade === 'desconto' ? `<p>${esc(descDesconto(d))} em ${d.alvos.map((a) => esc(nomeDoAlvo(a, tipos))).join(', ')} · ${num(d.usados ?? 0)} de ${num(d.quantidade_promocional)} usados</p>` : ''}
         ${d.descricao ? `<p class="u-dim">${esc(d.descricao)}</p>` : ''}
+        ${d.modalidade === 'desconto' ? vendasDoDesconto(d) : ''}
         ${posicoes}
         ${d.modalidade !== 'desconto' ? `<h3>Prêmios</h3>${premios}` : ''}`,
       rodape: '<button type="button" class="btn ghost" data-fechar>Fechar</button>',

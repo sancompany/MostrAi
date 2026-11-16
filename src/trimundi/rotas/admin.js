@@ -149,6 +149,14 @@ router.get('/admin/trimundi/edicoes/:id/checkin/conflitos', async (req, res) =>
   res.json(await require('../checkin-offline').conflitos(id(req))),
 );
 
+// Fila de exceções "pago sem vaga" (P5): motivo, campanha, conciliação e histórico.
+router.get('/admin/trimundi/edicoes/:id/sem-vaga', async (req, res) =>
+  res.json(await require('../sem-vaga').fila(id(req))),
+);
+router.post('/admin/trimundi/pedidos/:pedido/sem-vaga/anotar', async (req, res) =>
+  res.json(await require('../sem-vaga').anotar(req.params.pedido, req.body, autor(req))),
+);
+
 router.post('/admin/trimundi/edicoes/:id/avisos/resolver', async (req, res) =>
   res.json(await participantes.resolverAviso(id(req), req.body, autor(req))),
 );

@@ -219,3 +219,16 @@ Desenho completo e decisões: `docs/trimundi/specs/2026-11-15-campanhas-desenho.
   (`percentual` 1–90 \| `valor` em centavos \| `preco` final em centavos),
   `desconto_valor` e `quantidade_promocional`; restrição de coerência
   (campanha de desconto tem os três; as outras, nenhum).
+- **018 (16/11/2026)** — promoção de preço no pedido: `pedido_itens.campanha_id`
+  e `pedido_itens.preco_original_centavos` (os dois juntos ou nenhum; item
+  com desconto é de lote, nunca combo, e cobra menos que o preço cheio) e
+  `reservas.campanha_id` (índice parcial). Opcionais: pedido de antes fica
+  igual. O ingresso guarda o preço pago em `ingressos.valor_centavos` (como
+  sempre). Unidade usada = vaga com a campanha cujo ingresso foi emitido +
+  reserva viva (P1).
+- **019 (16/11/2026)** — decisões P2 e P5: `campanha_disputas` (por item do
+  pedido, a promoção de preço que valeu e cada outra que alcançava o lote,
+  tinha quantidade e ficou de fora, com os dois preços; imutável) e
+  `pedidos_sem_vaga` (motivo do "pago sem vaga" — lote, capacidade,
+  promoção encerrada ou sem quantidade — e a campanha; imutável). Só
+  tabelas novas.

@@ -73,12 +73,27 @@ async function painel(edicaoId) {
     db,
     tipos.map((t) => Number(t.id)),
   );
+  // Pedido de TESTE (só fora de produção) segura vaga no estoque, mas não é
+  // venda: fica fora de vendidos, reservas e percentuais (RN-T19). O que
+  // está disponível continua sendo o estoque real.
+  const { rows: testes } = await consultar(
+    `SELECT r.lote_id,
+            count(*) FILTER (WHERE p.status = 'pago' AND i.id IS NOT NULL AND i.status <> 'cancelado')::int AS pagos,
+            count(*) FILTER (WHERE p.status = 'aguardando_pagamento' AND p.reserva_expira_em > now())::int AS reservados
+       FROM reservas r JOIN pedidos p ON p.id = r.pedido_id LEFT JOIN ingressos i ON i.reserva_id = r.id
+      WHERE p.edicao_id = $1 AND p.origem = 'teste'
+      GROUP BY r.lote_id`,
+    [edicaoId],
+  );
+  const deTeste = new Map(testes.map((x) => [Number(x.lote_id), x]));
   const agora = new Date();
   const lotes = [];
   for (const t of tipos) {
     const estado = estadoDaCategoria(porTipo.get(Number(t.id)) || [], agora);
     for (const [i, l] of estado.lotes.entries()) {
-      const p = pct(l.pagos, l.quantidade);
+      const teste = deTeste.get(Number(l.id)) || { pagos: 0, reservados: 0 };
+      const vendidosDoLote = Math.max(0, l.pagos - teste.pagos);
+      const p = pct(vendidosDoLote, l.quantidade);
       lotes.push({
         id: l.id,
         tipo_id: t.id,
@@ -86,8 +101,8 @@ async function painel(edicaoId) {
         tipo_ativo: t.ativo,
         numero: i + 1,
         quantidade: l.quantidade,
-        vendidos: l.pagos,
-        reservados: l.reservados,
+        vendidos: vendidosDoLote,
+        reservados: Math.max(0, l.reservados - teste.reservados),
         // Lote fechado não vende mais: o que sobrou fica como sobra.
         disponiveis: l.fechado || !t.ativo ? 0 : l.disponivel,
         sobra: l.fechado ? Math.max(0, l.quantidade - l.pagos) : 0,

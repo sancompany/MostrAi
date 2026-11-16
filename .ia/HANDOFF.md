@@ -1,6 +1,36 @@
 # Current Handoff
 
 ## Updated
+2026-11-16 — **PUBLICADO**: PRs #150–#156 incorporados à `main` (squash, na
+ordem) com autorização do dono; migrations TICK 013–019 aplicadas em
+produção pelo arranque do contêiner, uma por deploy; backup antes
+(`/backups/mostrai-20261116-104027.sql.gz`, restauração ensaiada). Nenhuma
+campanha criada/ativada — C7 continua bloqueando (vitrine e desconto exigem
+`regras_revisadas_em`). Relatório: `docs/trimundi/relatorio-campanhas-2026-11-16.md`.
+Não desfazer sem contexto: a correção do Codex de Recompensas (totais à
+parte, `itens_cortados`) e as do #154 (CSV sem limite, `atualizar` com a
+linha travada e campo igual não conta como mudança).
+
+2026-11-16 — **TICK: campanhas — PR 4 (venda, desconto no checkout e
+relâmpago)**, branch `claude/beautiful-faraday-cjq1nt-campanhas-venda` (sobre
+a da conta, PR #155). Migration 018 (colunas opcionais `campanha_id` e
+`preco_original_centavos` em `pedido_itens`; `campanha_id` em `reservas`).
+Não desfazer sem contexto:
+- o preço com desconto nasce em `pedidos.montar` (via
+  `campanhas.repartirComDesconto`); na criação, sob a trava da edição — é
+  ela que impede passar da quantidade promocional;
+- `ligarDescontoNoCheckout` e os ganchos `definirUso*` do PR 2 saíram: a
+  promoção de preço ativa normalmente;
+- pagamento atrasado com desconto passa por `campanhas.descontoAindaCabe`
+  (P5) dentro de `pagamentos.aindaCabe`;
+- a vitrine (`campanhas.paraVitrine`) só mostra campanha com C7; P7 nas
+  decisões.
+- P1–P7 APROVADAS pelo dono (16/11). Migration 019: `campanha_disputas`
+  (P2) e `pedidos_sem_vaga` (P5, motivo gravado em `pagamentos.confirmar`
+  via `faltaDeVaga`); fila em `src/trimundi/sem-vaga.js`, Admin →
+  Participantes → "Pagos sem vaga". Merge, migrations em produção, deploy e
+  campanha pública continuam NÃO autorizados.
+
 2026-11-16 — **TICK: campanhas — PR 3 (portaria e Minha Conta)**, branch
 `claude/beautiful-faraday-cjq1nt-campanhas-conta` (sobre a do Admin, PR #154).
 Sem migration. Não desfazer sem contexto:

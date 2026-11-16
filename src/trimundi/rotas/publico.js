@@ -112,7 +112,9 @@ router.post('/ticket/api/indicacao/visita', async (req, res) => {
 });
 
 router.post('/ticket/api/cotacao', limiteTentativas, async (req, res) => {
-  const cotacao = await pedidos.cotar(req.body);
+  // Logado, a prévia já conta o limite por conta das promoções de preço.
+  const conta = await require('../clientes').daSessao(req);
+  const cotacao = await pedidos.cotar(req.body, { clienteId: conta?.id || null });
   await acertou(req, res);
   res.json(cotacao);
 });

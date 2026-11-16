@@ -11,8 +11,8 @@ const catalogo = require('../src/trimundi/catalogo');
 // edição das três modalidades (promoção de preço em ingresso individual,
 // primeiros N, indicação), validações contra configurações contraditórias,
 // C7 (regulamento revisado antes de ativar), travas de justiça com a
-// campanha em uso, duplicar/pausar/retomar/encerrar, detalhe e CSV, e a
-// promoção de preço que ainda não ativa (o desconto no checkout é o PR 4).
+// campanha em uso, duplicar/pausar/retomar/encerrar, detalhe e CSV. O
+// desconto no pedido tem o próprio arquivo (trimundi-campanhas-venda).
 
 let srv;
 let admin;
@@ -245,7 +245,7 @@ test('C7: só ativa com regulamento escrito e revisado; mudar o texto derruba a 
   assert.ok(rows.some((x) => x.acao === 'campanha_regras_revisadas'));
 });
 
-test('promoção de preço: cadastra, revisa — e ainda não ativa (o desconto no checkout entra no PR 4)', async () => {
+test('promoção de preço: cadastra, revisa e ativa (o desconto vale no checkout desde o PR 4)', async () => {
   const pronta = await edicao();
   const [l1] = pronta.tipo.lotes;
   const c = (
@@ -259,11 +259,11 @@ test('promoção de preço: cadastra, revisa — e ainda não ativa (o desconto 
       alvos: [{ categoria_id: pronta.tipo.id, lote_id: l1.id }],
     })
   ).json;
+  assert.equal((await acao(c.id, 'ativar')).status, 409, 'sem revisão jurídica (C7) não ativa');
   await revisar(c.id);
   const r = await acao(c.id, 'ativar');
-  assert.equal(r.status, 409);
-  assert.equal(r.json.codigo, 'desconto_indisponivel');
-  assert.equal((await consultar('SELECT status FROM campanhas WHERE id = $1', [c.id])).rows[0].status, 'rascunho');
+  assert.equal(r.status, 200, r.texto);
+  assert.equal((await consultar('SELECT status FROM campanhas WHERE id = $1', [c.id])).rows[0].status, 'ativa');
 });
 
 test('travas de justiça: em uso, faixas/alvos/acumulação não mudam; estoque só sobe; fim só prorroga', async () => {
@@ -376,4 +376,77 @@ test('edição encerrada: não cria nem duplica campanha', async () => {
   await consultar("UPDATE edicoes SET status = 'encerrado', encerrado_em = now() WHERE id = $1", [pronta.edicao.id]);
   assert.equal((await nova(pronta, ordem())).status, 409);
   assert.equal((await admin.post(`/admin/trimundi/campanhas/${c.id}/duplicar`, {})).status, 409);
+});
+
+// Revisão do Codex no #154 (corrigida no PR 4).
+test('em uso: reenviar o formulário inteiro com os mesmos valores não é mudança — nome e fim mudam', async () => {
+  const pronta = await edicao();
+  const c = (await nova(pronta, ordem({ acumula: false, prioridade: 2, limite_por_pessoa: 3 }))).json;
+  await revisar(c.id);
+  await acao(c.id, 'ativar');
+  await pagar((await apoio.novoPedido(pronta, apoio.itensDe(pronta.tipo, 1))).pedido_id);
+  const fim = new Date(Date.now() + 86400000).toISOString();
+  const r = await configurar(c.id, {
+    nome: 'Primeiros 20 (renomeada)',
+    acumula: false,
+    prioridade: 2,
+    limite_por_pessoa: '3',
+    fim,
+  });
+  assert.equal(r.status, 200, r.texto);
+  assert.equal(r.json.nome, 'Primeiros 20 (renomeada)');
+  // Mudar de verdade um campo travado continua recusado.
+  assert.equal((await configurar(c.id, { prioridade: 5 })).json.codigo, 'campanha_em_uso');
+});
+
+test('CSV das posições sai completo, sem o limite da tela', async () => {
+  const pronta = await edicao();
+  const c = (await nova(pronta, ordem({ faixas: [{ de: 1, ate: 5, premio: 'Copão' }] }))).json;
+  await revisar(c.id);
+  await acao(c.id, 'ativar');
+  await pagar((await apoio.novoPedido(pronta, apoio.itensDe(pronta.tipo, 3))).pedido_id);
+  const campanhas = require('../src/trimundi/campanhas');
+  const csv = await campanhas.posicoesCsv(c.id);
+  assert.equal(csv.trim().split('\r\n').length, 1 + 3);
+  // A consulta do CSV não tem LIMIT (a da tela, sim).
+  const fonte = require('node:fs').readFileSync(require.resolve('../src/trimundi/campanhas'), 'utf8');
+  const doCsv = fonte.slice(fonte.indexOf('async function posicoesCsv'));
+  assert.ok(!/LIMIT/.test(doCsv.slice(0, doCsv.indexOf('const linhas'))));
+});
+
+test('C7 reforçado: promoção de preço sem a marca de revisão não dá desconto, mesmo ativa', async () => {
+  const pronta = await edicao();
+  const [l1] = pronta.tipo.lotes;
+  const c = (
+    await nova(pronta, {
+      modalidade: 'desconto',
+      nome: 'Sem revisão',
+      regras: 'Regulamento.',
+      desconto_tipo: 'percentual',
+      desconto_valor: 20,
+      quantidade_promocional: 5,
+      alvos: [{ categoria_id: pronta.tipo.id, lote_id: l1.id }],
+    })
+  ).json;
+  await revisar(c.id);
+  await acao(c.id, 'ativar');
+  // Simula a marca perdida (estado que a trava agora impede de nascer).
+  await consultar('UPDATE campanhas SET regras_revisadas_em = NULL WHERE id = $1', [c.id]);
+  const ped = await apoio.novoPedido(pronta, apoio.itensDe(pronta.tipo, 1));
+  const { rows } = await consultar('SELECT campanha_id FROM pedido_itens WHERE pedido_id = $1', [ped.pedido_id]);
+  assert.equal(rows[0].campanha_id, null);
+});
+
+test('mudar o regulamento usa o estado lido sob a trava: ativação concorrente não fura o C7', async () => {
+  const pronta = await edicao();
+  const c = (await nova(pronta, ordem())).json;
+  await revisar(c.id);
+  // Ativação e troca de regulamento ao mesmo tempo: ou a troca vem antes (e
+  // a ativação para por falta de revisão), ou depois (e a troca é recusada).
+  const [a, m] = await Promise.all([acao(c.id, 'ativar'), configurar(c.id, { regras: 'Texto novo.' })]);
+  const { rows } = await consultar('SELECT status, regras_revisadas_em FROM campanhas WHERE id = $1', [c.id]);
+  assert.ok(
+    !(rows[0].status === 'ativa' && rows[0].regras_revisadas_em === null),
+    `nunca ativa sem revisão (ativar ${a.status}, regras ${m.status})`,
+  );
 });

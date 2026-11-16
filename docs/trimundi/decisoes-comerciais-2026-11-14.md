@@ -152,24 +152,40 @@ destaque com encerramento obrigatório. Os combos (2 a 20 ingressos) seguem
 como estão, em Admin → Combos. Mesma estrutura de Campanhas e mesma
 confirmação de pagamento — sem mecanismo paralelo de desconto.
 
-### Pendências comerciais abertas (regra 11: nada inventado — o comportamento
-### mais conservador foi implementado e fica aqui para o dono confirmar)
+### P1–P7 — aprovadas pelo dono em 16/11/2026
 
-- **P1. Unidade promocional de ingresso reembolsado** NÃO volta para a
-  quantidade promocional (aplicação, por analogia, da regra 1 — "não passa
-  para o próximo"). Reserva vencida sem pagamento volta (nunca foi vendida).
-- **P2. Desconto × outras campanhas.** Dois descontos nunca se somam no mesmo
-  ingresso (vale o menor preço; empate: prioridade, depois a mais antiga). Um
-  desconto **não acumulável** conta como a campanha vencedora do ingresso:
-  brinde de campanha não acumulável de primeiros N não vem junto (o ingresso
-  ainda ocupa a posição — C1). Desconto acumulável permite os brindes.
-- **P3. Preço mínimo com desconto:** R$ 5,00 — o mesmo piso que o sistema já
-  exige do preço de lote. Ingresso grátis é cortesia, não desconto.
-- **P4. Arredondamento do percentual:** ao centavo, meio centavo para cima.
-- **P5. Pagamento que chega depois de a reserva vencer** (pedido com
-  desconto): vale a mesma regra do lote — só se ainda houver quantidade
-  promocional; senão o pedido fica "pago sem vaga" e o Admin devolve.
-- **P6. Regulamento revisado (C7)** é exigido para ativar **toda** campanha
-  criada pelo Admin → Campanhas, inclusive as de indicação novas. As
-  campanhas de indicação antigas (formato "a cada N", pelas rotas antigas)
-  seguem funcionando como antes.
+Eram pendências (regra 11: nada inventado; o comportamento mais conservador
+foi implementado). O dono revisou e aprovou as sete:
+
+- **P1. Unidade promocional após reembolso — APROVADO.** O reembolso não
+  devolve a unidade promocional; a unidade consumida fica registrada no
+  histórico. (Reserva vencida sem pagamento volta: nunca foi vendida.)
+- **P2. Descontos simultâneos — APROVADO.** Dois descontos nunca se somam;
+  vale só o que der o menor preço final (empate: prioridade, depois a mais
+  antiga). Desconto não acumulável × brinde não acumulável de primeiros N:
+  prevalece o desconto (o ingresso ainda ocupa a posição — C1). **O
+  histórico registra qual campanha venceu e qual deixou de conceder o
+  benefício** (`campanha_disputas` entre promoções de preço; posição
+  `nao_acumulavel` com a vencedora entre desconto e brinde — migration 019).
+  Desconto acumulável permite os brindes.
+- **P3. Preço mínimo — APROVADO.** Nenhum ingresso com desconto fica abaixo
+  de R$ 5,00. Ingresso grátis é cortesia, não desconto.
+- **P4. Arredondamento — APROVADO.** Ao centavo, meio centavo para cima,
+  aplicado de forma uniforme no servidor e nos registros financeiros (o
+  preço da vaga, do item e do ingresso é o mesmo número calculado uma vez).
+- **P5. Pagamento após o vencimento da reserva — APROVADO COM CONDIÇÃO.** Só
+  recebe a vaga promocional se a campanha ainda estiver aberta e com
+  quantidade; senão o pedido fica "pago sem vaga". Condição atendida: **fila
+  de exceções no Admin** (Participantes → "Pagos sem vaga") com pedido e
+  comprador, valor recebido, campanha envolvida, motivo da falta de vaga
+  (gravado na confirmação — migration 019), situação da conciliação
+  (derivada dos reembolsos) e histórico das ações (anotações e devoluções,
+  com autor e hora). Nenhum ingresso é emitido e nenhum estoque é consumido.
+  Reserva ainda viva mantém o preço combinado.
+- **P6. Revisão jurídica — APROVADO.** Toda campanha, inclusive de
+  indicação, precisa do regulamento revisado pelo jurídico antes da
+  publicação. (As campanhas de indicação antigas, pelas rotas antigas, não
+  existem em produção — 0 em 16/11/2026.)
+- **P7. Limite por pessoa — APROVADO.** Conta pela conta compradora e só os
+  benefícios válidos. O reembolso libera o limite individual, mas não
+  devolve a unidade promocional.

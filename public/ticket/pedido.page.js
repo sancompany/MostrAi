@@ -102,7 +102,15 @@
           {},
           p.itens.map((i) =>
             el('tr', {}, [
-              el('td', { text: i.descricao }),
+              el('td', {}, [
+                i.descricao,
+                i.preco_original_centavos
+                  ? el('small', {
+                      class: 'promo-item',
+                      text: `Promoção: de ${moeda(i.preco_original_centavos)} por ${moeda(i.preco_unitario_centavos)} cada`,
+                    })
+                  : null,
+              ]),
               el('td', { class: 'num', text: `${i.quantidade}×` }),
               el('td', { class: 'num', text: moeda(i.total_centavos) }),
             ]),

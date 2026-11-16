@@ -185,3 +185,27 @@ test('configuração por edição: valida, salva com auditoria e volta ao padrã
   );
   assert.equal(rows[0].n, 2);
 });
+
+test('pedido de teste (só fora de produção) segura vaga mas fica fora de vendidos, reservas e percentuais (RN-T19)', async () => {
+  const pronta = await apoio.edicaoPronta({ lotes: [{ preco_centavos: 5000, quantidade: 10 }] });
+  await vender(pronta, 2);
+  const pessoa = () => apoio.pessoa('Teste');
+  const pago = await require('../src/trimundi/pedidos').criarTeste(
+    pronta.edicao.id,
+    { itens: apoio.itensDe(pronta.tipo, 3), comprador: pessoa(), participantes: [pessoa(), pessoa(), pessoa()] },
+    apoio.AUTOR,
+  );
+  await apoio.pagar(pago.pedido_id);
+  await require('../src/trimundi/pedidos').criarTeste(
+    pronta.edicao.id,
+    { itens: apoio.itensDe(pronta.tipo, 1), comprador: pessoa(), participantes: [pessoa()] },
+    apoio.AUTOR,
+  );
+  const d = await painel(pronta);
+  const [l] = d.lotes;
+  assert.equal(l.vendidos, 2, 'só a venda conta como vendida');
+  assert.equal(l.reservados, 0, 'reserva de teste não é reserva ativa de venda');
+  assert.equal(l.percentual, 20);
+  assert.equal(l.disponiveis, 4, 'o estoque real continua descontando o teste (10 - 2 - 3 - 1)');
+  assert.equal(d.resumo.vendidos, 2);
+});
