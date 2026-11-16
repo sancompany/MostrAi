@@ -83,7 +83,11 @@ function transacaoPropria(url) {
   };
 }
 
-async function rodar({ base = config.urlDoSite(), url = config.urlDoBanco(), espera } = {}) {
+// A tarefa agendada não liga o módulo (sem TRIMUNDI_ATIVA nem o segredo):
+// lê o banco direto — o mesmo da Mostraí, no esquema da TICK.
+const urlDoBancoDaSentinela = () => process.env.TRIMUNDI_DATABASE_URL || process.env.DATABASE_URL || '';
+
+async function rodar({ base = config.urlDoSite(), url = urlDoBancoDaSentinela(), espera } = {}) {
   if (!base) throw new Error('SITE_URL vazio: não sei qual site conferir');
   const falhas = await checarAlvos(base, { espera });
   let resultado;
@@ -100,7 +104,7 @@ async function rodar({ base = config.urlDoSite(), url = config.urlDoBanco(), esp
   return { falhas, resultado };
 }
 
-module.exports = { checarAlvos, rodar, ALVOS };
+module.exports = { checarAlvos, rodar, ALVOS, urlDoBancoDaSentinela };
 
 if (require.main === module) {
   require('dotenv').config();

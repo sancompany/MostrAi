@@ -193,3 +193,17 @@ test('sentinela: confere o site de fora, avisa uma vez e resolve; sem banco avis
   assert.ok(r.resultado.resolvidos?.some((a) => a.chave === 'sentinela:site'));
   assert.match(enviados().at(-1).texto, /RESOLVIDO/);
 });
+
+test('sentinela acha o banco só com DATABASE_URL (a tarefa agendada não leva TRIMUNDI_ATIVA)', () => {
+  const antes = process.env.TRIMUNDI_ATIVA;
+  process.env.TRIMUNDI_ATIVA = '';
+  try {
+    assert.ok(process.env.DATABASE_URL);
+    assert.strictEqual(
+      sentinela.urlDoBancoDaSentinela(),
+      process.env.TRIMUNDI_DATABASE_URL || process.env.DATABASE_URL,
+    );
+  } finally {
+    process.env.TRIMUNDI_ATIVA = antes;
+  }
+});
