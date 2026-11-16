@@ -47,3 +47,8 @@ CREATE TABLE pedidos_sem_vaga (
 );
 CREATE TRIGGER pedidos_sem_vaga_imutavel BEFORE UPDATE OR DELETE ON pedidos_sem_vaga
   FOR EACH ROW EXECUTE FUNCTION trimundi_historico_imutavel();
+
+-- Como todas as tabelas do esquema: RLS ligado e nenhuma política (a API
+-- pública do Supabase não lê nada; a aplicação entra como dona do esquema).
+ALTER TABLE campanha_disputas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pedidos_sem_vaga ENABLE ROW LEVEL SECURITY;
