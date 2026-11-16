@@ -18,6 +18,12 @@ reabrir é desmarcar com o motivo. Estado de cada funcionalidade:
 - [x] Dados ficam guardados normalmente; nada é apagado sozinho
   (`retencao.js` só por comando).
 
+> **Classificação atual (16/11/2026, 21:30 UTC):** cada pendência abaixo está
+> classificada, com o que falta, o responsável e a evidência, em
+> `PLANO-DE-LANCAMENTO.md` §3 (B1–B13) e §4 (Promoters, P-1 a P-10). O
+> monitoramento contínuo (B13) está no ar desde 21:16 UTC; falta só o monitor
+> externo com aviso no celular (conta do dono).
+
 ## Só o dono faz — obrigatório para lançar
 
 > **Conferência em produção — 16/11/2026** (só leitura, sem dado pessoal):
