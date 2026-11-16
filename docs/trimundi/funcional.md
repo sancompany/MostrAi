@@ -663,6 +663,19 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
   pagamentos e o histórico. Aviso fixo: pagamento desligado até P-1/P-9,
   termo pendente (P-8). Relatórios **1 (Vendas por promoter)** e **15
   (Comissões de promoters)**, com CSV; taxa não informada sai "—".
+- **RN-T51 Promoters — Minha Conta** (PR 3, 16/11/2026).
+  - **Candidatura fechada por padrão:** só abre com
+    `TRIMUNDI_PROMOTERS_CANDIDATURA=1`, decisão do dono depois do termo do
+    promoter (P-8). Aberta, a conta (e-mail confirmado) vê "Quero ser
+    promoter"; chegando pelo link de convite (`/ticket/conta?promoter=CÓDIGO`
+    de um promoter ativo), o pedido já liga o recrutador. Fechada, a seção
+    não aparece para quem não é promoter, e a rota responde 409.
+  - **Painel do promoter:** link de venda e link de convite (copiar e
+    compartilhar); por edição, vendas, meta de 10, percentual atual,
+    próxima faixa, selos, comissão provisória, confirmada e paga, e a lista
+    de vendas (tipo, lote, base, percentual, comissão, situação);
+    pagamentos; convidados (primeiro nome e situação); créditos. Nada de
+    quem comprou (nem nome, nem e-mail, nem CPF).
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.

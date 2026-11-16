@@ -776,6 +776,164 @@
     );
   }
 
+  // Promoter (RN-T51): candidatura (só com as candidaturas abertas — termo
+  // do promoter, P-8) e o painel de quem já é promoter. Nenhum dado de quem
+  // comprou aparece aqui; os números vêm do servidor.
+  const SITUACAO_VENDA = {
+    provisoria: 'provisória',
+    confirmada: 'confirmada',
+    retida: 'retida',
+    paga: 'paga',
+    estornada: 'estornada',
+    estornada_apos_pagamento: 'estornada após o pagamento',
+  };
+  function secaoPromoter(d) {
+    if (!d) return null;
+    const convite = (params.get('promoter') || '').trim().toUpperCase();
+    const secao = (...filhos) =>
+      el(
+        'section',
+        { class: 'conta-secao', 'aria-labelledby': 'tituloPromoter' },
+        el('h2', { id: 'tituloPromoter', text: 'Promoter' }),
+        el('div', { class: 'cartao' }, ...filhos),
+      );
+    const p = d.promoter;
+    if (!p) {
+      if (!d.candidatura_aberta) return null;
+      const msg = mensagem();
+      const botao = el('button', { class: 'btn primario', type: 'button', text: 'Quero ser promoter' });
+      botao.addEventListener('click', () =>
+        enviando(botao, 'Enviando...', async () => {
+          try {
+            await api('/ticket/api/conta/promoter', { metodo: 'POST', corpo: convite ? { recrutador: convite } : {} });
+            location.assign('/ticket/conta');
+          } catch (err) {
+            msg.textContent = err.message;
+            msg.className = 'mensagem erro';
+          }
+        }),
+      );
+      return secao(
+        el('p', {
+          text: convite
+            ? 'Você foi convidado para ser promoter: divulgue os eventos pelo seu link e ganhe comissão pelas vendas.'
+            : 'Divulgue os eventos pelo seu link e ganhe comissão pelas vendas. A organização aprova o pedido.',
+        }),
+        botao,
+        msg,
+      );
+    }
+    if (p.situacao === 'candidato')
+      return secao(el('p', { text: 'Seu pedido para ser promoter foi enviado. A organização vai analisar.' }));
+    if (p.situacao === 'recusado')
+      return secao(el('p', { class: 'discreto', text: 'Seu pedido para ser promoter não foi aprovado.' }));
+    const aviso =
+      p.situacao === 'suspenso'
+        ? el('p', { class: 'mensagem erro', text: 'Sua atuação como promoter está pausada: vendas novas não contam.' })
+        : p.situacao === 'encerrado'
+          ? el('p', { class: 'discreto', text: 'Sua atuação como promoter foi encerrada. O histórico fica abaixo.' })
+          : null;
+    const links = d.links
+      ? [
+          el('p', { class: 'discreto', text: 'Seu link de venda (conta cada ingresso pago por ele):' }),
+          el('input', {
+            class: 'link-indicacao',
+            readonly: true,
+            value: d.links.venda,
+            'aria-label': 'Meu link de venda',
+          }),
+          window.trimundi.botoesDoLink(d.links.venda, 'Ingressos TICK'),
+          el('p', { class: 'discreto', text: 'Seu link para convidar novos promoters:' }),
+          el('input', {
+            class: 'link-indicacao',
+            readonly: true,
+            value: d.links.recrutamento,
+            'aria-label': 'Meu link para convidar promoters',
+          }),
+          window.trimundi.botoesDoLink(d.links.recrutamento, 'Seja promoter TICK'),
+        ]
+      : [];
+    const edicoes = (p.edicoes || [])
+      .filter((e) => e.resumo.vendas || e.vendas.length)
+      .map((e) => {
+        const r = e.resumo;
+        return el(
+          'div',
+          { class: 'promoter-edicao' },
+          el('h3', { text: e.nome }),
+          el(
+            'p',
+            {},
+            el('strong', { text: `${r.vendas} ${r.vendas === 1 ? 'venda' : 'vendas'}` }),
+            ` · ${r.oficial ? 'promoter oficial nesta edição' : `faltam ${r.meta - r.vendas} para a meta de ${r.meta}`}`,
+            r.percentual_atual ? ` · comissão atual ${r.percentual_atual}%` : '',
+          ),
+          r.proxima_faixa
+            ? el('p', {
+                class: 'discreto',
+                text: `${r.proxima_faixa.percentual}% a partir da venda ${r.proxima_faixa.venda}.`,
+              })
+            : null,
+          r.selos.length ? el('p', { class: 'discreto', text: `Selos: ${r.selos.join(', ')} vendas.` }) : null,
+          el(
+            'p',
+            {},
+            `Provisória ${moeda(r.comissao.provisoria_centavos)} · confirmada ${moeda(r.comissao.confirmada_centavos)} · paga ${moeda(r.comissao.paga_centavos)}`,
+          ),
+          el(
+            'ul',
+            { class: 'lista-indicados' },
+            e.vendas.map((v) =>
+              el(
+                'li',
+                {},
+                el(
+                  'div',
+                  { class: 'indicado-topo' },
+                  el('strong', {
+                    text: `Venda ${v.venda_numero} · ${v.tipo_ingresso}${v.lote ? ` (${v.lote}º lote)` : ''}`,
+                  }),
+                  el('span', { text: moeda(v.comissao_centavos) }),
+                ),
+                el('span', {
+                  class: 'discreto',
+                  text: `${v.percentual}% de ${moeda(v.base_centavos)} · ${SITUACAO_VENDA[v.situacao] || v.situacao}`,
+                }),
+              ),
+            ),
+          ),
+        );
+      });
+    return secao(
+      aviso,
+      ...links,
+      ...(edicoes.length ? edicoes : [el('p', { class: 'discreto', text: 'Nenhuma venda pelo seu link ainda.' })]),
+      el('p', {
+        class: 'discreto',
+        text: 'Abaixo de 10 vendas na edição, a comissão é provisória. O pagamento é feito pela organização e aparece aqui quando registrado.',
+      }),
+      p.pagamentos?.length
+        ? el(
+            'p',
+            {},
+            `Pagamentos: ${p.pagamentos.map((x) => `${moeda(x.valor_centavos)} em ${x.pago_em}`).join(' · ')}`,
+          )
+        : null,
+      p.recrutados?.length
+        ? el('p', {
+            class: 'discreto',
+            text: `Promoters que você convidou: ${p.recrutados.map((x) => `${x.nome} (${x.situacao})`).join(', ')}`,
+          })
+        : null,
+      p.creditos?.length
+        ? el('p', {
+            class: 'discreto',
+            text: `Ingressos de recompensa por convite: ${p.creditos.map((x) => x.situacao).join(', ')}`,
+          })
+        : null,
+    );
+  }
+
   async function telaConta() {
     let d;
     try {
@@ -829,6 +987,13 @@
       secaoPromocoes(d.promocoes),
       window.trimundi.indiqueEAcompanhe(d.indicacao),
     );
+    // O painel de promoter vem à parte: se falhar, o resto da conta fica.
+    api('/ticket/api/conta/promoter')
+      .then((p) => {
+        const s = secaoPromoter(p);
+        if (s) conteudo.append(s);
+      })
+      .catch(() => {});
   }
 
   const rota = location.pathname.replace(/\/+$/, '');
