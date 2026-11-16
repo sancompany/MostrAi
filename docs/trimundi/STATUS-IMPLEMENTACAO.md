@@ -50,7 +50,8 @@ Storage, celular): isso é a homologação de `pendencias.md`.
 | Operador na conta TICK (11/11/2026): código ou link do convite liga o operador à conta (migration 012, `operadores.cliente_id`), mesma sessão abre a portaria, "Área do operador" na conta com eventos e desempenho por evento; login antigo da portaria mantido | feito | `operadores.js`, `rotas/operador.js`, `clientes.js`, `indicacao.js`, `ativar.page.js`, `conta.page.js`, `paginas/ativar.html`, `paginas/entrar.html`, `admin/trimundi.js` | `trimundi-operador-conta` |
 | Identificação da operadora (11/11/2026): MEI 68.949.029 BRUNO HENRIQUE SANCHES, CNPJ 68.949.029/0001-58 no rodapé das páginas e dos e-mails, nos Termos e na Política v1.3 (só a identificação mudou; quem aceitou a 1.2 aceita de novo) e na exportação de dados do titular | feito | `legal.js`, `paginas.js`, `paginas/*.html`, `email.js`, `titular.js`, `docs/trimundi/legal/*-v1.3.txt` | `trimundi-operadora`, `trimundi-conta-legal` |
 | E-mail real, Storage real, Checkout real, celular real | **depende de fora** | — | dublês nos testes |
-| Saúde da TICK (C3): conferência só de leitura de filas, expiração, pago sem ingresso, reembolso parado, e-mail e avisos abertos; bloco na Visão geral, rota do Admin e `npm run trimundi:saude` | feito (PR aberto) | `saude.js`, `rotas/admin.js`, `public/admin/trimundi.js` | `trimundi-saude` |
+| Saúde da TICK (C3): conferência só de leitura de filas, expiração, pago sem ingresso, reembolso parado, e-mail e avisos abertos; bloco na Visão geral, rota do Admin e `npm run trimundi:saude` | feito (em produção, #159) | `saude.js`, `rotas/admin.js`, `public/admin/trimundi.js` | `trimundi-saude` |
+| Alertas da saúde (B13): vigia no serviço, sentinela para a tarefa agendada, `/ticket/api/saude`, sem repetição (migration 020) | feito (PR aberto) | `alertas.js`, `sentinela.js`, `saude.js`, `index.js` | `trimundi-alertas` |
 
 ## Decisões aplicadas nesta execução
 
