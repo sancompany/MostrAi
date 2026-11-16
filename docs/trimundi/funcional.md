@@ -489,6 +489,23 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     entrega) não aparece. Entrega pela portaria entra na auditoria.
   - Sem internet: ficha com tipo, lote, número, pulseira e validade (o
     comprador, os benefícios e as recompensas só com internet).
+- **RN-T40 Desempenho de vendas — lotes do evento** (§7; decisões do dono
+  de 14/11/2026, itens D e E). Admin → Eventos → "Desempenho de vendas".
+  - Barra geral (soma das quantidades reais) e uma barra por lote, com o
+    percentual e o nome da cor escritos ao lado.
+  - Vendido = ingresso pago e não cancelado. Pagamento pendente não conta
+    (aparece como reserva ativa); combo não duplica (cada posição é um
+    ingresso de um lote); cortesia não sai de lote (só no resumo).
+  - Cores: verde abaixo de 70%, amarelo de 70 a 89%, laranja de 90 a 99%,
+    vermelho em 100%. Alertas em 80, 90, 95 e 100%. Os dois configuráveis
+    por edição, com auditoria; "voltar ao padrão".
+  - Lote com tudo pago: "LOTE ESGOTADO — 100% VENDIDO".
+  - Resumo: capacidade comercial (soma dos lotes dos tipos ativos), pagos,
+    cortesias, reservas ativas, disponíveis, cancelamentos, reembolsos e
+    percentual. A sobra de lote encerrado não migra: aparece à parte, e só
+    o Admin muda à mão (em Criar ingressos, com auditoria).
+  - Os números saem do estoque real a cada leitura (nada guardado); a tela
+    se atualiza sozinha a cada 30 s. Alertas só no painel.
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.

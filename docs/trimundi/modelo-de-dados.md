@@ -35,7 +35,7 @@ Os números de regra (RN-T…) são de `funcional.md`.
   - `id`, `evento_id`, `nome` (1–120), `slug` (1–40), `codigo_publico` (10 caracteres aleatórios), `descricao` (até 5.000).
   - Data: `inicio_em`, `fim_em`. Nulo quer dizer "A definir"; `fim_em` precisa ser depois de `inicio_em`.
   - Local: `local_nome`, `cep`, `logradouro`, `numero`, `complemento`, `bairro`, `cidade`, `uf`. Nulos querem dizer "A definir".
-  - `classificacao_etaria` (`livre`, `10`, `12`, `14`, `16`, `18`), `capacidade` (nula = sem trava além de lotes e combos).
+  - `classificacao_etaria` (`livre`, `10`, `12`, `14`, `16`, `18`), `capacidade` (nula = sem trava além de lotes e combos), `monitor_lotes` (jsonb, nulo = padrão: cores do painel de lotes e alertas — migration 014).
   - `status` (`rascunho`, `publicado`, `pausado`, `encerrado`), `publicado_em`, `encerrado_em`, `criado_em`, `atualizado_em`.
   - Único: (`evento_id`, `lower(slug)`) e `codigo_publico`.
 - **`edicao_imagens`**

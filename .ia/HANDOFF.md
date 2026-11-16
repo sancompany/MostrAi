@@ -1,6 +1,14 @@
 # Current Handoff
 
 ## Updated
+2026-11-15 — **TICK: desempenho de vendas por lote (§7)**, branch
+`claude/beautiful-faraday-cjq1nt-lotes` (empilhada sobre a da portaria,
+PR #150). Migration 014 (`edicoes.monitor_lotes`, nula = padrão). Não
+desfazer sem contexto: o painel calcula tudo do estoque real
+(`disponibilidade.carregarLotes`), nada é guardado; largura das barras via
+CSSOM porque a CSP do Admin bloqueia `style=""`. Teste novo
+`js-publico-sintaxe` compila todo JS de public/.
+
 2026-11-15 — **TICK: portaria completa (§6)**, branch
 `claude/beautiful-faraday-cjq1nt-portaria`. Decisões comerciais aprovadas pelo
 dono em 14/11/2026: `docs/trimundi/decisoes-comerciais-2026-11-14.md` — é a

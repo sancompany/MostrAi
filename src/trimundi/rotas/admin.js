@@ -13,6 +13,7 @@ const operadores = require('../operadores');
 const reembolsos = require('../reembolsos');
 const indicacao = require('../indicacao');
 const desempenho = require('../desempenho');
+const desempenhoLotes = require('../desempenho-lotes');
 
 // Admin da Trimundi — `/admin/trimundi/*` (api.md). O server.js já exige a
 // sessão do Admin em todo /admin, e o Cloudflare Access fica na frente; a
@@ -105,6 +106,13 @@ router.get('/admin/trimundi/edicoes/:id/participantes', async (req, res) => {
     }),
   );
 });
+// Desempenho de vendas — lotes do evento (§7): barras, cores, alertas e resumo.
+router.get('/admin/trimundi/edicoes/:id/desempenho-lotes', async (req, res) =>
+  res.json(await desempenhoLotes.painel(id(req))),
+);
+router.post('/admin/trimundi/edicoes/:id/desempenho-lotes/config', async (req, res) =>
+  res.json(await desempenhoLotes.salvarConfig(id(req), req.body, autor(req))),
+);
 router.get('/admin/trimundi/edicoes/:id/resumo', async (req, res) => res.json(await participantes.resumo(id(req))));
 router.get('/admin/trimundi/edicoes/:id/avisos', async (req, res) => res.json(await participantes.avisos(id(req))));
 router.post('/admin/trimundi/edicoes/:id/cortesias', async (req, res) =>
