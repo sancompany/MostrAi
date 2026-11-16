@@ -234,6 +234,19 @@ router.get('/admin/trimundi/campanhas/:id/indicadores', async (req, res) =>
   res.json(await indicacao.indicadoresDaCampanha(id(req))),
 );
 // Recompensas da edição (§9): indicação uma a uma e benefícios por tipo.
+// Relatórios administrativos (§8): catálogo, JSON e CSV, com filtros.
+router.get('/admin/trimundi/relatorios', (_req, res) => res.json(require('../relatorios').catalogo()));
+router.get('/admin/trimundi/edicoes/:id/relatorios/:nome.csv', async (req, res) => {
+  const rel = require('../relatorios');
+  const dados = await rel.gerar(id(req), req.params.nome, req.query);
+  res.set('Cache-Control', 'no-store');
+  res.set('Content-Disposition', `attachment; filename="${req.params.nome}-edicao-${id(req)}.csv"`);
+  res.type('text/csv; charset=utf-8').send(rel.paraCsv(dados));
+});
+router.get('/admin/trimundi/edicoes/:id/relatorios/:nome', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await require('../relatorios').gerar(id(req), req.params.nome, req.query));
+});
 router.get('/admin/trimundi/edicoes/:id/recompensas', async (req, res) =>
   res.json(await recompensas.daEdicao(id(req))),
 );

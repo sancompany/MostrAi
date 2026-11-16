@@ -783,8 +783,8 @@ const MODULOS = [
     // Os ids antigos ficam (`eventos`, `ingressos`, `promocoes`,
     // `participantes`, `operadores`, `indicacao`, `desempenho`): todo link e
     // favorito continua abrindo a mesma tela. Só aparece área com dado real —
-    // Promoters, Comissões, Relatórios e Configurações entram quando forem
-    // construídos (fases seguintes), não antes.
+    // Promoters, Comissões e Configurações entram quando forem construídos
+    // (fases seguintes), não antes. Relatórios entrou em 16/11/2026.
     abas: [
       { id: 'visao', nome: 'Visão geral', render: (el, resto) => window.renderTrimundiVisaoGeral(el, resto) },
       { id: 'eventos', nome: 'Eventos', render: (el, resto) => window.renderTrimundiEventos(el, resto) },
@@ -800,6 +800,7 @@ const MODULOS = [
         render: (el, resto) => window.renderTrimundiParticipantes(el, resto),
       },
       { id: 'operadores', nome: 'Portaria', render: (el, resto) => window.renderTrimundiOperadores(el, resto) },
+      { id: 'relatorios', nome: 'Relatórios', render: (el, resto) => window.renderTrimundiRelatorios(el, resto) },
     ],
   },
   { id: 'midiamostrai', nome: 'Mídia Mostraí', destaque: true, render: renderMidiaMostrai },
@@ -845,6 +846,8 @@ const SUBTITULOS = {
   'trimundi/recompensas': 'O que foi conquistado e o que já saiu: recompensas de indicação e benefícios dos ingressos.',
   'trimundi/desempenho':
     'Lotes: vendas por lote em tempo real — só pago conta como vendido; cores e alertas configuráveis.',
+  'trimundi/relatorios':
+    'Relatórios da edição com filtros e CSV: vendas, recompensas, portaria, combos e indicados — só números do banco.',
   'trimundi/indicacao':
     'Ranking de quem indica: cada cliente e operador tem um link, e só conta o pedido pago de quem chegou por ele.',
 };

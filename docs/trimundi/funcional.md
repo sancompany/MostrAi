@@ -609,6 +609,20 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     resta, prazo). Só aparece campanha com o regulamento revisado (C7);
     rascunho e pausada nunca; venda pausada não oferece nada. O resumo do
     pedido e a página do pedido mostram "de R$ X por R$ Y".
+- **RN-T46 Relatórios administrativos** (§8, 16/11/2026). Admin → Eventos →
+  **Relatórios**:
+  - 12 dos 15 relatórios do §8: vendas por lote e por tipo, clientes
+    indicados, campanhas por conversão, recompensas concedidas, entregues e
+    pendentes, ingressos utilizados e disponíveis, combos, histórico de
+    validações e tentativas duplicadas;
+  - o 4 (vendas por link) continua em Indicações, com CSV;
+  - o 1 e o 15 dependem de Promoters.
+  - **Uso:** filtros por tipo, lote, operador, resultado e período; tabela
+    na tela e o mesmo recorte em CSV.
+  - **Definições únicas:** vendido = pago de venda e não cancelado; receita
+    = valor pago; disponível = estoque real.
+  - Sem dado, a tela diz "sem dados" e nunca mostra zero inventado. Sem CPF
+    nem e-mail.
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.
