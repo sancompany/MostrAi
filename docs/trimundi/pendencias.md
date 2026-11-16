@@ -20,28 +20,41 @@ reabrir é desmarcar com o motivo. Estado de cada funcionalidade:
 
 ## Só o dono faz — obrigatório para lançar
 
-- [ ] **Contratante da Trimundi no San Checkout** (painel `/admin.html` do
+> **Conferência em produção — 16/11/2026** (só leitura, sem dado pessoal):
+> contratante e variáveis do Checkout configurados e funcionando (compra
+> real paga por Pix em 11/11, aviso recebido, ingresso emitido); SMTP
+> funcionando (e-mails de confirmação de conta, senha e pedido com status
+> `enviado`); Storage funcionando (banner da TREEMUNDO servido pelo
+> Supabase); a TREEMUNDO / EDITION 001 está publicada com 7 tipos à venda.
+> Merge, migrations 013–019 e deploy **feitos em 16/11/2026** com
+> autorização do dono (relatório em `relatorio-campanhas-2026-11-16.md`).
+
+- [x] **Contratante da Trimundi no San Checkout** (painel `/admin.html` do
   Checkout, que o próprio dono administra): criar o contratante com
   - URL base da API: `https://mostrai.sancocore.com.br/ticket/api/checkout`
     (o Checkout chama `{base}/pedido/{pedidoId}`);
   - `webhook_url`: `https://mostrai.sancocore.com.br/ticket/api/checkout/webhook`;
   - métodos: Pix e cartão (o `expiraEm` de 30 min desliga o boleto);
   - anotar o `contratante_id` e a chave gerada.
-- [ ] **Variáveis de produção no Northflank** (serviço da Mostraí):
+- [x] **Variáveis de produção no Northflank** (serviço da Mostraí):
   `TRIMUNDI_ATIVA=1`, `TRIMUNDI_SEGREDO` (32+ caracteres, novo, só desta
   finalidade), `TRIMUNDI_CHECKOUT_BASE_URL=https://checkout.sancocore.com.br`,
   `TRIMUNDI_CHECKOUT_API_URL=https://api.sancocore.com.br`,
   `TRIMUNDI_CHECKOUT_CONTRATANTE_ID`, `TRIMUNDI_CHECKOUT_KEY`.
   Conferir que `DATABASE_URL` é o pooler de SESSÃO (porta 5432).
-- [ ] **E-mail da Mostraí ativo em produção** (`SMTP_HOST`, `SMTP_PORT`,
+- [x] **E-mail da Mostraí ativo em produção** (`SMTP_HOST`, `SMTP_PORT`,
   `SMTP_USER`, `SMTP_PASS`, `MOSTRAI_EMAIL_FROM`). Sem ele ninguém confirma
   a conta e, portanto, ninguém compra.
-- [ ] **Storage da Mostraí** (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+- [x] **Storage da Mostraí** (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
   `SUPABASE_STORAGE_BUCKET`) em produção: sem ele, o Admin não envia banner
   nem imagens (responde "imagens não configuradas").
-- [ ] **Autorizar** o merge, o deploy e a migration em produção
-  (`npm run trimundi:migrate -- --producao-autorizada`).
-- [ ] **Teste real de ponta a ponta** (API.md do Checkout, §11): uma compra
+- [x] **Autorizar** o merge, o deploy e a migration em produção
+  (`npm run trimundi:migrate -- --producao-autorizada`). Feito em 16/11/2026.
+- [ ] **Teste real de ponta a ponta** — parcial: a compra Pix de 11/11 provou
+  pagamento, aviso e emissão; **falta** (só o dono, com dinheiro real e um
+  operador na portaria): o check-in do ingresso num celular Android e num
+  iPhone, a entrega do benefício, uma compra com cartão e um reembolso.
+  Roteiro original (API.md do Checkout, §11): uma compra
   de valor baixo com Pix e outra com cartão, e-mail recebido, QR na conta,
   check-in num celular Android e num iPhone, entrega do benefício, e um
   reembolso.
@@ -92,7 +105,7 @@ reabrir é desmarcar com o motivo. Estado de cada funcionalidade:
 
 ## Só o dono faz — pode esperar
 
-- [ ] Criar a TREEMUNDO / EDITION01 pelo Admin (ingressos, lotes,
+- [x] Criar a TREEMUNDO / EDITION01 pelo Admin (ingressos, lotes,
   benefícios, campanha de indicação, banner) — antes de divulgar o link.
 - [ ] Domínio próprio da Trimundi (hoje `/ticket/*` fica no domínio da
   Mostraí). Pede DNS no Cloudflare e `SITE_URL`/rotas; não é necessário
