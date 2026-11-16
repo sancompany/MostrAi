@@ -1,5 +1,107 @@
 # Relatório final consolidado — PRs #150 a #156 (TREEMUNDO/TICK, 16/11/2026)
 
+## 0. Publicação técnica — 16/11/2026 (autorizada pelo dono)
+
+O dono autorizou o merge na ordem #150 → #156, as migrations 013–019 em
+produção e o deploy. **Ativação e divulgação de campanha continuam
+proibidas sem a revisão jurídica (C7):**
+- nenhuma campanha foi criada nem ativada em produção;
+- a página de venda mostra 0 campanhas;
+- o desconto e a vitrine exigem a marca de revisão.
+
+**Antes do primeiro merge:**
+- **Backup:** job `Backup` do Northflank às 10:40 UTC,
+  `/backups/mostrai-20261116-104027.sql.gz` (140 KB, marcador de dump
+  completo).
+- **Integridade e restauração:** o arquivo foi baixado, passou no
+  `gzip -t` e foi restaurado num Postgres isolado. As contagens bateram com
+  produção: 4 pedidos, 1 ingresso, 7 operadores, 1 edição, 1 cliente, 117
+  migrations da Mostraí e 12 da TICK.
+- **Ensaio das migrations:** a cópia restaurada recebeu as migrations
+  013–019, uma a uma, sem erro e sem mudar nenhuma contagem, com RLS em
+  todas as tabelas. A cópia e o arquivo baixado foram apagados (dado
+  pessoal).
+- **Produção antes da publicação:** rodando a `main` (`ecb40da`), saudável,
+  TREEMUNDO publicada com 7 tipos à venda.
+
+**Como foi publicado:** push na `main` é deploy (Northflank). As migrations
+da TICK rodam no arranque do contêiner. Cada PR foi um deploy próprio, com a
+mesma sequência:
+1. trazer a `main` atualizada para o PR;
+2. esperar o CI verde contra a `main` e a revisão do Codex;
+3. fazer o merge (squash);
+4. esperar o deploy publicar o commit;
+5. conferir `/health`, as páginas principais, a vitrine e as migrations e
+   contagens no banco.
+
+| PR | Commit na `main` | Deploy concluído (UTC) | Migration aplicada (UTC) | CI do PR |
+|---|---|---|---|---|
+| #150 Portaria | `c16fe84` | 10:55 | 013 às 10:55:02 | verde |
+| #151 Lotes | `cafbc71` | 11:13 | 014 às 11:12:12 | verde |
+| #152 Admin | `3b2fcce` | 11:27 | — | verde |
+| #153 Campanhas 1/4 | `2d620e6` | 11:34 | 015 e 016 às 11:33:49 | verde |
+| #154 Campanhas 2/4 | `2173823` | 11:41 | 017 às 11:40:54 | verde |
+| #155 Campanhas 3/4 | `b36e429` | 11:48 | — | verde |
+| #156 Campanhas 4/4 | este PR | depois deste relatório (horário no relatório entregue ao dono) | 018 e 019 | — |
+
+**Depois de cada deploy:** dados intactos (4 pedidos, 1 ingresso),
+`/health` `ok:true` e TREEMUNDO vendendo os 7 tipos.
+
+**Conflitos na pilha:** cada PR já continha o anterior, então os conflitos
+(documentação e as mesmas funções) foram resolvidos ficando com a versão do
+PR mais novo. A correção feita direto na `main` (Recompensas, #152) foi
+reaplicada no modelo novo de campanhas. A árvore final de cada PR foi
+conferida contra a já testada.
+
+**Revisão automática do Codex** (rodou ao tirar os PRs do rascunho): 6
+apontamentos P2. Todos foram conferidos no código, todos procediam e todos
+foram corrigidos com teste:
+
+| Onde | Apontamento | Correção |
+|---|---|---|
+| #151 | Painel de lotes contava pedido de teste | Fora das métricas (RN-T19); o estoque continua real |
+| #151 | A atualização automática do painel parava depois de uma falha | Reagenda sempre; conferido no navegador com relógio simulado |
+| #152 | Totais de Recompensas saíam da lista cortada em 1.000 | Contagem à parte e aviso de lista cortada |
+| #154 | CSV de posições cortado em 2.000 | Consulta própria, sem limite |
+| #154 | Edição de campanha em uso dava 409 falso | Campo com valor igual não conta como mudança; a tela não envia campo travado |
+| #154 | Estado lido antes da trava podia furar o C7 | Usa a linha travada; desconto exige a marca de revisão |
+
+Os do #151 e do #154 entraram no #156. O do #152 entrou no próprio #152.
+
+**Testes em produção sem efeito colateral** (nenhum dado criado):
+- **Páginas:** `/`, `/tic/eventos`, venda da TREEMUNDO, conta, entrar,
+  termos e privacidade respondem 200. A portaria redireciona para o login.
+- **Admin:** atrás do Cloudflare Access (302).
+- **Rotas protegidas:**
+  - login inválido de conta e de portaria → 401;
+  - webhook sem assinatura → 401;
+  - rota do Checkout sem chave → 401;
+  - criar pedido sem conta → 401;
+  - check-in sem operador → 401.
+- **Cotação:** 2 × Pagonejo = R$ 50,00, e o preço mandado pelo navegador é
+  ignorado.
+- **Vitrine:** 7 tipos à venda, 0 campanhas, 0 promoções.
+
+**Compra real de ponta a ponta:**
+- **Já existe em produção:** pedido pago por **Pix** em 11/11 (R$ 25,00).
+  - aviso do Checkout recebido;
+  - ingresso emitido;
+  - e-mail `pedido_confirmado` enviado.
+- **Ainda não foi feito o check-in desse ingresso.** Uma compra nova com
+  cartão, o check-in na portaria (Android e iPhone) e um reembolso exigem
+  dinheiro real e um operador: **só o dono pode fazer** (pendências,
+  seção 4).
+
+**Configuração real conferida** (só nomes de variáveis e contagens, nenhum
+valor lido):
+- **San Checkout:** contratante e variáveis configurados e funcionando.
+- **E-mail (SMTP):** funcionando.
+- **Storage:** funcionando (banner servido pelo Supabase).
+- **E-mail de contato próprio da TICK:** não configurado. Os documentos usam
+  o contato da Mostraí.
+
+## Situação antes da publicação (revisão de 16/11)
+
 **Situação:** os 7 PRs estão em rascunho e empilhados (cada um usa o anterior
 como base).
 
@@ -257,34 +359,50 @@ atualizado:
 | Página de venda: selo, preço riscado, %, restam, prazo, esgotada/encerrada, brindes | pronto |
 | Histórico das disputas (P2) e fila "Pagos sem vaga" (P5) | pronto |
 
-## 4. O que depende do dono
+## 4. O que depende do dono (atualizado depois da publicação)
 
-**Para publicar campanhas:**
-1. **Revisão jurídica (C7/P6)** de cada regulamento. Quem marca a revisão é
-   o Admin, com o nome de quem revisou. Sem ela, a campanha não ativa e não
-   aparece na página de venda.
+Nenhum dado cadastral, fiscal ou jurídico foi inventado. Cada item diz
+exatamente o que falta e onde entra.
 
-**Para lançar (itens já abertos em `pendencias.md`):**
+**Para publicar e divulgar campanhas:**
+1. **Revisão jurídica (C7/P6)** do regulamento de cada campanha.
+   - **Como:** o Admin escreve o regulamento → "Regulamento revisado" com o
+     nome de quem revisou → "Ativar".
+   - Sem essa marca, a campanha não ativa, não aparece na vitrine e o
+     desconto não é aplicado.
 
-2. Contratante da TICK no San Checkout e variáveis de produção (Northflank).
-3. E-mail em produção e storage.
-4. Teste real de ponta a ponta. Depois do deploy, inclui uma compra com
-   promoção de preço.
-5. Endereço completo da operadora, nome no San Checkout, remetente dos
-   e-mails e quem organiza cada evento.
-6. Advogado:
-   - revisão da v1.3 dos documentos legais e das afirmações da Política;
-   - prazo de guarda dos aceites.
-7. Nota fiscal do ingresso e repasse financeiro. E-mail de contato próprio.
+**Para a operação real** (de `pendencias.md`):
 
-**Para autorizar, quando quiser:**
+2. **Teste real que falta:**
+   - check-in na portaria, num Android e num iPhone, do ingresso já pago (ou
+     de uma compra nova);
+   - uma compra com cartão;
+   - a entrega de um benefício;
+   - um reembolso.
+   - Eu confiro depois, pelo banco e pelos logs, o pagamento, a emissão e a
+     validação.
+3. **Endereço completo da operadora** (Decreto 7.962/2013).
+   - **Onde entra:** nos Termos e na Política. Hoje dizem só "com sede em
+     Matão-SP".
+   - **Como:** o texto novo é uma versão nova (v1.4), que pede aceite de
+     novo.
+4. **Nome no San Checkout:** conferir no painel do Checkout que a página de
+   pagamento mostra o MEI (nome empresarial e CNPJ) do cadastro do
+   contratante.
+5. **Remetente dos e-mails:** conferir o nome em `MOSTRAI_EMAIL_FROM` (ou
+   criar `TRIMUNDI_EMAIL_FROM`) no Northflank. Eu não li o valor.
+6. **E-mail de contato próprio da TICK** (`TRIMUNDI_EMAIL_CONTATO`): hoje
+   vale o da Mostraí.
+7. **Quem organiza cada evento:** decidir se entra um campo na ficha do
+   evento (nome e CNPJ/CPF da produtora). Não foi criado sem pedido.
+8. **Advogado:**
+   - revisar a v1.3 (Termos e Política) e as afirmações da Política;
+   - definir o prazo de guarda dos aceites.
+9. **Nota fiscal do ingresso:** quem emite e em nome de quem.
+10. **Repasse financeiro:** sem `wallet_id`, o repasse ao organizador é
+    manual.
 
-8. O merge, na ordem #150 → #156.
-9. As migrations 013–019 em produção, com backup antes (RUNBOOK).
-10. O deploy.
-
-**Fora desta fase** (aprovado, mas não construído):
-- promotores e comissão (regras 4–9). Antes de pagamento real: requisitos de
-  dados pessoais, privacidade e documentação fiscal (decisão C);
+**Fora desta fase:**
+- promotores e comissão;
 - os 15 relatórios do §8;
-- after-fest e sorteios (K, depois da revisão jurídica).
+- after-fest e sorteios.

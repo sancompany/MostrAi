@@ -1,6 +1,16 @@
 # Current Handoff
 
 ## Updated
+2026-11-16 — **PUBLICADO**: PRs #150–#156 incorporados à `main` (squash, na
+ordem) com autorização do dono; migrations TICK 013–019 aplicadas em
+produção pelo arranque do contêiner, uma por deploy; backup antes
+(`/backups/mostrai-20261116-104027.sql.gz`, restauração ensaiada). Nenhuma
+campanha criada/ativada — C7 continua bloqueando (vitrine e desconto exigem
+`regras_revisadas_em`). Relatório: `docs/trimundi/relatorio-campanhas-2026-11-16.md`.
+Não desfazer sem contexto: a correção do Codex de Recompensas (totais à
+parte, `itens_cortados`) e as do #154 (CSV sem limite, `atualizar` com a
+linha travada e campo igual não conta como mudança).
+
 2026-11-16 — **TICK: campanhas — PR 4 (venda, desconto no checkout e
 relâmpago)**, branch `claude/beautiful-faraday-cjq1nt-campanhas-venda` (sobre
 a da conta, PR #155). Migration 018 (colunas opcionais `campanha_id` e
