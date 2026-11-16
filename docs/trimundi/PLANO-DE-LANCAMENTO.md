@@ -38,7 +38,7 @@ Conferência feita agora, não presumida:
 |---|---|---|---|---|---|---|
 | C1 | Auditoria do estado atual (código, produção, documentação) | concluído | — | Tabela "Ponto de partida" acima | — | 16/11 |
 | C2 | Páginas principais em computador e celular | concluído | — | Playwright contra produção: 12 verificações ok | Repetir a cada deploy | 16/11 |
-| C3 | Logs e monitoramento de erros | em andamento | — | Logs recentes sem erro; `/health` ok | Montar uma rotina de checagem (logs + `/health` + fila de pagamento) e documentá-la no RUNBOOK | 16/11 |
+| C3 | Logs e monitoramento de erros | em andamento | Merge autorizado pelo Bruno; job e alerta externo (B13) | PR #159: saúde da TICK só de leitura (filas de pagamento e e-mail, expiração, pago sem ingresso, reembolso parado, avisos abertos), bloco na Visão geral, `npm run trimundi:saude`, RUNBOOK §11.5; 7 testes, navegador 14/14, regressão 1354/1354. Produção conferida só com SELECT às 16:14 UTC: todos os sinais zerados | Merge e deploy depois da autorização; depois, conferir a Visão geral em produção | 16/11 |
 | C4 | Webhooks: assinatura, reprocessamento, idempotência | concluído (automático) | — | Testes: webhook sem assinatura → 401 em produção; aviso reprocessado 3× sem efeito (`trimundi-pagamento`, `trimundi-campanhas-venda`) | Conferir de novo na compra real (B5) | 16/11 |
 | C5 | Fila "Pagos sem vaga" e conciliação | concluído (automático) | — | Testes P5 (motivo, conciliação, histórico); em produção hoje: 0 casos | Conferir de novo se surgir caso real | 16/11 |
 | C6 | Registros financeiros e histórico | concluído (automático) | — | Auditoria de reembolso, eventos de pagamento, disputas e sem vaga cobertos por teste | — | 16/11 |
@@ -67,6 +67,7 @@ Conferência feita agora, não presumida:
 | B10 | Decisões pendentes de Promoters | pendente | — | Decisões registradas | Responder as perguntas da seção 5 do desenho de Promoters | 16/11 |
 | B11 | Ativar uma campanha | bloqueado | A5 (regulamento revisado) | Campanha ativa com a marca de revisão | Só depois da revisão jurídica | 16/11 |
 | B12 | Nota fiscal do ingresso e repasse financeiro | pendente | Contador/advogado (A4) | Definição registrada | Definir quem emite e como é o repasse ao organizador | 16/11 |
+| B13 | Job agendado da saúde e alerta externo de "caiu" | pendente | PR #159 no ar | Job no Northflank rodando `npm run trimundi:saude` com aviso de falha; monitor de uptime no `/health` e em `/tic/eventos` avisando no celular | Autorizar que eu crie o job no Northflank; escolher o serviço de monitor de uptime (fornecedor) | 16/11 |
 
 ## 3. Tarefas que dependem de fornecedores
 
@@ -103,3 +104,4 @@ Conferência feita agora, não presumida:
 
 - **16/11/2026** — documento criado depois da publicação da fase de Campanhas, com a auditoria do estado real.
 - **16/11/2026** — C8: relatórios em PR (#158), esperando autorização de merge.
+- **16/11/2026** — C3: rotina de monitoramento em PR (#159), esperando autorização de merge; produção sem nenhum sinal às 16:14 UTC.
