@@ -75,7 +75,13 @@ async function vendasDePe(cliente, promoterId, edicaoId) {
 async function revisarPedido(cliente, pedidoId) {
   const { rows: ped } = await cliente.query(
     `SELECT p.id, p.edicao_id, p.origem, p.status, p.pago_em, p.indicador_id, p.total_centavos,
-            pr.id AS promoter_id, pr.situacao, pr.aprovado_em
+            pr.id AS promoter_id, pr.situacao, pr.aprovado_em,
+            -- A situação do promoter NO INSTANTE da confirmação, pelo histórico:
+            -- um aviso reprocessado depois de suspender e reativar não credita
+            -- a venda paga durante a suspensão.
+            (SELECT e.para FROM promoter_eventos e
+              WHERE e.promoter_id = pr.id AND e.ocorrido_em <= p.pago_em
+              ORDER BY e.ocorrido_em DESC, e.id DESC LIMIT 1) AS situacao_no_pagamento
        FROM pedidos p JOIN promoters pr ON pr.indicador_id = p.indicador_id
       WHERE p.id = $1`,
     [pedidoId],
@@ -120,7 +126,7 @@ async function revisarPedido(cliente, pedidoId) {
   const elegivel =
     p.origem === 'venda' &&
     p.status === 'pago' &&
-    p.situacao === 'ativo' &&
+    p.situacao_no_pagamento === 'ativo' &&
     p.aprovado_em &&
     p.pago_em &&
     new Date(p.aprovado_em) <= new Date(p.pago_em);
@@ -162,15 +168,24 @@ async function revisarPedido(cliente, pedidoId) {
 // Crédito de recrutamento do recrutador deste promoter, nesta edição.
 async function revisarCredito(cliente, promoterId, edicaoId) {
   const { rows } = await cliente.query(
-    `SELECT pr.recrutador_id, r.situacao AS recrutador_situacao,
-            cr.id AS credito_id, cr.situacao AS credito_situacao, cr.edicao_id AS credito_edicao
+    `SELECT pr.recrutador_id, r.situacao AS recrutador_situacao
        FROM promoters pr JOIN promoters r ON r.id = pr.recrutador_id
-       LEFT JOIN promoter_creditos cr ON cr.recrutado_id = pr.id
       WHERE pr.id = $1`,
     [promoterId],
   );
-  const x = rows[0];
-  if (!x) return;
+  if (!rows[0]) return;
+  // O crédito com trava: a emissão pelo Admin (marcarCreditoEmitido) e um
+  // reembolso ao mesmo tempo nunca revogam um crédito já emitido.
+  const { rows: cr } = await cliente.query(
+    'SELECT id, situacao, edicao_id FROM promoter_creditos WHERE recrutado_id = $1 FOR UPDATE',
+    [promoterId],
+  );
+  const x = {
+    ...rows[0],
+    credito_id: cr[0]?.id ?? null,
+    credito_situacao: cr[0]?.situacao ?? null,
+    credito_edicao: cr[0]?.edicao_id ?? null,
+  };
   const vendas = await vendasDePe(cliente, promoterId, edicaoId);
   if (vendas >= META) {
     if (!x.credito_id && x.recrutador_situacao === 'ativo') {
@@ -183,7 +198,7 @@ async function revisarCredito(cliente, promoterId, edicaoId) {
       await cliente.query(
         `UPDATE promoter_creditos SET situacao = 'pendente', edicao_id = $2, atualizado_em = now(),
                 nota = 'meta atingida de novo'
-          WHERE id = $1`,
+          WHERE id = $1 AND situacao = 'revogado'`,
         [x.credito_id, edicaoId],
       );
     }
@@ -191,7 +206,7 @@ async function revisarCredito(cliente, promoterId, edicaoId) {
     await cliente.query(
       `UPDATE promoter_creditos SET situacao = 'revogado', atualizado_em = now(),
               nota = 'recrutado voltou abaixo de 10 vendas antes da emissão'
-        WHERE id = $1`,
+        WHERE id = $1 AND situacao = 'pendente'`,
       [x.credito_id],
     );
   }
