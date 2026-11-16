@@ -639,6 +639,19 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     (RUNBOOK §11.5).
   - `npm run trimundi:saude` imprime o mesmo e sai com 1 só quando há sinal
     crítico (para um agendador avisar).
+- **RN-T48 Alertas da saúde** (B13, 16/11/2026).
+  - **Vigia** (dentro do serviço, a cada 5 min): todo sinal crítico da
+    RN-T47 vira e-mail. **Sentinela** (tarefa agendada no Northflank, a cada
+    10 min): o site fora ou a saúde pública em erro vira e-mail.
+  - Um aviso por problema: avisa quando aparece, lembra a cada 6 h enquanto
+    continua e manda "Resolvido" quando some. As duas instâncias e a tarefa
+    nunca avisam a mesma coisa duas vezes (trava do banco). Envio que falha é
+    tentado de novo na volta seguinte.
+  - Destinatário: `TRIMUNDI_ALERTA_EMAIL`, ou o e-mail de contato. O alerta
+    sai direto pelo SMTP, fora da fila de e-mail.
+  - O e-mail traz contagem, códigos curtos de pedido e o que fazer — nunca
+    nome, e-mail ou CPF.
+  - `GET /ticket/api/saude` é público e só diz ok ou não ok.
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.
