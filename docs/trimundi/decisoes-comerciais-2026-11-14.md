@@ -91,3 +91,30 @@ Sem merge nem deploy sem autorização expressa do dono.
 4. **Campanhas (§3):** antes de implementar, o desenho técnico completo vai
    para aprovação do dono. Nada da fase começa sem ela. Padrão do projeto:
    desenvolvimento por fases, com aprovação antes de cada etapa sensível.
+
+## Decisões de 16/11/2026 — campanhas (C1–C7)
+
+- **C1.** O ingresso ocupa posição em **todas** as campanhas em que se
+  qualifica, mesmo não acumuláveis; recebe só a recompensa da campanha
+  vencedora (regras de prioridade).
+- **C2.** Quem já atingiu e **retirou** o prêmio de um nível recebe também o
+  do nível superior ao alcançá-lo. Prêmio entregue nunca é revogado. Cada
+  nível tem controle próprio de concessão, entrega e unicidade.
+- **C3.** Limite por pessoa conta pela **conta compradora**, não pelo titular.
+- **C4.** A janela da campanha usa o **horário efetivo da confirmação do
+  pagamento**.
+- **C5.** O benefício de lote fica com o funcionamento próprio; promoções
+  novas de "primeiros N"/posição de compra vão para Campanhas, com aviso claro
+  no cadastro do benefício de lote.
+- **C6.** Pagamento confirmado durante a pausa não ocupa posição; na retomada
+  a contagem continua da próxima posição, sem reutilizar posições.
+- **C7.** Textos e regulamentos das campanhas passam por revisão jurídica
+  antes da primeira publicação pública.
+
+Direção arquitetural do desenho (`docs/trimundi/specs/2026-11-15-campanhas-desenho.md`)
+aprovada com condições: posições imutáveis; idempotência de pagamentos e
+webhooks; prevenção de recompensas duplicadas; histórico imutável e
+auditável; reembolso sem transferência de posição; preservação das tabelas
+antigas; nenhuma migration destrutiva sem autorização; nenhum merge ou deploy
+sem autorização. Implementação só depois da revisão final do documento
+completo (versão 2), em 4 PRs na ordem proposta.
