@@ -43,7 +43,7 @@ Conferência feita agora, não presumida:
 | C5 | Fila "Pagos sem vaga" e conciliação | concluído (automático) | — | Testes P5 (motivo, conciliação, histórico); em produção hoje: 0 casos | Conferir de novo se surgir caso real | 16/11 |
 | C6 | Registros financeiros e histórico | concluído (automático) | — | Auditoria de reembolso, eventos de pagamento, disputas e sem vaga cobertos por teste | — | 16/11 |
 | C7 | Auditoria dos 15 relatórios (§8) | concluído | — | `docs/trimundi/auditoria-relatorios.md` | Construir os que faltam (C8) | 16/11 |
-| C8 | Relatórios que faltam ou estão incompletos | pendente | C7 | — | PR com os relatórios de portaria (13, 14, 10), CSV dos que não têm e "campanhas com maior conversão" | 16/11 |
+| C8 | Relatórios que faltam ou estão incompletos | em andamento | C7; merge autorizado pelo Bruno | PR #158: 12 dos 15 com filtros e CSV, 5 testes que conferem cada total contra contagem independente, navegador ok, regressão 1352/1352 | Merge e deploy depois da autorização; os relatórios 1 e 15 vêm com Promoters | 16/11 |
 | C9 | Desenho técnico de Promoters | concluído (desenho) | Decisões do Bruno (B10) | `docs/trimundi/specs/2026-11-16-promoters-desenho.md` | Esperar as decisões; depois construir em PRs separados | 16/11 |
 | C10 | Minuta de regulamento de campanha (para o advogado) | concluído (minuta) | — | `docs/trimundi/legal/minuta-regulamento-campanhas.md` | Revisão do advogado (A5) | 16/11 |
 | C11 | Roteiro de teste real (compra, cartão, reembolso, portaria) | concluído (roteiro) | — | `docs/trimundi/roteiro-teste-real.md` | Bruno executa (B5–B8); eu confiro no banco e nos logs | 16/11 |
@@ -102,3 +102,4 @@ Conferência feita agora, não presumida:
 ## Histórico de atualizações
 
 - **16/11/2026** — documento criado depois da publicação da fase de Campanhas, com a auditoria do estado real.
+- **16/11/2026** — C8: relatórios em PR (#158), esperando autorização de merge.
