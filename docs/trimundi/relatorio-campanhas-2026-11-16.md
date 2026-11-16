@@ -12,7 +12,7 @@ um usa como base o anterior.
 | [#153](https://github.com/sancompany/MostrAi/pull/153) Campanhas 1/4 — banco e motor | `campanhas-motor` | #152 | 015, 016 | 1306/1306 |
 | [#154](https://github.com/sancompany/MostrAi/pull/154) Campanhas 2/4 — Admin → Campanhas | `campanhas-admin` | #153 | 017 | 1314/1314 |
 | [#155](https://github.com/sancompany/MostrAi/pull/155) Campanhas 3/4 — Portaria e Minha Conta | `campanhas-conta` | #154 | — | 1319/1319 |
-| Campanhas 4/4 — venda, desconto e relâmpago (link na descrição do PR) | `campanhas-venda` | #155 | 018 | ver o PR |
+| [#156](https://github.com/sancompany/MostrAi/pull/156) Campanhas 4/4 — venda, desconto e relâmpago | `campanhas-venda` | #155 | 018 | 1337/1337 |
 
 O CI do repositório roda só nos PRs contra `main`. Por isso, só o #150 tem
 CI. Os demais foram validados com o mesmo comando do CI (`npm run check`),
