@@ -92,5 +92,12 @@
 - [ ] Redação do arredondamento, do preço mínimo e da devolução no "pago sem
       vaga".
 - [ ] Uso da posição de compra como critério (transparência da ordem).
-- [ ] Onde o regulamento fica publicado. Hoje fica no card da página de
-      venda, em "Regulamento da promoção".
+- [ ] Onde o regulamento fica publicado. Hoje depende da modalidade:
+      - Modelo A (promoção de preço): no card da página de venda, em
+        "Regulamento da promoção";
+      - Modelo B (primeiros N): no card de brindes da página de venda, em
+        "Regulamento da campanha";
+      - Modelo C (indicação): **não aparece em nenhuma página pública** hoje
+        (a página de venda não lista campanhas de indicação, e a Minha Conta
+        não mostra o texto do regulamento). Definir onde publicar antes de
+        ativar uma campanha de indicação.
