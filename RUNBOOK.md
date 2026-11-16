@@ -67,9 +67,12 @@ cada conta, e onde vive o segundo fator de cada login.
 ## 2. Onde estão os segredos, e como rotacionar
 
 Nenhum segredo mora no repositório. Eles vivem em **Northflank → serviço
-`mostrai` → Environment**, e nos jobs `Conciliacao`, `Backup` e
-`ApuracaoBancoHoras` (criado em 25/09/2026) — este último só leva
-`DATABASE_URL` e `NODE_ENV`.
+`mostrai` → Environment**, e nos jobs `Conciliacao`, `Backup`,
+`ApuracaoBancoHoras` (criado em 25/09/2026 — só leva `DATABASE_URL` e
+`NODE_ENV`) e `SentinelaTick` (B13, §11.5 — `DATABASE_URL`, `SMTP_*`,
+remetente e destinatário do e-mail; **não** leva `TRIMUNDI_SEGREDO` nem a
+chave do Checkout). Trocar `DATABASE_URL` ou `SMTP_PASS` é trocar em todos
+os que levam.
 
 | Segredo | Onde se gera um novo |
 |---|---|
@@ -736,9 +739,8 @@ só leitura, sem dado pessoal (contagens e códigos curtos de pedido):
   ```bash
   npm run trimundi:saude
   ```
-  Sai com 1 só quando há sinal crítico — pronto para virar job agendado.
-  **O job no Northflank ainda não existe**: criar é mudança de produção e
-  espera a autorização do dono (plano de lançamento, C3).
+  Sai com 1 só quando há sinal crítico. É só leitura: serve para conferir
+  à mão; quem avisa sozinho são o vigia e a sentinela (abaixo).
 
 | Sinal | Nível | Significa | Primeira ação |
 |---|---|---|---|
@@ -754,11 +756,48 @@ só leitura, sem dado pessoal (contagens e códigos curtos de pedido):
 | `email_falhou` | atenção | e-mail que falhou 6 vezes nos últimos 30 dias | logs; o comprador pede o link de novo ou o Admin gera o link do pedido |
 | `aviso_<tipo>` | atenção | aviso aberto do "Precisa de você" (sem vaga, valor divergente, duplicado, reembolso recusado, chargeback) | Admin → Participantes → "Precisa de você" |
 
-**Rotina enquanto houver venda aberta** (até existir o job e o alerta
-externo): uma vez por dia, abrir a Visão geral; no dia do evento, antes de
-abrir a portaria e a cada hora. Logs: Northflank → serviço `mostrai` →
-Observe → Logs, filtrando por `trimundi:`.
+#### Alertas (B13) — três camadas
 
-**Ainda falta (fornecedor/dono):** alerta externo de "caiu" que chegue ao
-celular (monitor de uptime no `/health` e na home `/tic/eventos`) e o job
-agendado do `trimundi:saude` com aviso de falha.
+| Camada | Onde roda | Frequência | O que pega | Como avisa |
+|---|---|---|---|---|
+| **Vigia** | dentro do serviço (`alertas.vigiar`), nas 2 instâncias; uma trava do banco deixa uma só decidir | a cada 5 min (a 1ª, 3 min depois de subir) | todo sinal **crítico** da tabela acima | e-mail |
+| **Sentinela** | tarefa agendada `SentinelaTick` no Northflank (`npm run trimundi:sentinela`), fora do serviço; `Forbid` = nunca duas ao mesmo tempo | a cada 10 min | o site fora (`/health`) e a saúde da TICK em erro (`/ticket/api/saude`, que responde 503 com sinal crítico ou banco fora). Cada falha é conferida de novo 20 s depois (deploy não vira alarme) | e-mail; a tarefa fica vermelha no Northflank |
+| **Monitor externo** | serviço de uptime com app no celular | a cada 5 min | os mesmos dois endereços, de outra rede | notificação no celular |
+
+- **Sem repetição:** cada problema avisa uma vez quando aparece, um lembrete
+  a cada 6 h enquanto continua, e um "Resolvido" quando some (tabela
+  `trimundi.saude_alertas`). Se o envio falhar, a volta seguinte tenta de
+  novo. Sem o banco, a sentinela avisa assim mesmo (pode repetir).
+- **Quem recebe:** `TRIMUNDI_ALERTA_EMAIL`; vazio, o e-mail de contato
+  (`TRIMUNDI_EMAIL_CONTATO`, depois `MOSTRAI_EMAIL_CONTATO`). Remetente: o
+  da TICK/Mostraí. O alerta sai direto pelo SMTP, **fora da fila** (a fila
+  pode ser justamente o que parou).
+- **O e-mail traz:** o problema (contagem e, quando há, códigos curtos de
+  pedido — nunca nome, e-mail ou CPF), o que fazer, o link da Visão geral e
+  esta seção.
+- **`/ticket/api/saude`** é público e só diz `{ "ok": true }` (200) ou
+  `{ "ok": false }` (503): nenhum detalhe. Guarda o resultado por 60 s.
+
+**Recuperação, passo a passo:**
+1. Abrir o e-mail e a Visão geral; achar o sinal na tabela acima e fazer a
+   primeira ação.
+2. Site fora (`sentinela:site`): Northflank → serviço `mostrai` → Observe →
+   logs; §6 ("/health não responde"). Reverter deploy: §4.
+3. Saúde em erro (`sentinela:tick`) sem sinal na Visão geral: o banco pode
+   estar fora — conferir o status do Supabase e os logs (`trimundi:`).
+4. Resolvido, o "Resolvido" chega sozinho na volta seguinte (até 10 min).
+   Se não chegar, `npm run trimundi:saude` no serviço mostra o que segue
+   aberto.
+
+**Tarefa `SentinelaTick` (Northflank):** cron `*/10 * * * *`, concorrência
+`Forbid`, prazo de 120 s, sem nova tentativa (`backoffLimit 0`), imagem do
+mesmo repositório (branch `main`), comando `npm run trimundi:sentinela`.
+Variáveis: `NODE_ENV`, `SITE_URL`, `DATABASE_URL`, `SMTP_HOST`, `SMTP_PORT`,
+`SMTP_USER`, `SMTP_PASS`, `MOSTRAI_EMAIL_FROM`, `MOSTRAI_EMAIL_CONTATO` (e
+`TRIMUNDI_ALERTA_EMAIL`, se o dono quiser outro destinatário). Pausar:
+Northflank → job → Suspend. Rodar à mão: Northflank → job → Run.
+
+**Rotina manual** (complementa os alertas): uma vez por dia com venda
+aberta, abrir a Visão geral; no dia do evento, antes de abrir a portaria e
+a cada hora. Logs: Northflank → serviço `mostrai` → Observe → Logs,
+filtrando por `trimundi:`.
