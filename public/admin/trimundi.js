@@ -955,6 +955,7 @@
           <div data-lotes>${(tipo?.lotes?.length ? tipo.lotes : [{}]).map((l) => linhaLote(l, Boolean(l.encerrado_em), beneficios)).join('')}</div>
           <button type="button" class="btn ghost mini" data-mais-lote>+ Adicionar lote</button>
           <p class="campo-ajuda">De 1 a 10 lotes. Cada lote vende só a quantidade dele: o próximo abre sozinho quando o anterior esgota ou encerra, e o que não vendeu no encerrado não passa para ele.</p>
+          <p class="mensagem alerta tm-aviso-beneficio-lote"><b>Benefício do lote</b> vale para os ingressos daquele lote, enquanto houver estoque do benefício — e o estoque volta se o ingresso for cancelado. Para promoções de <b>"primeiros N ingressos"</b> ou por <b>posição de compra</b> (posição fixa, sem passar para o próximo), use <b>Campanhas</b>, não este campo: configurar os dois para a mesma promoção duplica o brinde.</p>
           <p class="form-msg" data-msg></p>
         </form>`,
       rodape:
@@ -2351,6 +2352,33 @@
         <p class="campo-ajuda">A recompensa do cliente é entregue na portaria, na leitura do ingresso principal dele. A do operador indicador (o ingresso dele é cortesia, sem pedido) é entregue só aqui, pelo Admin — a portaria não a mostra. A revogada (indicação reembolsada antes da entrega) fica só no histórico.</p>
       </section>
       <section class="secao-pagina">
+        <h3>Brindes de campanhas (primeiros N)</h3>
+        <div class="mini-indicadores">
+          ${indicador(num(d.ordem_compra.totais.a_retirar), 'a retirar')}
+          ${indicador(num(d.ordem_compra.totais.entregues), 'entregues')}
+          ${indicador(num(d.ordem_compra.totais.revogadas), 'revogados (ingresso reembolsado)')}
+        </div>
+        ${d.ordem_compra.itens_cortados ? `<p class="campo-ajuda">A lista mostra os ${num(d.ordem_compra.itens.length)} primeiros (os a retirar vêm antes); os totais acima contam todos.</p>` : ''}
+        ${
+          d.ordem_compra.itens.length
+            ? `<div class="tabela-caixa"><div class="rolagem"><table>
+          <thead><tr><th>Ingresso</th><th>Titular</th><th>Brinde</th><th>Campanha</th><th class="num">Posição</th><th>Situação</th><th>Entrega</th><th></th></tr></thead>
+          <tbody>${d.ordem_compra.itens
+            .map(
+              (
+                r,
+              ) => `<tr><td>${esc(r.codigo_curto)}${r.ingresso_status !== 'valido' ? ` <span class="u-dim">(${esc(r.ingresso_status)})</span>` : ''}</td>
+              <td>${esc(r.titular || '—')}</td><td>${esc(r.recompensa)}</td><td>${esc(r.campanha)}</td><td class="num">${num(r.posicao)}</td>
+              <td>${esc(r.status)}${r.motivo ? `<br><span class="u-dim">${esc(r.motivo)}</span>` : ''}</td>
+              <td>${r.entregue_em ? `${esc(quando(r.entregue_em))}${r.entregue_por ? ` por ${esc(r.entregue_por)}` : ''}` : '—'}</td>
+              <td class="u-ta-r">${r.status === 'concedido' ? `<button type="button" class="btn ghost mini" data-entregar="${r.id}">Marcar entregue</button>` : ''}</td></tr>`,
+            )
+            .join('')}</tbody></table></div></div>`
+            : vazio('Nenhum brinde de campanha por ordem de compra nesta edição.')
+        }
+        <p class="campo-ajuda">O brinde é do ingresso (posição de compra): entregue na portaria, na leitura dele, ou aqui. Ingresso reembolsado revoga o brinde não entregue — a posição não passa para o próximo.</p>
+      </section>
+      <section class="secao-pagina">
         <h3>Benefícios dos ingressos</h3>
         ${
           d.beneficios.length
@@ -2459,7 +2487,518 @@
 
   window.renderTrimundiVisaoGeral = renderVisaoGeral;
   window.renderTrimundiRecompensas = renderRecompensas;
-  window.renderTrimundiCampanhas = (el, resto) => renderIndicacao(el, resto, 'campanhas');
+  // ======================================================== Campanhas (PR 2)
+  // Admin → Campanhas: promoção de preço em ingresso individual (com ou sem
+  // "relâmpago"), brinde por ordem de compra, brinde por indicação. Combo
+  // promocional é outra coisa e fica em Combos (o botão leva para lá). Toda
+  // regra é do servidor (campanhas.js); a tela só mostra e envia. O preço
+  // promocional exibido aqui é só uma prévia — quem calcula é o servidor.
+  const MODALIDADE = {
+    desconto: ['badge-info', 'Promoção de preço'],
+    ordem_compra: ['badge-info', 'Primeiros N (brinde)'],
+    indicacao: ['badge-info', 'Indicação'],
+  };
+  const STATUS_CAMPANHA = {
+    rascunho: ['badge-neutro', 'Rascunho'],
+    ativa: ['badge-ok', 'Ativa'],
+    pausada: ['badge-atencao', 'Pausada'],
+    encerrada: ['badge-neutro', 'Encerrada'],
+  };
+  const SITUACAO_POSICAO = {
+    premiado: 'premiado',
+    nao_acumulavel: 'não acumulável',
+    sem_estoque: 'sem estoque',
+    limite_por_pessoa: 'limite por pessoa',
+    sem_faixa: 'fora das faixas',
+  };
+  const precoPromocional = (c, preco) => {
+    const p = Number(preco);
+    if (c.desconto_tipo === 'percentual') return Math.round((p * (100 - Number(c.desconto_valor))) / 100);
+    if (c.desconto_tipo === 'valor') return p - Number(c.desconto_valor);
+    return Number(c.desconto_valor);
+  };
+  const descDesconto = (c) =>
+    c.desconto_tipo === 'percentual'
+      ? `${c.desconto_valor}% de desconto`
+      : c.desconto_tipo === 'valor'
+        ? `R$ ${reais(c.desconto_valor)} de desconto`
+        : `preço promocional R$ ${reais(c.desconto_valor)}`;
+  const nomeDoAlvo = (a, tipos) => {
+    const t = tipos.find((x) => Number(x.id) === Number(a.categoria_id));
+    const l = t?.lotes.find((x) => Number(x.id) === Number(a.lote_id));
+    if (!t && a.lote_id) {
+      for (const tt of tipos) {
+        const ll = tt.lotes.find((x) => Number(x.id) === Number(a.lote_id));
+        if (ll) return `${tt.nome} — ${ll.numero}º lote`;
+      }
+    }
+    return `${t?.nome || 'tipo'}${l ? ` — ${l.numero}º lote` : ' — todos os lotes'}`;
+  };
+
+  async function renderCampanhas(el, resto) {
+    const edicoes = await lerOuAvisar(el, () => pegar(`${R}/edicoes`));
+    if (!edicoes) return;
+    const ed = escolherEdicao(edicoes, resto);
+    if (!ed) {
+      el.innerHTML = semEdicao();
+      return ligarSemEdicao(el);
+    }
+    const [lista, tipos, beneficios] = await Promise.all([
+      pegar(`${R}/edicoes/${ed.id}/campanhas/todas`),
+      pegar(`${R}/edicoes/${ed.id}/tipos`),
+      pegar(`${R}/edicoes/${ed.id}/beneficios`),
+    ]);
+    const soLeitura = ed.status === 'encerrado';
+    const periodo = (c) =>
+      c.inicio || c.fim ? `${esc(quando(c.inicio) || 'já')} → ${esc(quando(c.fim) || 'sem fim')}` : 'sem data';
+    const resumo = (c) => {
+      if (c.modalidade === 'desconto') {
+        const alvos = c.alvos.map((a) => esc(nomeDoAlvo(a, tipos))).join(', ');
+        return `${esc(descDesconto(c))} em ${alvos || '—'} · ${num(c.usados ?? 0)} de ${num(c.quantidade_promocional)} promocionais usados`;
+      }
+      const faixas = c.faixas
+        .map((f) =>
+          c.modalidade === 'ordem_compra'
+            ? `${f.de}º–${f.ate}º: ${esc(f.premio)}${f.estoque ? ` (estoque ${num(f.estoque)})` : ''} · ${num(f.concedidas)} concedidos`
+            : `${f.repete ? `a cada ${f.de}` : f.de} indicaç${f.de === 1 && !f.repete ? 'ão' : 'ões'}: ${esc(f.premio)} · ${num(f.concedidas)} concedidos`,
+        )
+        .join('<br>');
+      return faixas;
+    };
+    const acoes = (c) => {
+      if (soLeitura || c.status === 'encerrada')
+        return `<button type="button" class="btn ghost mini" data-detalhe="${c.id}">Detalhes</button>`;
+      const b = (acao, texto, extra = '') =>
+        `<button type="button" class="btn ${acao === 'ativar' || acao === 'retomar' ? 'primary' : 'ghost'} mini" data-acao="${acao}" data-id="${c.id}" ${extra}>${texto}</button>`;
+      return [
+        `<button type="button" class="btn ghost mini" data-detalhe="${c.id}">Detalhes</button>`,
+        `<button type="button" class="btn ghost mini" data-editar="${c.id}">Editar</button>`,
+        c.status === 'rascunho' && c.modalidade === 'desconto' && !c.desconto_disponivel
+          ? '<span class="badge badge-neutro">Ativa quando o desconto no checkout estiver ligado</span>'
+          : c.status === 'rascunho'
+            ? b('ativar', 'Ativar')
+            : '',
+        c.status === 'ativa' ? b('pausar', 'Pausar') : '',
+        c.status === 'pausada' ? b('retomar', 'Retomar') : '',
+        `<button type="button" class="btn ghost mini" data-revisar="${c.id}">Regulamento revisado</button>`,
+        `<button type="button" class="btn ghost mini" data-duplicar="${c.id}">Duplicar</button>`,
+        b('encerrar', 'Encerrar'),
+      ].join(' ');
+    };
+    const cartao = (c) => `<section class="secao-pagina tm-campanha">
+        <div class="secao-topo"><h3>${esc(c.nome)} ${selo(MODALIDADE[c.modalidade])} ${selo(STATUS_CAMPANHA[c.status])}
+          ${c.relampago ? '<span class="badge badge-atencao">Relâmpago</span>' : ''}</h3></div>
+        <p>${resumo(c)}</p>
+        <p class="u-dim">${periodo(c)} · ${c.acumula ? 'acumula com outras' : 'não acumula'}${c.prioridade ? ` · prioridade ${c.prioridade}` : ''}${c.limite_por_pessoa ? ` · até ${c.limite_por_pessoa} por pessoa` : ''}${c.prazo_retirada ? ` · retirar até ${esc(quando(c.prazo_retirada))}` : ''}
+          ${c.modalidade === 'ordem_compra' ? ` · ${num(c.posicoes)} posições` : ''}${c.modalidade === 'indicacao' ? ` · ${num(c.conversoes)} indicações válidas` : ''}
+          ${c.modalidade !== 'desconto' ? ` · prêmios: ${num(c.a_retirar)} a retirar, ${num(c.entregues)} entregues, ${num(c.revogados)} revogados${c.expirados ? `, ${num(c.expirados)} expirados` : ''}` : ''}</p>
+        <p class="u-dim">Regulamento: ${c.regras_revisadas_em ? `revisado por ${esc(c.regras_revisadas_por)} em ${esc(quando(c.regras_revisadas_em))}` : '<b>sem revisão jurídica</b> — não ativa (C7)'}</p>
+        <div class="tm-acoes">${acoes(c)}</div>
+      </section>`;
+    el.innerHTML = `
+      <div class="barra-pagina">${seletorEdicao(edicoes, ed, 'campanhas')}
+        ${soLeitura ? '' : '<button type="button" class="btn primary" id="tmNovaCampanhaV2">+ Nova campanha</button>'}</div>
+      <p class="campo-ajuda">Campanhas da edição: promoção de preço em ingresso individual, brinde para os primeiros compradores e brinde por indicação. Toda campanha só ativa com o regulamento escrito e marcado como revisado pelo jurídico. Combos promocionais ficam em Combos.</p>
+      ${lista.length ? lista.map(cartao).join('') : vazio('Nenhuma campanha nesta edição.', 'Ex.: os primeiros 30 VIP com 30% de desconto; os primeiros 20 ganham um copão.')}`;
+    ligarSeletor(el);
+    const recarregar = () => renderCampanhas(el, String(ed.id));
+    el.querySelector('#tmNovaCampanhaV2')?.addEventListener('click', () =>
+      escolherModalidade(ed, tipos, beneficios, recarregar),
+    );
+    el.querySelectorAll('[data-editar]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const c = await pegar(`${R}/campanhas/${b.dataset.editar}/detalhe`);
+        formCampanha(ed, c.modalidade, c, tipos, beneficios, recarregar);
+      }),
+    );
+    el.querySelectorAll('[data-detalhe]').forEach((b) =>
+      b.addEventListener('click', () => detalheCampanha(b.dataset.detalhe, tipos, recarregar)),
+    );
+    el.querySelectorAll('[data-revisar]').forEach((b) =>
+      b.addEventListener('click', () =>
+        modalRevisao(
+          lista.find((c) => String(c.id) === b.dataset.revisar),
+          recarregar,
+        ),
+      ),
+    );
+    el.querySelectorAll('[data-duplicar]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const r = await travado(b, () => escrever(`/campanhas/${b.dataset.duplicar}/duplicar`, 'POST', {}));
+        if (!r.ok) return toast(r.erro, 'err');
+        toast('Campanha duplicada como rascunho.');
+        recarregar();
+      }),
+    );
+    el.querySelectorAll('[data-acao]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const acao = b.dataset.acao;
+        if (acao === 'encerrar') {
+          const ok = await confirmarModal({
+            titulo: 'Encerrar campanha',
+            texto: '<p>Campanha encerrada não volta. As posições e os prêmios já dados ficam no histórico.</p>',
+            botao: 'Encerrar',
+            perigo: true,
+          });
+          if (!ok) return;
+        }
+        const r = await travado(b, () => escrever(`/campanhas/${b.dataset.id}/acao/${acao}`, 'POST', {}));
+        if (!r.ok) return toast(r.erro, 'err');
+        toast(
+          {
+            ativar: 'Campanha ativa.',
+            pausar: 'Campanha pausada.',
+            retomar: 'Campanha retomada.',
+            encerrar: 'Campanha encerrada.',
+          }[acao],
+        );
+        recarregar();
+      }),
+    );
+  }
+
+  function escolherModalidade(ed, tipos, beneficios, depois) {
+    const opcao = (k, titulo, texto) =>
+      `<button type="button" class="tm-opcao" data-modalidade="${k}"><b>${titulo}</b><span>${texto}</span></button>`;
+    const { dlg, fechar } = abrirModal({
+      titulo: 'Nova campanha',
+      corpo: `<div class="tm-opcoes">
+          ${opcao('desconto', 'Ingresso individual — promoção de preço', 'Desconto percentual, valor fixo ou preço promocional em um tipo/lote, com quantidade promocional. Ex.: os primeiros 30 VIP com 30% de desconto.')}
+          ${opcao('relampago', 'Campanha relâmpago', 'Promoção de preço com destaque e encerramento marcado. Ex.: Pista por R$ 79,90 até meia-noite ou enquanto houver.')}
+          ${opcao('ordem_compra', 'Primeiros N — brinde', 'Brinde por posição de compra (ordem de confirmação do pagamento). Ex.: 1º ao 20º ganham um copão.')}
+          ${opcao('indicacao', 'Indicação — brinde por níveis', 'Brinde para quem indica, por níveis (ex.: 4 e 10 indicações) ou "a cada N".')}
+          ${opcao('combo', 'Combo promocional', 'Combos (2 a 20 ingressos por um preço) ficam em Combos — este botão leva para lá.')}
+        </div>`,
+      rodape: '<button type="button" class="btn ghost" data-fechar>Cancelar</button>',
+    });
+    dlg.querySelectorAll('[data-modalidade]').forEach((b) =>
+      b.addEventListener('click', () => {
+        fechar();
+        const m = b.dataset.modalidade;
+        if (m === 'combo') return irPara(`trimundi/promocoes/${ed.id}`);
+        if (m === 'relampago') return formCampanha(ed, 'desconto', { relampago: true }, tipos, beneficios, depois);
+        formCampanha(ed, m, null, tipos, beneficios, depois);
+      }),
+    );
+  }
+
+  function formCampanha(ed, modalidade, c, tipos, beneficios, depois) {
+    const existe = Boolean(c?.id);
+    const travar = Boolean(c?.em_uso);
+    const t = (campo) =>
+      travar &&
+      !['nome', 'descricao', 'regras', 'fim', 'prazo_retirada', 'relampago', 'quantidade_promocional'].includes(campo)
+        ? 'disabled'
+        : '';
+    const linhaFaixa = (f = {}) => `<div class="tm-faixa" ${f.id ? `data-faixa="${f.id}"` : ''}>
+        ${
+          modalidade === 'ordem_compra'
+            ? `<div class="campo-grupo"><label>Da posição</label><input name="de" type="number" min="1" value="${f.de ?? ''}" ${t('faixas')}></div>
+             <div class="campo-grupo"><label>Até a posição</label><input name="ate" type="number" min="1" value="${f.ate ?? ''}" ${t('faixas')}></div>`
+            : `<div class="campo-grupo"><label>Indicações pagas</label><input name="de" type="number" min="1" value="${f.de ?? ''}" ${t('faixas')}></div>`
+        }
+        <div class="campo-grupo"><label>Prêmio</label><input name="premio" maxlength="80" value="${esc(f.premio ?? '')}" ${t('faixas')}></div>
+        <div class="campo-grupo"><label>Do catálogo (opcional)</label><select name="beneficio" ${t('faixas')}><option value="">—</option>${beneficios
+          .map(
+            (b) =>
+              `<option value="${b.id}" ${Number(b.id) === Number(f.beneficio_id) ? 'selected' : ''}>${esc(b.nome)}</option>`,
+          )
+          .join('')}</select></div>
+        <div class="campo-grupo"><label>Qtd. por prêmio</label><input name="quantidade" type="number" min="1" max="100" value="${f.quantidade ?? 1}" ${t('faixas')}></div>
+        <div class="campo-grupo"><label>Estoque${travar ? ' (só aumenta)' : ''}</label><input name="estoque" type="number" min="1" value="${f.estoque ?? ''}" placeholder="sem teto"></div>
+        <div class="campo-grupo"><label>Custo unitário (R$)</label><input name="custo" inputmode="decimal" value="${reais(f.custo_unitario_centavos ?? 0)}" ${t('faixas')}></div>
+        ${travar ? '' : '<button type="button" class="btn perigo-sutil mini" data-tirar-faixa aria-label="Tirar">×</button>'}
+      </div>`;
+    const linhaAlvo = (a = {}) => {
+      const tipo =
+        tipos.find((x) => Number(x.id) === Number(a.categoria_id)) ||
+        tipos.find((x) => x.lotes.some((l) => Number(l.id) === Number(a.lote_id))) ||
+        tipos[0];
+      return `<div class="tm-alvo">
+          <div class="campo-grupo"><label>Tipo de ingresso</label><select name="alvo_tipo" ${t('alvos')}>${tipos
+            .map(
+              (x) =>
+                `<option value="${x.id}" ${Number(x.id) === Number(tipo?.id) ? 'selected' : ''}>${esc(x.nome)}</option>`,
+            )
+            .join('')}</select></div>
+          <div class="campo-grupo"><label>Lote</label><select name="alvo_lote" ${t('alvos')}><option value="">Todos os lotes</option>${(
+            tipo?.lotes || []
+          )
+            .map(
+              (l) =>
+                `<option value="${l.id}" ${Number(l.id) === Number(a.lote_id) ? 'selected' : ''}>${l.numero}º lote — R$ ${reais(l.preco_centavos)}</option>`,
+            )
+            .join('')}</select></div>
+          ${travar || modalidade === 'desconto' ? '' : '<button type="button" class="btn perigo-sutil mini" data-tirar-alvo aria-label="Tirar">×</button>'}
+        </div>`;
+    };
+    const titulo = {
+      desconto: c?.relampago ? 'Campanha relâmpago — promoção de preço' : 'Promoção de preço — ingresso individual',
+      ordem_compra: 'Primeiros N — brinde',
+      indicacao: 'Indicação — brinde por níveis',
+    }[modalidade];
+    const repete = modalidade === 'indicacao' && c?.faixas?.length === 1 && c.faixas[0].repete;
+    const { dlg, fechar } = abrirModal({
+      titulo: existe ? `Editar: ${c.nome}` : titulo,
+      largo: true,
+      corpo: `<form id="tmFormCampanhaV2" novalidate>
+          ${travar ? '<p class="mensagem alerta">Campanha em uso: faixas, níveis, alvos, desconto e regras de acumulação não mudam mais. Dá para mudar textos, aumentar estoques e prorrogar o fim.</p>' : ''}
+          <div class="campos">
+            <div class="campo-grupo"><label for="tmCNome">Nome</label><input id="tmCNome" name="nome" maxlength="80" value="${esc(c?.nome ?? '')}" required></div>
+            <div class="campo-grupo"><label for="tmCIni">Início (opcional)</label><input id="tmCIni" name="inicio" type="datetime-local" value="${paraCampoData(c?.inicio)}" ${t('inicio')}></div>
+            <div class="campo-grupo"><label for="tmCFim">Encerramento${c?.relampago || modalidade === 'desconto' ? '' : ' (opcional)'}</label><input id="tmCFim" name="fim" type="datetime-local" value="${paraCampoData(c?.fim)}"></div>
+          </div>
+          <div class="campo-grupo"><label for="tmCDesc">Descrição</label><textarea id="tmCDesc" name="descricao" rows="2" maxlength="1000">${esc(c?.descricao ?? '')}</textarea></div>
+          ${
+            modalidade === 'desconto'
+              ? `<p class="campo-rotulo">Ingresso participante</p>
+               <div data-alvos>${linhaAlvo(c?.alvos?.[0] || {})}</div>
+               <div class="campos">
+                 <div class="campo-grupo"><label for="tmCDTipo">Desconto</label><select id="tmCDTipo" name="desconto_tipo" ${t('desconto')}>
+                   <option value="percentual" ${c?.desconto_tipo === 'percentual' || !c?.desconto_tipo ? 'selected' : ''}>Percentual (%)</option>
+                   <option value="valor" ${c?.desconto_tipo === 'valor' ? 'selected' : ''}>Valor fixo (R$ a menos)</option>
+                   <option value="preco" ${c?.desconto_tipo === 'preco' ? 'selected' : ''}>Preço promocional (R$)</option></select></div>
+                 <div class="campo-grupo"><label for="tmCDValor">Valor</label><input id="tmCDValor" name="desconto_valor" inputmode="decimal" value="${c?.desconto_tipo === 'percentual' ? (c?.desconto_valor ?? '') : c?.desconto_valor ? reais(c.desconto_valor) : ''}" ${t('desconto')}></div>
+                 <div class="campo-grupo"><label for="tmCDQtd">Quantidade promocional${travar ? ' (só aumenta)' : ''}</label><input id="tmCDQtd" name="quantidade_promocional" type="number" min="1" max="100000" value="${c?.quantidade_promocional ?? ''}"></div>
+               </div>
+               <p class="campo-ajuda" data-previa></p>
+               ${alternar({ nome: 'relampago', marcado: Boolean(c?.relampago), texto: 'Relâmpago (destaque na página de venda; encerramento obrigatório)' })}`
+              : ''
+          }
+          ${
+            modalidade === 'ordem_compra'
+              ? `<p class="campo-rotulo">Faixas de posição</p><div data-faixas>${(c?.faixas?.length ? c.faixas : [{}]).map(linhaFaixa).join('')}</div>
+               ${travar ? '' : '<button type="button" class="btn ghost mini" data-mais-faixa>+ Faixa</button>'}
+               <p class="campo-rotulo">Tipos e lotes que participam <span class="u-dim">(nenhum = todos)</span></p>
+               <div data-alvos>${(c?.alvos || []).map(linhaAlvo).join('')}</div>
+               ${travar || !tipos.length ? '' : '<button type="button" class="btn ghost mini" data-mais-alvo>+ Tipo/lote</button>'}
+               ${alternar({ nome: 'inclui_combos', marcado: c ? c.inclui_combos !== false : true, texto: 'Ingressos de combo também contam' })}
+               ${alternar({ nome: 'relampago', marcado: Boolean(c?.relampago), texto: 'Relâmpago (destaque na página de venda; encerramento obrigatório)' })}`
+              : ''
+          }
+          ${
+            modalidade === 'indicacao'
+              ? `${alternar({ nome: 'repete', marcado: repete, texto: 'Repetir: "a cada N indicações pagas, 1 prêmio" (um nível só)' })}
+               <p class="campo-rotulo">Níveis</p><div data-faixas>${(c?.faixas?.length ? c.faixas : [{}]).map(linhaFaixa).join('')}</div>
+               ${travar ? '' : '<button type="button" class="btn ghost mini" data-mais-faixa>+ Nível</button>'}
+               <div class="campo-grupo"><label for="tmCEscada">Escada</label><select id="tmCEscada" name="escada" ${t('escada')}>
+                 <option value="maior_nivel" ${c?.escada !== 'cumulativa' ? 'selected' : ''}>Só o maior nível atingido (quem já retirou um nível recebe também o de cima)</option>
+                 <option value="cumulativa" ${c?.escada === 'cumulativa' ? 'selected' : ''}>Cumulativa (um prêmio por nível)</option></select></div>`
+              : ''
+          }
+          <div class="campos">
+            <div class="campo-grupo"><label for="tmCPrio">Prioridade</label><input id="tmCPrio" name="prioridade" type="number" min="-1000" max="1000" value="${c?.prioridade ?? 0}" ${t('prioridade')}></div>
+            <div class="campo-grupo"><label for="tmCLim">Limite por pessoa (opcional)</label><input id="tmCLim" name="limite_por_pessoa" type="number" min="1" max="1000" value="${c?.limite_por_pessoa ?? ''}" ${t('limite_por_pessoa')}></div>
+            ${modalidade === 'desconto' ? '' : `<div class="campo-grupo"><label for="tmCPrazo">Retirar até (opcional)</label><input id="tmCPrazo" name="prazo_retirada" type="datetime-local" value="${paraCampoData(c?.prazo_retirada)}"></div>`}
+          </div>
+          ${alternar({ nome: 'acumula', marcado: Boolean(c?.acumula), texto: 'Acumula com outras campanhas (sem repetir o mesmo brinde)' })}
+          <div class="campo-grupo"><label for="tmCRegras">Regulamento (público; passa pela revisão jurídica antes de ativar)</label><textarea id="tmCRegras" name="regras" rows="4" maxlength="5000">${esc(c?.regras ?? '')}</textarea></div>
+          <p class="form-msg" data-msg></p>
+        </form>`,
+      rodape: `<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="tmFormCampanhaV2" class="btn primary">${existe ? 'Salvar' : 'Criar rascunho'}</button>`,
+    });
+    const caixa = (sel) => dlg.querySelector(sel);
+    const ligarAlvo = (linha) => {
+      const st = linha.querySelector('[name="alvo_tipo"]');
+      const sl = linha.querySelector('[name="alvo_lote"]');
+      st?.addEventListener('change', () => {
+        const tipo = tipos.find((x) => String(x.id) === st.value);
+        sl.innerHTML = `<option value="">Todos os lotes</option>${(tipo?.lotes || []).map((l) => `<option value="${l.id}">${l.numero}º lote — R$ ${reais(l.preco_centavos)}</option>`).join('')}`;
+        previa();
+      });
+      sl?.addEventListener('change', previa);
+    };
+    function previa() {
+      const p = caixa('[data-previa]');
+      if (!p) return;
+      const f = dlg.querySelector('form').elements;
+      const tipo = tipos.find((x) => String(x.id) === f.alvo_tipo?.value);
+      const lotes = (tipo?.lotes || []).filter((l) => !f.alvo_lote?.value || String(l.id) === f.alvo_lote.value);
+      const valor =
+        f.desconto_tipo.value === 'percentual' ? Number(f.desconto_valor.value) : centavosDe(f.desconto_valor.value);
+      if (!lotes.length || !Number.isFinite(valor) || !valor) {
+        p.textContent = 'Prévia: escolha o ingresso e o desconto.';
+        return;
+      }
+      p.textContent = `Prévia (o servidor confere e calcula na compra): ${lotes
+        .map((l) => {
+          const fim = precoPromocional(
+            { desconto_tipo: f.desconto_tipo.value, desconto_valor: valor },
+            l.preco_centavos,
+          );
+          const pct = Math.round((1 - fim / l.preco_centavos) * 100);
+          return `${l.numero}º lote R$ ${reais(l.preco_centavos)} → R$ ${reais(fim)} (${pct}% off)`;
+        })
+        .join(' · ')}`;
+    }
+    dlg.querySelectorAll('.tm-alvo').forEach(ligarAlvo);
+    for (const s of ['desconto_tipo', 'desconto_valor'])
+      dlg.querySelector(`[name="${s}"]`)?.addEventListener('input', previa);
+    previa();
+    caixa('[data-mais-faixa]')?.addEventListener('click', () =>
+      caixa('[data-faixas]').insertAdjacentHTML('beforeend', linhaFaixa({})),
+    );
+    caixa('[data-mais-alvo]')?.addEventListener('click', () => {
+      caixa('[data-alvos]').insertAdjacentHTML('beforeend', linhaAlvo({ categoria_id: tipos[0]?.id }));
+      ligarAlvo(caixa('[data-alvos]').lastElementChild);
+    });
+    dlg.addEventListener('click', (e) => {
+      if (e.target.closest('[data-tirar-faixa]') && dlg.querySelectorAll('.tm-faixa').length > 1)
+        e.target.closest('.tm-faixa').remove();
+      if (e.target.closest('[data-tirar-alvo]')) e.target.closest('.tm-alvo').remove();
+    });
+    dlg.querySelector('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target.elements;
+      const corpo = {
+        nome: f.nome.value,
+        descricao: f.descricao.value,
+        regras: f.regras.value,
+        fim: doCampoData(f.fim.value),
+        acumula: f.acumula.checked,
+        prioridade: f.prioridade.value === '' ? 0 : Number(f.prioridade.value),
+        limite_por_pessoa: f.limite_por_pessoa.value === '' ? null : f.limite_por_pessoa.value,
+      };
+      if (!f.inicio.disabled) corpo.inicio = doCampoData(f.inicio.value);
+      if (f.prazo_retirada) corpo.prazo_retirada = doCampoData(f.prazo_retirada.value);
+      if (f.relampago) corpo.relampago = f.relampago.checked;
+      if (f.inclui_combos && !f.inclui_combos.disabled) corpo.inclui_combos = f.inclui_combos.checked;
+      if (f.escada && !f.escada.disabled) corpo.escada = f.escada.value;
+      const faixas = [];
+      const estoques = {};
+      for (const linha of dlg.querySelectorAll('.tm-faixa')) {
+        const g = (n) => linha.querySelector(`[name="${n}"]`).value;
+        const custo = centavosDe(g('custo') || '0');
+        if (!Number.isFinite(custo)) return erroNoModal(dlg, 'Custo inválido — use o formato 15,00.');
+        if (linha.dataset.faixa && g('estoque')) estoques[linha.dataset.faixa] = Number(g('estoque'));
+        faixas.push({
+          de: g('de'),
+          ...(modalidade === 'ordem_compra' ? { ate: g('ate') } : {}),
+          ...(modalidade === 'indicacao' ? { repete: f.repete?.checked } : {}),
+          premio: g('premio'),
+          beneficio_id: g('beneficio') || null,
+          quantidade: g('quantidade'),
+          estoque: g('estoque') || null,
+          custo_unitario_centavos: custo,
+        });
+      }
+      const alvos = [...dlg.querySelectorAll('.tm-alvo')].map((linha) => ({
+        categoria_id: Number(linha.querySelector('[name="alvo_tipo"]').value),
+        lote_id: linha.querySelector('[name="alvo_lote"]').value || null,
+      }));
+      if (modalidade === 'desconto') {
+        const valor =
+          f.desconto_tipo.value === 'percentual' ? Number(f.desconto_valor.value) : centavosDe(f.desconto_valor.value);
+        if (!Number.isFinite(valor) || valor <= 0) return erroNoModal(dlg, 'Valor de desconto inválido.');
+        corpo.quantidade_promocional = f.quantidade_promocional.value;
+        if (!travar) Object.assign(corpo, { desconto_tipo: f.desconto_tipo.value, desconto_valor: valor });
+      }
+      if (!travar) {
+        if (modalidade !== 'desconto') corpo.faixas = faixas;
+        if (modalidade !== 'indicacao') corpo.alvos = alvos;
+      } else if (Object.keys(estoques).length) {
+        corpo.estoques = estoques;
+      }
+      await travado(dlg.querySelector('[type="submit"]'), async () => {
+        const r = existe
+          ? await escrever(`/campanhas/${c.id}/configurar`, 'POST', corpo)
+          : await escrever(`/edicoes/${ed.id}/campanhas/nova`, 'POST', { ...corpo, modalidade });
+        if (!r.ok) return erroNoModal(dlg, r.erro);
+        fechar();
+        toast(existe ? 'Campanha salva.' : 'Rascunho criado. Para ativar: regulamento revisado pelo jurídico.');
+        depois();
+      });
+    });
+  }
+
+  function modalRevisao(c, depois) {
+    const { dlg, fechar } = abrirModal({
+      titulo: 'Regulamento revisado pelo jurídico',
+      corpo: `<form id="tmFormRevisao" novalidate>
+          <p class="campo-ajuda">Decisão do dono (C7): nenhuma campanha é publicada antes da revisão jurídica do regulamento. Registre quem revisou o texto abaixo. Se o texto mudar depois, a marca cai e precisa ser feita de novo.</p>
+          <div class="tm-regulamento">${c.regras ? esc(c.regras).replace(/\n/g, '<br>') : '<i>Sem regulamento escrito — edite a campanha primeiro.</i>'}</div>
+          <div class="campo-grupo"><label for="tmRevisor">Quem revisou (nome / escritório)</label><input id="tmRevisor" name="revisor" maxlength="200" required></div>
+          <label class="tm-marcar"><input type="checkbox" name="confirmo" required> Confirmo que este texto passou pela revisão jurídica.</label>
+          <p class="form-msg" data-msg></p></form>`,
+      rodape:
+        '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="tmFormRevisao" class="btn primary">Registrar revisão</button>',
+    });
+    dlg.querySelector('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target.elements;
+      if (!f.confirmo.checked) return erroNoModal(dlg, 'Confirme que o texto passou pela revisão jurídica.');
+      await travado(dlg.querySelector('[type="submit"]'), async () => {
+        const r = await escrever(`/campanhas/${c.id}/regras-revisadas`, 'POST', { revisor: f.revisor.value });
+        if (!r.ok) return erroNoModal(dlg, r.erro);
+        fechar();
+        toast('Revisão registrada.');
+        depois();
+      });
+    });
+  }
+
+  async function detalheCampanha(id, tipos, depois) {
+    const d = await pegar(`${R}/campanhas/${id}/detalhe`);
+    const historico = (h) =>
+      h
+        .map(
+          (e) => `${esc(e.acao)} ${esc(quando(e.em) || '')}${e.motivo ? ` — ${esc(e.motivo)}` : ''} (${esc(e.autor)})`,
+        )
+        .join('<br>');
+    const premios = d.premios.length
+      ? `<div class="tabela-caixa"><div class="rolagem"><table>
+          <thead><tr><th>De quem</th><th>Prêmio</th><th>${d.modalidade === 'ordem_compra' ? 'Posição' : 'Nível'}</th><th>Situação</th><th>Histórico</th></tr></thead>
+          <tbody>${d.premios
+            .map(
+              (
+                p,
+              ) => `<tr><td>${esc(p.de_quem || '—')}${p.codigo_curto ? ` <span class="u-dim">${esc(p.codigo_curto)}</span>` : ''}${p.status === 'concedido' ? `<br><button type="button" class="btn ghost mini" data-entregar-premio="${p.id}">Marcar entregue</button>` : ''}</td>
+              <td>${esc(p.premio)}</td><td class="num">${d.modalidade === 'ordem_compra' ? num(p.posicao) : `${num(p.nivel)}${p.repeticao ? ` (#${p.repeticao})` : ''}`}</td>
+              <td>${esc(p.status)}${p.so_admin ? ' <span class="badge badge-info">só pelo Admin</span>' : ''}${p.motivo ? `<br><span class="u-dim">${esc(p.motivo)}</span>` : ''}</td>
+              <td class="u-dim">${historico(p.historico)}</td></tr>`,
+            )
+            .join('')}</tbody></table></div></div>`
+      : vazio('Nenhum prêmio ainda.');
+    const posicoes =
+      d.modalidade === 'ordem_compra'
+        ? `<h3>Posições <span class="contagem">${num(d.posicoes.length)}</span> <a class="btn ghost mini" href="${API_BASE_URL}${R}/campanhas/${id}/posicoes.csv" download>Exportar CSV</a></h3>
+         ${
+           d.posicoes.length
+             ? `<div class="tabela-caixa"><div class="rolagem"><table><thead><tr><th class="num">Posição</th><th>Ingresso</th><th>Tipo</th><th>Titular</th><th>Resultado</th><th>Confirmado</th></tr></thead>
+         <tbody>${d.posicoes
+           .slice(0, 300)
+           .map(
+             (
+               p,
+             ) => `<tr><td class="num">${num(p.posicao)}</td><td>${esc(p.codigo_curto)}${p.ingresso_status !== 'valido' ? ` <span class="u-dim">(${esc(p.ingresso_status)})</span>` : ''}</td>
+             <td>${esc(p.tipo)}</td><td>${esc(p.titular || '')}</td><td>${esc(SITUACAO_POSICAO[p.resultado] || p.resultado)}${p.vencedora ? ` — valeu ${esc(p.vencedora)}` : ''}</td><td>${esc(quando(p.confirmado_em))}</td></tr>`,
+           )
+           .join('')}</tbody></table></div></div>`
+             : vazio('Nenhuma posição ainda.')
+}`
+        : '';
+    const { dlg, fechar } = abrirModal({
+      titulo: d.nome,
+      largo: true,
+      corpo: `<p>${selo(MODALIDADE[d.modalidade])} ${selo(STATUS_CAMPANHA[d.status])} ${d.relampago ? '<span class="badge badge-atencao">Relâmpago</span>' : ''}</p>
+        ${d.modalidade === 'desconto' ? `<p>${esc(descDesconto(d))} em ${d.alvos.map((a) => esc(nomeDoAlvo(a, tipos))).join(', ')} · ${num(d.usados ?? 0)} de ${num(d.quantidade_promocional)} usados</p>` : ''}
+        ${d.descricao ? `<p class="u-dim">${esc(d.descricao)}</p>` : ''}
+        ${posicoes}
+        ${d.modalidade !== 'desconto' ? `<h3>Prêmios</h3>${premios}` : ''}`,
+      rodape: '<button type="button" class="btn ghost" data-fechar>Fechar</button>',
+    });
+    dlg.querySelectorAll('[data-entregar-premio]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const r = await travado(b, () => escrever(`/recompensas/${b.dataset.entregarPremio}/entregar`, 'POST', {}));
+        if (!r.ok) return toast(r.erro, 'err');
+        toast('Prêmio marcado como entregue.');
+        fechar();
+        depois();
+      }),
+    );
+  }
+
+  window.renderTrimundiCampanhas = renderCampanhas;
   window.renderTrimundiIndicacao = renderIndicacao;
   window.renderTrimundiEventos = renderEventos;
   window.renderTrimundiIngressos = renderIngressos;

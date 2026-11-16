@@ -538,6 +538,25 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
   - As telas de Campanhas, a área "Minhas promoções e recompensas" e a página
     de venda vêm nos PRs seguintes; as telas atuais de indicação continuam
     iguais, sobre o modelo novo.
+- **RN-T43 Admin → Campanhas** (PR 2, 16/11/2026).
+  - "+ Nova campanha" oferece: ingresso individual (promoção de preço),
+    campanha relâmpago (promoção de preço com destaque e fim obrigatório),
+    primeiros N (brinde), indicação (níveis ou "a cada N") e combo
+    promocional (leva para Combos, onde os combos de 2 a 20 ingressos seguem
+    como estão).
+  - Cada campanha: editar, ativar, pausar, retomar, encerrar (não volta),
+    duplicar (rascunho sem revisão), detalhes (posições com CSV, prêmios com
+    histórico e "Marcar entregue") e "Regulamento revisado" (quem revisou).
+  - Ativar exige o regulamento escrito e revisado pelo jurídico (C7); mudar o
+    texto derruba a revisão. Configuração contraditória é recusada. Em uso,
+    a configuração que decide quem ganha não muda.
+  - A promoção de preço mostra a prévia do preço (o servidor calcula de
+    verdade) e só ativa quando o desconto estiver ligado ao checkout (PR 4) —
+    até lá, a tela diz isso e não mostra "Ativar".
+  - Cadastro do benefício de lote traz o aviso de C5: "primeiros N" e posição
+    de compra se configuram em Campanhas.
+  - Admin → Recompensas mostra também os brindes de primeiros N, por
+    ingresso.
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.

@@ -1,6 +1,16 @@
 # Current Handoff
 
 ## Updated
+2026-11-16 — **TICK: campanhas — PR 2 (Admin → Campanhas)**, branch
+`claude/beautiful-faraday-cjq1nt-campanhas-admin` (sobre a do motor, PR #153).
+Migration 017 (modalidade `desconto`). Não desfazer sem contexto:
+- `campanhas.ligarDescontoNoCheckout()` fica desligado até o PR 4. Até lá a
+  promoção de preço cadastra mas não ativa, e a tela não mostra "Ativar";
+- toda campanha criada pelo Admin novo exige regulamento revisado (C7);
+- as rotas antigas `/edicoes/:id/campanhas` (indicação "a cada N") seguem
+  para compatibilidade;
+- pendências P1–P6 estão em `decisoes-comerciais-2026-11-14.md`.
+
 2026-11-16 — **TICK: campanhas — PR 1 (banco e motor)**, branch
 `claude/beautiful-faraday-cjq1nt-campanhas-motor` (empilhada sobre a do
 Admin, PR #152). Migrations 015 (tabelas novas) e 016 (cópia das campanhas

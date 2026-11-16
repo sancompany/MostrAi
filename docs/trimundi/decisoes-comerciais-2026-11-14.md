@@ -142,3 +142,34 @@ encerramento; reembolso e nova compra; progressão e regressão de níveis;
 indicações simultâneas; esgotamento simultâneo de estoque; integridade das
 posições e do histórico. Tabelas antigas preservadas, nenhuma remoção ou
 migração destrutiva, nada em produção sem autorização expressa.
+
+## Promoção de preço em ingresso individual (pedido do dono, 16/11/2026)
+
+Escopo acrescentado à fase de Campanhas: promoção de preço em ingresso
+individual (sem combo), com percentual, valor fixo ou preço promocional,
+quantidade promocional, início/fim, pausa e encerramento; "relâmpago" como
+destaque com encerramento obrigatório. Os combos (2 a 20 ingressos) seguem
+como estão, em Admin → Combos. Mesma estrutura de Campanhas e mesma
+confirmação de pagamento — sem mecanismo paralelo de desconto.
+
+### Pendências comerciais abertas (regra 11: nada inventado — o comportamento
+### mais conservador foi implementado e fica aqui para o dono confirmar)
+
+- **P1. Unidade promocional de ingresso reembolsado** NÃO volta para a
+  quantidade promocional (aplicação, por analogia, da regra 1 — "não passa
+  para o próximo"). Reserva vencida sem pagamento volta (nunca foi vendida).
+- **P2. Desconto × outras campanhas.** Dois descontos nunca se somam no mesmo
+  ingresso (vale o menor preço; empate: prioridade, depois a mais antiga). Um
+  desconto **não acumulável** conta como a campanha vencedora do ingresso:
+  brinde de campanha não acumulável de primeiros N não vem junto (o ingresso
+  ainda ocupa a posição — C1). Desconto acumulável permite os brindes.
+- **P3. Preço mínimo com desconto:** R$ 5,00 — o mesmo piso que o sistema já
+  exige do preço de lote. Ingresso grátis é cortesia, não desconto.
+- **P4. Arredondamento do percentual:** ao centavo, meio centavo para cima.
+- **P5. Pagamento que chega depois de a reserva vencer** (pedido com
+  desconto): vale a mesma regra do lote — só se ainda houver quantidade
+  promocional; senão o pedido fica "pago sem vaga" e o Admin devolve.
+- **P6. Regulamento revisado (C7)** é exigido para ativar **toda** campanha
+  criada pelo Admin → Campanhas, inclusive as de indicação novas. As
+  campanhas de indicação antigas (formato "a cada N", pelas rotas antigas)
+  seguem funcionando como antes.

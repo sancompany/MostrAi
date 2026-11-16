@@ -14,12 +14,12 @@ const quemEntregou = (coluna) => `CASE WHEN ${coluna} IS NULL THEN NULL
   WHEN ${coluna} LIKE 'operador:%' THEN (SELECT nome FROM operadores WHERE 'operador:' || operadores.id = ${coluna})
   ELSE 'Admin' END`;
 
-// A lista mostra até LIMITE_ITENS (as a retirar primeiro); os totais saem de
-// uma contagem à parte, sem limite — nunca da lista cortada.
+// As listas mostram até LIMITE_ITENS (as a retirar primeiro); os totais saem
+// de uma contagem à parte, sem limite — nunca da lista cortada.
 const LIMITE_ITENS = 1000;
 
 async function daEdicao(edicaoId, { limite = LIMITE_ITENS } = {}) {
-  const [{ rows: indicacao }, { rows: beneficios }, { rows: totais }] = await Promise.all([
+  const [{ rows: indicacao }, { rows: beneficios }, { rows: ordem }, { rows: totais }] = await Promise.all([
     consultar(
       `SELECT r.id,
               CASE r.status WHEN 'concedido' THEN 'concedida' WHEN 'revogado' THEN 'revogada'
@@ -49,15 +49,33 @@ async function daEdicao(edicaoId, { limite = LIMITE_ITENS } = {}) {
         ORDER BY min(ib.nome)`,
       [edicaoId],
     ),
+    // Brindes de campanha por ordem de compra (primeiros N): do ingresso.
     consultar(
-      `SELECT r.status, count(*)::int AS n
-         FROM campanha_premios r JOIN campanhas ca ON ca.id = r.campanha_id AND ca.modalidade = 'indicacao'
-        WHERE ca.edicao_id = $1 GROUP BY r.status`,
+      `SELECT r.id, r.status, r.motivo, r.concedido_em, r.entregue_em, r.revogado_em, r.expirado_em,
+              ${quemEntregou('r.entregue_por')} AS entregue_por, ca.nome AS campanha, r.premio AS recompensa,
+              po.posicao, i.codigo_curto, i.status AS ingresso_status, pa.nome AS titular
+         FROM campanha_premios r
+         JOIN campanhas ca ON ca.id = r.campanha_id AND ca.modalidade = 'ordem_compra'
+         JOIN ingressos i ON i.id = r.ingresso_id JOIN participantes pa ON pa.id = i.participante_id
+         LEFT JOIN campanha_posicoes po ON po.id = r.posicao_id
+        WHERE ca.edicao_id = $1
+        ORDER BY (r.status = 'concedido') DESC, r.concedido_em DESC, r.id DESC
+        LIMIT $2`,
+      [edicaoId, limite],
+    ),
+    consultar(
+      `SELECT ca.modalidade, r.status, count(*)::int AS n
+         FROM campanha_premios r JOIN campanhas ca ON ca.id = r.campanha_id
+        WHERE ca.edicao_id = $1 AND ca.modalidade IN ('indicacao', 'ordem_compra')
+        GROUP BY ca.modalidade, r.status`,
       [edicaoId],
     ),
   ]);
-  const conta = (s) => totais.find((t) => t.status === s)?.n || 0;
-  const total = totais.reduce((s, t) => s + t.n, 0);
+  const contar = (modalidade, status) =>
+    totais.filter((t) => t.modalidade === modalidade && t.status === status).reduce((s, t) => s + t.n, 0);
+  const totalDe = (modalidade) => totais.filter((t) => t.modalidade === modalidade).reduce((s, t) => s + t.n, 0);
+  const conta = (s) => contar('indicacao', s);
+  const contaOrdem = (s) => contar('ordem_compra', s);
   // Onde a recompensa sai (decisão do dono, 15/11/2026): a do cliente, na
   // portaria (ingresso principal) ou pelo Admin; a do operador indicador —
   // ingresso dele é cortesia, sem pedido — só pelo Admin.
@@ -71,9 +89,19 @@ async function daEdicao(edicaoId, { limite = LIMITE_ITENS } = {}) {
         expiradas: conta('expirado'),
       },
       itens: indicacao,
-      itens_cortados: total > indicacao.length,
+      itens_cortados: totalDe('indicacao') > indicacao.length,
     },
     beneficios: beneficios.map((b) => ({ ...b, pendentes: b.total - b.entregues })),
+    ordem_compra: {
+      totais: {
+        a_retirar: contaOrdem('concedido'),
+        entregues: contaOrdem('entregue'),
+        revogadas: contaOrdem('revogado'),
+        expiradas: contaOrdem('expirado'),
+      },
+      itens: ordem,
+      itens_cortados: totalDe('ordem_compra') > ordem.length,
+    },
   };
 }
 
