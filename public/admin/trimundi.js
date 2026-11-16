@@ -2328,6 +2328,7 @@
           ${indicador(num(t.entregues), 'entregues')}
           ${indicador(num(t.revogadas), 'revogadas (indicação reembolsada)')}
         </div>
+        ${d.indicacao.itens_cortados ? `<p class="campo-ajuda">A lista mostra as ${num(d.indicacao.itens.length)} primeiras (as a retirar vêm antes); os totais acima contam todas.</p>` : ''}
         ${
           d.indicacao.itens.length
             ? `<div class="tabela-caixa"><div class="rolagem"><table>
@@ -2357,6 +2358,7 @@
           ${indicador(num(d.ordem_compra.totais.entregues), 'entregues')}
           ${indicador(num(d.ordem_compra.totais.revogadas), 'revogados (ingresso reembolsado)')}
         </div>
+        ${d.ordem_compra.itens_cortados ? `<p class="campo-ajuda">A lista mostra os ${num(d.ordem_compra.itens.length)} primeiros (os a retirar vêm antes); os totais acima contam todos.</p>` : ''}
         ${
           d.ordem_compra.itens.length
             ? `<div class="tabela-caixa"><div class="rolagem"><table>

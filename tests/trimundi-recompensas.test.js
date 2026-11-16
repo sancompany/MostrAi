@@ -52,6 +52,13 @@ test('recompensas da edição: a retirar, entregue pela portaria (com nome), rev
 
   let d = (await admin.get(rota)).json;
   assert.deepEqual(d.indicacao.totais, { a_retirar: 1, entregues: 0, revogadas: 1, expiradas: 0 });
+  assert.equal(d.indicacao.itens_cortados, false);
+  // Lista cortada: os totais continuam contando todas (revisão do Codex no #152).
+  const cortada = await require('../src/trimundi/recompensas').daEdicao(pronta.edicao.id, { limite: 1 });
+  assert.equal(cortada.indicacao.itens.length, 1);
+  assert.equal(cortada.indicacao.itens[0].status, 'concedida', 'a retirar vem antes');
+  assert.deepEqual(cortada.indicacao.totais, { a_retirar: 1, entregues: 0, revogadas: 1, expiradas: 0 });
+  assert.equal(cortada.indicacao.itens_cortados, true);
   assert.equal(d.indicacao.itens[0].status, 'concedida', 'a retirar primeiro');
   assert.equal(d.indicacao.itens[0].indicador, ana.nome);
   assert.equal(d.indicacao.itens[0].recompensa, 'Pulseira VIP');
