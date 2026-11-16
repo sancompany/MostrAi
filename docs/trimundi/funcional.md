@@ -667,6 +667,15 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
   - Recrutador: 1 ingresso em crédito quando o recrutado chega a 10 vendas
     na edição, uma vez por recrutado; revogado se cair antes da emissão.
   - Pagamento manual pelo Admin **desligado** até as decisões P-1 e P-9.
+- **RN-T50 Promoters — Admin e relatórios** (PR 2, 16/11/2026). Admin →
+  Eventos → **Promoters**: candidaturas para decidir, situação, link,
+  recrutador e os números da edição (vendas de pé, percentual, comissão
+  provisória, confirmada e paga). Ações: aprovar, recusar (com motivo),
+  suspender, reativar, encerrar. A ficha mostra o livro da edição, os selos,
+  os créditos de recrutamento (o Admin emite a cortesia e marca qual foi), os
+  pagamentos e o histórico. Aviso fixo: pagamento desligado até P-1/P-9,
+  termo pendente (P-8). Relatórios **1 (Vendas por promoter)** e **15
+  (Comissões de promoters)**, com CSV; taxa não informada sai "—".
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.

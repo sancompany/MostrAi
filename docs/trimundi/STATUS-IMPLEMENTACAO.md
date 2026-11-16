@@ -35,6 +35,7 @@ Storage, celular): isso é a homologação de `pendencias.md`.
 | Página de venda e promoção de preço no pedido (16/11/2026, RN-T45): desconto calculado no servidor sob a trava da edição, quantidade promocional sem corrida, P1/P2/P5/P7, relâmpago e brindes na vitrine; migration 018 | feito | `pedidos.js`, `campanhas.js`, `pagamentos.js`, `publico.js`, `edicao.page.js` | `trimundi-campanhas-venda` + navegador |
 | Relatórios administrativos (16/11/2026, RN-T46): 12 dos 15 do §8 com filtros e CSV (1 e 15 dependem de Promoters; 4 em Indicações) | feito | `relatorios.js`, aba Relatórios | `trimundi-relatorios` + navegador |
 | Promoters — banco e motor (PR 1, RN-T49): candidatura, aprovação com histórico, livro de comissões só de acréscimo, estorno, crédito de recrutamento, pagamento manual desligado (migration 021) | feito (PR aberto) | `promoters.js`, `pagamentos.js` | `trimundi-promoters` |
+| Promoters — Admin e relatórios (PR 2, RN-T50): aba Promoters, ficha, decisões, crédito emitido, relatórios 1 e 15 com CSV | feito (PR aberto) | `rotas/admin.js`, `relatorios.js`, `public/admin/trimundi.js` | `trimundi-promoters-admin` + navegador |
 | Login próprio do operador (`/ticket/entrar`); login da Mostraí restaurado | feito | `rotas/operador.js` | `trimundi-checkin` |
 | Um pedido aguardando pagamento por conta e edição (sem reter estoque) | feito | `pedidos.js` | `trimundi-conta` |
 | Página de erro e 404 próprias em `/ticket` | feito | `index.js`, `paginas/erro.html` | `trimundi-identidade` |

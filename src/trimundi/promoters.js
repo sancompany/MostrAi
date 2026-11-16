@@ -575,6 +575,7 @@ async function painelDaConta(clienteId) {
 
 module.exports = {
   META,
+  situacaoDaVenda,
   SELOS,
   percentualDaVenda,
   comissaoDe,
