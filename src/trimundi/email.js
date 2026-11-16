@@ -112,4 +112,31 @@ async function processar(limite = 10) {
   return rows.length;
 }
 
-module.exports = { enfileirar, processar, html, textoComRodape };
+// Envio imediato, fora da fila: só para os alertas internos da saúde
+// (alertas.js). A fila pode ser justamente o que parou, então o alerta não
+// passa por ela. Sem provedor configurado, falha (quem chamou tenta de novo).
+// Prazos curtos: um SMTP pendurado não pode segurar a volta do vigia.
+let transporteAlerta = null;
+async function enviarAgora({ para, assunto, texto }) {
+  const c = config.email();
+  if (!c.configurado) throw new Error('e-mail não configurado');
+  if (c.captura) {
+    await fs.appendFile(c.captura, `${JSON.stringify({ para, assunto, texto, tipo: 'alerta_saude' })}\n`);
+    return;
+  }
+  if (!transporteAlerta) {
+    const nodemailer = require('nodemailer');
+    transporteAlerta = nodemailer.createTransport({
+      host: c.smtp.host,
+      port: c.smtp.port,
+      secure: c.smtp.port === 465,
+      auth: { user: c.smtp.user, pass: c.smtp.pass },
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 30000,
+    });
+  }
+  await transporteAlerta.sendMail({ from: c.remetente, to: para, subject: assunto, text: texto });
+}
+
+module.exports = { enfileirar, processar, html, textoComRodape, enviarAgora };

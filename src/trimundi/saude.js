@@ -207,7 +207,43 @@ async function verificar() {
   return { verificado_em: new Date().toISOString(), nivel, sinais };
 }
 
-module.exports = { verificar, ATRASO_FILA_MIN, ATRASO_EXPIRACAO_MIN, PAGO_SEM_INGRESSO_MIN };
+// Estado público (B13), para o monitor externo e a tarefa agendada: só
+// "ok" ou "não ok" — nenhum detalhe sai daqui. Não ok = algum sinal crítico,
+// ou a própria conferência falhou (banco fora, por exemplo). Guardado por
+// 60 s e com uma conferência por vez: muitas visitas não viram muitas
+// consultas no banco.
+const CACHE_MS = 60000;
+let ultimo = null;
+let emAndamento = null;
+async function estadoPublico() {
+  if (ultimo && Date.now() - ultimo.em < CACHE_MS) return ultimo.ok;
+  if (!emAndamento) {
+    emAndamento = verificar()
+      .then((r) => r.nivel !== 'critico')
+      .catch((err) => {
+        console.error('trimundi: saúde — a conferência falhou:', err.message);
+        return false;
+      })
+      .then((ok) => {
+        ultimo = { em: Date.now(), ok };
+        emAndamento = null;
+        return ok;
+      });
+  }
+  return emAndamento;
+}
+const esquecerEstado = () => {
+  ultimo = null;
+};
+
+module.exports = {
+  verificar,
+  estadoPublico,
+  esquecerEstado,
+  ATRASO_FILA_MIN,
+  ATRASO_EXPIRACAO_MIN,
+  PAGO_SEM_INGRESSO_MIN,
+};
 
 if (require.main === module) {
   require('dotenv').config();
