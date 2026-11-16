@@ -20,7 +20,7 @@ registradas em `decisoes-comerciais-2026-11-14.md`.
 | [#153](https://github.com/sancompany/MostrAi/pull/153) | Campanhas 1/4 — banco e motor | #152 | 015, 016 | 1306/1306 |
 | [#154](https://github.com/sancompany/MostrAi/pull/154) | Campanhas 2/4 — Admin → Campanhas | #153 | 017 | 1314/1314 |
 | [#155](https://github.com/sancompany/MostrAi/pull/155) | Campanhas 3/4 — Portaria e Minha Conta | #154 | — | 1319/1319 |
-| [#156](https://github.com/sancompany/MostrAi/pull/156) | Campanhas 4/4 — venda, desconto, relâmpago, P2/P5 | #155 | 018, 019 | REGRESSAO_FINAL |
+| [#156](https://github.com/sancompany/MostrAi/pull/156) | Campanhas 4/4 — venda, desconto, relâmpago, P2/P5 | #155 | 018, 019 | **1341/1341** |
 
 O CI do repositório só roda em PR contra `main`, por isso só o #150 tem CI.
 Os outros foram validados com o mesmo `npm run check`, em banco recém-criado
@@ -178,13 +178,13 @@ celular (390), na pilha completa:
 
 | Área | Verificações |
 |---|---|
-| Portaria | NAVEGADOR_PORTARIA |
-| Lotes | NAVEGADOR_LOTES |
-| Admin (áreas do §9) | NAVEGADOR_ADMIN |
-| Admin → Campanhas | NAVEGADOR_CAMP |
-| Minha Conta + portaria com brinde | NAVEGADOR_CONTA |
-| Página de venda + compra pela tela | NAVEGADOR_VENDA |
-| Fila "Pagos sem vaga" + detalhe da promoção | NAVEGADOR_SEMVAGA |
+| Portaria | 112 ok |
+| Lotes | 18 ok |
+| Admin (áreas do §9) | 30 ok |
+| Admin → Campanhas | 28 ok |
+| Minha Conta + portaria com brinde | 44 ok |
+| Página de venda + compra pela tela | 56 ok |
+| Fila "Pagos sem vaga" + detalhe da promoção | 36 ok |
 
 Em todas, as mesmas conferências:
 - sem rolagem lateral;
@@ -192,9 +192,16 @@ Em todas, as mesmas conferências:
 - botões de ação visíveis no celular (na primeira coluna das tabelas
   roláveis).
 
+**Total:** 324 verificações, 0 falhas. O roteiro de Campanhas (PR 2) foi
+atualizado:
+- antes conferia que a promoção de preço **não** tinha o botão "Ativar";
+  agora confere que ela ativa e pausa pela tela;
+- com ela ativa e não acumulável, as compras deixavam de ganhar o brinde
+  (P2 funcionando).
+
 ### 1.7 Ausência de regressões
 
-- **Pilha completa (#156): REGRESSAO_FINAL** com lint, em banco limpo. Cada
+- **Pilha completa (#156): **1341/1341**** com lint, em banco limpo. Cada
   PR intermediário também passou na própria regressão (tabela no topo).
 - **Funcionalidades que continuam iguais:**
   - os 7 operadores ficam só com a portaria;
@@ -206,6 +213,10 @@ Em todas, as mesmas conferências:
   - pedido aberto por conta;
   - LGPD do titular;
   - pedido sem promoção, idêntico ao de antes (há teste).
+- **Achado desta revisão, já corrigido:** as duas tabelas novas da 019
+  tinham ficado sem RLS. O teste de fundação do esquema (toda tabela do
+  `trimundi` com RLS) pegou o erro na regressão completa; a 019 foi
+  corrigida antes de qualquer aplicação.
 - **Erros plantados de propósito nos pontos críticos:** os testes pegaram
   todos. A única que escapou de início (gasto da quantidade entre lotes)
   ganhou teste próprio.
