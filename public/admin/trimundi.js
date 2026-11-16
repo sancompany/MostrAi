@@ -2931,10 +2931,13 @@
         descricao: f.descricao.value,
         regras: f.regras.value,
         fim: doCampoData(f.fim.value),
-        acumula: f.acumula.checked,
-        prioridade: f.prioridade.value === '' ? 0 : Number(f.prioridade.value),
-        limite_por_pessoa: f.limite_por_pessoa.value === '' ? null : f.limite_por_pessoa.value,
       };
+      // Campanha em uso: os campos travados (desabilitados) não vão no corpo.
+      if (!travar) corpo.acumula = f.acumula.checked;
+      if (!f.prioridade.disabled) corpo.prioridade = f.prioridade.value === '' ? 0 : Number(f.prioridade.value);
+      if (!f.limite_por_pessoa.disabled) {
+        corpo.limite_por_pessoa = f.limite_por_pessoa.value === '' ? null : f.limite_por_pessoa.value;
+      }
       if (!f.inicio.disabled) corpo.inicio = doCampoData(f.inicio.value);
       if (f.prazo_retirada) corpo.prazo_retirada = doCampoData(f.prazo_retirada.value);
       if (f.relampago) corpo.relampago = f.relampago.checked;

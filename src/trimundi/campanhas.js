@@ -613,6 +613,7 @@ async function usosDoDesconto(cliente, campanhaId) {
 async function descontosVigentes(cliente, edicaoId, { clienteId = null } = {}) {
   const { rows } = await cliente.query(
     `SELECT * FROM campanhas WHERE edicao_id = $1 AND modalidade = 'desconto' AND status = 'ativa'
+        AND regras_revisadas_em IS NOT NULL
         AND (inicio IS NULL OR inicio <= now()) AND (fim IS NULL OR fim > now())
       ORDER BY id`,
     [edicaoId],
@@ -1016,13 +1017,23 @@ async function atualizar(id, dados, autor) {
   const mudaAlvos = Object.hasOwn(dados, 'alvos');
   const estoques = Object.hasOwn(dados, 'estoques') ? dados.estoques : null; // { faixa_id: estoque } — só para mais
   return emTransacao(async (cliente) => {
-    const { rows } = await cliente.query('SELECT * FROM campanhas WHERE id = $1', [id]);
+    const { rows: antes } = await cliente.query('SELECT edicao_id FROM campanhas WHERE id = $1', [id]);
+    if (!antes[0]) throw erro(404, 'campanha não encontrada');
+    // Ordem das travas: edição, depois a campanha. A validação usa a linha
+    // lida JÁ TRAVADA — uma ativação simultânea não deixa o estado velho
+    // furar a checagem do regulamento (C7; revisão do Codex no #154).
+    await cliente.query('SELECT 1 FROM edicoes WHERE id = $1 FOR UPDATE', [antes[0].edicao_id]);
+    const { rows } = await cliente.query('SELECT * FROM campanhas WHERE id = $1 FOR UPDATE', [id]);
     const atual = rows[0];
-    if (!atual) throw erro(404, 'campanha não encontrada');
-    await cliente.query('SELECT 1 FROM edicoes WHERE id = $1 FOR UPDATE', [atual.edicao_id]);
-    await cliente.query('SELECT 1 FROM campanhas WHERE id = $1 FOR UPDATE', [id]);
     if (atual.status === 'encerrada') throw erro(409, 'Campanha encerrada fica só para consulta.');
     const usada = await emUso(cliente, id);
+    // Campo que chega com o mesmo valor de antes não é mudança: a tela pode
+    // reenviar o formulário inteiro sem esbarrar na trava de "em uso".
+    const igual = (a, b) =>
+      a instanceof Date || b instanceof Date
+        ? (a ? new Date(a).getTime() : null) === (b ? new Date(b).getTime() : null)
+        : String(a ?? '') === String(b ?? '');
+    for (const k of Object.keys(novo)) if (igual(novo[k], atual[k])) delete novo[k];
     const campos = Object.keys(novo);
     if (usada) {
       const travados = campos.filter((k) => !EDITAVEIS_EM_USO.has(k));
@@ -1618,12 +1629,22 @@ function celula(valor) {
   return `"${seguro.replace(/"/g, '""')}"`;
 }
 
+// CSV completo: consulta própria, sem o limite da tela (revisão do Codex no #154).
 async function posicoesCsv(id) {
-  const d = await detalhe(id);
+  await obter(id);
+  const { rows: posicoes } = await consultar(
+    `SELECT po.posicao, po.resultado, po.confirmado_em, po.confirmado_no_checkout_em,
+            i.codigo_curto, i.status AS ingresso_status, cat.nome AS tipo, pa.nome AS titular, v.nome AS vencedora
+       FROM campanha_posicoes po JOIN ingressos i ON i.id = po.ingresso_id
+       JOIN categorias cat ON cat.id = i.categoria_id JOIN participantes pa ON pa.id = i.participante_id
+       LEFT JOIN campanhas v ON v.id = po.vencedora_id
+      WHERE po.campanha_id = $1 ORDER BY po.posicao`,
+    [id],
+  );
   const linhas = [
     ['posicao', 'resultado', 'vencedora', 'codigo', 'tipo', 'titular', 'ingresso', 'confirmado_em', 'checkout_em'],
   ];
-  for (const p of d.posicoes) {
+  for (const p of posicoes) {
     linhas.push([
       p.posicao,
       p.resultado,
