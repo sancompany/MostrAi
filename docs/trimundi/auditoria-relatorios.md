@@ -19,6 +19,22 @@ o que se lembra dele.
 - **Conversão de indicação:** a mesma definição de `desempenho.js`. Pedido
   de venda pago, com indicador e com ao menos um ingresso de pé.
 
+## Situação em 16/11/2026 (depois dos PRs #158, #162 e do PR dos relatórios 16 a 20)
+
+| # | Relatório | Situação | Onde |
+|---|---|---|---|
+| 1 | Vendas por promoter | **feito** (#162) | Relatórios, com CSV |
+| 2, 3, 5–14 | Vendas, clientes indicados, campanhas, recompensas, portaria, disponíveis, combos | **feito** (#158, em produção) | Relatórios, com filtros e CSV |
+| 4 | Vendas por link de indicação | **feito** (já existia) | Indicações, com `ranking.csv` |
+| 15 | Comissões de promoters | **feito** (#162) | Relatórios, com CSV |
+| 16 | Participantes | **feito** (PR dos relatórios 16–20) | Relatórios, filtro por tipo, CSV, sem CPF nem e-mail |
+| 17 | Reembolsos | **feito** | Relatórios, período, CSV |
+| 18 | Financeiro por meio de pagamento | **feito** | Recebido, reembolsado e líquido batem com o resumo de Participantes; taxas = cobrado − recebido, "—" se o Checkout não informou |
+| 19 | Conciliação de pagamentos | **feito** | Último aviso de cada pedido, processamento, o que precisa de atenção |
+| 20 | Desempenho por edição | **feito** | Todas as edições lado a lado; capacidade, vendidos e cortesias são os mesmos números do painel de Lotes |
+
+A tabela abaixo é a auditoria original (antes da construção), mantida como registro.
+
 ## Situação de cada relatório
 
 | # | Relatório | Situação | Onde está hoje | Filtros hoje | CSV | O que falta |

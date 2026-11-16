@@ -848,7 +848,7 @@ const SUBTITULOS = {
   'trimundi/desempenho':
     'Lotes: vendas por lote em tempo real — só pago conta como vendido; cores e alertas configuráveis.',
   'trimundi/relatorios':
-    'Relatórios da edição com filtros e CSV: vendas, recompensas, portaria, combos e indicados — só números do banco.',
+    'Relatórios com filtros e CSV: vendas, promoters, recompensas, portaria, participantes, financeiro e conciliação — só números do banco.',
   'trimundi/promoters':
     'Promoters: candidaturas, aprovação, vendas pelo link e comissões da edição — permissão separada da portaria.',
   'trimundi/indicacao':
