@@ -3113,7 +3113,127 @@
     );
   }
 
+  // Relatórios (§8): escolhe o relatório, aplica filtros, vê a tabela e
+  // exporta o mesmo recorte em CSV. Os números vêm do servidor, do banco.
+  const estadoRel = { nome: 'vendas-lote', filtros: {} };
+  async function renderRelatorios(el, resto) {
+    const edicoes = await lerOuAvisar(el, () => pegar(`${R}/edicoes`));
+    if (!edicoes) return;
+    const ed = escolherEdicao(edicoes, resto);
+    if (!ed) {
+      el.innerHTML = semEdicao();
+      return ligarSemEdicao(el);
+    }
+    const [catalogo, tipos, operadores] = await Promise.all([
+      pegar(`${R}/relatorios`),
+      pegar(`${R}/edicoes/${ed.id}/tipos`),
+      pegar(`${R}/operadores`),
+    ]);
+    if (!catalogo.some((c) => c.id === estadoRel.nome)) estadoRel.nome = catalogo[0].id;
+    const atual = catalogo.find((c) => c.id === estadoRel.nome);
+    const aceita = (f) => atual.filtros.includes(f);
+    const filtros = Object.fromEntries(Object.entries(estadoRel.filtros).filter(([, v]) => v !== '' && v != null));
+    const qs = new URLSearchParams(filtros).toString();
+    const d = await lerOuAvisar(el, () =>
+      pegar(`${R}/edicoes/${ed.id}/relatorios/${estadoRel.nome}${qs ? `?${qs}` : ''}`),
+    );
+    if (!d) return;
+    const lotes = tipos.flatMap((t) =>
+      (t.lotes || []).map((l, i) => ({ id: l.id, nome: `${t.nome} — ${i + 1}º lote` })),
+    );
+    const opcao = (v, texto, sel) =>
+      `<option value="${esc(v)}" ${String(sel ?? '') === String(v) ? 'selected' : ''}>${esc(texto)}</option>`;
+    const valor = (c, v) => {
+      if (v === null || v === undefined || v === '') return '—';
+      if (c.tipo === 'moeda') return fmt(Number(v) / 100);
+      if (c.tipo === 'numero') return num(v);
+      if (c.tipo === 'data') return esc(quando(v) || '—');
+      return esc(v);
+    };
+    const ROTULO_TOTAL = {
+      quantidade: 'quantidade',
+      vendidos: 'vendidos',
+      receita_centavos: 'receita',
+      disponiveis: 'disponíveis',
+      lotes: 'lotes',
+      ingressos: 'ingressos',
+      compras: 'compras',
+      total: 'registros',
+      aceitas: 'aceitas',
+      recusadas: 'recusadas',
+      a_retirar: 'a retirar',
+      entregues: 'entregues',
+      premios_entregues: 'prêmios entregues',
+      premios_a_retirar: 'prêmios a retirar',
+      desconto_centavos: 'desconto concedido',
+    };
+    const totais = Object.entries(d.totais || {})
+      .map(
+        ([k, v]) =>
+          `<div class="mini-indicador"><b>${/centavos/.test(k) ? fmt(Number(v) / 100) : num(v)}</b><span>${esc(ROTULO_TOTAL[k] || k.replace(/_/g, ' '))}</span></div>`,
+      )
+      .join('');
+    el.innerHTML = `
+      <div class="barra-pagina">${seletorEdicao(edicoes, ed, 'relatorios')}</div>
+      <section class="secao-pagina">
+        <form id="tmFormRel" class="campos painel-form" novalidate>
+          <div class="campo-grupo"><label for="tmRelNome">Relatório</label><select id="tmRelNome" name="nome">${catalogo.map((c) => opcao(c.id, `${c.numero}. ${c.nome}`, estadoRel.nome)).join('')}</select></div>
+          ${aceita('tipo') ? `<div class="campo-grupo"><label for="tmRelTipo">Tipo</label><select id="tmRelTipo" name="tipo"><option value="">Todos</option>${tipos.map((t) => opcao(t.id, t.nome, filtros.tipo)).join('')}</select></div>` : ''}
+          ${aceita('lote') ? `<div class="campo-grupo"><label for="tmRelLote">Lote</label><select id="tmRelLote" name="lote"><option value="">Todos</option>${lotes.map((l) => opcao(l.id, l.nome, filtros.lote)).join('')}</select></div>` : ''}
+          ${aceita('operador') ? `<div class="campo-grupo"><label for="tmRelOp">Operador</label><select id="tmRelOp" name="operador"><option value="">Todos</option>${operadores.map((o) => opcao(o.id, o.nome || o.email || `#${o.id}`, filtros.operador)).join('')}</select></div>` : ''}
+          ${aceita('resultado') ? `<div class="campo-grupo"><label for="tmRelRes">Resultado</label><select id="tmRelRes" name="resultado"><option value="">Todos</option>${opcao('aceito', 'Aceito', filtros.resultado)}${opcao('recusado', 'Recusado', filtros.resultado)}</select></div>` : ''}
+          ${
+            aceita('periodo')
+              ? `<div class="campo-grupo"><label for="tmRelDe">De</label><input id="tmRelDe" name="de" type="datetime-local" value="${paraCampoData(filtros.de)}"></div>
+             <div class="campo-grupo"><label for="tmRelAte">Até</label><input id="tmRelAte" name="ate" type="datetime-local" value="${paraCampoData(filtros.ate)}"></div>`
+              : ''
+          }
+          <div class="tm-acoes"><button type="submit" class="btn primary">Aplicar</button>
+            <a class="btn ghost" href="${API_BASE_URL}${R}/edicoes/${ed.id}/relatorios/${estadoRel.nome}.csv${qs ? `?${qs}` : ''}" download>Exportar CSV</a></div>
+        </form>
+      </section>
+      <section class="secao-pagina tm-relatorio">
+        <h3>${num(d.numero)}. ${esc(d.titulo)} <span class="contagem">${num(d.linhas.length)}</span></h3>
+        <div class="mini-indicadores">${totais}</div>
+        ${d.cortado ? '<p class="campo-ajuda">A tela e os totais consideram as 5.000 primeiras linhas; o CSV traz todas.</p>' : ''}
+        ${
+          d.linhas.length
+            ? `<div class="tabela-caixa"><div class="rolagem"><table>
+            <thead><tr>${d.colunas.map((c) => `<th${c.tipo === 'moeda' || c.tipo === 'numero' ? ' class="num"' : ''}>${esc(c.rotulo)}</th>`).join('')}</tr></thead>
+            <tbody>${d.linhas
+              .slice(0, 500)
+              .map(
+                (l) =>
+                  `<tr>${d.colunas.map((c) => `<td${c.tipo === 'moeda' || c.tipo === 'numero' ? ' class="num"' : ''}>${valor(c, l[c.id])}</td>`).join('')}</tr>`,
+              )
+              .join('')}</tbody></table></div></div>
+            ${d.linhas.length > 500 ? `<p class="campo-ajuda">Mostrando 500 de ${num(d.linhas.length)} linhas na tela; o CSV traz todas.</p>` : ''}`
+            : vazio('Sem dados para este recorte.', 'Nenhum registro no banco com estes filtros.')
+        }
+      </section>`;
+    ligarSeletor(el);
+    el.querySelector('#tmRelNome').addEventListener('change', (e) => {
+      estadoRel.nome = e.target.value;
+      estadoRel.filtros = {};
+      renderRelatorios(el, String(ed.id));
+    });
+    el.querySelector('#tmFormRel').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const f = e.target.elements;
+      estadoRel.filtros = {
+        tipo: f.tipo?.value || '',
+        lote: f.lote?.value || '',
+        operador: f.operador?.value || '',
+        resultado: f.resultado?.value || '',
+        de: f.de?.value ? doCampoData(f.de.value) : '',
+        ate: f.ate?.value ? doCampoData(f.ate.value) : '',
+      };
+      renderRelatorios(el, String(ed.id));
+    });
+  }
+
   window.renderTrimundiCampanhas = renderCampanhas;
+  window.renderTrimundiRelatorios = renderRelatorios;
   window.renderTrimundiIndicacao = renderIndicacao;
   window.renderTrimundiEventos = renderEventos;
   window.renderTrimundiIngressos = renderIngressos;
