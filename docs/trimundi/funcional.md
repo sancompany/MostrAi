@@ -506,6 +506,15 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     o Admin muda à mão (em Criar ingressos, com auditoria).
   - Os números saem do estoque real a cada leitura (nada guardado); a tela
     se atualiza sozinha a cada 30 s. Alertas só no painel.
+- **RN-T41 Áreas do Admin da TICK** (§9; 15/11/2026). Admin → Eventos, na
+  ordem: Visão geral (barra geral de vendas, alertas de lote, entradas,
+  receita, recompensas a retirar e avisos — a primeira tela), Eventos,
+  Ingressos, Lotes (desempenho por lote, cores e alertas), Combos (era
+  "Criar promoção"), Campanhas (campanhas de indicação e quem ganhou),
+  Indicações (ranking e CSV), Recompensas (indicação uma a uma e benefícios
+  por tipo), Participantes e Portaria (era "Adicionar operador"). Os
+  endereços antigos abrem a mesma tela. Promoters, Comissões, Relatórios e
+  Configurações entram quando forem construídos — nenhuma área de mentira.
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.

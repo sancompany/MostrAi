@@ -304,7 +304,13 @@
         el('strong', { text: c.evento }),
         ` — promoção: ${c.indicacoes_por_recompensa === 1 ? 'cada amigo que comprar' : `a cada ${c.indicacoes_por_recompensa} amigos que comprarem`} vale 1 ${c.recompensa}. `,
         `${c.conversoes} ${c.conversoes === 1 ? 'indicação paga' : 'indicações pagas'}`,
-        c.recompensas_a_retirar ? ` · ${c.recompensas_a_retirar} para retirar` : '',
+        c.recompensas_a_retirar
+          ? paraOperador
+            ? // Decisão do dono (15/11/2026): a recompensa do operador indicador é
+              // entregue só pelo Admin — a portaria não a mostra nem a entrega.
+              ` · ${c.recompensas_a_retirar} a receber com a organização (entrega pelo Admin, não na portaria)`
+            : ` · ${c.recompensas_a_retirar} para retirar`
+          : '',
         c.restam_na_campanha ? '' : ' · as recompensas acabaram',
       ),
     );

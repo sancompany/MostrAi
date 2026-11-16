@@ -28,6 +28,7 @@ Storage, celular): isso é a homologação de `pendencias.md`.
 | Indicação (link, conversão paga, recompensa por campanha, entrega no Admin) | feito | `indicacao.js`, aba Indicação | `trimundi-indicacao` |
 | Portaria completa (15/11/2026, RN-T39): ficha com comprador, titular, tipo, lote, número, validade, evento, pulseira; VALIDAR INGRESSO; já utilizado em vermelho com a primeira entrada; tentativas recusadas gravadas; combo um a um; CONFIRMAR ENTREGA de benefício e de recompensa de indicação | feito | `checkin.js`, `checkin.page.js`, migration 013 | `trimundi-portaria` |
 | Desempenho de vendas — lotes do evento (15/11/2026, RN-T40): barras geral e por lote, cores e alertas configuráveis, esgotado, resumo | feito | `desempenho-lotes.js`, aba Desempenho de vendas, migration 014 | `trimundi-desempenho-lotes` |
+| Admin da TICK reorganizado (15/11/2026, RN-T41): Visão geral, Eventos, Ingressos, Lotes, Combos, Campanhas, Indicações, Recompensas, Participantes, Portaria | feito | `admin/trimundi.js`, `admin/index.page.js`, `recompensas.js` | `trimundi-recompensas` + navegador |
 | Login próprio do operador (`/ticket/entrar`); login da Mostraí restaurado | feito | `rotas/operador.js` | `trimundi-checkin` |
 | Um pedido aguardando pagamento por conta e edição (sem reter estoque) | feito | `pedidos.js` | `trimundi-conta` |
 | Página de erro e 404 próprias em `/ticket` | feito | `index.js`, `paginas/erro.html` | `trimundi-identidade` |
