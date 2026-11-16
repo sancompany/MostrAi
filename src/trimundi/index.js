@@ -61,7 +61,11 @@ function iniciarProcessos() {
     pagamentos.processarFila().catch(registrar('fila de pagamento'));
     email.processar().catch(registrar('fila de e-mail'));
   }, 30000);
-  const b = setInterval(() => pedidos.expirarVencidos().catch(registrar('expiração de pedidos')), 5 * 60000);
+  const b = setInterval(() => {
+    pedidos.expirarVencidos().catch(registrar('expiração de pedidos'));
+    // Prêmio de campanha com prazo de retirada vencido → expirado.
+    require('./campanhas').expirarVencidos().catch(registrar('expiração de prêmios'));
+  }, 5 * 60000);
   // Conciliação com o San Checkout a cada 6 h (API.md §4.3.6 pede ao menos
   // uma vez por dia): acha pagamento ou estorno cujo aviso se perdeu. Só com
   // o Checkout configurado; reaplicar não duplica nada (evento_id próprio).

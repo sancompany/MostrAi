@@ -1,6 +1,21 @@
 # Current Handoff
 
 ## Updated
+2026-11-16 — **TICK: campanhas — PR 1 (banco e motor)**, branch
+`claude/beautiful-faraday-cjq1nt-campanhas-motor` (empilhada sobre a do
+Admin, PR #152). Migrations 015 (tabelas novas) e 016 (cópia das campanhas
+de indicação antigas com os mesmos ids; tabelas antigas intactas, sem uso).
+Não desfazer sem contexto:
+- a posição e o prêmio de ordem de compra nascem em
+  `campanhas.aoConfirmar`, chamado por `pagamentos.confirmar` sob a trava da
+  edição; `pago_em` usa `clock_timestamp()` (R2);
+- o livro de conversões é `campanha_indicacoes` (não `indicacoes`); ele nasce
+  na confirmação e `indicacao.revisarPedido` só revisa;
+- as funções antigas de campanha de indicação (`indicacao.criarCampanha`
+  etc.) são um adaptador sobre o modelo novo (nível `repete`);
+- prêmio entregue é final por gatilho; posições e eventos são imutáveis;
+- os testes de concorrência sobem `TRIMUNDI_POOL_MAX` para 8.
+
 2026-11-15 — **TICK: Admin reorganizado (§9)**, branch
 `claude/beautiful-faraday-cjq1nt-admin` (empilhada sobre a de lotes, PR #151).
 Sem migration. Não desfazer sem contexto: os ids das abas antigas ficaram

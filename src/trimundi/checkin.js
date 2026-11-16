@@ -3,7 +3,7 @@ const v = require('./lib/validacao');
 const { erro } = require('./lib/erros');
 const { lerQr } = require('./lib/qr');
 const { normalizarCodigoCurto } = require('./lib/codigos');
-const { auditar, historicoDoIngresso, medir } = require('./lib/registro');
+const { historicoDoIngresso, medir } = require('./lib/registro');
 const { edicoesPermitidas } = require('./operadores');
 const { colunasDeNumero } = require('./lib/numeracao');
 
@@ -78,15 +78,18 @@ async function principalDaConta(cliente, clienteId, edicaoId) {
   return rows[0] ? Number(rows[0].id) : null;
 }
 
-// Recompensas de indicação da conta nesta edição, uma a uma (não revogadas).
+// Recompensas de indicação da conta nesta edição, uma a uma: as de pé
+// (concedida ou entregue), do modelo de Campanhas. Revogada e expirada não
+// aparecem (não se entregam); a de operador nunca chega aqui (é da conta de
+// cliente — e é só pelo Admin).
 async function recompensasDaConta(cliente, clienteId, edicaoId, { travar = false } = {}) {
   const { rows } = await cliente.query(
-    `SELECT r.id, ca.recompensa AS nome, r.status, r.entregue_em, ${entreguePor('r.entregue_por')} AS entregue_por
-       FROM recompensas_indicacao r
-       JOIN campanhas_indicacao ca ON ca.id = r.campanha_id
+    `SELECT r.id, r.premio AS nome, r.status, r.entregue_em, ${entreguePor('r.entregue_por')} AS entregue_por
+       FROM campanha_premios r
+       JOIN campanhas ca ON ca.id = r.campanha_id AND ca.modalidade = 'indicacao'
        JOIN indicadores ind ON ind.id = r.indicador_id
-      WHERE ind.cliente_id = $1 AND ca.edicao_id = $2 AND r.status <> 'revogada'
-      ORDER BY r.concedida_em, r.id${travar ? ' FOR UPDATE OF r' : ''}`,
+      WHERE ind.cliente_id = $1 AND ca.edicao_id = $2 AND r.status IN ('concedido', 'entregue') AND NOT r.so_admin
+      ORDER BY r.concedido_em, r.id${travar ? ' FOR UPDATE OF r' : ''}`,
     [clienteId, edicaoId],
   );
   return rows;
@@ -348,22 +351,19 @@ async function entregarRecompensa(operador, edicaoId, ingressoId, recompensaId) 
         entregue_por: r.entregue_por,
       };
     }
-    const autor = `operador:${operador.id}`;
-    const { rows: ok } = await cliente.query(
-      `UPDATE recompensas_indicacao SET status = 'entregue', entregue_em = now(), entregue_por = $2
-        WHERE id = $1 AND status = 'concedida' RETURNING entregue_em`,
-      [rid, autor],
-    );
-    await auditar(cliente, { autor }, 'recompensa_entregue', 'recompensa_indicacao', rid, {
+    // Entrega única, com histórico e auditoria (campanhas.entregarPremio).
+    const feito = await require('./campanhas').entregarPremio(cliente, rid, {
+      autor: `operador:${operador.id}`,
       via: 'portaria',
-      ingresso_id: id,
-      edicao_id: ed.id,
     });
     await medir(cliente, 'acesso:recompensa_entrega', ed.id, { recompensa_id: rid });
+    if (feito.resultado === 'ja_entregue') {
+      return { resultado: 'ja_entregue', mensagem: `${r.nome}: já entregue`, entregue_em: feito.entregue_em };
+    }
     return {
       resultado: 'entregue',
       mensagem: `${r.nome}: entregue`,
-      entregue_em: ok[0].entregue_em,
+      entregue_em: feito.entregue_em,
       entregue_por: operador.nome,
     };
   });

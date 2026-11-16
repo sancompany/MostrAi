@@ -236,7 +236,10 @@ test('9. reembolso cancela os ingressos e libera o limite do CPF (regra atual de
 
 test('10. indicação e checkout seguem funcionando com o limite por CPF', async () => {
   const pronta = await edicaoComLimite(4);
-  await consultar('UPDATE trimundi.campanhas_indicacao SET ativo = false WHERE edicao_id = $1', [pronta.edicao.id]);
+  await consultar(
+    "UPDATE trimundi.campanhas SET status = 'pausada' WHERE edicao_id = $1 AND modalidade = 'indicacao' AND status = 'ativa'",
+    [pronta.edicao.id],
+  );
   await require('../src/trimundi/indicacao').criarCampanha(
     pronta.edicao.id,
     { nome: 'Indique', recompensa: 'copão', quantidade: 5, indicacoes_por_recompensa: 2 },

@@ -180,3 +180,36 @@ Os números de regra (RN-T…) são de `funcional.md`.
 - `avisos_resolvidos` (migration 002): aviso do Admin marcado como
   resolvido; a chave inclui o momento do fato.
 - Ao todo, 31 tabelas no banco da Trimundi, todas com RLS ligado.
+
+## Campanhas (migrations 015 e 016, 16/11/2026)
+
+Desenho completo e decisões: `docs/trimundi/specs/2026-11-15-campanhas-desenho.md`.
+
+- `campanhas` — modalidade (`ordem_compra` | `indicacao`), status (`rascunho`
+  → `ativa` ⇄ `pausada` → `encerrada`, que não reabre), janela (`inicio`,
+  `fim`), `acumula`, `prioridade`, `escada` (`maior_nivel` | `cumulativa`),
+  `limite_por_pessoa`, `prazo_retirada`, `inclui_combos`, `relampago`,
+  `regras` (+ marca de revisão jurídica), `proxima_posicao` (só cresce).
+  Índice único parcial: uma campanha de indicação não acumulável ativa por
+  edição (R1).
+- `campanha_alvos` — tipos/lotes que participam (sem linhas = todos).
+- `campanha_faixas` — faixas de posição (ordem de compra, sem sobreposição)
+  ou níveis de indicação (crescentes; `repete` = "a cada N"); prêmio (nome +
+  benefício opcional), quantidade, estoque, custo unitário.
+- `campanha_posicoes` — posição definitiva de cada ingresso pago, imutável;
+  únicas por (campanha, posição) e (campanha, ingresso); resultado na hora
+  (`premiado`, `nao_acumulavel` + vencedora, `sem_estoque`,
+  `limite_por_pessoa`, `sem_faixa`); instante oficial da TICK e a hora do
+  Checkout (auditoria).
+- `campanha_premios` — o prêmio (do ingresso ou do indicador), com chave de
+  idempotência única; `concedido` | `entregue` (final) | `revogado` |
+  `expirado`; nunca apagado. Índices: um prêmio não acumulável de pé por
+  ingresso; nunca o mesmo brinde duas vezes no ingresso.
+- `campanha_premio_eventos` — histórico só de acréscimo (concedido,
+  entregue, revogado, expirado, restaurado, alerta).
+- `campanha_indicacoes` — livro de conversões das campanhas de indicação
+  (cópia fiel de `indicacoes`, único por (campanha, pedido); a mesma pessoa
+  conta uma vez por campanha).
+- As tabelas antigas `campanhas_indicacao`, `indicacoes` e
+  `recompensas_indicacao` ficam **intactas e sem uso** (016 copiou os dados
+  com os mesmos ids). Remoção só com autorização do dono.

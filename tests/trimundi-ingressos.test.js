@@ -296,12 +296,12 @@ test('benefício do titular (recompensa de indicação) só no ingresso principa
   assert.deepEqual(vip.beneficios_do_titular, [], 'o do titular não vai para o VIP');
   // A recompensa não foi entregue sozinha: continua concedida, para o Admin entregar.
   const { rows } = await consultar(
-    `SELECT r.status FROM recompensas_indicacao r JOIN indicadores i ON i.id = r.indicador_id WHERE i.codigo = $1`,
+    `SELECT r.status FROM campanha_premios r JOIN indicadores i ON i.id = r.indicador_id WHERE i.codigo = $1`,
     [codigo],
   );
   assert.deepEqual(
     rows.map((x) => x.status),
-    ['concedida'],
+    ['concedido'],
   );
 });
 

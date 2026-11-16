@@ -249,10 +249,10 @@ test('recompensa de indicação: aparece só no ingresso principal de quem indic
   assert.equal(validado.json.resultado, 'entrada_registrada');
   assert.equal(validado.json.ingresso.indicados, 1);
   // No banco: entregue pelo operador, com auditoria.
-  const { rows } = await consultar('SELECT status, entregue_por FROM recompensas_indicacao WHERE id = $1', [rec.id]);
+  const { rows } = await consultar('SELECT status, entregue_por FROM campanha_premios WHERE id = $1', [rec.id]);
   assert.deepEqual([rows[0].status, rows[0].entregue_por], ['entregue', `operador:${p.op.id}`]);
   const { rows: aud } = await consultar(
-    `SELECT autor, detalhe FROM auditoria WHERE entidade = 'recompensa_indicacao' AND entidade_id = $1
+    `SELECT autor, detalhe FROM auditoria WHERE entidade = 'campanha_premio' AND entidade_id = $1
       AND acao = 'recompensa_entregue'`,
     [String(rec.id)],
   );

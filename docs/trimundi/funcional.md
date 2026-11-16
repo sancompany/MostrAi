@@ -515,6 +515,29 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
   por tipo), Participantes e Portaria (era "Adicionar operador"). Os
   endereços antigos abrem a mesma tela. Promoters, Comissões, Relatórios e
   Configurações entram quando forem construídos — nenhuma área de mentira.
+- **RN-T42 Campanhas — motor** (16/11/2026; decisões C1–C7 e R1–R3).
+  - A posição de cada ingresso pago numa campanha de ordem de compra é dada
+    na confirmação do pagamento, na ordem em que a TICK aplica as
+    confirmações (instante oficial = `pedidos.pago_em`, R2), e nunca muda.
+  - O ingresso ocupa posição em todas as campanhas em que se qualifica; o
+    prêmio vem só da vencedora entre as não acumuláveis (maior valor, depois
+    prioridade, depois a mais antiga); as acumuláveis somam sem repetir o
+    brinde (C1).
+  - Reembolso: a posição fica; o prêmio não entregue é revogado e não passa
+    para ninguém; o entregue fica, com alerta.
+  - Limite por pessoa pela conta compradora (C3), contando só prêmios de pé
+    (R3).
+  - Pausada não dá posição; a retomada continua do contador (C6). Encerrada
+    não reabre.
+  - Indicação: cada nível tem a sua linha (C2). Em `maior_nivel`, o nível de
+    baixo ainda não retirado é substituído pelo de cima; o já retirado fica e
+    o de cima também vem. Regressão revoga o não entregue e restaura o
+    anterior, na mesma linha.
+  - Uma campanha de indicação não acumulável ativa por edição (R1).
+  - Prazo de retirada vencido: o prêmio expira e não se entrega.
+  - As telas de Campanhas, a área "Minhas promoções e recompensas" e a página
+    de venda vêm nos PRs seguintes; as telas atuais de indicação continuam
+    iguais, sobre o modelo novo.
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.

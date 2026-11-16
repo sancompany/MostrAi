@@ -51,13 +51,13 @@ test('recompensas da edição: a retirar, entregue pela portaria (com nome), rev
   }
 
   let d = (await admin.get(rota)).json;
-  assert.deepEqual(d.indicacao.totais, { a_retirar: 1, entregues: 0, revogadas: 1 });
+  assert.deepEqual(d.indicacao.totais, { a_retirar: 1, entregues: 0, revogadas: 1, expiradas: 0 });
   assert.equal(d.indicacao.itens_cortados, false);
   // Lista cortada: os totais continuam contando todas (revisão do Codex no #152).
   const cortada = await require('../src/trimundi/recompensas').daEdicao(pronta.edicao.id, { limite: 1 });
   assert.equal(cortada.indicacao.itens.length, 1);
   assert.equal(cortada.indicacao.itens[0].status, 'concedida', 'a retirar vem antes');
-  assert.deepEqual(cortada.indicacao.totais, { a_retirar: 1, entregues: 0, revogadas: 1 });
+  assert.deepEqual(cortada.indicacao.totais, { a_retirar: 1, entregues: 0, revogadas: 1, expiradas: 0 });
   assert.equal(cortada.indicacao.itens_cortados, true);
   assert.equal(d.indicacao.itens[0].status, 'concedida', 'a retirar primeiro');
   assert.equal(d.indicacao.itens[0].indicador, ana.nome);
@@ -86,7 +86,7 @@ test('recompensas da edição: a retirar, entregue pela portaria (com nome), rev
     beneficio_id: lido.beneficios[0].id,
   });
   d = (await admin.get(rota)).json;
-  assert.deepEqual(d.indicacao.totais, { a_retirar: 0, entregues: 1, revogadas: 1 });
+  assert.deepEqual(d.indicacao.totais, { a_retirar: 0, entregues: 1, revogadas: 1, expiradas: 0 });
   const entregue = d.indicacao.itens.find((r) => r.status === 'entregue');
   assert.equal(entregue.entregue_por, op.nome, 'quem entregou, pelo nome');
   assert.ok(entregue.entregue_em);

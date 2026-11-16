@@ -311,7 +311,8 @@
               ` · ${c.recompensas_a_retirar} a receber com a organização (entrega pelo Admin, não na portaria)`
             : ` · ${c.recompensas_a_retirar} para retirar`
           : '',
-        c.restam_na_campanha ? '' : ' · as recompensas acabaram',
+        // Sem estoque definido (null) não acaba; 0 acabou.
+        c.restam_na_campanha === 0 ? ' · as recompensas acabaram' : '',
       ),
     );
     const secao = el(
