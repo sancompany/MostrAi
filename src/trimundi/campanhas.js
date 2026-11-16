@@ -541,19 +541,45 @@ async function expirarVencidos() {
 }
 
 // --------------------------------------------------------- Admin (serviço)
-// As telas novas vêm no PR 2; aqui ficam as regras (criar, ativar, pausar,
-// retomar, encerrar, duplicar) que elas vão usar — e que os testes cobrem.
+// Admin → Campanhas (PR 2). Três modalidades na mesma tabela:
+//   · ordem_compra — brinde para as posições de compra (faixas);
+//   · indicacao    — brinde por níveis de indicação;
+//   · desconto     — promoção de preço em ingresso individual (pedido do dono,
+//     16/11/2026): percentual, valor fixo ou preço promocional, com quantidade
+//     promocional. Combos seguem em Admin → Combos (são outra coisa).
+// "Relâmpago" é uma marca de destaque (com fim obrigatório) em ordem de
+// compra e desconto. Toda escrita grava auditoria.
+
+const MODALIDADES = ['ordem_compra', 'indicacao', 'desconto'];
+// O mesmo piso de preço do lote (lotes.preco_centavos >= 500): desconto nunca
+// leva o ingresso abaixo de R$ 5,00. Ingresso grátis é cortesia, não desconto.
+const PRECO_MINIMO = 500;
+// A aplicação do desconto no pedido chega com a migration 018 (PR 4). Até lá,
+// a campanha de desconto pode ser cadastrada, mas não ativada — nada na tela
+// promete um desconto que o checkout ainda não aplica.
+let descontoNoCheckout = false;
+const ligarDescontoNoCheckout = (sim = true) => {
+  descontoNoCheckout = sim;
+};
+
+// Preço final de UM ingresso na campanha de desconto (calculado sempre no
+// servidor). Percentual: arredonda ao centavo (meio para cima).
+function precoComDesconto(c, precoLote) {
+  const p = Number(precoLote);
+  if (c.desconto_tipo === 'percentual') return Math.round((p * (100 - Number(c.desconto_valor))) / 100);
+  if (c.desconto_tipo === 'valor') return p - Number(c.desconto_valor);
+  return Number(c.desconto_valor);
+}
 
 function lerCampanha(d = {}, parcial = false) {
   const tem = (k) => !parcial || Object.hasOwn(d, k);
   const out = {};
-  if (!parcial) out.modalidade = v.escolha(d.modalidade, ['ordem_compra', 'indicacao'], { campo: 'a modalidade' });
+  if (!parcial) out.modalidade = v.escolha(d.modalidade, MODALIDADES, { campo: 'a modalidade' });
   if (tem('nome')) out.nome = v.texto(d.nome, { campo: 'o nome da campanha', obrigatorio: true, max: 80 });
   if (tem('descricao')) out.descricao = v.texto(d.descricao, { campo: 'a descrição', max: 1000 });
   if (tem('regras')) out.regras = v.texto(d.regras, { campo: 'as regras', max: 5000 });
   if (tem('inicio')) out.inicio = v.dataHora(d.inicio, { campo: 'o início' });
   if (tem('fim')) out.fim = v.dataHora(d.fim, { campo: 'o fim' });
-  if (out.inicio && out.fim && out.fim <= out.inicio) throw erro(400, 'O fim precisa ser depois do início.');
   if (tem('prazo_retirada')) out.prazo_retirada = v.dataHora(d.prazo_retirada, { campo: 'o prazo de retirada' });
   for (const k of ['relampago', 'acumula', 'inclui_combos']) if (Object.hasOwn(d, k)) out[k] = v.booleano(d[k]);
   if (Object.hasOwn(d, 'prioridade'))
@@ -568,10 +594,35 @@ function lerCampanha(d = {}, parcial = false) {
       obrigatorio: false,
     });
   }
+  if (Object.hasOwn(d, 'desconto_tipo')) {
+    out.desconto_tipo = d.desconto_tipo
+      ? v.escolha(d.desconto_tipo, ['percentual', 'valor', 'preco'], { campo: 'o tipo de desconto' })
+      : null;
+  }
+  if (Object.hasOwn(d, 'desconto_valor')) {
+    out.desconto_valor = v.inteiro(d.desconto_valor, {
+      campo: 'o valor do desconto',
+      min: 1,
+      max: 5000000,
+      obrigatorio: false,
+    });
+  }
+  if (Object.hasOwn(d, 'quantidade_promocional')) {
+    out.quantidade_promocional = v.inteiro(d.quantidade_promocional, {
+      campo: 'a quantidade promocional',
+      min: 1,
+      max: 100000,
+      obrigatorio: false,
+    });
+  }
   return out;
 }
 
 function lerFaixas(lista, modalidade) {
+  if (modalidade === 'desconto') {
+    if (Array.isArray(lista) && lista.length) throw erro(400, 'Promoção de preço não tem faixas nem níveis.');
+    return [];
+  }
   if (!Array.isArray(lista) || lista.length < 1 || lista.length > 20) {
     throw erro(400, 'A campanha precisa de 1 a 20 faixas ou níveis.');
   }
@@ -590,6 +641,71 @@ function lerFaixas(lista, modalidade) {
       max: 100000000,
     }),
   }));
+}
+
+// Configurações contraditórias são recusadas antes de gravar (o banco ainda
+// confere sobreposição de faixas e níveis crescentes).
+function conferirCoerencia(c, faixas, alvos) {
+  if (c.inicio && c.fim && new Date(c.fim) <= new Date(c.inicio))
+    throw erro(400, 'O fim precisa ser depois do início.');
+  if (c.relampago && !c.fim) throw erro(400, 'Campanha relâmpago precisa de data e hora de encerramento.');
+  if (c.relampago && c.modalidade === 'indicacao')
+    throw erro(400, 'Relâmpago vale para promoção de preço e ordem de compra.');
+  if (c.prazo_retirada) {
+    if (c.modalidade === 'desconto') throw erro(400, 'Promoção de preço não tem prazo de retirada.');
+    if (c.fim && new Date(c.prazo_retirada) < new Date(c.fim)) {
+      throw erro(400, 'O prazo de retirada não pode acabar antes do fim da campanha.');
+    }
+    if (c.inicio && new Date(c.prazo_retirada) <= new Date(c.inicio)) {
+      throw erro(400, 'O prazo de retirada precisa ser depois do início.');
+    }
+  }
+  if (c.modalidade === 'desconto') {
+    if (!c.desconto_tipo || !c.desconto_valor || !c.quantidade_promocional) {
+      throw erro(400, 'Informe o tipo e o valor do desconto e a quantidade promocional.');
+    }
+    if (c.desconto_tipo === 'percentual' && (c.desconto_valor < 1 || c.desconto_valor > 90)) {
+      throw erro(400, 'O desconto percentual vai de 1% a 90%.');
+    }
+    if (!alvos.length) throw erro(400, 'Escolha o tipo de ingresso (e, se quiser, o lote) da promoção.');
+  } else {
+    if (c.desconto_tipo || c.desconto_valor || c.quantidade_promocional) {
+      throw erro(400, 'Desconto só existe na promoção de preço.');
+    }
+  }
+  if (c.modalidade === 'indicacao' && alvos.length) throw erro(400, 'Campanha de indicação não tem tipos ou lotes.');
+  for (const f of faixas) {
+    if (c.modalidade === 'ordem_compra') {
+      if (f.ate < f.de) throw erro(400, 'Em cada faixa, a posição final vem depois da inicial.');
+      if (f.estoque && f.estoque > f.ate - f.de + 1) {
+        throw erro(400, `O estoque da faixa ${f.de}–${f.ate} não pode passar do número de posições dela.`);
+      }
+    }
+  }
+  if (c.modalidade === 'ordem_compra') {
+    const ord = [...faixas].sort((a, b) => a.de - b.de);
+    for (let i = 1; i < ord.length; i++) {
+      if (ord[i].de <= ord[i - 1].ate) throw erro(400, 'As faixas não podem se sobrepor.');
+    }
+  }
+  if (c.modalidade === 'indicacao') {
+    if (faixas.some((f) => f.repete) && faixas.length > 1) {
+      throw erro(400, 'O nível que se repete ("a cada N") é o único da campanha.');
+    }
+    for (let i = 1; i < faixas.length; i++) {
+      if (faixas[i].de <= faixas[i - 1].de) throw erro(400, 'Os níveis de indicação precisam crescer.');
+    }
+  }
+}
+
+function lerAlvos(lista = []) {
+  if (!Array.isArray(lista)) throw erro(400, 'alvos inválidos');
+  return lista.map((a) => {
+    const categoria = a?.categoria_id ? v.id(a.categoria_id, 'tipo') : null;
+    const lote = a?.lote_id ? v.id(a.lote_id, 'lote') : null;
+    if (!categoria && !lote) throw erro(400, 'Alvo sem tipo nem lote.');
+    return { categoria_id: categoria, lote_id: lote };
+  });
 }
 
 async function gravarFaixas(cliente, campanhaId, edicaoId, faixas) {
@@ -623,21 +739,46 @@ async function gravarFaixas(cliente, campanhaId, edicaoId, faixas) {
 
 async function gravarAlvos(cliente, campanhaId, edicaoId, alvos = []) {
   for (const a of alvos) {
-    const categoria = a.categoria_id ? v.id(a.categoria_id, 'tipo') : null;
-    const lote = a.lote_id ? v.id(a.lote_id, 'lote') : null;
-    if (!categoria && !lote) throw erro(400, 'Alvo sem tipo nem lote.');
     const { rows } = await cliente.query(
       `SELECT 1 FROM categorias c LEFT JOIN lotes l ON l.id = $3
         WHERE c.edicao_id = $1 AND ($2::bigint IS NULL OR c.id = $2)
           AND ($3::bigint IS NULL OR l.categoria_id = c.id) LIMIT 1`,
-      [edicaoId, categoria, lote],
+      [edicaoId, a.categoria_id, a.lote_id],
     );
     if (!rows.length) throw erro(400, 'Tipo ou lote que não é desta edição.');
     await cliente.query('INSERT INTO campanha_alvos (campanha_id, categoria_id, lote_id) VALUES ($1, $2, $3)', [
       campanhaId,
-      categoria,
-      lote,
+      a.categoria_id,
+      a.lote_id,
     ]);
+  }
+}
+
+// Lotes que a promoção de preço alcança, com o estoque de agora.
+async function lotesDoDesconto(cliente, campanhaId) {
+  const { rows } = await cliente.query(
+    `SELECT DISTINCT l.id, l.categoria_id, l.ordem, l.preco_centavos, l.quantidade, l.encerrado_em, c.nome AS tipo
+       FROM campanha_alvos a
+       JOIN lotes l ON (a.lote_id IS NOT NULL AND l.id = a.lote_id) OR (a.lote_id IS NULL AND l.categoria_id = a.categoria_id)
+       JOIN categorias c ON c.id = l.categoria_id
+      WHERE a.campanha_id = $1
+      ORDER BY l.categoria_id, l.ordem`,
+    [campanhaId],
+  );
+  return rows;
+}
+
+// Preço final válido em todos os lotes alcançados: abaixo do preço do lote e
+// nunca abaixo do piso.
+async function conferirPrecos(cliente, c) {
+  for (const l of await lotesDoDesconto(cliente, c.id)) {
+    const final = precoComDesconto(c, l.preco_centavos);
+    if (final >= Number(l.preco_centavos)) {
+      throw erro(400, `O preço promocional precisa ser menor que o do ${l.ordem}º lote de ${l.tipo}.`);
+    }
+    if (final < PRECO_MINIMO) {
+      throw erro(400, `Com esse desconto, o ${l.ordem}º lote de ${l.tipo} ficaria abaixo de R$ 5,00.`);
+    }
   }
 }
 
@@ -654,16 +795,25 @@ function ativaR1(err) {
   throw err;
 }
 
+async function edicaoParaCampanha(cliente, edicaoId) {
+  const { rows } = await cliente.query('SELECT id, status FROM edicoes WHERE id = $1 FOR UPDATE', [edicaoId]);
+  if (!rows[0]) throw erro(404, 'edição não encontrada');
+  if (rows[0].status === 'encerrado') throw erro(409, 'Edição encerrada fica só para consulta.');
+  return rows[0];
+}
+
 async function criar(edicaoId, dados, autor) {
   const c = lerCampanha(dados);
   const faixas = lerFaixas(dados.faixas, c.modalidade);
+  const alvos = c.modalidade === 'indicacao' ? lerAlvos(dados.alvos || []) : lerAlvos(dados.alvos);
+  conferirCoerencia(c, faixas, alvos);
   return emTransacao(async (cliente) => {
-    const { rows: ed } = await cliente.query('SELECT id FROM edicoes WHERE id = $1 FOR UPDATE', [edicaoId]);
-    if (!ed[0]) throw erro(404, 'edição não encontrada');
+    await edicaoParaCampanha(cliente, edicaoId);
     const { rows } = await cliente.query(
       `INSERT INTO campanhas (edicao_id, modalidade, nome, descricao, regras, inicio, fim, relampago, acumula,
-                              prioridade, escada, limite_por_pessoa, prazo_retirada, inclui_combos)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+                              prioridade, escada, limite_por_pessoa, prazo_retirada, inclui_combos,
+                              desconto_tipo, desconto_valor, quantidade_promocional)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
       [
         edicaoId,
         c.modalidade,
@@ -679,12 +829,148 @@ async function criar(edicaoId, dados, autor) {
         c.limite_por_pessoa ?? null,
         c.prazo_retirada,
         c.inclui_combos ?? true,
+        c.desconto_tipo ?? null,
+        c.desconto_valor ?? null,
+        c.quantidade_promocional ?? null,
       ],
     );
     const id = rows[0].id;
     await gravarFaixas(cliente, id, edicaoId, faixas);
-    if (c.modalidade === 'ordem_compra') await gravarAlvos(cliente, id, edicaoId, dados.alvos);
+    if (c.modalidade !== 'indicacao') await gravarAlvos(cliente, id, edicaoId, alvos);
+    if (c.modalidade === 'desconto') await conferirPrecos(cliente, { ...c, id });
     await auditar(cliente, autor, 'campanha_criada', 'campanha', id, { edicao_id: edicaoId, modalidade: c.modalidade });
+    return obter(id, cliente);
+  });
+}
+
+// Campanha "em uso": já deu posição, prêmio, conversão ou desconto. A partir
+// daí, a configuração que decide quem ganha o quê não muda (justiça).
+async function emUso(cliente, id) {
+  const { rows } = await cliente.query(
+    `SELECT EXISTS (SELECT 1 FROM campanha_posicoes WHERE campanha_id = $1)
+         OR EXISTS (SELECT 1 FROM campanha_premios WHERE campanha_id = $1)
+         OR EXISTS (SELECT 1 FROM campanha_indicacoes WHERE campanha_id = $1)
+         OR ${usoDeDescontoSql('$1')} AS uso`,
+    [id],
+  );
+  return rows[0].uso;
+}
+// Trocado na 018 (PR 4), quando a reserva passa a guardar a campanha.
+let usoDeDescontoSql = () => 'false';
+const definirUsoDeDesconto = (fn) => {
+  usoDeDescontoSql = fn;
+};
+
+const EDITAVEIS_EM_USO = new Set([
+  'nome',
+  'descricao',
+  'regras',
+  'fim',
+  'prazo_retirada',
+  'relampago',
+  'quantidade_promocional',
+]);
+
+async function atualizar(id, dados, autor) {
+  const novo = lerCampanha(dados, true);
+  delete novo.modalidade;
+  const mudaFaixas = Object.hasOwn(dados, 'faixas');
+  const mudaAlvos = Object.hasOwn(dados, 'alvos');
+  const estoques = Object.hasOwn(dados, 'estoques') ? dados.estoques : null; // { faixa_id: estoque } — só para mais
+  return emTransacao(async (cliente) => {
+    const { rows } = await cliente.query('SELECT * FROM campanhas WHERE id = $1', [id]);
+    const atual = rows[0];
+    if (!atual) throw erro(404, 'campanha não encontrada');
+    await cliente.query('SELECT 1 FROM edicoes WHERE id = $1 FOR UPDATE', [atual.edicao_id]);
+    await cliente.query('SELECT 1 FROM campanhas WHERE id = $1 FOR UPDATE', [id]);
+    if (atual.status === 'encerrada') throw erro(409, 'Campanha encerrada fica só para consulta.');
+    const usada = await emUso(cliente, id);
+    const campos = Object.keys(novo);
+    if (usada) {
+      const travados = campos.filter((k) => !EDITAVEIS_EM_USO.has(k));
+      if (travados.length || mudaFaixas || mudaAlvos) {
+        throw erro(
+          409,
+          'Esta campanha já está em uso: faixas, níveis, alvos, desconto e regras de acumulação não mudam mais. Dá para mudar nome, descrição, regulamento, aumentar estoques e prorrogar o fim.',
+          { codigo: 'campanha_em_uso' },
+        );
+      }
+      for (const k of ['fim', 'prazo_retirada']) {
+        if (k in novo && atual[k] && (!novo[k] || novo[k] < new Date(atual[k]))) {
+          throw erro(409, 'Com a campanha em uso, o fim e o prazo de retirada só podem ser prorrogados.');
+        }
+      }
+      if ('quantidade_promocional' in novo && novo.quantidade_promocional < atual.quantidade_promocional) {
+        throw erro(409, 'Com a campanha em uso, a quantidade promocional só pode aumentar.');
+      }
+    }
+    if ('regras' in novo && novo.regras !== atual.regras && atual.status === 'ativa') {
+      throw erro(409, 'Pause a campanha antes de mudar o regulamento — o texto novo precisa de nova revisão jurídica.');
+    }
+    const faixasAtuais = (
+      await cliente.query('SELECT * FROM campanha_faixas WHERE campanha_id = $1 ORDER BY ordem', [id])
+    ).rows;
+    const faixas = mudaFaixas ? lerFaixas(dados.faixas, atual.modalidade) : faixasAtuais;
+    const alvos = mudaAlvos
+      ? lerAlvos(dados.alvos)
+      : (await cliente.query('SELECT categoria_id, lote_id FROM campanha_alvos WHERE campanha_id = $1', [id])).rows;
+    const final = { ...atual, ...novo };
+    conferirCoerencia(final, faixas, alvos);
+    if (campos.length) {
+      const sets = campos.map((k, i) => `${k} = $${i + 2}`);
+      // Regulamento mudou: a revisão jurídica anterior não vale mais (C7).
+      if ('regras' in novo && novo.regras !== atual.regras) {
+        sets.push('regras_revisadas_em = NULL', 'regras_revisadas_por = NULL');
+      }
+      await cliente.query(`UPDATE campanhas SET ${sets.join(', ')}, atualizado_em = now() WHERE id = $1`, [
+        id,
+        ...campos.map((k) => novo[k]),
+      ]);
+    }
+    if (mudaFaixas) {
+      await cliente.query('DELETE FROM campanha_faixas WHERE campanha_id = $1', [id]);
+      await gravarFaixas(cliente, id, atual.edicao_id, faixas);
+    }
+    if (mudaAlvos) {
+      await cliente.query('DELETE FROM campanha_alvos WHERE campanha_id = $1', [id]);
+      await gravarAlvos(cliente, id, atual.edicao_id, alvos);
+    }
+    if (estoques) {
+      for (const [faixaId, valor] of Object.entries(estoques)) {
+        const f = faixasAtuais.find((x) => Number(x.id) === Number(faixaId));
+        if (!f) throw erro(400, 'faixa que não é desta campanha');
+        const e = v.inteiro(valor, { campo: 'o estoque', min: 1, max: 1000000 });
+        if (f.estoque && e < f.estoque) throw erro(409, 'O estoque de uma faixa só pode aumentar.');
+        if (f.ate && e > f.ate - f.de + 1) throw erro(400, 'O estoque não pode passar do número de posições da faixa.');
+        await cliente.query('UPDATE campanha_faixas SET estoque = $2 WHERE id = $1', [f.id, e]);
+      }
+    }
+    if (atual.modalidade === 'desconto') await conferirPrecos(cliente, final);
+    await auditar(cliente, autor, 'campanha_alterada', 'campanha', id, {
+      campos: [
+        ...campos,
+        ...(mudaFaixas ? ['faixas'] : []),
+        ...(mudaAlvos ? ['alvos'] : []),
+        ...(estoques ? ['estoques'] : []),
+      ],
+    });
+    return obter(id, cliente);
+  });
+}
+
+// C7: o Admin registra que o regulamento passou pela revisão jurídica (quem
+// revisou). Sem isso a campanha não ativa. Mudar o texto apaga a marca.
+async function marcarRegrasRevisadas(id, dados, autor) {
+  const revisor = v.texto(dados?.revisor, { campo: 'quem revisou', obrigatorio: true, min: 3, max: 200 });
+  return emTransacao(async (cliente) => {
+    const { rows } = await cliente.query('SELECT * FROM campanhas WHERE id = $1 FOR UPDATE', [id]);
+    if (!rows[0]) throw erro(404, 'campanha não encontrada');
+    if (!rows[0].regras.trim()) throw erro(409, 'Escreva o regulamento antes de marcar a revisão.');
+    await cliente.query(
+      'UPDATE campanhas SET regras_revisadas_em = now(), regras_revisadas_por = $2, atualizado_em = now() WHERE id = $1',
+      [id, revisor],
+    );
+    await auditar(cliente, autor, 'campanha_regras_revisadas', 'campanha', id, { revisor });
     return obter(id, cliente);
   });
 }
@@ -694,6 +980,54 @@ const TRANSICOES = {
   pausar: { de: ['ativa'], para: 'pausada' },
   retomar: { de: ['pausada'], para: 'ativa' },
   encerrar: { de: ['rascunho', 'ativa', 'pausada'], para: 'encerrada' },
+};
+
+// Antes de ativar (ou retomar): configuração completa e coerente, regulamento
+// revisado (C7), preços e quantidade promocional que cabem no estoque real.
+async function conferirAtivacao(cliente, c) {
+  const { rows: f } = await cliente.query('SELECT * FROM campanha_faixas WHERE campanha_id = $1', [c.id]);
+  if (c.modalidade !== 'desconto' && !f.length) throw erro(409, 'A campanha precisa de ao menos uma faixa ou nível.');
+  if (!String(c.regras || '').trim() || !c.regras_revisadas_em) {
+    throw erro(409, 'O regulamento precisa estar escrito e marcado como revisado pelo jurídico antes de ativar (C7).', {
+      codigo: 'regulamento_sem_revisao',
+    });
+  }
+  if (c.fim && new Date(c.fim) <= new Date()) throw erro(409, 'O fim desta campanha já passou.');
+  if (c.modalidade === 'desconto') {
+    if (!descontoNoCheckout) {
+      throw erro(
+        409,
+        'A promoção de preço ainda não pode ser ativada: o desconto no checkout entra na próxima etapa.',
+        {
+          codigo: 'desconto_indisponivel',
+        },
+      );
+    }
+    await conferirPrecos(cliente, c);
+    const lotes = await lotesDoDesconto(cliente, c.id);
+    const { carregarLotes, estadoDaCategoria } = require('./disponibilidade');
+    const porCat = await carregarLotes(cliente, [...new Set(lotes.map((l) => Number(l.categoria_id)))]);
+    let livres = 0;
+    for (const l of lotes) {
+      const e = estadoDaCategoria(porCat.get(Number(l.categoria_id)) || []).lotes.find(
+        (x) => Number(x.id) === Number(l.id),
+      );
+      if (e && !e.fechado) livres += e.disponivel;
+    }
+    const usados = await usosDoDesconto(cliente, c.id);
+    if (c.quantidade_promocional - usados > livres) {
+      throw erro(
+        409,
+        `A quantidade promocional (${c.quantidade_promocional - usados} restantes) passa do estoque real dos lotes (${livres}). Diminua a quantidade ou aumente os lotes.`,
+        { codigo: 'promocao_acima_do_estoque' },
+      );
+    }
+  }
+}
+// Ingressos que já usaram o desconto (pago e reservas vivas). Trocado na 018.
+let usosDoDesconto = async () => 0;
+const definirUsosDoDesconto = (fn) => {
+  usosDoDesconto = fn;
 };
 
 async function mudarStatus(id, acao, autor) {
@@ -710,12 +1044,7 @@ async function mudarStatus(id, acao, autor) {
     if (!t.de.includes(atual[0].status)) {
       throw erro(409, `Não dá para ${acao} uma campanha ${atual[0].status}.`);
     }
-    if (t.para === 'ativa') {
-      const { rows: f } = await cliente.query('SELECT count(*)::int AS n FROM campanha_faixas WHERE campanha_id = $1', [
-        id,
-      ]);
-      if (!f[0].n) throw erro(409, 'A campanha precisa de ao menos uma faixa ou nível.');
-    }
+    if (t.para === 'ativa') await conferirAtivacao(cliente, atual[0]);
     await cliente
       .query(
         `UPDATE campanhas SET status = $2, atualizado_em = now(),
@@ -728,17 +1057,21 @@ async function mudarStatus(id, acao, autor) {
   });
 }
 
-// Duplicar: a configuração vira um rascunho novo, sem posições nem prêmios.
+// Duplicar: a configuração vira um rascunho novo, sem posições, prêmios nem
+// a marca de revisão jurídica (o texto copiado precisa ser revisto).
 async function duplicar(id, autor) {
   return emTransacao(async (cliente) => {
     const { rows } = await cliente.query('SELECT * FROM campanhas WHERE id = $1', [id]);
     const c = rows[0];
     if (!c) throw erro(404, 'campanha não encontrada');
+    await edicaoParaCampanha(cliente, c.edicao_id);
     const { rows: novo } = await cliente.query(
       `INSERT INTO campanhas (edicao_id, modalidade, nome, descricao, regras, inicio, fim, relampago, acumula,
-                              prioridade, escada, limite_por_pessoa, prazo_retirada, inclui_combos)
+                              prioridade, escada, limite_por_pessoa, prazo_retirada, inclui_combos,
+                              desconto_tipo, desconto_valor, quantidade_promocional)
        SELECT edicao_id, modalidade, left('Cópia de ' || nome, 80), descricao, regras, inicio, fim, relampago, acumula,
-              prioridade, escada, limite_por_pessoa, prazo_retirada, inclui_combos
+              prioridade, escada, limite_por_pessoa, prazo_retirada, inclui_combos,
+              desconto_tipo, desconto_valor, quantidade_promocional
          FROM campanhas WHERE id = $1 RETURNING id`,
       [id],
     );
@@ -768,6 +1101,108 @@ async function obter(id, cliente = null) {
   return { ...rows[0], faixas, alvos };
 }
 
+// Lista do Admin: todas as campanhas da edição, com os números de cada uma.
+async function listar(edicaoId) {
+  const { rows } = await consultar(
+    `SELECT c.*,
+            (SELECT count(*)::int FROM campanha_posicoes WHERE campanha_id = c.id) AS posicoes,
+            (SELECT count(*)::int FROM campanha_indicacoes WHERE campanha_id = c.id AND valida) AS conversoes,
+            (SELECT count(*)::int FROM campanha_premios WHERE campanha_id = c.id AND status = 'concedido') AS a_retirar,
+            (SELECT count(*)::int FROM campanha_premios WHERE campanha_id = c.id AND status = 'entregue') AS entregues,
+            (SELECT count(*)::int FROM campanha_premios WHERE campanha_id = c.id AND status = 'revogado') AS revogados,
+            (SELECT count(*)::int FROM campanha_premios WHERE campanha_id = c.id AND status = 'expirado') AS expirados,
+            (SELECT COALESCE(sum(valor_centavos), 0)::bigint FROM campanha_premios WHERE campanha_id = c.id AND status IN ('concedido', 'entregue')) AS custo_centavos
+       FROM campanhas c WHERE c.edicao_id = $1
+      ORDER BY CASE c.status WHEN 'ativa' THEN 0 WHEN 'pausada' THEN 1 WHEN 'rascunho' THEN 2 ELSE 3 END, c.id DESC`,
+    [edicaoId],
+  );
+  const ids = rows.map((r) => Number(r.id));
+  const faixas = await faixasDe({ query: (s, p) => consultar(s, p) }, ids);
+  const { rows: porFaixa } = ids.length
+    ? await consultar(
+        `SELECT faixa_id, count(*)::int AS concedidas FROM campanha_premios
+          WHERE campanha_id = ANY($1::bigint[]) GROUP BY faixa_id`,
+        [ids],
+      )
+    : { rows: [] };
+  const conc = new Map(porFaixa.map((x) => [Number(x.faixa_id), x.concedidas]));
+  const alvos = await alvosDe({ query: (s, p) => consultar(s, p) }, ids);
+  const lista = [];
+  for (const c of rows) {
+    const extra =
+      c.modalidade === 'desconto' ? { usados: await usosDoDesconto({ query: (s, p) => consultar(s, p) }, c.id) } : {};
+    lista.push({
+      ...c,
+      ...extra,
+      faixas: faixas.get(Number(c.id)).map((f) => ({ ...f, concedidas: conc.get(Number(f.id)) || 0 })),
+      alvos: alvos.get(Number(c.id)).map((a) => ({ categoria_id: a.categoria_id, lote_id: a.lote_id })),
+    });
+  }
+  return lista;
+}
+
+// Detalhe: posições, prêmios e o histórico de cada prêmio (sem CPF nem e-mail).
+async function detalhe(id) {
+  const c = await obter(id);
+  const { rows: posicoes } = await consultar(
+    `SELECT po.posicao, po.resultado, po.confirmado_em, po.confirmado_no_checkout_em, po.ingresso_id,
+            i.codigo_curto, i.status AS ingresso_status, cat.nome AS tipo, pa.nome AS titular,
+            v.nome AS vencedora, f.premio AS faixa_premio
+       FROM campanha_posicoes po JOIN ingressos i ON i.id = po.ingresso_id
+       JOIN categorias cat ON cat.id = i.categoria_id JOIN participantes pa ON pa.id = i.participante_id
+       LEFT JOIN campanhas v ON v.id = po.vencedora_id LEFT JOIN campanha_faixas f ON f.id = po.faixa_id
+      WHERE po.campanha_id = $1 ORDER BY po.posicao LIMIT 2000`,
+    [id],
+  );
+  const { rows: premios } = await consultar(
+    `SELECT pr.id, pr.premio, pr.status, pr.motivo, pr.concedido_em, pr.entregue_em, pr.so_admin, pr.repeticao,
+            CASE WHEN pr.entregue_por LIKE 'operador:%' THEN (SELECT nome FROM operadores WHERE 'operador:' || operadores.id = pr.entregue_por)
+                 WHEN pr.entregue_por IS NULL THEN NULL ELSE 'Admin' END AS entregue_por,
+            f.de AS nivel, po.posicao, i.codigo_curto,
+            COALESCE(pa.nome, cl.nome, o.nome) AS de_quem,
+            COALESCE((SELECT json_agg(json_build_object('acao', e.acao, 'motivo', e.motivo, 'em', e.em,
+                        'autor', CASE WHEN e.autor LIKE 'operador:%' THEN 'portaria' WHEN e.autor IN ('pagamento', 'sistema', 'migracao') THEN e.autor ELSE 'Admin' END)
+                        ORDER BY e.id) FROM campanha_premio_eventos e WHERE e.premio_id = pr.id), '[]') AS historico
+       FROM campanha_premios pr JOIN campanha_faixas f ON f.id = pr.faixa_id
+       LEFT JOIN campanha_posicoes po ON po.id = pr.posicao_id
+       LEFT JOIN ingressos i ON i.id = pr.ingresso_id LEFT JOIN participantes pa ON pa.id = i.participante_id
+       LEFT JOIN indicadores ind ON ind.id = pr.indicador_id
+       LEFT JOIN clientes cl ON cl.id = ind.cliente_id LEFT JOIN operadores o ON o.id = ind.operador_id
+      WHERE pr.campanha_id = $1 ORDER BY (pr.status = 'concedido') DESC, pr.id DESC LIMIT 2000`,
+    [id],
+  );
+  const extra =
+    c.modalidade === 'desconto' ? { usados: await usosDoDesconto({ query: (s, p) => consultar(s, p) }, id) } : {};
+  return { ...c, ...extra, em_uso: await emUso({ query: (s, p) => consultar(s, p) }, id), posicoes, premios };
+}
+
+function celula(valor) {
+  const t = String(valor ?? '');
+  const seguro = /^[=+\-@\t\r]/.test(t) ? `'${t}` : t;
+  return `"${seguro.replace(/"/g, '""')}"`;
+}
+
+async function posicoesCsv(id) {
+  const d = await detalhe(id);
+  const linhas = [
+    ['posicao', 'resultado', 'vencedora', 'codigo', 'tipo', 'titular', 'ingresso', 'confirmado_em', 'checkout_em'],
+  ];
+  for (const p of d.posicoes) {
+    linhas.push([
+      p.posicao,
+      p.resultado,
+      p.vencedora || '',
+      p.codigo_curto,
+      p.tipo,
+      p.titular || '',
+      p.ingresso_status,
+      new Date(p.confirmado_em).toISOString(),
+      p.confirmado_no_checkout_em ? new Date(p.confirmado_no_checkout_em).toISOString() : '',
+    ]);
+  }
+  return `﻿${linhas.map((l) => l.map(celula).join(';')).join('\r\n')}\r\n`;
+}
+
 module.exports = {
   aoConfirmar,
   revisarPedido,
@@ -775,9 +1210,19 @@ module.exports = {
   entregarPremio,
   expirarVencidos,
   criar,
+  atualizar,
+  marcarRegrasRevisadas,
   mudarStatus,
   duplicar,
   obter,
+  listar,
+  detalhe,
+  posicoesCsv,
+  precoComDesconto,
+  ligarDescontoNoCheckout,
+  definirUsoDeDesconto,
+  definirUsosDoDesconto,
   brindeDe,
   DE_PE,
+  PRECO_MINIMO,
 };

@@ -30,6 +30,7 @@ Storage, celular): isso é a homologação de `pendencias.md`.
 | Desempenho de vendas — lotes do evento (15/11/2026, RN-T40): barras geral e por lote, cores e alertas configuráveis, esgotado, resumo | feito | `desempenho-lotes.js`, aba Desempenho de vendas, migration 014 | `trimundi-desempenho-lotes` |
 | Admin da TICK reorganizado (15/11/2026, RN-T41): Visão geral, Eventos, Ingressos, Lotes, Combos, Campanhas, Indicações, Recompensas, Participantes, Portaria | feito | `admin/trimundi.js`, `admin/index.page.js`, `recompensas.js` | `trimundi-recompensas` + navegador |
 | Campanhas — motor (16/11/2026, RN-T42): posições imutáveis, prêmios idempotentes, acumulação (C1), níveis (C2), pausa (C6), R1–R3; migrations 015/016; sem telas novas | feito | `campanhas.js`, `pagamentos.js`, `indicacao.js` | `trimundi-campanhas` |
+| Admin → Campanhas (16/11/2026, RN-T43): todas as modalidades, promoção de preço em ingresso individual (cadastro), C7, travas, duplicar, detalhe e CSV; aviso C5; migration 017 | feito (ativação do desconto no PR 4) | `campanhas.js`, `admin/trimundi.js` | `trimundi-campanhas-admin` + navegador |
 | Login próprio do operador (`/ticket/entrar`); login da Mostraí restaurado | feito | `rotas/operador.js` | `trimundi-checkin` |
 | Um pedido aguardando pagamento por conta e edição (sem reter estoque) | feito | `pedidos.js` | `trimundi-conta` |
 | Página de erro e 404 próprias em `/ticket` | feito | `index.js`, `paginas/erro.html` | `trimundi-identidade` |

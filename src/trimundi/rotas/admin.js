@@ -163,6 +163,38 @@ router.post('/admin/trimundi/titular/anonimizar', async (req, res) =>
 );
 
 // Operadores (T5)
+// Campanhas (PR 2): todas as modalidades — ordem de compra, indicação e
+// promoção de preço em ingresso individual. As rotas antigas logo abaixo
+// (só indicação, formato "a cada N") seguem para compatibilidade.
+const campanhasSrv = require('../campanhas');
+router.get('/admin/trimundi/edicoes/:id/campanhas/todas', async (req, res) =>
+  res.json(await campanhasSrv.listar(id(req))),
+);
+router.post('/admin/trimundi/edicoes/:id/campanhas/nova', async (req, res) =>
+  res.status(201).json(await campanhasSrv.criar(id(req), req.body || {}, autor(req))),
+);
+router.get('/admin/trimundi/campanhas/:id/detalhe', async (req, res) => res.json(await campanhasSrv.detalhe(id(req))));
+router.post('/admin/trimundi/campanhas/:id/configurar', async (req, res) =>
+  res.json(await campanhasSrv.atualizar(id(req), req.body || {}, autor(req))),
+);
+router.post('/admin/trimundi/campanhas/:id/acao/:acao', async (req, res) => {
+  const acao = String(req.params.acao);
+  if (!['ativar', 'pausar', 'retomar', 'encerrar'].includes(acao)) throw erro(400, 'ação inválida');
+  res.json(await campanhasSrv.mudarStatus(id(req), acao, autor(req)));
+});
+router.post('/admin/trimundi/campanhas/:id/duplicar', async (req, res) =>
+  res.status(201).json(await campanhasSrv.duplicar(id(req), autor(req))),
+);
+router.post('/admin/trimundi/campanhas/:id/regras-revisadas', async (req, res) =>
+  res.json(await campanhasSrv.marcarRegrasRevisadas(id(req), req.body || {}, autor(req))),
+);
+router.get('/admin/trimundi/campanhas/:id/posicoes.csv', async (req, res) => {
+  const csv = await campanhasSrv.posicoesCsv(id(req));
+  res.set('Content-Type', 'text/csv; charset=utf-8');
+  res.set('Content-Disposition', `attachment; filename="campanha-${id(req)}-posicoes.csv"`);
+  res.send(csv);
+});
+
 // Indicação: campanhas por edição, quem indicou e a entrega da recompensa.
 router.get('/admin/trimundi/edicoes/:id/campanhas', async (req, res) =>
   res.json(await indicacao.listarCampanhas(id(req))),

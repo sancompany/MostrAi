@@ -57,12 +57,18 @@ async function ordemCompra(pronta, dados = {}, { ativar = true } = {}) {
     {
       modalidade: 'ordem_compra',
       nome: dados.nome || `Primeiros ${apoio.sufixo()}`,
+      regras: 'Regulamento de teste.',
       faixas: dados.faixas || [{ de: 1, ate: 20, premio: 'Copão', custo_unitario_centavos: 1500 }],
       ...dados,
     },
     AUTOR,
   );
-  return ativar ? campanhas.mudarStatus(c.id, 'ativar', AUTOR) : c;
+  return ativar ? ativarRevisada(c.id) : c;
+}
+// C7: só ativa com regulamento escrito e marcado como revisado pelo jurídico.
+async function ativarRevisada(id) {
+  await campanhas.marcarRegrasRevisadas(id, { revisor: 'Jurídico de teste' }, AUTOR);
+  return campanhas.mudarStatus(id, 'ativar', AUTOR);
 }
 async function porIndicacao(pronta, dados = {}, { ativar = true } = {}) {
   const c = await campanhas.criar(
@@ -70,6 +76,7 @@ async function porIndicacao(pronta, dados = {}, { ativar = true } = {}) {
     {
       modalidade: 'indicacao',
       nome: dados.nome || `Indique ${apoio.sufixo()}`,
+      regras: 'Regulamento de teste.',
       faixas: dados.faixas || [
         { de: 2, premio: 'Copão', custo_unitario_centavos: 1500 },
         { de: 4, premio: 'Camiseta', custo_unitario_centavos: 4000 },
@@ -78,7 +85,7 @@ async function porIndicacao(pronta, dados = {}, { ativar = true } = {}) {
     },
     AUTOR,
   );
-  return ativar ? campanhas.mudarStatus(c.id, 'ativar', AUTOR) : c;
+  return ativar ? ativarRevisada(c.id) : c;
 }
 const posicoes = async (campanhaId) =>
   (
@@ -128,6 +135,7 @@ test('1. R1 — duas ativações simultâneas de campanhas de indicação não a
   const pronta = await edicao();
   const a = await porIndicacao(pronta, {}, { ativar: false });
   const b = await porIndicacao(pronta, {}, { ativar: false });
+  for (const x of [a, b]) await campanhas.marcarRegrasRevisadas(x.id, { revisor: 'Jurídico de teste' }, AUTOR);
   const r = await Promise.allSettled([
     campanhas.mudarStatus(a.id, 'ativar', AUTOR),
     campanhas.mudarStatus(b.id, 'ativar', AUTOR),

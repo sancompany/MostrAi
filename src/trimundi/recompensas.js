@@ -15,7 +15,7 @@ const quemEntregou = (coluna) => `CASE WHEN ${coluna} IS NULL THEN NULL
   ELSE 'Admin' END`;
 
 async function daEdicao(edicaoId) {
-  const [{ rows: indicacao }, { rows: beneficios }] = await Promise.all([
+  const [{ rows: indicacao }, { rows: beneficios }, { rows: ordem }] = await Promise.all([
     consultar(
       `SELECT r.id,
               CASE r.status WHEN 'concedido' THEN 'concedida' WHEN 'revogado' THEN 'revogada'
@@ -45,7 +45,22 @@ async function daEdicao(edicaoId) {
         ORDER BY min(ib.nome)`,
       [edicaoId],
     ),
+    // Brindes de campanha por ordem de compra (primeiros N): do ingresso.
+    consultar(
+      `SELECT r.id, r.status, r.motivo, r.concedido_em, r.entregue_em, r.revogado_em, r.expirado_em,
+              ${quemEntregou('r.entregue_por')} AS entregue_por, ca.nome AS campanha, r.premio AS recompensa,
+              po.posicao, i.codigo_curto, i.status AS ingresso_status, pa.nome AS titular
+         FROM campanha_premios r
+         JOIN campanhas ca ON ca.id = r.campanha_id AND ca.modalidade = 'ordem_compra'
+         JOIN ingressos i ON i.id = r.ingresso_id JOIN participantes pa ON pa.id = i.participante_id
+         LEFT JOIN campanha_posicoes po ON po.id = r.posicao_id
+        WHERE ca.edicao_id = $1
+        ORDER BY (r.status = 'concedido') DESC, r.concedido_em DESC, r.id DESC
+        LIMIT 1000`,
+      [edicaoId],
+    ),
   ]);
+  const contaOrdem = (st) => ordem.filter((r) => r.status === st).length;
   const conta = (s) => indicacao.filter((r) => r.status === s).length;
   // Onde a recompensa sai (decisão do dono, 15/11/2026): a do cliente, na
   // portaria (ingresso principal) ou pelo Admin; a do operador indicador —
@@ -62,6 +77,15 @@ async function daEdicao(edicaoId) {
       itens: indicacao,
     },
     beneficios: beneficios.map((b) => ({ ...b, pendentes: b.total - b.entregues })),
+    ordem_compra: {
+      totais: {
+        a_retirar: contaOrdem('concedido'),
+        entregues: contaOrdem('entregue'),
+        revogadas: contaOrdem('revogado'),
+        expiradas: contaOrdem('expirado'),
+      },
+      itens: ordem,
+    },
   };
 }
 

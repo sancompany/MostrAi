@@ -213,3 +213,9 @@ Desenho completo e decisões: `docs/trimundi/specs/2026-11-15-campanhas-desenho.
 - As tabelas antigas `campanhas_indicacao`, `indicacoes` e
   `recompensas_indicacao` ficam **intactas e sem uso** (016 copiou os dados
   com os mesmos ids). Remoção só com autorização do dono.
+
+- **017 (16/11/2026)** — `campanhas.modalidade` passa a aceitar `desconto`
+  (promoção de preço em ingresso individual), com `desconto_tipo`
+  (`percentual` 1–90 \| `valor` em centavos \| `preco` final em centavos),
+  `desconto_valor` e `quantidade_promocional`; restrição de coerência
+  (campanha de desconto tem os três; as outras, nenhum).

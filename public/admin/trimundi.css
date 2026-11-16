@@ -99,7 +99,9 @@
 }
 
 .tm-lote,
-.tm-item {
+.tm-item,
+.tm-faixa,
+.tm-alvo {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) auto;
   align-items: end;
@@ -684,4 +686,44 @@
 
 .tm-cor-borda-vermelho {
   border-left-color: #dc2626;
+}
+
+/* Campanhas (PR 2): escolha da modalidade e regulamento. */
+.tm-opcoes {
+  display: grid;
+  gap: 10px;
+}
+
+.tm-opcao {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tm-opcao:hover,
+.tm-opcao:focus-visible {
+  border-color: var(--brand);
+}
+
+.tm-opcao span {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.tm-regulamento {
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px 12px;
+  margin: 8px 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-alt);
+  font-size: 0.9rem;
 }
