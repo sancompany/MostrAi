@@ -451,6 +451,23 @@
             ),
           )
         : null,
+      i.premios_campanha?.length
+        ? el(
+            'div',
+            { class: 'beneficios-titular' },
+            el('span', { class: 'rotulo-beneficio', text: 'Brinde de campanha (posição de compra)' }),
+            el(
+              'ul',
+              { class: 'chips' },
+              i.premios_campanha.map((b) =>
+                el('li', {
+                  class: 'chip destaque',
+                  text: `${b.nome} — ${situacaoDoPremio(b)}${b.posicao ? ` · posição ${b.posicao}` : ''}`,
+                }),
+              ),
+            ),
+          )
+        : null,
       doTitular.length
         ? el(
             'div',
@@ -555,6 +572,150 @@
   // Área do operador (11/11/2026): aparece quando a conta está ligada a um
   // operador — os eventos em que ele trabalha na portaria, com o desempenho
   // de indicação de cada um separado, e o botão da portaria. Mesmo login.
+  // Situação de um prêmio, em palavras do cliente.
+  function situacaoDoPremio(b) {
+    if (b.status === 'entregue') return `JÁ RETIRADO${b.entregue_em ? ` em ${dataCurta(b.entregue_em)}` : ''}`;
+    if (b.status === 'expirado') return 'EXPIRADO (prazo de retirada vencido)';
+    if (b.status === 'revogado') return `REVOGADO${b.motivo ? ` — ${b.motivo}` : ''}`;
+    return `LIBERADO — retire na portaria${b.prazo_retirada ? ` até ${dataCurta(b.prazo_retirada)}` : ''}`;
+  }
+
+  // Barra de progresso (largura pelo CSSOM: a CSP não aceita style="").
+  function barraDeProgresso(valor, total, rotulo) {
+    const pct = total > 0 ? Math.min(100, Math.round((valor / total) * 100)) : 0;
+    const enche = el('div', { class: 'progresso-enche' });
+    enche.style.width = `${pct}%`;
+    return el(
+      'div',
+      {
+        class: 'progresso',
+        role: 'progressbar',
+        'aria-valuemin': '0',
+        'aria-valuemax': String(total),
+        'aria-valuenow': String(Math.min(valor, total)),
+        'aria-label': rotulo,
+      },
+      enche,
+    );
+  }
+
+  // "MINHAS PROMOÇÕES E RECOMPENSAS" (§4): níveis e progresso de indicação,
+  // posição de cada ingresso nas campanhas de primeiros N, os prêmios e o
+  // histórico — só da própria conta.
+  function secaoPromocoes(pr) {
+    if (!pr || (!pr.posicoes.length && !pr.indicacao.length && !pr.historico.length)) return null;
+    const RESULTADO = {
+      premiado: null,
+      nao_acumulavel: 'sem brinde nesta (vale outra campanha que não acumula)',
+      sem_estoque: 'sem brinde (estoque da faixa acabou)',
+      limite_por_pessoa: 'sem brinde (limite por pessoa)',
+      sem_faixa: 'fora das faixas premiadas',
+    };
+    // Primeiro as campanhas em que a pessoa já participa; até 3 à vista e o
+    // resto fechado (com muitos eventos a lista não engole a página — o mesmo
+    // padrão do "Indique e acompanhe").
+    const participa = (c) => c.indicacoes > 0 || c.niveis.some((n) => n.premios.length);
+    const ordenadas = [...pr.indicacao].sort((a, b) => Number(participa(b)) - Number(participa(a)));
+    const cartaoIndicacao = (c) => {
+      const prox = c.proximo;
+      const alvo = prox ? prox.de : c.niveis[c.niveis.length - 1]?.de || 1;
+      return el(
+        'div',
+        { class: 'cartao promocao' },
+        el('strong', { text: c.campanha }),
+        el('div', { class: 'discreto', text: c.evento }),
+        el('p', {
+          text: prox
+            ? `${c.indicacoes} ${c.indicacoes === 1 ? 'indicação paga' : 'indicações pagas'} — ${prox.faltam === 1 ? 'falta' : 'faltam'} ${prox.faltam} para ${prox.premio}`
+            : `${c.indicacoes} indicações pagas — você chegou ao último nível`,
+        }),
+        barraDeProgresso(Math.min(c.indicacoes, alvo), alvo, `${c.indicacoes} de ${alvo} indicações`),
+        el(
+          'ul',
+          { class: 'niveis' },
+          c.niveis.map((n) =>
+            el(
+              'li',
+              { class: n.atingido ? 'atingido' : '' },
+              el('span', {
+                text: `${c.repete ? `A cada ${n.de}` : `${n.de}`} ${n.de === 1 ? 'indicação' : 'indicações'}: ${n.premio}`,
+              }),
+              n.premios.length
+                ? el('span', {
+                    class: 'discreto',
+                    text: ` — ${n.premios.map((p) => situacaoDoPremio({ ...p, prazo_retirada: c.prazo_retirada })).join('; ')}`,
+                  })
+                : el('span', { class: 'discreto', text: n.atingido ? '' : ' — ainda não' }),
+            ),
+          ),
+        ),
+      );
+    };
+    const aVista = ordenadas.slice(0, 3).map(cartaoIndicacao);
+    const resto = ordenadas.slice(3);
+    const indicacao = [
+      ...aVista,
+      resto.length
+        ? el(
+            'details',
+            { class: 'mais-promocoes' },
+            el('summary', { text: `Ver todas (${ordenadas.length} promoções de indicação)` }),
+            ...resto.map(cartaoIndicacao),
+          )
+        : null,
+    ];
+    const posicoes = pr.posicoes.length
+      ? el(
+          'div',
+          { class: 'cartao promocao' },
+          el('strong', { text: 'Seus ingressos nas campanhas de primeiros compradores' }),
+          el(
+            'ul',
+            { class: 'niveis' },
+            pr.posicoes.map((x) =>
+              el(
+                'li',
+                {},
+                el('span', { text: `${x.campanha}: ingresso ${x.ingresso} (${x.tipo}) — posição ${x.posicao}` }),
+                el('span', {
+                  class: 'discreto',
+                  text: x.premio
+                    ? ` — ${x.premio.nome}: ${situacaoDoPremio(x.premio)}`
+                    : RESULTADO[x.resultado]
+                      ? ` — ${RESULTADO[x.resultado]}`
+                      : '',
+                }),
+              ),
+            ),
+          ),
+        )
+      : null;
+    const historico = pr.historico.length
+      ? el(
+          'details',
+          { class: 'cartao promocao' },
+          el('summary', { text: 'Histórico das recompensas' }),
+          el(
+            'ul',
+            { class: 'niveis' },
+            pr.historico.map((h) =>
+              el('li', {
+                text: `${dataCurta(h.em)} — ${h.premio} (${h.campanha}): ${h.acao}${h.motivo ? ` — ${h.motivo}` : ''} · ${h.quem}`,
+              }),
+            ),
+          ),
+        )
+      : null;
+    return el(
+      'section',
+      { class: 'conta-secao', 'aria-labelledby': 'tituloPromocoes' },
+      el('h2', { id: 'tituloPromocoes', text: 'Minhas promoções e recompensas' }),
+      ...indicacao,
+      posicoes,
+      historico,
+    );
+  }
+
   function secaoOperador(op) {
     if (!op) return null;
     const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
@@ -665,6 +826,7 @@
       ativacaoPendente(d.operador),
       secaoOperador(d.operador),
       secaoIngressos(d),
+      secaoPromocoes(d.promocoes),
       window.trimundi.indiqueEAcompanhe(d.indicacao),
     );
   }

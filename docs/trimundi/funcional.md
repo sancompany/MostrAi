@@ -557,6 +557,19 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
     de compra se configuram em Campanhas.
   - Admin → Recompensas mostra também os brindes de primeiros N, por
     ingresso.
+- **RN-T44 Portaria e Minha Conta com campanhas** (PR 3, 16/11/2026).
+  - Portaria: "RECOMPENSAS DE <TITULAR>" lista também o brinde de primeiros N
+    do ingresso lido (campanha e posição); LIBERADO / JÁ RETIRADA (data,
+    hora, operador) / EXPIRADO; CONFIRMAR ENTREGA uma vez só, por uma rota
+    única, mesmo com várias portarias ao mesmo tempo; não registra entrada.
+    Recompensa de indicação só no ingresso principal; de operador, só pelo
+    Admin.
+  - Minha Conta → "Minhas promoções e recompensas": campanhas de indicação
+    com barra de progresso até o próximo nível e cada nível (atingido ou
+    não, com o prêmio e a situação); a posição de cada ingresso nas
+    campanhas de primeiros N e o brinde; o histórico das recompensas
+    (liberado, retirado, revogado, expirado — e por onde). Só dados da
+    própria conta. O cartão do ingresso mostra o brinde de campanha dele.
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.

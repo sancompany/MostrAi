@@ -201,6 +201,18 @@ async function detalhes(cliente, ingresso) {
       entregue_em: r.entregue_em,
       entregue_por: r.entregue_por,
     })),
+    // Brindes de campanha por ordem de compra DESTE ingresso (PR 3): liberado,
+    // já retirado ou expirado (prazo vencido — não se entrega).
+    premios_campanha: (await require('./campanhas').premiosDoIngresso(cliente, d.id)).map((r) => ({
+      id: r.id,
+      nome: r.nome,
+      campanha: r.campanha,
+      posicao: r.posicao,
+      status: r.status,
+      entregue_em: r.entregue_em,
+      entregue_por: r.entregue_por,
+      prazo_retirada: r.prazo_retirada,
+    })),
     status: d.status,
     motivo: d.motivo_status,
     utilizado_em: d.utilizado_em,
@@ -380,4 +392,60 @@ async function contador(operador, edicaoId) {
   return rows[0];
 }
 
-module.exports = { consultarIngresso, confirmar, contador, resgatarBeneficio, entregarRecompensa, RESULTADOS };
+// Rota única de entrega na portaria (PR 3): o prêmio de campanha por ordem de
+// compra do ingresso lido OU a recompensa de indicação do ingresso principal
+// da conta que indicou. O prêmio tem de ser DESTE ingresso; o de operador
+// indicador nunca é entregue aqui (só pelo Admin). Uma vez só, com operador,
+// data e hora (campanhas.entregarPremio).
+async function entregarPremio(operador, edicaoId, ingressoId, premioId) {
+  const ed = await permitida(operador, v.id(edicaoId, 'edição'));
+  const id = v.id(ingressoId, 'ingresso');
+  const pid = v.id(premioId, 'prêmio');
+  return emTransacao(async (cliente) => {
+    const { rows } = await cliente.query(
+      `SELECT i.id, i.edicao_id, i.status, p.cliente_id FROM ingressos i LEFT JOIN pedidos p ON p.id = i.pedido_id
+        WHERE i.id = $1 FOR UPDATE OF i`,
+      [id],
+    );
+    const ing = rows[0];
+    if (!ing || Number(ing.edicao_id) !== Number(ed.id)) throw erro(404, 'ingresso não encontrado');
+    const { rows: pr } = await cliente.query('SELECT * FROM campanha_premios WHERE id = $1', [pid]);
+    const premio = pr[0];
+    if (!premio) throw erro(404, 'Este prêmio não é deste ingresso.');
+    if (premio.so_admin) throw erro(409, 'Esta recompensa é entregue só pelo Admin.');
+    if (premio.ingresso_id) {
+      if (Number(premio.ingresso_id) !== Number(ing.id)) throw erro(404, 'Este prêmio não é deste ingresso.');
+    } else {
+      // Indicação: só no ingresso principal da conta que indicou.
+      if (!ing.cliente_id || (await principalDaConta(cliente, ing.cliente_id, ed.id)) !== Number(ing.id)) {
+        throw erro(409, 'A recompensa de indicação é entregue no ingresso principal de quem indicou.');
+      }
+      const meus = await recompensasDaConta(cliente, ing.cliente_id, ed.id);
+      if (!meus.some((x) => Number(x.id) === pid)) throw erro(404, 'Este prêmio não é deste ingresso.');
+    }
+    if (ing.status !== 'valido') throw erro(409, 'Ingresso cancelado ou bloqueado: o prêmio não pode ser entregue.');
+    const feito = await require('./campanhas').entregarPremio(cliente, pid, {
+      autor: `operador:${operador.id}`,
+      via: 'portaria',
+    });
+    await medir(cliente, 'acesso:premio_entrega', ed.id, { premio_id: pid });
+    return feito.resultado === 'ja_entregue'
+      ? { resultado: 'ja_entregue', mensagem: `${premio.premio}: já entregue`, entregue_em: feito.entregue_em }
+      : {
+          resultado: 'entregue',
+          mensagem: `${premio.premio}: entregue`,
+          entregue_em: feito.entregue_em,
+          entregue_por: operador.nome,
+        };
+  });
+}
+
+module.exports = {
+  consultarIngresso,
+  confirmar,
+  contador,
+  resgatarBeneficio,
+  entregarRecompensa,
+  entregarPremio,
+  RESULTADOS,
+};

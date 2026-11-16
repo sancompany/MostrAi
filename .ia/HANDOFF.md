@@ -1,6 +1,14 @@
 # Current Handoff
 
 ## Updated
+2026-11-16 — **TICK: campanhas — PR 3 (portaria e Minha Conta)**, branch
+`claude/beautiful-faraday-cjq1nt-campanhas-conta` (sobre a do Admin, PR #154).
+Sem migration. Não desfazer sem contexto:
+- a portaria entrega prêmio pela rota única `/ticket/api/checkin/premio`,
+  que confere se o prêmio é do ingresso lido ou, na indicação, do ingresso
+  principal; as rotas antigas (`/recompensa`, `/beneficio`) seguem;
+- `campanhas.daConta` só lê dados da própria conta.
+
 2026-11-16 — **TICK: campanhas — PR 2 (Admin → Campanhas)**, branch
 `claude/beautiful-faraday-cjq1nt-campanhas-admin` (sobre a do motor, PR #153).
 Migration 017 (modalidade `desconto`). Não desfazer sem contexto:

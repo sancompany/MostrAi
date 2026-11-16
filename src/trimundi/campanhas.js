@@ -1176,6 +1176,153 @@ async function detalhe(id) {
   return { ...c, ...extra, em_uso: await emUso({ query: (s, p) => consultar(s, p) }, id), posicoes, premios };
 }
 
+// ------------------------------------------------ portaria e Minha Conta (PR 3)
+const quemNomeSql = (coluna) => `CASE WHEN ${coluna} IS NULL THEN NULL
+  WHEN ${coluna} LIKE 'operador:%' THEN (SELECT nome FROM operadores WHERE 'operador:' || operadores.id = ${coluna})
+  ELSE 'Admin' END`;
+
+// Prêmios de campanha por ordem de compra de UM ingresso (os que importam na
+// portaria: de pé ou expirado — revogado não aparece).
+async function premiosDoIngresso(cliente, ingressoId, { travar = false } = {}) {
+  const { rows } = await cliente.query(
+    `SELECT pr.id, pr.premio AS nome, pr.status, pr.entregue_em, ${quemNomeSql('pr.entregue_por')} AS entregue_por,
+            pr.quantidade, c.nome AS campanha, c.prazo_retirada, po.posicao
+       FROM campanha_premios pr JOIN campanhas c ON c.id = pr.campanha_id
+       LEFT JOIN campanha_posicoes po ON po.id = pr.posicao_id
+      WHERE pr.ingresso_id = $1 AND pr.status IN ('concedido', 'entregue', 'expirado')
+      ORDER BY pr.id${travar ? ' FOR UPDATE OF pr' : ''}`,
+    [ingressoId],
+  );
+  return rows;
+}
+
+const ACAO_TEXTO = {
+  concedido: 'liberado',
+  entregue: 'retirado',
+  revogado: 'revogado',
+  expirado: 'expirado',
+  restaurado: 'liberado de novo',
+  alerta: 'observação',
+};
+const quemFez = (autor) =>
+  autor?.startsWith('operador:')
+    ? 'portaria'
+    : ['pagamento', 'sistema', 'migracao'].includes(autor)
+      ? 'sistema'
+      : 'organização';
+
+// "MINHAS PROMOÇÕES E RECOMPENSAS" (§4): só o que é da conta — posições dos
+// ingressos que ela comprou, o andamento das campanhas de indicação do link
+// dela e o histórico dos prêmios. Nada de outras pessoas.
+async function daConta(clienteId) {
+  const { rows: posicoes } = await consultar(
+    `SELECT po.posicao, po.resultado, c.id AS campanha_id, c.nome AS campanha, c.prazo_retirada, c.edicao_id,
+            ev.nome || ' — ' || ed.nome AS evento, i.codigo_curto, i.status AS ingresso_status, cat.nome AS tipo,
+            pr.id AS premio_id, pr.premio, pr.status AS premio_status, pr.entregue_em, pr.motivo, v.nome AS vencedora
+       FROM campanha_posicoes po JOIN campanhas c ON c.id = po.campanha_id
+       JOIN ingressos i ON i.id = po.ingresso_id JOIN pedidos p ON p.id = i.pedido_id
+       JOIN categorias cat ON cat.id = i.categoria_id
+       JOIN edicoes ed ON ed.id = c.edicao_id JOIN eventos ev ON ev.id = ed.evento_id
+       LEFT JOIN campanha_premios pr ON pr.posicao_id = po.id
+       LEFT JOIN campanhas v ON v.id = po.vencedora_id
+      WHERE p.cliente_id = $1
+      ORDER BY ed.inicio_em NULLS LAST, c.id, po.posicao`,
+    [clienteId],
+  );
+  const { rows: ind } = await consultar('SELECT id FROM indicadores WHERE cliente_id = $1', [clienteId]);
+  let indicacao = [];
+  if (ind[0]) {
+    const { rows } = await consultar(
+      `SELECT c.id, c.nome, c.escada, c.status, c.prazo_retirada, c.edicao_id, c.limite_por_pessoa,
+              ev.nome || ' — ' || ed.nome AS evento,
+              (SELECT count(*)::int FROM campanha_indicacoes x WHERE x.campanha_id = c.id AND x.indicador_id = $1 AND x.valida) AS n
+         FROM campanhas c JOIN edicoes ed ON ed.id = c.edicao_id JOIN eventos ev ON ev.id = ed.evento_id
+        WHERE c.modalidade = 'indicacao'
+          AND (EXISTS (SELECT 1 FROM campanha_indicacoes x WHERE x.campanha_id = c.id AND x.indicador_id = $1)
+               OR (c.status = 'ativa' AND ed.status = 'publicado'
+                   AND (c.inicio IS NULL OR c.inicio <= now()) AND (c.fim IS NULL OR c.fim > now())))
+        ORDER BY ed.inicio_em NULLS LAST, c.id`,
+      [ind[0].id],
+    );
+    const ids = rows.map((r) => Number(r.id));
+    const faixas = await faixasDe({ query: (sq, pq) => consultar(sq, pq) }, ids);
+    const { rows: meus } = ids.length
+      ? await consultar(
+          `SELECT id, campanha_id, faixa_id, repeticao, status, entregue_em, motivo, premio
+             FROM campanha_premios WHERE indicador_id = $1 AND campanha_id = ANY($2::bigint[])
+            ORDER BY faixa_id, repeticao NULLS FIRST, id`,
+          [ind[0].id, ids],
+        )
+      : { rows: [] };
+    indicacao = rows.map((c) => {
+      const niveis = faixas.get(Number(c.id));
+      const repete = niveis.length === 1 && niveis[0].repete ? niveis[0] : null;
+      const proximo = repete
+        ? { de: (Math.floor(c.n / repete.de) + 1) * repete.de, premio: repete.premio }
+        : niveis.find((f) => f.de > c.n) || null;
+      return {
+        campanha: c.nome,
+        evento: c.evento,
+        status: c.status,
+        indicacoes: c.n,
+        escada: c.escada,
+        repete: Boolean(repete),
+        prazo_retirada: c.prazo_retirada,
+        proximo: proximo ? { de: proximo.de, premio: proximo.premio, faltam: proximo.de - c.n } : null,
+        niveis: niveis.map((f) => ({
+          de: f.de,
+          premio: f.premio,
+          atingido: repete ? c.n >= f.de : c.n >= f.de,
+          premios: meus
+            .filter((m) => Number(m.faixa_id) === Number(f.id))
+            .map((m) => ({ status: m.status, entregue_em: m.entregue_em, motivo: m.motivo, repeticao: m.repeticao })),
+        })),
+      };
+    });
+  }
+  const { rows: historico } = await consultar(
+    `SELECT e.acao, e.autor, e.motivo, e.em, pr.premio, c.nome AS campanha
+       FROM campanha_premio_eventos e JOIN campanha_premios pr ON pr.id = e.premio_id
+       JOIN campanhas c ON c.id = pr.campanha_id
+       LEFT JOIN ingressos i ON i.id = pr.ingresso_id LEFT JOIN pedidos p ON p.id = i.pedido_id
+       LEFT JOIN indicadores ind ON ind.id = pr.indicador_id
+      WHERE p.cliente_id = $1 OR ind.cliente_id = $1
+      ORDER BY e.em DESC, e.id DESC LIMIT 60`,
+    [clienteId],
+  );
+  return {
+    posicoes: posicoes.map((x) => ({
+      campanha: x.campanha,
+      evento: x.evento,
+      posicao: x.posicao,
+      resultado: x.resultado,
+      vencedora: x.vencedora,
+      ingresso: x.codigo_curto,
+      tipo: x.tipo,
+      ingresso_status: x.ingresso_status,
+      premio: x.premio_id
+        ? {
+            nome: x.premio,
+            status: x.premio_status,
+            entregue_em: x.entregue_em,
+            motivo: x.motivo,
+            prazo_retirada: x.prazo_retirada,
+          }
+        : null,
+    })),
+    indicacao,
+    historico: historico.map((h) => ({
+      acao: ACAO_TEXTO[h.acao] || h.acao,
+      quem: quemFez(h.autor),
+      // Na entrega o motivo é só o canal (portaria/admin), que já sai em `quem`.
+      motivo: ['alerta', 'entregue'].includes(h.acao) ? null : h.motivo,
+      em: h.em,
+      premio: h.premio,
+      campanha: h.campanha,
+    })),
+  };
+}
+
 function celula(valor) {
   const t = String(valor ?? '');
   const seguro = /^[=+\-@\t\r]/.test(t) ? `'${t}` : t;
@@ -1220,6 +1367,8 @@ module.exports = {
   posicoesCsv,
   precoComDesconto,
   ligarDescontoNoCheckout,
+  premiosDoIngresso,
+  daConta,
   definirUsoDeDesconto,
   definirUsosDoDesconto,
   brindeDe,

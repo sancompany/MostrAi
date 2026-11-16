@@ -333,7 +333,8 @@
           }),
         );
       }
-      if (i.beneficios?.length || i.recompensas_indicacao?.length) linhas.push(listaDeEntregas(i, r.resultado));
+      if (i.beneficios?.length || i.recompensas_indicacao?.length || i.premios_campanha?.length)
+        linhas.push(listaDeEntregas(i, r.resultado));
       if (i.combo?.ingressos?.length > 1) linhas.push(listaDoCombo(i.combo));
       if ((r.resultado === 'bloqueado' || r.resultado === 'cancelado') && i.motivo)
         linhas.push(el('p', { text: `Motivo: ${i.motivo}` }));
@@ -403,9 +404,22 @@
   // registrada com operador e hora, independente da entrada.
   function listaDeEntregas(i, resultado) {
     const podeEntregar = ['valido', 'entrada_registrada', 'ja_utilizado'].includes(resultado);
+    // Benefício do ingresso (rota de benefício), recompensa de indicação e
+    // brinde de campanha (rota única de prêmio — PR 3).
     const itens = [
-      ...(i.beneficios || []).map((b) => ({ ...b, tipo: 'beneficio' })),
-      ...(i.recompensas_indicacao || []).map((b) => ({ ...b, nome: `${b.nome} (indicação)`, tipo: 'recompensa' })),
+      ...(i.beneficios || []).map((b) => ({ ...b, tipo: 'beneficio', lista: i.beneficios })),
+      ...(i.recompensas_indicacao || []).map((b) => ({
+        ...b,
+        nome: `${b.nome} (indicação)`,
+        tipo: 'premio',
+        lista: i.recompensas_indicacao,
+      })),
+      ...(i.premios_campanha || []).map((b) => ({
+        ...b,
+        nome: `${b.nome} (${b.campanha}${b.posicao ? `, posição ${b.posicao}` : ''})`,
+        tipo: 'premio',
+        lista: i.premios_campanha,
+      })),
     ];
     const retirada = (quando, quem) => `JÁ RETIRADA em ${dataEHora(quando)}${quem ? ` por ${quem}` : ''}`;
     return el(
@@ -418,23 +432,24 @@
         itens.map((b) => {
           const quando = b.resgatado_em || b.entregue_em;
           const quem = b.resgatado_por || b.entregue_por;
-          const situacao = el('b', { text: quando ? retirada(quando, quem) : 'LIBERADO' });
+          const expirado = b.status === 'expirado';
+          const situacao = el('b', {
+            text: quando ? retirada(quando, quem) : expirado ? 'EXPIRADO — prazo de retirada vencido' : 'LIBERADO',
+          });
           const item = el('li', { class: 'chip' }, `${b.nome} — `, situacao);
-          if (!quando && podeEntregar) {
+          if (!quando && !expirado && podeEntregar) {
             const botao = el('button', { class: 'btn mini', type: 'button', text: 'CONFIRMAR ENTREGA' });
             botao.addEventListener('click', async () => {
               try {
                 const corpo =
                   b.tipo === 'beneficio'
                     ? { edicao_id: edicaoAtual(), ingresso_id: i.id, beneficio_id: b.id }
-                    : { edicao_id: edicaoAtual(), ingresso_id: i.id, recompensa_id: b.id };
+                    : { edicao_id: edicaoAtual(), ingresso_id: i.id, premio_id: b.id };
                 const r = await enviando(botao, 'Registrando...', () =>
                   chamar(`/ticket/api/checkin/${b.tipo}`, { metodo: 'POST', corpo }),
                 );
                 const em = r.resgatado_em || r.entregue_em;
-                const original = (b.tipo === 'beneficio' ? i.beneficios : i.recompensas_indicacao).find(
-                  (x) => x.id === b.id,
-                );
+                const original = b.lista.find((x) => x.id === b.id);
                 if (original) {
                   if (b.tipo === 'beneficio') original.resgatado_em = em;
                   else original.entregue_em = em;
@@ -520,7 +535,8 @@
       // operador seguir.
       const pendente =
         r.ingresso?.beneficios?.some((b) => !b.resgatado_em) ||
-        r.ingresso?.recompensas_indicacao?.some((b) => !b.entregue_em);
+        r.ingresso?.recompensas_indicacao?.some((b) => !b.entregue_em) ||
+        r.ingresso?.premios_campanha?.some((b) => b.status === 'concedido' && !b.entregue_em);
       if (r.resultado === 'entrada_registrada' && lendo && !pendente) setTimeout(proximo, 1800);
     } catch (err) {
       $('msgCamera').textContent = err.message;
