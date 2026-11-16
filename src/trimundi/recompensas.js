@@ -14,8 +14,12 @@ const quemEntregou = (coluna) => `CASE WHEN ${coluna} IS NULL THEN NULL
   WHEN ${coluna} LIKE 'operador:%' THEN (SELECT nome FROM operadores WHERE 'operador:' || operadores.id = ${coluna})
   ELSE 'Admin' END`;
 
-async function daEdicao(edicaoId) {
-  const [{ rows: indicacao }, { rows: beneficios }] = await Promise.all([
+// A lista mostra até LIMITE_ITENS recompensas (as a retirar primeiro); os
+// totais saem de uma contagem à parte, sem limite — nunca da lista cortada.
+const LIMITE_ITENS = 1000;
+
+async function daEdicao(edicaoId, { limite = LIMITE_ITENS } = {}) {
+  const [{ rows: indicacao }, { rows: beneficios }, { rows: totais }] = await Promise.all([
     consultar(
       `SELECT r.id, r.status, r.concedida_em, r.entregue_em, r.revogada_em, ${quemEntregou('r.entregue_por')} AS entregue_por,
               ca.nome AS campanha, ca.recompensa,
@@ -27,8 +31,8 @@ async function daEdicao(edicaoId) {
          LEFT JOIN clientes cl ON cl.id = i.cliente_id LEFT JOIN operadores o ON o.id = i.operador_id
         WHERE ca.edicao_id = $1
         ORDER BY (r.status = 'concedida') DESC, r.concedida_em DESC, r.id DESC
-        LIMIT 1000`,
-      [edicaoId],
+        LIMIT $2`,
+      [edicaoId, limite],
     ),
     consultar(
       `SELECT ib.beneficio_id AS id, min(ib.nome) AS nome,
@@ -41,16 +45,26 @@ async function daEdicao(edicaoId) {
         ORDER BY min(ib.nome)`,
       [edicaoId],
     ),
+    consultar(
+      `SELECT count(*) FILTER (WHERE r.status = 'concedida')::int AS a_retirar,
+              count(*) FILTER (WHERE r.status = 'entregue')::int AS entregues,
+              count(*) FILTER (WHERE r.status = 'revogada')::int AS revogadas,
+              count(*)::int AS total
+         FROM recompensas_indicacao r JOIN campanhas_indicacao ca ON ca.id = r.campanha_id
+        WHERE ca.edicao_id = $1`,
+      [edicaoId],
+    ),
   ]);
-  const conta = (s) => indicacao.filter((r) => r.status === s).length;
   // Onde a recompensa sai (decisão do dono, 15/11/2026): a do cliente, na
   // portaria (ingresso principal) ou pelo Admin; a do operador indicador —
   // ingresso dele é cortesia, sem pedido — só pelo Admin.
   for (const r of indicacao) r.entrega = r.tipo === 'operador' ? 'so_admin' : 'portaria_ou_admin';
   return {
     indicacao: {
-      totais: { a_retirar: conta('concedida'), entregues: conta('entregue'), revogadas: conta('revogada') },
+      totais: { a_retirar: totais[0].a_retirar, entregues: totais[0].entregues, revogadas: totais[0].revogadas },
       itens: indicacao,
+      // A lista foi cortada: há mais recompensas do que as mostradas.
+      itens_cortados: totais[0].total > indicacao.length,
     },
     beneficios: beneficios.map((b) => ({ ...b, pendentes: b.total - b.entregues })),
   };
