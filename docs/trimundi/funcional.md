@@ -652,6 +652,21 @@ seguem o padrão da Mostraí, `{ erro: '<texto>' }`, e o texto exato está em
   - O e-mail traz contagem, códigos curtos de pedido e o que fazer — nunca
     nome, e-mail ou CPF.
   - `GET /ticket/api/saude` é público e só diz ok ou não ok.
+- **RN-T49 Promoters — motor** (PR 1, 16/11/2026; regras 3 a 9 e decisão B).
+  - Promoter é permissão própria, separada da portaria: a conta pede, o
+    Admin aprova, recusa, suspende, reativa ou encerra, sempre com histórico
+    imutável. O link de venda é o link de indicação da própria conta.
+  - Cada ingresso pago pelo link, confirmado depois da aprovação, entra no
+    **livro de comissões** (só acréscimo): base = valor pago, sem taxa;
+    percentual pela ordem da venda na edição (10% até a 19ª, +1 a cada 10,
+    teto 15% na 60ª), gravado na hora e nunca recalculado. Reembolso vira
+    lançamento de estorno e desconta da contagem. Compra pela própria conta
+    não conta (regra da indicação).
+  - Situação de cada venda: provisória (menos de 10 de pé na edição),
+    confirmada, retida (ingresso bloqueado), paga, estornada.
+  - Recrutador: 1 ingresso em crédito quando o recrutado chega a 10 vendas
+    na edição, uma vez por recrutado; revogado se cair antes da emissão.
+  - Pagamento manual pelo Admin **desligado** até as decisões P-1 e P-9.
 - **RN-T31 Módulo desligado.** Sem `TRIMUNDI_DATABASE_URL`, as rotas da
   Trimundi respondem 503, as telas mostram o estado "não configurada" e o
   login da Mostraí não procura operador.
