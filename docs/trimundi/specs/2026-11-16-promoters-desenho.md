@@ -1,6 +1,6 @@
 # Promoters e comissionamento — desenho técnico (v1, para aprovação)
 
-**Situação:** desenho para aprovação. Nada desta fase foi construído.
+**Situação:** PR 1 (banco e motor) construído em 16/11/2026, só com as regras aprovadas. PR 2 (Admin e relatórios 1 e 15) e PR 3 (painel do promoter e recrutamento) seguem; as perguntas abertas estão na seção 5, com recomendação.
 
 **Fontes:**
 - §5 do prompt master;
@@ -104,17 +104,22 @@ repasse. O que não está decidido vai para a seção 5, como pergunta.
 3. **Painel do promoter** e link de recrutamento.
 4. **Metas, benefícios e créditos** de recrutamento.
 
-## 5. Decisões pendentes (do Bruno; algumas pedem advogado ou contador)
+## 5. Decisões pendentes — com recomendação (atualizado em 16/11/2026, PR 1)
 
-| # | Pergunta | Por que importa |
-|---|---|---|
-| P-1 | **Saldo "liberado"**: quando a comissão provisória passa a liberada? Na 10ª venda? Depois do evento? Depois do prazo de arrependimento (7 dias, art. 49)? | Define o que pode ser pago |
-| P-2 | **Reembolso depois de a comissão ser paga**: desconta do saldo futuro? Fica como débito? Não desconta? | O livro precisa da regra de estorno |
-| P-3 | **Reembolso que faz cair de faixa**: as vendas seguintes voltam ao percentual menor? | A regra 5 cobre a subida, não a descida |
-| P-4 | **Compra do próprio promoter pelo próprio link** conta como venda? | Evita comissão sobre a própria compra |
-| P-5 | **Um link de promoter também conta para as campanhas de "Indique e ganhe"?** O mesmo pedido pode render comissão e recompensa de indicação? | O link é o mesmo (`indicadores`) |
-| P-6 | **Benefícios por meta** (§5.3): ingresso grátis em 10, acompanhante em 20, VIP e +1 em 40, pulseira preta e open bar em 60 — confirmar a lista. Todos viram cortesia nominal emitida pelo Admin (regra 3)? After-fest está fora (decisão K) | Itens do §5.3 não foram aprovados um a um |
-| P-7 | **Revenda de cortesia** (§5.5): pode? Com que controle? O §10 item 9 do prompt não está entre as regras aprovadas | Não construo revenda sem regra |
-| P-8 | **Termo do promoter**: o texto (inclui a regra 8) | Advogado |
-| P-9 | **Dados para pagar** (CPF, chave Pix, recibo/RPA, retenção de tributos) | Advogado e contador (decisão C) |
-| P-10 | **Promoter e operador de portaria podem ser a mesma pessoa?** (permissões separadas, mas a pessoa pode ter as duas) | Desenho de permissão |
+O PR 1 (banco e motor) foi construído **sem inventar** nenhuma destas
+respostas. Onde o motor precisa de um comportamento, ele faz o mais
+conservador, descrito na coluna "Hoje no código". A coluna "Recomendação" é
+a minha proposta para a decisão; nada dela entra no código sem aprovação.
+
+| # | Pergunta | Hoje no código (PR 1) | Recomendação | Quem decide |
+|---|---|---|---|---|
+| P-1 | **Quando a comissão fica liberada para pagar?** | Venda com 10+ vendas de pé na edição aparece como "confirmada". O **registro de pagamento fica desligado** (`TRIMUNDI_PROMOTER_PAGAMENTOS` vazio → 409) | Liberar **depois do fim da edição** (evento realizado) **e** 7 dias depois da compra (art. 49, arrependimento). Assim o reembolso por evento cancelado ou arrependimento acontece antes do pagamento, e P-2 quase nunca ocorre | Bruno |
+| P-2 | **Reembolso depois de a comissão ser paga** | O estorno entra no livro e a venda aparece como "estornada após o pagamento". Nada é descontado sozinho | Descontar do **próximo pagamento** do mesmo promoter (compensação), sem cobrança ativa. Sem pagamentos futuros, fica registrado como saldo devedor e o Admin decide | Bruno (e contador) |
+| P-3 | **Reembolso que faz cair de faixa** | As **próximas** vendas usam a contagem de pé depois do reembolso. Ex.: com 20 de pé e 1 reembolso, a venda seguinte é a nº 20 de novo. É o que as regras 5 (percentual só para vendas futuras) e 6 (reembolso desconta) já dizem juntas. O que já foi gravado não muda | Confirmar o comportamento atual | Bruno |
+| P-4 | **Compra pelo próprio link conta?** | **Não conta.** A regra de indicação que já existe não grava a indicação da própria conta (mesma conta ou mesmo CPF) no pedido, então não há comissão. Testado | Confirmar (já é a regra da indicação) | Bruno |
+| P-5 | **O link do promoter também conta para "Indique e ganhe"?** | Hoje contaria, porque o link é o mesmo (`indicadores`). Não há nenhuma campanha de indicação ativa em produção (0 em 16/11) | **Não acumular:** venda que gera comissão não conta para campanha de indicação (um benefício por venda, como a regra J para campanhas). Exige uma linha no motor das campanhas, a fazer depois da decisão | Bruno |
+| P-6 | **Benefícios por meta** (10, 20, 40, 60) | Só os **selos** (10/20/40/60) aparecem; nenhum benefício é concedido | Aprovar a lista do §5.3 como **créditos de cortesia nominal emitidos pelo Admin** (regra 3): 10 → 1 ingresso; 20 → +1 acompanhante; 40 → VIP e +1; 60 → pulseira preta e open bar "conforme regulamento". After-fest fora (decisão K). Antes de valer, entra no regulamento/termo (A) | Bruno + advogado |
+| P-7 | **Revenda de cortesia** | Não existe | **Não permitir** na v1: a cortesia é nominal e intransferível. Rever depois do advogado | Bruno + advogado |
+| P-8 | **Termo do promoter** | O banco guarda a versão e a data do aceite (`termo_versao`), hoje vazias. Minuta em `docs/trimundi/legal/minuta-termo-promoter.md` | Advogado revisar a minuta. A regra 8 (cancelar comissão provisória no fim da edição sem 10 vendas) **só vale se estiver no termo aceito**; até lá, nada é cancelado sozinho | Advogado |
+| P-9 | **Dados para pagar** (CPF, chave Pix, recibo/RPA, tributos) | Nada é coletado | Coletar CPF e chave Pix **só no primeiro pagamento**, dentro da conta, com finalidade explícita na Política. RPA e retenção definidos pelo contador. Até lá o pagamento segue desligado | Advogado + contador |
+| P-10 | **Promoter e operador de portaria podem ser a mesma pessoa?** | Sim, com permissões separadas: promoter **não** ganha portaria e operador **não** vira promoter (decisão B). A comissão conta só as vendas pelo link **da conta de cliente** do promoter; o link de operador não gera comissão | Permitir as duas permissões na mesma pessoa, como está | Bruno |

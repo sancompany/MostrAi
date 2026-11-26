@@ -288,6 +288,9 @@ async function aplicar(cliente, ev) {
   // contestação ou baixa desfeita tiram) e prêmios de ordem de compra
   // (ingresso cancelado revoga o não entregue). Idempotente.
   await require('./indicacao').revisarPedido(cliente, pedido.id);
+  // Promoters: venda nova entra no livro de comissões; ingresso cancelado
+  // ganha o estorno. Mesma transação, edição travada — idempotente.
+  await require('./promoters').revisarPedido(cliente, pedido.id);
   return resultado;
 }
 
