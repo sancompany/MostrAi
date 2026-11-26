@@ -39,6 +39,10 @@ Item desejado para depois não mora aqui — mora em `docs/proximas-versoes.md`.
   (IVC/Kantar), marketplace de telas de terceiros.** Pesquisa de mercado de
   11/09/2026: todos aparecem nos concorrentes grandes e todos seriam prejuízo
   numa operação de 25 telas. Reavaliar só com segunda cidade **contratada**.
+  *Exceção parcial (26/11/2026, decisão do dono):* o **Marketplace de Lojas**
+  entra como vitrine com contato e plano de loja cobrado pela Mostraí — ver
+  "Exceções registradas" e `docs/marketplace/README.md`. Venda ao comprador
+  com dinheiro de terceiro (split) continua vetada.
 - **Renomear a tabela `anunciantes` para `contas`.** É a tabela de contas;
   o nome é histórico. Renomear tocaria todo o sistema sem ganho funcional.
 - **Playlist gerada em Edge Function.** O gerador usa cache em memória por
@@ -295,3 +299,4 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
 | 4/seguranca-san (Access) | `/admin` protegido por senha própria, não por Access | domínio no Cloudflare e Access configurado |
 | 6 (RLS) | autorização só na aplicação, sem RLS no banco | decisão do dono na Estação 4 — ver `CLAUDE.md` |
 | `classificar` / `leis` (um projeto por repositório e serviço; banco próprio por projeto) | a Trimundi mora neste repositório, nesta aplicação e neste banco, no esquema `trimundi` (09/11/2026) | venda pública com volume que peça serviço próprio, ou a Mostraí ser entregue a terceiro — detalhe em `docs/trimundi/CONSTRAINTS.md` |
+| Limite "white-label / marketplace de telas de terceiros" (acima) | Marketplace de Lojas (26/11/2026, decisão do dono): lojas de terceiros com vitrine pública, catálogo próprio e captação de contato, pagando plano de loja à Mostraí (Mensal / Anual+). Tabelas próprias (migration 123); nenhuma tabela da rede própria muda; desligado sem `MARKETPLACE_ATIVO=1`. **Fora:** venda ao comprador, pedido, cobrança e split de terceiro — vetados pelo San Checkout V1 (`san_checkout/CONSTRAINTS.md`, "Fora da V1") | a V2 do San Checkout (split, CNPJ) aberta pelo dono abre a venda; o restante do veto (white-label completo, telas de terceiros na playlist) segue até nova decisão |
