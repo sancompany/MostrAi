@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/img/favicon-16.png" sizes="16x16" type="image/png">
+  <link rel="icon" href="/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="icon" href="/img/favicon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <title>Minha loja no Marketplace · Mostraí</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/anunciante/painel.css">
+  <link rel="stylesheet" href="/vitrine/vitrine.css">
+  <meta name="theme-color" content="#ff7a1a">
+  <link rel="manifest" href="/site.webmanifest">
+</head>
+<body data-layout="conta">
+
+  <main class="anunciante-dashboard minha-loja">
+    <section class="minha-loja-topo">
+      <div class="wrap painel-wrap">
+        <div id="situacaoLoja" aria-live="polite">
+          <div class="loja-situacao"><p class="u-dim u-m-0">Carregando sua loja...</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="dashboard-content">
+      <div class="wrap painel-wrap minha-loja-grid">
+        <section class="dashboard-section" aria-labelledby="tituloEspacos">
+          <div class="section-heading compact-heading">
+            <div>
+              <p class="section-eyebrow">Vitrine</p>
+              <h2 id="tituloEspacos">Espaços da loja</h2>
+            </div>
+            <button type="button" class="btn primary mini" id="btnNovoEspaco">Novo espaço</button>
+          </div>
+          <div id="listaEspacos"><p class="empty-state">Carregando...</p></div>
+        </section>
+
+        <section class="dashboard-section" aria-labelledby="tituloContatos">
+          <div class="section-heading compact-heading">
+            <div>
+              <p class="section-eyebrow">Interessados</p>
+              <h2 id="tituloContatos">Pedidos de orçamento</h2>
+            </div>
+            <p>Quem escreveu pela vitrine. A resposta é sua, por e-mail ou telefone.</p>
+          </div>
+          <div id="listaContatos"><p class="empty-state">Carregando...</p></div>
+        </section>
+
+        <section class="dashboard-section" aria-labelledby="tituloPerfil">
+          <div class="section-heading compact-heading">
+            <div>
+              <p class="section-eyebrow">Perfil</p>
+              <h2 id="tituloPerfil">Como a loja aparece</h2>
+            </div>
+            <a class="btn ghost mini" id="linkPublico" href="#" target="_blank" rel="noopener" hidden>Ver página pública</a>
+          </div>
+          <form class="card u-m-0 u-mw-livre" id="formPerfil" novalidate>
+            <div class="loja-logo-editor">
+              <div class="loja-logo" id="logoAtual" aria-hidden="true"></div>
+              <div>
+                <button type="button" class="btn ghost mini" data-escolher="arqLogo">Trocar logo</button>
+                <input type="file" id="arqLogo" accept="image/jpeg,image/png,image/webp" hidden>
+                <p class="u-dim u-fs-78 u-m-0">JPG, PNG ou WebP, até 5 MB.</p>
+              </div>
+            </div>
+            <div class="field-row">
+              <div class="u-col"><label for="pNome">Nome da loja</label><input id="pNome" name="nome" maxlength="80" required></div>
+              <div class="u-col"><label for="pCor">Cor da marca</label><input id="pCor" name="cor_primaria" type="color" value="#ff7a1a"></div>
+            </div>
+            <div>
+              <label for="pDescricao">Descrição</label>
+              <textarea id="pDescricao" name="descricao" rows="4" maxlength="2000" placeholder="O que a loja oferece, onde atua, diferenciais."></textarea>
+            </div>
+            <div class="field-row">
+              <div class="u-col"><label for="pEmail">E-mail de contato</label><input id="pEmail" name="email" type="email" maxlength="200"></div>
+              <div class="u-col"><label for="pTelefone">Telefone</label><input id="pTelefone" name="telefone" type="tel" maxlength="20"></div>
+            </div>
+            <div class="field-row">
+              <div class="u-col-2"><label for="pCidade">Cidade</label><input id="pCidade" name="cidade" maxlength="80"></div>
+              <div class="u-col"><label for="pUf">UF</label><input id="pUf" name="uf" maxlength="2"></div>
+            </div>
+            <fieldset class="loja-cadastro" id="blocoCadastro">
+              <legend>Dados cadastrais</legend>
+              <div class="field-row">
+                <div class="u-col"><label for="pRazao">Razão social</label><input id="pRazao" name="razao_social" maxlength="120"></div>
+                <div class="u-col"><label for="pDocumento">CNPJ ou CPF</label><input id="pDocumento" name="documento" inputmode="numeric" maxlength="18"></div>
+              </div>
+              <p class="u-dim u-fs-78 u-m-0" id="avisoCadastro"></p>
+            </fieldset>
+            <button class="btn primary" type="submit">Salvar perfil</button>
+            <p class="form-msg" id="msgPerfil" role="status" aria-live="polite"></p>
+          </form>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <dialog class="dlg-espaco" id="dlgEspaco" aria-labelledby="tituloDlgEspaco">
+    <form method="dialog" class="dlg-espaco-caixa" id="formEspaco" novalidate>
+      <div class="dlg-espaco-topo">
+        <h3 id="tituloDlgEspaco">Novo espaço</h3>
+        <button type="button" class="modal-x" data-fechar aria-label="Fechar">×</button>
+      </div>
+      <div class="dlg-espaco-corpo">
+        <div class="field-row">
+          <div class="u-col-2"><label for="eNome">Nome</label><input id="eNome" name="nome" maxlength="80" required placeholder="Ex.: Painel de LED da Av. Central"></div>
+          <div class="u-col"><label for="eTipo">Tipo</label><select id="eTipo" name="tipo" required></select></div>
+        </div>
+        <div class="field-row" id="linhaSlug">
+          <div class="u-col"><label for="eSlug">Endereço do espaço</label><input id="eSlug" name="slug" maxlength="60" pattern="[a-z0-9-]+" placeholder="painel-av-central"></div>
+        </div>
+        <div>
+          <label for="eDescricao">Descrição</label>
+          <textarea id="eDescricao" name="descricao" rows="3" maxlength="2000"></textarea>
+        </div>
+        <div class="field-row">
+          <div class="u-col-2"><label for="eEndereco">Endereço</label><input id="eEndereco" name="endereco" maxlength="200"></div>
+          <div class="u-col"><label for="eBairro">Bairro</label><input id="eBairro" name="bairro" maxlength="80"></div>
+        </div>
+        <div class="field-row">
+          <div class="u-col-2"><label for="eCidade">Cidade</label><input id="eCidade" name="cidade" maxlength="80" required></div>
+          <div class="u-col"><label for="eUf">UF</label><input id="eUf" name="uf" maxlength="2" required></div>
+        </div>
+        <div class="field-row">
+          <div class="u-col"><label for="eLat">Latitude <span class="u-fw-400">*opcional</span></label><input id="eLat" name="latitude" inputmode="decimal" placeholder="-21.6033"></div>
+          <div class="u-col"><label for="eLng">Longitude <span class="u-fw-400">*opcional</span></label><input id="eLng" name="longitude" inputmode="decimal" placeholder="-48.3658"></div>
+        </div>
+        <div class="field-row">
+          <div class="u-col"><label for="eMedidas">Medidas</label><input id="eMedidas" name="medidas" maxlength="80" placeholder="Ex.: 3 x 2 m"></div>
+          <div class="u-col"><label for="eFluxo">Fluxo estimado por mês</label><input id="eFluxo" name="fluxo_estimado_mensal" inputmode="numeric"></div>
+        </div>
+        <div class="field-row">
+          <div class="u-col"><label for="ePreco">Preço de referência (R$)</label><input id="ePreco" name="preco" inputmode="decimal" placeholder="Vazio = sob consulta"></div>
+          <div class="u-col"><label for="ePeriodo">Por</label><select id="ePeriodo" name="periodo_preco"><option value="">—</option><option value="dia">dia</option><option value="semana">semana</option><option value="mes">mês</option></select></div>
+        </div>
+        <p class="form-msg" data-msg role="status" aria-live="polite"></p>
+      </div>
+      <div class="dlg-espaco-rodape">
+        <button type="button" class="btn ghost" data-fechar>Cancelar</button>
+        <button type="submit" class="btn primary" value="salvar">Salvar espaço</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/config.js"></script>
+  <script src="/eventos.js"></script>
+  <script src="/layout.js"></script>
+  <script src="/perfil.js"></script>
+  <script src="/notificacoes.js"></script>
+  <script src="/vitrine/vitrine-comum.js"></script>
+  <script src="/vitrine/minha-loja.page.js"></script>
+</body>
+</html>

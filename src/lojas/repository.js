@@ -238,12 +238,13 @@ function lerLoja(d, parcial = false) {
   campo('cidade', (v) => texto(v, 'cidade', { max: 80 }));
   campo('uf', (v) => uf(v));
   campo('descricao', (v) => texto(v, 'descrição', { max: 2000 }) || '');
-  campo('logo_url', (v) => texto(v, 'logo', { max: 500 }));
   campo('cor_primaria', (v) => {
     const c = texto(v, 'cor', { max: 7 });
     if (c && !/^#[0-9a-fA-F]{6}$/.test(c)) throw new ErroLoja('cor: #RRGGBB');
     return c;
   });
+  // Logo e foto NÃO entram por aqui: só pelo upload (gravarImagem), que
+  // confere o tipo e guarda no Storage da Mostraí — URL livre não.
   return l;
 }
 
@@ -256,7 +257,6 @@ const COLUNAS_LOJA = [
   'cidade',
   'uf',
   'descricao',
-  'logo_url',
   'cor_primaria',
 ];
 
@@ -296,14 +296,21 @@ async function criarLoja(dados, autor) {
 
 async function atualizarLoja(id, dados, autor, { soVitrine = false } = {}) {
   const l = lerLoja(dados, true);
-  // A dona só mexe no que aparece na vitrine; nome, documento e endereço são
-  // do cadastro que o Admin conferiu.
-  if (soVitrine) {
-    for (const c of ['nome', 'razao_social', 'documento']) delete l[c];
-  }
-  const campos = Object.keys(l);
-  if (!campos.length) throw new ErroLoja('nada para alterar');
   return emTransacao(async (db) => {
+    // A dona edita o perfil e o contato. Razão social e documento ela só
+    // preenche enquanto a loja está em rascunho: depois de o Admin ativar,
+    // o cadastro conferido só muda pelo Admin. O endereço (/loja/<slug>)
+    // nunca muda por aqui — link já divulgado quebraria.
+    if (soVitrine) {
+      const { rows: atual } = await db.query('SELECT status FROM lojas WHERE id = $1 FOR UPDATE', [id]);
+      if (!atual[0]) throw new ErroLoja('loja não encontrada', 404);
+      if (atual[0].status !== 'rascunho') {
+        delete l.razao_social;
+        delete l.documento;
+      }
+    }
+    const campos = Object.keys(l);
+    if (!campos.length) throw new ErroLoja('nada para alterar');
     const { rows } = await db.query(
       `UPDATE lojas SET ${campos.map((c, i) => `${c} = $${i + 2}`).join(', ')}, atualizado_em = now()
         WHERE id = $1 RETURNING *`,
@@ -375,6 +382,41 @@ async function ficha(lojaId, agora = new Date()) {
     espacos: espacos.rows,
     contatos: contatos.rows[0],
   };
+}
+
+// Histórico da loja para o Admin: todas as assinaturas (com os pagamentos
+// de cada uma) e os últimos eventos (status, pagamento, moderação, edições).
+async function historico(lojaId) {
+  const [assinaturas, eventos] = await Promise.all([
+    pool.query(
+      `SELECT s.*, COALESCE((SELECT json_agg(p ORDER BY p.id) FROM assinaturas_loja_pagamentos p
+                              WHERE p.assinatura_id = s.id), '[]') AS pagamentos
+         FROM assinaturas_loja s WHERE s.loja_id = $1 ORDER BY s.id DESC`,
+      [lojaId],
+    ),
+    pool.query(
+      'SELECT acao, detalhe, autor, ocorrido_em FROM lojas_eventos WHERE loja_id = $1 ORDER BY id DESC LIMIT 100',
+      [lojaId],
+    ),
+  ]);
+  return { assinaturas: assinaturas.rows, eventos: eventos.rows };
+}
+
+// Contas para virar loja (Admin): busca por nome, e-mail ou id; só contas
+// de pé e que ainda não têm loja.
+async function buscarContas(busca) {
+  const termo = texto(busca, 'busca', { min: 2, max: 120, obrigatorio: true });
+  const id = /^\d{1,9}$/.test(termo) ? Number(termo) : null;
+  const { rows } = await pool.query(
+    `SELECT a.id, a.nome_empresa, a.contato_email, a.cidade, a.uf
+       FROM anunciantes a
+      WHERE a.excluido_em IS NULL AND NOT a.conta_propria
+        AND NOT EXISTS (SELECT 1 FROM lojas l WHERE l.conta_id = a.id)
+        AND (a.id = $2 OR a.nome_empresa ILIKE $1 OR a.contato_email ILIKE $1)
+      ORDER BY a.nome_empresa, a.id LIMIT 20`,
+    [`%${termo.replace(/[%_\\]/g, (c) => `\\${c}`)}%`, id],
+  );
+  return rows;
 }
 
 async function lojaDaConta(contaId) {
@@ -523,7 +565,6 @@ function lerEspaco(d, parcial = false) {
     if (!PERIODOS.includes(v)) throw new ErroLoja('período do preço: dia, semana ou mes');
     return v;
   });
-  campo('foto_url', (v) => texto(v, 'foto', { max: 500 }));
   campo('ordem', (v) => inteiro(v, 'ordem', { min: 0, max: 10000, padrao: 0 }));
   if (d.latitude !== undefined || d.longitude !== undefined) {
     if (((e.latitude ?? null) === null) !== ((e.longitude ?? null) === null)) {
@@ -560,6 +601,9 @@ async function criarEspaco(lojaId, dados, autor) {
   }
 }
 
+// Edição pela dona. Espaço BLOQUEADO pelo Admin (migration 124) não volta a
+// `publicado` por aqui — o banco também recusa (CHECK
+// lojas_espacos_bloqueado_fora_da_vitrine); os outros campos ela edita.
 async function atualizarEspaco(lojaId, espacoId, dados, autor) {
   const e = lerEspaco(dados, true);
   if (dados.status !== undefined) {
@@ -568,19 +612,117 @@ async function atualizarEspaco(lojaId, espacoId, dados, autor) {
   }
   const campos = Object.keys(e);
   if (!campos.length) throw new ErroLoja('nada para alterar');
-  const { rows } = await pool
-    .query(
-      `UPDATE lojas_espacos SET ${campos.map((c, i) => `${c} = $${i + 3}`).join(', ')}, atualizado_em = now()
-        WHERE id = $1 AND loja_id = $2 RETURNING *`,
-      [espacoId, lojaId, ...campos.map((c) => e[c])],
-    )
-    .catch((err) => {
-      if (err.code === '23514') throw new ErroLoja('dados do espaço inválidos (preço com período, coordenadas juntas)');
-      throw err;
-    });
-  if (!rows[0]) throw new ErroLoja('espaço não encontrado', 404);
-  await registrarEvento(pool, lojaId, 'espaco_editado', { espaco_id: espacoId, campos }, autor);
-  return rows[0];
+  return emTransacao(async (db) => {
+    const { rows: atual } = await db.query(
+      'SELECT bloqueado_admin_em, bloqueado_motivo FROM lojas_espacos WHERE id = $1 AND loja_id = $2 FOR UPDATE',
+      [espacoId, lojaId],
+    );
+    if (!atual[0]) throw new ErroLoja('espaço não encontrado', 404);
+    if (atual[0].bloqueado_admin_em && e.status === 'publicado') {
+      throw new ErroLoja(`espaço bloqueado pela Mostraí (${atual[0].bloqueado_motivo}) — só o Admin libera`, 409);
+    }
+    const { rows } = await db
+      .query(
+        `UPDATE lojas_espacos SET ${campos.map((c, i) => `${c} = $${i + 3}`).join(', ')}, atualizado_em = now()
+          WHERE id = $1 AND loja_id = $2 RETURNING *`,
+        [espacoId, lojaId, ...campos.map((c) => e[c])],
+      )
+      .catch((err) => {
+        if (err.code === '23514') {
+          throw new ErroLoja('dados do espaço inválidos (preço com período, coordenadas juntas)');
+        }
+        throw err;
+      });
+    await registrarEvento(db, lojaId, 'espaco_editado', { espaco_id: espacoId, campos }, autor);
+    return rows[0];
+  });
+}
+
+// Moderação do Admin: `bloquear` tira o espaço da vitrine (vira `pausado`) e
+// trava a republicação pela dona; `liberar` só destrava — o espaço continua
+// pausado até a dona publicar de novo.
+async function moderarEspaco(lojaId, espacoId, { acao, motivo }, autor) {
+  if (!['bloquear', 'liberar'].includes(acao)) throw new ErroLoja('ação: bloquear ou liberar');
+  const m = acao === 'bloquear' ? texto(motivo, 'motivo', { min: 3, max: 300, obrigatorio: true }) : null;
+  return emTransacao(async (db) => {
+    const { rows } = await db.query(
+      acao === 'bloquear'
+        ? `UPDATE lojas_espacos SET status = CASE WHEN status = 'arquivado' THEN status ELSE 'pausado' END,
+                  bloqueado_admin_em = now(), bloqueado_motivo = $3, atualizado_em = now()
+            WHERE id = $1 AND loja_id = $2 RETURNING *`
+        : `UPDATE lojas_espacos SET bloqueado_admin_em = NULL, bloqueado_motivo = NULL, atualizado_em = now()
+            WHERE id = $1 AND loja_id = $2 AND bloqueado_admin_em IS NOT NULL RETURNING *`,
+      acao === 'bloquear' ? [espacoId, lojaId, m] : [espacoId, lojaId],
+    );
+    if (!rows[0])
+      throw new ErroLoja(acao === 'liberar' ? 'espaço bloqueado não encontrado' : 'espaço não encontrado', 404);
+    await registrarEvento(
+      db,
+      lojaId,
+      `espaco_${acao === 'bloquear' ? 'bloqueado' : 'liberado'}`,
+      {
+        espaco_id: espacoId,
+        motivo: m,
+      },
+      autor,
+    );
+    return rows[0];
+  });
+}
+
+// Fila de moderação do Admin: os espaços de todas as lojas, publicados
+// primeiro, com a loja e a situação dela.
+async function espacosParaModeracao(agora = new Date()) {
+  const { rows } = await pool.query(
+    `SELECT e.id, e.loja_id, e.slug, e.nome, e.tipo, e.cidade, e.uf, e.status, e.foto_url, e.preco, e.periodo_preco,
+            e.bloqueado_admin_em, e.bloqueado_motivo, e.atualizado_em,
+            l.slug AS loja_slug, l.nome AS loja_nome, ${visivelSql('l', '$1')} AS loja_na_vitrine
+       FROM lojas_espacos e JOIN lojas l ON l.id = e.loja_id
+      WHERE e.status <> 'arquivado' OR e.bloqueado_admin_em IS NOT NULL
+      ORDER BY (e.status = 'publicado') DESC, e.atualizado_em DESC, e.id DESC
+      LIMIT 500`,
+    [hojeComercial(agora)],
+  );
+  return rows;
+}
+
+// Imagem da loja (logo) e do espaço (foto): sempre enviada ao Storage da
+// Mostraí — a CSP do site só mostra imagem de lá (src/server.js, img-src).
+// Tipo pelos primeiros bytes, nunca pelo nome (src/lib/imagem.js).
+async function gravarImagem(alvo, ids, buffer) {
+  const { tipoDaImagem, EXTENSAO } = require('../lib/imagem');
+  const tipo = tipoDaImagem(buffer);
+  if (!tipo) throw new ErroLoja('envie uma imagem (JPG, PNG ou WebP)');
+  // Confere o dono ANTES de subir: espaço de outra loja não deixa arquivo
+  // órfão no Storage.
+  const { rows: existe } =
+    alvo === 'logo'
+      ? await pool.query('SELECT 1 FROM lojas WHERE id = $1', [ids.lojaId])
+      : await pool.query('SELECT 1 FROM lojas_espacos WHERE id = $1 AND loja_id = $2', [ids.espacoId, ids.lojaId]);
+  if (!existe[0]) throw new ErroLoja(alvo === 'logo' ? 'loja não encontrada' : 'espaço não encontrado', 404);
+  const caminho =
+    alvo === 'logo'
+      ? `lojas/loja-${ids.lojaId}-logo.${EXTENSAO[tipo]}`
+      : `lojas/loja-${ids.lojaId}-espaco-${ids.espacoId}.${EXTENSAO[tipo]}`;
+  let url;
+  try {
+    url = await require('../lib/ffmpeg').subirParaStorage(buffer, caminho, tipo);
+  } catch {
+    throw new ErroLoja('falha ao salvar a imagem', 502);
+  }
+  const final = `${url}?v=${Date.now()}`;
+  const { rows } =
+    alvo === 'logo'
+      ? await pool.query('UPDATE lojas SET logo_url = $2, atualizado_em = now() WHERE id = $1 RETURNING id', [
+          ids.lojaId,
+          final,
+        ])
+      : await pool.query(
+          'UPDATE lojas_espacos SET foto_url = $3, atualizado_em = now() WHERE id = $1 AND loja_id = $2 RETURNING id',
+          [ids.espacoId, ids.lojaId, final],
+        );
+  if (!rows[0]) throw new ErroLoja(alvo === 'logo' ? 'loja não encontrada' : 'espaço não encontrado', 404);
+  return { url: final };
 }
 
 // ------------------------------------------------------------------ vitrine
@@ -604,7 +746,7 @@ async function vitrine({ cidade = null, tipo = null } = {}, agora = new Date()) 
   const { rows } = await pool.query(
     `SELECT ${ESPACO_PUBLICO}, l.slug AS loja_slug, l.nome AS loja_nome
        FROM lojas_espacos e JOIN lojas l ON l.id = e.loja_id
-      WHERE e.status = 'publicado' AND ${visivelSql('l', '$1')}
+      WHERE e.status = 'publicado' AND e.bloqueado_admin_em IS NULL AND ${visivelSql('l', '$1')}
         AND ($2::text IS NULL OR lower(e.cidade) = lower($2))
         AND ($3::text IS NULL OR e.tipo = $3)
       ORDER BY e.cidade, l.nome, e.ordem, e.id
@@ -622,7 +764,8 @@ async function lojaPublica(slugLoja, agora = new Date()) {
   const loja = rows[0];
   if (!loja) return null;
   const { rows: espacos } = await pool.query(
-    `SELECT ${ESPACO_PUBLICO} FROM lojas_espacos e WHERE e.loja_id = $1 AND e.status = 'publicado' ORDER BY e.ordem, e.id`,
+    `SELECT ${ESPACO_PUBLICO} FROM lojas_espacos e
+      WHERE e.loja_id = $1 AND e.status = 'publicado' AND e.bloqueado_admin_em IS NULL ORDER BY e.ordem, e.id`,
     [loja.id],
   );
   const { id: _id, ...publica } = loja;
@@ -640,7 +783,7 @@ async function registrarContato(slugLoja, dados, agora = new Date()) {
   let espacoId = null;
   if (dados.espaco) {
     const { rows: e } = await pool.query(
-      "SELECT id FROM lojas_espacos WHERE loja_id = $1 AND slug = $2 AND status = 'publicado'",
+      "SELECT id FROM lojas_espacos WHERE loja_id = $1 AND slug = $2 AND status = 'publicado' AND bloqueado_admin_em IS NULL",
       [lojaId, String(dados.espaco).toLowerCase()],
     );
     if (!e[0]) throw new ErroLoja('espaço não encontrado', 404);
@@ -664,7 +807,7 @@ async function registrarContato(slugLoja, dados, agora = new Date()) {
 
 async function contatosDaLoja(lojaId) {
   const { rows } = await pool.query(
-    `SELECT c.id, c.nome, c.email, c.telefone, c.mensagem, c.periodo_desejado, c.lido_em, c.criado_em,
+    `SELECT c.id, c.nome, c.email, c.telefone, c.mensagem, c.periodo_desejado, c.lido_em, c.respondido_em, c.criado_em,
             e.slug AS espaco_slug, e.nome AS espaco_nome
        FROM lojas_contatos c LEFT JOIN lojas_espacos e ON e.id = c.espaco_id
       WHERE c.loja_id = $1 ORDER BY c.criado_em DESC, c.id DESC`,
@@ -682,7 +825,50 @@ async function marcarContatoLido(lojaId, contatoId) {
   return rows[0];
 }
 
+// Respondido também é lido.
+async function marcarContatoRespondido(lojaId, contatoId) {
+  const { rows } = await pool.query(
+    `UPDATE lojas_contatos SET lido_em = COALESCE(lido_em, now()), respondido_em = COALESCE(respondido_em, now())
+      WHERE id = $1 AND loja_id = $2 RETURNING id, lido_em, respondido_em`,
+    [contatoId, lojaId],
+  );
+  if (!rows[0]) throw new ErroLoja('contato não encontrado', 404);
+  return rows[0];
+}
+
+// ------------------------------------------------------------------ retenção
+// LGPD (docs/inventario-de-dados.md): o contato recebido pela vitrine é dado
+// de quem escreveu e fica 12 meses — depois sai, lido ou não. Expurgo de
+// hora em hora, no mesmo arranjo das filas da Mostraí (webhook-inbox, outbox).
+const RETENCAO_CONTATOS_MESES = 12;
+
+async function expurgarContatosAntigos() {
+  const { rowCount } = await pool.query(
+    `DELETE FROM lojas_contatos WHERE criado_em < now() - make_interval(months => $1)`,
+    [RETENCAO_CONTATOS_MESES],
+  );
+  return rowCount;
+}
+
+let timerRetencao = null;
+function iniciarRetencao() {
+  const rodar = () =>
+    expurgarContatosAntigos().catch((err) => console.error('expurgo dos contatos da vitrine:', err.message));
+  rodar();
+  timerRetencao = setInterval(rodar, 60 * 60 * 1000);
+  timerRetencao.unref();
+}
+
 module.exports = {
+  RETENCAO_CONTATOS_MESES,
+  historico,
+  buscarContas,
+  moderarEspaco,
+  espacosParaModeracao,
+  gravarImagem,
+  marcarContatoRespondido,
+  expurgarContatosAntigos,
+  iniciarRetencao,
   ErroLoja,
   TIPOS_ESPACO,
   fimDoContrato,

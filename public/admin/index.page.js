@@ -803,6 +803,19 @@ const MODULOS = [
       { id: 'relatorios', nome: 'Relatórios', render: (el, resto) => window.renderTrimundiRelatorios(el, resto) },
     ],
   },
+  // Marketplace de Lojas (migrations 123/124): oculto até o servidor dizer que
+  // está ligado (MARKETPLACE_ATIVO=1 — ver mostrarApp e admin/lojas.js). O
+  // código das telas mora em admin/lojas.js.
+  {
+    id: 'lojas',
+    nome: 'Lojas',
+    oculto: true,
+    abas: [
+      { id: 'lojas', nome: 'Lojas', render: (el, resto) => window.renderLojasLista(el, resto) },
+      { id: 'planos', nome: 'Planos de loja', render: (el) => window.renderLojasPlanos(el) },
+      { id: 'moderacao', nome: 'Moderação', render: (el) => window.renderLojasModeracao(el) },
+    ],
+  },
   { id: 'midiamostrai', nome: 'Mídia Mostraí', destaque: true, render: renderMidiaMostrai },
 ];
 
@@ -812,6 +825,9 @@ const buscarModulo = (id) => MODULOS.find((m) => m.id === id);
 // 23/09/2026: "abra uma pra ver a ficha" e parecidos saíram — o admin não
 // precisa ser ensinado a clicar).
 const SUBTITULOS = {
+  'lojas/lojas': 'Lojas do Marketplace: contrato com a Mostraí, pagamentos, espaços e pedidos de orçamento.',
+  'lojas/planos': 'Planos de loja (Mensal e Anual+). O contrato copia o plano: mudar aqui não muda contrato assinado.',
+  'lojas/moderacao': 'Espaços de todas as lojas. Bloquear tira da vitrine até você liberar.',
   visaogeral: 'O que precisa de você agora, o resultado do mês e a fotografia da rede.',
   criativos: 'Anúncios enviados pelas contas, esperando aprovação antes de entrar no ar.',
   candidaturas: 'Pedidos de novos pontos feitos pelo painel. Aprovado vira ponto na hora.',
@@ -1180,6 +1196,20 @@ async function mostrarApp(resumoPreCarregado) {
   document.getElementById('gate').hidden = true;
   document.getElementById('app').hidden = false;
   montarNav();
+  // Marketplace de Lojas: o item "Lojas" entra no menu só se o servidor diz
+  // que está ligado. Não segura a abertura do Admin (falha = continua oculto).
+  window.marketplaceNoMenu?.().then((ligado) => {
+    const modulo = buscarModulo('lojas');
+    if (!ligado || !modulo?.oculto) return;
+    modulo.oculto = false;
+    montarNav();
+    pintarContadores();
+    document.querySelectorAll('.nav-item').forEach((b) => {
+      const ativo = b.dataset.modulo === ABA_ATUAL.modulo;
+      b.classList.toggle('active', ativo);
+      if (ativo) b.setAttribute('aria-current', 'page');
+    });
+  });
   if (resumoPreCarregado) {
     RESUMO = resumoPreCarregado;
     pintarContadores();

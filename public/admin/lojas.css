@@ -1,0 +1,15 @@
+/* Admin → Lojas (Marketplace de Lojas). O resto vem do index.css (tabela,
+   ficha, modal, barra de página). */
+.lojas-ficha { max-width: 960px; }
+.lojas-titulo { margin: 24px 0 10px; font-size: 1rem; }
+.lojas-botoes { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+.lojas-kv { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 0; }
+.lojas-kv div { min-width: 160px; }
+.lojas-kv dt { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
+.lojas-kv dd { margin: 2px 0 0; font-weight: 600; }
+.lojas-tabela { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.lojas-tabela th, .lojas-tabela td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.lojas-tabela th { font-size: .78rem; color: var(--text-dim); font-weight: 600; }
+.lojas-eventos { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: .9rem; }
+.lojas-contas { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 4px; max-height: 220px; overflow: auto; }
+.lojas-contas .btn-linha { width: 100%; text-align: left; }

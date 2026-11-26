@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/img/favicon-16.png" sizes="16x16" type="image/png">
+  <link rel="icon" href="/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="icon" href="/img/favicon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <title>{{TITULO}} · Marketplace Mostraí</title>
+  <meta name="description" content="{{DESCRICAO}}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Mostraí">
+  <meta property="og:title" content="{{TITULO}}">
+  <meta property="og:description" content="{{DESCRICAO}}">
+  <meta property="og:url" content="https://mostrai.sancocore.com.br/loja/{{SLUG}}">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/vitrine/vitrine.css">
+  <link rel="canonical" href="https://mostrai.sancocore.com.br/loja/{{SLUG}}">
+  <meta name="theme-color" content="#ff7a1a">
+  <link rel="manifest" href="/site.webmanifest">
+</head>
+<body data-layout="publico" data-loja="{{SLUG}}">
+
+  <main class="pagina-loja">
+    <section class="tight loja-topo">
+      <div class="wrap">
+        <a class="loja-voltar" href="/marketplace">← Todos os espaços do Marketplace</a>
+        <div class="loja-cabecalho" id="lojaCabecalho">
+          <div class="loja-logo" id="lojaLogo" aria-hidden="true"></div>
+          <div>
+            <p class="eyebrow loja-eyebrow" id="lojaCidade"></p>
+            <h1 class="u-fs-220" id="lojaNome">{{TITULO}}</h1>
+            <p class="lead u-m-0" id="lojaDescricao"></p>
+            <p class="loja-contatos" id="lojaContatos"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tight vitrine-secao">
+      <div class="wrap">
+        <h2 class="loja-subtitulo">Espaços disponíveis</h2>
+        <div id="espacos" class="pontos-grid vitrine-grid"><p class="empty-state">Carregando os espaços...</p></div>
+      </div>
+    </section>
+
+    <section class="tight vitrine-secao" id="secaoContato">
+      <div class="wrap">
+        <div class="loja-contato-grid">
+          <div>
+            <h2 class="loja-subtitulo">Peça um orçamento</h2>
+            <p class="u-dim">Conte qual espaço e o período que você quer. A loja responde no e-mail ou telefone que você informar. Não há pagamento por aqui: preço, datas e forma de pagamento você combina direto com ela.</p>
+          </div>
+          <form class="card u-m-0 u-mw-livre" id="formContato" novalidate>
+            <div class="field-row">
+              <div class="u-col">
+                <label for="nome">Seu nome</label>
+                <input id="nome" name="nome" autocomplete="name" maxlength="120" required>
+              </div>
+              <div class="u-col">
+                <label for="telefone">WhatsApp <span class="u-fw-400">*opcional</span></label>
+                <input id="telefone" name="telefone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="(16) 99999-9999">
+              </div>
+            </div>
+            <div>
+              <label for="email">E-mail</label>
+              <input id="email" name="email" type="email" autocomplete="email" maxlength="200" required>
+            </div>
+            <div class="field-row">
+              <div class="u-col">
+                <label for="espaco">Espaço</label>
+                <select id="espaco" name="espaco"><option value="">Ainda não sei / vários</option></select>
+              </div>
+              <div class="u-col">
+                <label for="periodo">Período desejado <span class="u-fw-400">*opcional</span></label>
+                <input id="periodo" name="periodo_desejado" maxlength="120" placeholder="Ex.: 2 semanas em março">
+              </div>
+            </div>
+            <div>
+              <label for="mensagem">Mensagem</label>
+              <textarea id="mensagem" name="mensagem" rows="5" maxlength="2000" required></textarea>
+            </div>
+            <button class="btn primary block" type="submit">Enviar pedido de orçamento</button>
+            <p class="form-msg" id="msg" role="status" aria-live="polite"></p>
+            <p class="u-dim u-fs-78 u-m-0">Seus dados vão só para esta loja e para a Mostraí, e são apagados em até 12 meses. <a href="/politica-de-privacidade.html">Privacidade</a>.</p>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/config.js"></script>
+  <script src="/layout.js"></script>
+  <script src="/vitrine/vitrine-comum.js"></script>
+  <script src="/vitrine/loja.page.js"></script>
+</body>
+</html>
