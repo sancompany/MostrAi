@@ -1,9 +1,29 @@
 # Current Handoff
 
 ## Updated
+2026-11-26 — **Marketplace: telas e governança do Modo Vitrine**, branch
+`claude/beautiful-faraday-cjq1nt-marketplace-telas` (sobre a `main` com o
+PR #166 já incorporado), PR em rascunho, sem merge nem deploy.
+`MARKETPLACE_ATIVO` segue AUSENTE em produção (desligado). Migration 124 (só
+colunas novas em `lojas_espacos`/`lojas_contatos`). Entregue: trava de
+moderação do Admin (`POST /admin/lojas/:id/espacos/:espaco/moderacao`,
+substitui a antiga `/status`), retenção de 12 meses dos contatos (expurgo de
+hora em hora em `src/server.js`), upload de logo/foto, Admin → Lojas
+(`public/admin/lojas.js`), painel da dona (`/anunciante/minha-loja`),
+`/marketplace` e `/loja/<slug>` (`public/vitrine/`, `src/lojas/paginas/`).
+Não desfazer sem contexto:
+- espaço bloqueado não volta a `publicado` nem por SQL (CHECK da 124);
+  liberar NÃO republica — quem publica é a dona;
+- logo/foto só por upload (URL livre no JSON foi tirada de propósito: a
+  CSP só mostra imagem do Storage da Mostraí);
+- cor da loja via CSSOM (`VITRINE.aplicarCor`), nunca `style=` (CSP).
+- Para rodar a suíte local: `NODE_ENV=test` (com o `.env` de
+  desenvolvimento o `node --test` não encerra — igual na `main`).
+
 2026-11-26 — **Marketplace de Lojas — Etapa 3** (decisão do dono), branch
-`claude/beautiful-faraday-cjq1nt-marketplace-lojas`, PR em rascunho, sem
-merge nem deploy. Migration 123 (só tabelas novas: `planos_loja`, `lojas`,
+`claude/beautiful-faraday-cjq1nt-marketplace-lojas`, PR #166 — incorporado à
+`main` (squash `3de1893`) com autorização do dono, deploy feito com
+`MARKETPLACE_ATIVO` desligado. Migration 123 (só tabelas novas: `planos_loja`, `lojas`,
 `assinaturas_loja`, `assinaturas_loja_pagamentos`, `lojas_espacos`,
 `lojas_contatos`, `lojas_eventos`), módulo `src/lojas/`, rotas desligadas sem
 `MARKETPLACE_ATIVO=1`. Porta de entrada: `docs/marketplace/README.md`.

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/img/favicon-16.png" sizes="16x16" type="image/png">
+  <link rel="icon" href="/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="icon" href="/img/favicon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <title>Marketplace de espaços de publicidade · Mostraí</title>
+  <meta name="description" content="Telas, painéis de LED, totens e outdoors à venda direto com quem tem o espaço. Escolha, peça orçamento e a loja responde.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Mostraí">
+  <meta property="og:title" content="Marketplace de espaços de publicidade · Mostraí">
+  <meta property="og:description" content="Telas, painéis de LED, totens e outdoors à venda direto com quem tem o espaço.">
+  <meta property="og:url" content="https://mostrai.sancocore.com.br/marketplace">
+  <meta property="og:image" content="https://mostrai.sancocore.com.br/img/logo-mostrai-full.png">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/vitrine/vitrine.css">
+  <link rel="canonical" href="https://mostrai.sancocore.com.br/marketplace">
+  <meta name="theme-color" content="#ff7a1a">
+  <link rel="manifest" href="/site.webmanifest">
+</head>
+<body data-layout="publico">
+
+  <main>
+    <section class="tight u-ta-c">
+      <div class="wrap">
+        <p class="eyebrow">Marketplace</p>
+        <h1 class="u-fs-220">Espaços de publicidade, direto com quem tem</h1>
+        <p class="lead u-m-0 u-centro">Telas, painéis de LED, totens e outdoors de empresas da região. Escolha o espaço, peça um orçamento e a loja responde por e-mail ou telefone.</p>
+      </div>
+    </section>
+
+    <section class="tight vitrine-secao">
+      <div class="wrap">
+        <form class="vitrine-filtros" id="filtros" aria-label="Filtrar espaços">
+          <div>
+            <label for="filtroCidade">Cidade</label>
+            <select id="filtroCidade" name="cidade"><option value="">Todas as cidades</option></select>
+          </div>
+          <div>
+            <label for="filtroTipo">Tipo de espaço</label>
+            <select id="filtroTipo" name="tipo"><option value="">Todos os tipos</option></select>
+          </div>
+        </form>
+        <p class="vitrine-contagem u-dim" id="contagem" aria-live="polite"></p>
+        <div id="espacos" class="pontos-grid vitrine-grid"><p class="empty-state">Carregando os espaços...</p></div>
+        <p class="vitrine-aviso u-dim">O Marketplace mostra os espaços e encaminha o seu pedido de orçamento. Preço, datas e pagamento você combina direto com a loja.</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="/config.js"></script>
+  <script src="/layout.js"></script>
+  <script src="/vitrine/vitrine-comum.js"></script>
+  <script src="/vitrine/marketplace.page.js"></script>
+</body>
+</html>

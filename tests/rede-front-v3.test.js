@@ -574,7 +574,14 @@ test('c4. horário personalizado (com feriados e madrugada), "todo o período" =
 // d) Compromisso na conta anfitriã (hospedagem)
 // ===========================================================================
 test('d1. busca de conta: por parte do nome, sem conta própria nem excluída, homônimos pela cidade', async () => {
-  const marca = randomUUID().slice(0, 8);
+  // Só letras: com 3+ dígitos no termo a busca também procura no CPF/CNPJ
+  // (compromissos.buscarContas), e o hex do UUID casava os dígitos do
+  // documento aleatório de conta de OUTRO arquivo em paralelo — uma conta a
+  // mais no resultado (CI do PR #167, 26/11/2026).
+  const marca = randomUUID()
+    .replace(/[^a-f]/g, '')
+    .padEnd(8, 'x')
+    .slice(0, 8);
   const matao = await novaConta({ nome: `Padaria Central ${marca}`, cidade: 'Matão' });
   const araraquara = await novaConta({ nome: `Padaria Central ${marca}`, cidade: 'Araraquara' });
   const excluida = await novaConta({ nome: `Padaria Central ${marca} velha` });

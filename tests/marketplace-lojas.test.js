@@ -2,6 +2,9 @@ require('express-async-errors');
 const test = require('node:test');
 const assert = require('node:assert');
 const { randomUUID } = require('node:crypto');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const express = require('express');
 const session = require('express-session');
 const pool = require('../src/db/pool');
@@ -365,20 +368,52 @@ async function subirApp() {
     });
     return { status: r.status, corpo: await r.json().catch(() => null) };
   };
-  return { chamar, fechar: () => new Promise((r) => server.close(r)) };
+  // Página HTML: status, texto e cabeçalhos.
+  const pagina = async (caminho, cabecalhos = {}) => {
+    const r = await fetch(`${base}${caminho}`, { headers: cabecalhos });
+    return { status: r.status, html: await r.text(), cache: r.headers.get('cache-control') };
+  };
+  // Upload multipart (campo `arquivo`), como o navegador manda.
+  const enviar = async (caminho, buffer, nome, cabecalhos = {}) => {
+    const form = new FormData();
+    form.append('arquivo', new Blob([buffer]), nome);
+    const r = await fetch(`${base}${caminho}`, { method: 'POST', headers: cabecalhos, body: form });
+    return { status: r.status, corpo: await r.json().catch(() => null) };
+  };
+  return { chamar, pagina, enviar, fechar: () => new Promise((r) => server.close(r)) };
 }
 
 test('rotas: sem MARKETPLACE_ATIVO=1 tudo responde 404', async () => {
   delete process.env.MARKETPLACE_ATIVO;
   const app = await subirApp();
   try {
-    for (const caminho of ['/admin/lojas', '/admin/lojas/planos', '/conta/loja', '/marketplace/api/espacos']) {
+    for (const caminho of [
+      '/admin/lojas',
+      '/admin/lojas/planos',
+      '/admin/lojas/espacos',
+      '/conta/loja',
+      '/conta/loja/contatos',
+      '/marketplace/api/espacos',
+      '/marketplace/api/lojas/qualquer',
+    ]) {
       assert.strictEqual(
         (await app.chamar('GET', caminho, null, { 'x-admin': '1', 'x-conta': '1' })).status,
         404,
         caminho,
       );
     }
+    // Páginas também somem: quem responde é o 404 do site.
+    for (const caminho of ['/marketplace', '/loja/qualquer', '/anunciante/minha-loja']) {
+      assert.strictEqual((await app.pagina(caminho, { 'x-conta': '1' })).status, 404, caminho);
+    }
+    // Escrita idem — nem a validação roda.
+    assert.strictEqual((await app.chamar('POST', '/marketplace/api/lojas/qualquer/contato', {})).status, 404);
+    assert.strictEqual(
+      (await app.chamar('POST', '/admin/lojas/1/espacos/1/moderacao', { acao: 'bloquear' }, { 'x-admin': '1' })).status,
+      404,
+    );
+    // O Admin só pergunta se mostra o item "Lojas" no menu.
+    assert.deepStrictEqual((await app.chamar('GET', '/admin/marketplace/estado')).corpo, { ativo: false });
   } finally {
     await app.fechar();
   }
@@ -433,16 +468,17 @@ test('rotas ligadas: Admin cria e ativa, dona edita só a vitrine dela, público
       daDona,
     );
     assert.strictEqual(espaco.status, 201, JSON.stringify(espaco.corpo));
-    // A dona não mexe no cadastro conferido (documento, nome) — só na vitrine.
+    // Loja ativa: a dona edita o perfil (nome, descrição), mas o cadastro
+    // conferido (documento) só muda pelo Admin.
     const edit = await app.chamar(
       'PATCH',
       '/conta/loja',
-      { documento: '99999999999', nome: 'Outro', descricao: 'Telas no centro' },
+      { documento: '99999999999', nome: 'Painéis da Rota Centro', descricao: 'Telas no centro' },
       daDona,
     );
     assert.strictEqual(edit.status, 200);
     assert.strictEqual(edit.corpo.documento, '12345678000199');
-    assert.strictEqual(edit.corpo.nome, 'Painéis da Rota');
+    assert.strictEqual(edit.corpo.nome, 'Painéis da Rota Centro');
     assert.strictEqual(edit.corpo.descricao, 'Telas no centro');
     const ficha = await app.chamar('GET', '/conta/loja', null, daDona);
     assert.strictEqual(ficha.corpo.situacao, 'na_vitrine');
@@ -469,19 +505,341 @@ test('rotas ligadas: Admin cria e ativa, dona edita só a vitrine dela, público
       200,
     );
 
-    // Moderação do Admin: pausa o espaço e ele sai da vitrine.
+    // Moderação do Admin: bloqueia o espaço e ele sai da vitrine.
     const mod = await app.chamar(
       'POST',
-      `/admin/lojas/${lojaId}/espacos/${espaco.corpo.id}/status`,
-      { status: 'pausado' },
+      `/admin/lojas/${lojaId}/espacos/${espaco.corpo.id}/moderacao`,
+      { acao: 'bloquear', motivo: 'Foto de outro lugar' },
       admin,
     );
-    assert.strictEqual(mod.status, 200);
+    assert.strictEqual(mod.status, 200, JSON.stringify(mod.corpo));
+    assert.strictEqual(mod.corpo.status, 'pausado');
     assert.deepStrictEqual((await app.chamar('GET', `/marketplace/api/lojas/${slug}`)).corpo.espacos, []);
+    // Sem motivo, o bloqueio é recusado.
+    assert.strictEqual(
+      (
+        await app.chamar(
+          'POST',
+          `/admin/lojas/${lojaId}/espacos/${espaco.corpo.id}/moderacao`,
+          { acao: 'bloquear' },
+          admin,
+        )
+      ).status,
+      400,
+    );
+    // A dona não republica o espaço bloqueado pela rota.
+    const republicar = await app.chamar(
+      'PATCH',
+      `/conta/loja/espacos/${espaco.corpo.id}`,
+      { status: 'publicado' },
+      daDona,
+    );
+    assert.strictEqual(republicar.status, 409);
+    assert.match(republicar.corpo.erro, /só o Admin libera/);
+    // A fila de moderação mostra o bloqueio.
+    const fila = await app.chamar('GET', '/admin/lojas/espacos', null, admin);
+    const naFila = fila.corpo.find((e) => e.id === espaco.corpo.id);
+    assert.strictEqual(naFila.bloqueado_motivo, 'Foto de outro lugar');
     assert.strictEqual((await app.chamar('GET', '/marketplace/api/lojas/nao-existe')).status, 404);
     assert.strictEqual((await app.chamar('GET', '/marketplace/api/espacos?tipo=invalido')).status, 400);
   } finally {
     await app.fechar();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// MODERAÇÃO (migration 124): o bloqueio do Admin tira o espaço da vitrine e
+// trava a republicação pela dona — no repositório, na rota (acima) e no
+// próprio banco. Liberar só destrava; quem publica de novo é a dona.
+const ESPACO_LED = { slug: 'led-1', nome: 'LED 1', tipo: 'painel_led', cidade: 'Matão', uf: 'SP' };
+
+test('moderação: bloqueio do Admin trava a republicação pela dona, no repositório e no banco', async () => {
+  const hoje = hojeComercial();
+  const { loja } = await lojaAtiva({ inicio: hoje });
+  const dona = { operador: `conta:${loja.conta_id}`, operadorAccess: null };
+  const espaco = await lojas.criarEspaco(loja.id, { ...ESPACO_LED, status: 'publicado' }, dona);
+  const naLoja = async () => (await lojas.lojaPublica(loja.slug)).espacos.some((e) => e.slug === 'led-1');
+  const naVitrineGeral = async () => (await lojas.vitrine({})).some((e) => e.loja_slug === loja.slug);
+  assert.ok(await naLoja());
+  assert.ok(await naVitrineGeral());
+
+  // Motivo obrigatório; ação desconhecida recusada; liberar sem bloqueio é 404.
+  await assert.rejects(lojas.moderarEspaco(loja.id, espaco.id, { acao: 'bloquear', motivo: ' ' }, ADMIN), /motivo/);
+  await assert.rejects(lojas.moderarEspaco(loja.id, espaco.id, { acao: 'apagar' }, ADMIN), /bloquear ou liberar/);
+  await assert.rejects(lojas.moderarEspaco(loja.id, espaco.id, { acao: 'liberar' }, ADMIN), (e) => e.status === 404);
+  // Espaço de outra loja: 404, nada muda.
+  const outra = await lojaAtiva({ inicio: hoje });
+  await assert.rejects(
+    lojas.moderarEspaco(outra.loja.id, espaco.id, { acao: 'bloquear', motivo: 'errado' }, ADMIN),
+    (e) => e.status === 404,
+  );
+  assert.ok(await naLoja());
+
+  const bloqueado = await lojas.moderarEspaco(
+    loja.id,
+    espaco.id,
+    { acao: 'bloquear', motivo: 'Endereço não confere' },
+    ADMIN,
+  );
+  assert.strictEqual(bloqueado.status, 'pausado');
+  assert.ok(bloqueado.bloqueado_admin_em);
+  assert.strictEqual(bloqueado.bloqueado_motivo, 'Endereço não confere');
+  assert.strictEqual(await naLoja(), false);
+  assert.strictEqual(await naVitrineGeral(), false);
+  // Nem contato sobre ele.
+  await assert.rejects(
+    lojas.registrarContato(loja.slug, { nome: 'Cliente', email: 'c@example.com', mensagem: 'oi', espaco: 'led-1' }),
+    (e) => e.status === 404,
+  );
+
+  // A dona não republica; o resto ela edita, e o espaço continua pausado.
+  await assert.rejects(
+    lojas.atualizarEspaco(loja.id, espaco.id, { status: 'publicado' }, dona),
+    (e) => e.status === 409 && /só o Admin libera/.test(e.message),
+  );
+  const editado = await lojas.atualizarEspaco(loja.id, espaco.id, { descricao: 'Foto nova em breve' }, dona);
+  assert.strictEqual(editado.status, 'pausado');
+  assert.ok(editado.bloqueado_admin_em);
+  // O banco recusa mesmo por fora do código (CHECK da migration 124).
+  await assert.rejects(
+    pool.query("UPDATE lojas_espacos SET status = 'publicado' WHERE id = $1", [espaco.id]),
+    (e) => e.code === '23514',
+  );
+  await assert.rejects(
+    pool.query('UPDATE lojas_espacos SET bloqueado_motivo = NULL WHERE id = $1', [espaco.id]),
+    (e) => e.code === '23514',
+  );
+
+  // Liberar: destrava, mas não publica sozinho.
+  const liberado = await lojas.moderarEspaco(loja.id, espaco.id, { acao: 'liberar' }, ADMIN);
+  assert.strictEqual(liberado.status, 'pausado');
+  assert.strictEqual(liberado.bloqueado_admin_em, null);
+  assert.strictEqual(liberado.bloqueado_motivo, null);
+  assert.strictEqual(await naLoja(), false);
+  await lojas.atualizarEspaco(loja.id, espaco.id, { status: 'publicado' }, dona);
+  assert.ok(await naLoja());
+
+  // Bloquear um arquivado não o ressuscita como pausado.
+  const arquivado = await lojas.criarEspaco(loja.id, { ...ESPACO_LED, slug: 'led-2' }, dona);
+  await lojas.atualizarEspaco(loja.id, arquivado.id, { status: 'arquivado' }, dona);
+  const b2 = await lojas.moderarEspaco(loja.id, arquivado.id, { acao: 'bloquear', motivo: 'Duplicado' }, ADMIN);
+  assert.strictEqual(b2.status, 'arquivado');
+
+  // Tudo no histórico da loja, com autor e motivo.
+  const { rows } = await pool.query(
+    "SELECT acao, detalhe, autor FROM lojas_eventos WHERE loja_id = $1 AND acao IN ('espaco_bloqueado', 'espaco_liberado') ORDER BY id",
+    [loja.id],
+  );
+  assert.deepStrictEqual(
+    rows.map((r) => r.acao),
+    ['espaco_bloqueado', 'espaco_liberado', 'espaco_bloqueado'],
+  );
+  assert.strictEqual(rows[0].detalhe.motivo, 'Endereço não confere');
+  assert.strictEqual(rows[0].detalhe.espaco_id, espaco.id);
+  const hist = await lojas.historico(loja.id);
+  assert.ok(hist.eventos.some((e) => e.acao === 'espaco_liberado'));
+  assert.strictEqual(hist.assinaturas.length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// RETENÇÃO (LGPD, docs/inventario-de-dados.md): contato da vitrine fica 12
+// meses e sai, lido ou não.
+test('retenção: contato com mais de 12 meses sai no expurgo, o recente fica', async () => {
+  assert.strictEqual(lojas.RETENCAO_CONTATOS_MESES, 12);
+  const { loja } = await lojaAtiva({ inicio: hojeComercial() });
+  const contato = (nome) => lojas.registrarContato(loja.slug, { nome, email: 'c@example.com', mensagem: 'Orçamento' });
+  const velho = await contato('Antigo');
+  const quase = await contato('Quase um ano');
+  const novo = await contato('Recente');
+  await lojas.marcarContatoRespondido(loja.id, velho.id);
+  await pool.query("UPDATE lojas_contatos SET criado_em = now() - interval '13 months' WHERE id = $1", [velho.id]);
+  await pool.query("UPDATE lojas_contatos SET criado_em = now() - interval '11 months' WHERE id = $1", [quase.id]);
+  assert.ok((await lojas.expurgarContatosAntigos()) >= 1);
+  assert.deepStrictEqual(
+    (await lojas.contatosDaLoja(loja.id)).map((c) => c.id).sort((a, b) => a - b),
+    [quase.id, novo.id].sort((a, b) => a - b),
+  );
+  // Rodar de novo não apaga mais nada desta loja.
+  await lojas.expurgarContatosAntigos();
+  assert.strictEqual((await lojas.contatosDaLoja(loja.id)).length, 2);
+});
+
+test('contatos: respondido também conta como lido; contato de outra loja é 404', async () => {
+  const { loja } = await lojaAtiva({ inicio: hojeComercial() });
+  const outra = await lojaAtiva({ inicio: hojeComercial() });
+  const c = await lojas.registrarContato(loja.slug, { nome: 'Cliente', email: 'c@example.com', mensagem: 'Oi' });
+  const r = await lojas.marcarContatoRespondido(loja.id, c.id);
+  assert.ok(r.lido_em);
+  assert.ok(r.respondido_em);
+  await assert.rejects(lojas.marcarContatoRespondido(outra.loja.id, c.id), (e) => e.status === 404);
+  await assert.rejects(lojas.marcarContatoLido(outra.loja.id, c.id), (e) => e.status === 404);
+});
+
+// ---------------------------------------------------------------------------
+// CADASTRO: a dona preenche razão social e documento enquanto a loja está em
+// rascunho; depois de o Admin ativar, só o Admin muda.
+test('cadastro: dona preenche razão social e documento só em rascunho; depois, só o Admin', async () => {
+  const conta = await novaConta();
+  const loja = await lojas.criarLoja({ conta_id: conta.id, slug: `cad-${sufixo()}`, nome: 'Cadastro' }, ADMIN);
+  const dona = { operador: `conta:${conta.id}`, operadorAccess: null };
+  const r = await lojas.atualizarLoja(
+    loja.id,
+    { razao_social: 'Cadastro Painéis Ltda', documento: '12.345.678/0001-99' },
+    dona,
+    { soVitrine: true },
+  );
+  assert.strictEqual(r.razao_social, 'Cadastro Painéis Ltda');
+  assert.strictEqual(r.documento, '12345678000199');
+  await lojas.mudarStatus(loja.id, 'ativa', null, ADMIN);
+  const depois = await lojas.atualizarLoja(
+    loja.id,
+    { razao_social: 'Outra Ltda', documento: '98765432000100', nome: 'Cadastro Novo' },
+    dona,
+    { soVitrine: true },
+  );
+  assert.strictEqual(depois.razao_social, 'Cadastro Painéis Ltda');
+  assert.strictEqual(depois.documento, '12345678000199');
+  assert.strictEqual(depois.nome, 'Cadastro Novo');
+  await assert.rejects(
+    lojas.atualizarLoja(loja.id, { documento: '98765432000100' }, dona, { soVitrine: true }),
+    /nada para alterar/,
+  );
+  const adm = await lojas.atualizarLoja(loja.id, { documento: '98765432000100' }, ADMIN);
+  assert.strictEqual(adm.documento, '98765432000100');
+  // Logo e foto não entram por URL livre — só pelo upload.
+  const comUrl = await lojas.atualizarLoja(
+    loja.id,
+    { logo_url: 'https://exemplo.invalid/x.png', descricao: 'd' },
+    dona,
+    { soVitrine: true },
+  );
+  assert.strictEqual(comUrl.logo_url, null);
+});
+
+test('Admin: busca de contas para virar loja ignora quem já tem loja e trata curinga como texto', async () => {
+  const livre = await novaConta();
+  const comLoja = await novaConta();
+  await lojas.criarLoja({ conta_id: comLoja.id, slug: `bc-${sufixo()}`, nome: 'Já Tem' }, ADMIN);
+  assert.deepStrictEqual(
+    (await lojas.buscarContas(livre.contato_email)).map((c) => c.id),
+    [livre.id],
+  );
+  assert.deepStrictEqual(await lojas.buscarContas(comLoja.contato_email), []);
+  assert.ok((await lojas.buscarContas(String(livre.id))).some((c) => c.id === livre.id));
+  assert.deepStrictEqual(await lojas.buscarContas('%%%'), []);
+  await assert.rejects(lojas.buscarContas('a'), /busca/);
+});
+
+// ---------------------------------------------------------------------------
+// PÁGINAS (ligadas): HTML sem script, estilo nem handler inline (a CSP do
+// site proíbe), título escapado e /loja/<slug> só enquanto a loja está na
+// vitrine.
+test('páginas ligadas: vitrine, página da loja e painel da dona, sem nada inline e com texto escapado', async () => {
+  process.env.MARKETPLACE_ATIVO = '1';
+  const app = await subirApp();
+  try {
+    assert.deepStrictEqual((await app.chamar('GET', '/admin/marketplace/estado')).corpo, { ativo: true });
+    const conta = await novaConta();
+    const loja = await lojas.criarLoja(
+      {
+        conta_id: conta.id,
+        slug: `pag-${sufixo()}`,
+        nome: 'Telas <b>&</b> "Cia"',
+        cidade: 'Matão',
+        uf: 'SP',
+        descricao: '<script>alert(1)</script> Painéis no centro',
+      },
+      ADMIN,
+    );
+    // Rascunho: fora da vitrine, a página não existe.
+    assert.strictEqual((await app.pagina(`/loja/${loja.slug}`)).status, 404);
+    await lojas.mudarStatus(loja.id, 'ativa', null, ADMIN);
+    await lojas.criarAssinatura(loja.id, { plano_loja_id: (await novoPlano()).id, inicio: hojeComercial() }, ADMIN);
+
+    const p = await app.pagina(`/loja/${loja.slug}`);
+    assert.strictEqual(p.status, 200);
+    assert.strictEqual(p.cache, 'no-store');
+    assert.ok(p.html.includes('<title>Telas &lt;b&gt;&amp;&lt;/b&gt; &quot;Cia&quot; — Matão/SP · Marketplace'));
+    assert.ok(p.html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
+    assert.ok(!p.html.includes('<script>alert'));
+    assert.ok(!p.html.includes('{{'));
+    assert.ok(p.html.includes(`data-loja="${loja.slug}"`));
+    // Endereço em maiúsculas leva à mesma loja.
+    assert.strictEqual((await app.pagina(`/loja/${loja.slug.toUpperCase()}`)).status, 200);
+
+    for (const caminho of ['/marketplace', `/loja/${loja.slug}`, '/anunciante/minha-loja']) {
+      const r = await app.pagina(caminho);
+      assert.strictEqual(r.status, 200, caminho);
+      assert.ok(!/<style/i.test(r.html), `${caminho}: <style>`);
+      assert.ok(!/\sstyle\s*=/i.test(r.html), `${caminho}: style=`);
+      assert.ok(!/<script(?![^>]*\ssrc=)[^>]*>/i.test(r.html), `${caminho}: script inline`);
+      assert.ok(!/\son[a-z]+\s*=/i.test(r.html), `${caminho}: handler inline`);
+    }
+
+    // Suspensa: some de novo.
+    await lojas.mudarStatus(loja.id, 'suspensa', 'teste de página', ADMIN);
+    assert.strictEqual((await app.pagina(`/loja/${loja.slug}`)).status, 404);
+    assert.strictEqual((await app.pagina('/loja/nao-existe-mesmo')).status, 404);
+  } finally {
+    await app.fechar();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// IMAGENS: logo e foto só pelo upload, tipo pelos bytes, cada dona na sua
+// loja. STORAGE_CAPTURA desvia o arquivo para uma pasta local (sem Storage).
+test('imagens: upload de logo e foto conferido pelos bytes, e só na própria loja', async () => {
+  process.env.MARKETPLACE_ATIVO = '1';
+  const pasta = fs.mkdtempSync(path.join(os.tmpdir(), 'mkt-storage-'));
+  const capturaAntes = process.env.STORAGE_CAPTURA;
+  process.env.STORAGE_CAPTURA = pasta;
+  const app = await subirApp();
+  try {
+    const hoje = hojeComercial();
+    const { conta, loja } = await lojaAtiva({ inicio: hoje });
+    const daDona = { 'x-conta': String(conta.id) };
+    const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32)]);
+
+    assert.strictEqual((await app.enviar('/conta/loja/logo', PNG, 'logo.png')).status, 401);
+    const logo = await app.enviar('/conta/loja/logo', PNG, 'logo.png', daDona);
+    assert.strictEqual(logo.status, 200, JSON.stringify(logo.corpo));
+    assert.match(logo.corpo.url, new RegExp(`^/e2e-storage/loja-${loja.id}-logo\\.png\\?v=\\d+$`));
+    assert.ok(fs.existsSync(path.join(pasta, `loja-${loja.id}-logo.png`)));
+    assert.strictEqual((await lojas.ficha(loja.id)).logo_url, logo.corpo.url);
+
+    // HTML com nome de imagem: recusado pelos bytes. Sem arquivo: 400.
+    const falso = await app.enviar(
+      '/conta/loja/logo',
+      Buffer.from('<html><script>alert(1)</script></html>'),
+      'x.png',
+      daDona,
+    );
+    assert.strictEqual(falso.status, 400);
+    assert.strictEqual((await app.chamar('POST', '/conta/loja/logo', null, daDona)).status, 400);
+
+    // Foto do espaço da própria loja.
+    const espaco = await lojas.criarEspaco(loja.id, ESPACO_LED, ADMIN);
+    const foto = await app.enviar(`/conta/loja/espacos/${espaco.id}/foto`, PNG, 'f.png', daDona);
+    assert.strictEqual(foto.status, 200, JSON.stringify(foto.corpo));
+    assert.match(foto.corpo.url, new RegExp(`^/e2e-storage/loja-${loja.id}-espaco-${espaco.id}\\.png\\?v=\\d+$`));
+
+    // Espaço de OUTRA loja: 404, e nenhum arquivo é gravado.
+    const outra = await lojaAtiva({ inicio: hoje });
+    const daOutra = await lojas.criarEspaco(outra.loja.id, ESPACO_LED, ADMIN);
+    const alheio = await app.enviar(`/conta/loja/espacos/${daOutra.id}/foto`, PNG, 'f.png', daDona);
+    assert.strictEqual(alheio.status, 404);
+    assert.ok(!fs.existsSync(path.join(pasta, `loja-${loja.id}-espaco-${daOutra.id}.png`)));
+    const { rows } = await pool.query('SELECT foto_url FROM lojas_espacos WHERE id = $1', [daOutra.id]);
+    assert.strictEqual(rows[0].foto_url, null);
+
+    // O Admin sobe a logo de qualquer loja.
+    const pelaMostrai = await app.enviar(`/admin/lojas/${outra.loja.id}/logo`, PNG, 'l.png', { 'x-admin': '1' });
+    assert.strictEqual(pelaMostrai.status, 200, JSON.stringify(pelaMostrai.corpo));
+  } finally {
+    await app.fechar();
+    if (capturaAntes === undefined) delete process.env.STORAGE_CAPTURA;
+    else process.env.STORAGE_CAPTURA = capturaAntes;
+    fs.rmSync(pasta, { recursive: true, force: true });
   }
 });
 

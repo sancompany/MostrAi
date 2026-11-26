@@ -1,0 +1,118 @@
+/* Marketplace de Lojas — vitrine (/marketplace, /loja/<slug>) e painel da
+   loja (/anunciante/minha-loja). Só o que o style.css ainda não tem: os
+   cards de espaço reaproveitam .pontos-grid/.ponto-card, os formulários o
+   .card/.field-row e os selos o .badge. A cor da loja chega como --loja-cor
+   (definida por JS, pela CSSOM — a CSP do site não aceita style= inline). */
+
+:root { --loja-cor: var(--brand); --loja-sobre: var(--sobre-brand); }
+
+/* ---------- vitrine ---------- */
+.vitrine-secao { padding-top: 0; }
+.vitrine-filtros {
+  display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;
+  margin: 0 0 14px; padding: 14px 16px;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.vitrine-filtros > div { flex: 1 1 200px; min-width: 0; }
+.vitrine-filtros label { display: block; font-size: .85rem; color: var(--text-dim); margin-bottom: 5px; }
+.vitrine-filtros select {
+  width: 100%; min-height: 44px; padding: 10px 12px; font: inherit;
+  border: 1px solid var(--border); border-radius: var(--radius-campo); background: #fff; color: var(--text);
+}
+.vitrine-contagem { margin: 0 0 12px; font-size: .9rem; min-height: 1.2em; }
+.vitrine-aviso { font-size: .85rem; margin: 22px 0 0; text-align: center; }
+.vitrine-grid { justify-content: start; }
+@media (max-width: 599px) {
+  .vitrine-grid { grid-template-columns: 1fr; }
+}
+
+.espaco-card { display: flex; flex-direction: column; gap: 6px; }
+.espaco-card h4 { margin: 4px 0 0; }
+.espaco-card p { margin: 0; }
+.espaco-descricao {
+  font-size: .9rem;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.espaco-detalhes { display: flex; gap: 10px; flex-wrap: wrap; font-size: .85rem; color: var(--text-dim); }
+.espaco-detalhes:empty { display: none; }
+.espaco-preco { font-size: 1rem; }
+.espaco-loja { font-size: .88rem; color: var(--text-dim); }
+.espaco-acoes { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: auto; padding-top: 6px; }
+.espaco-acoes .mapa-link { margin-right: auto; }
+
+/* ---------- página da loja ---------- */
+.loja-topo { border-top: 4px solid var(--loja-cor); }
+.loja-voltar { display: inline-block; font-size: .9rem; margin-bottom: 18px; }
+.loja-cabecalho { display: flex; gap: 20px; align-items: flex-start; }
+.loja-eyebrow { color: var(--loja-cor); }
+.loja-logo {
+  flex: none; width: 88px; height: 88px; border-radius: var(--radius);
+  border: 2px solid var(--loja-cor); background: var(--card);
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.loja-logo img { width: 100%; height: 100%; object-fit: contain; }
+.loja-logo span { font-size: 2rem; font-weight: 800; color: var(--loja-cor); }
+.loja-contatos { margin: 10px 0 0; font-size: .95rem; }
+.loja-contatos:empty { display: none; }
+.loja-subtitulo { font-size: 1.3rem; margin: 0 0 14px; }
+.loja-contato-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 28px; align-items: start; }
+.pagina-loja .btn.primary { background: var(--loja-cor); color: var(--loja-sobre); }
+.pagina-loja .btn.primary:hover { background: var(--loja-cor); filter: brightness(.92); }
+@media (max-width: 767px) {
+  .loja-cabecalho { flex-direction: column; gap: 12px; }
+  .loja-logo { width: 72px; height: 72px; }
+  .loja-contato-grid { grid-template-columns: 1fr; gap: 14px; }
+}
+
+/* ---------- painel da loja ---------- */
+.minha-loja-topo { padding: 28px 0 8px; }
+.minha-loja-grid { display: grid; gap: 22px; }
+/* Situação do contrato: card claro com a borda da cor do estado (o fundo
+   escuro do herói do painel apagava o título colorido). */
+.loja-situacao {
+  background: var(--card); border: 1px solid var(--border); border-left: 5px solid var(--border);
+  border-radius: var(--radius); padding: 18px 22px;
+}
+.loja-situacao-ok { border-left-color: var(--ok); }
+.loja-situacao-pendente { border-left-color: var(--brand); }
+.loja-situacao-err { border-left-color: var(--err); }
+.loja-situacao .section-eyebrow { margin: 0; word-break: break-word; }
+.loja-situacao h1 { font-size: clamp(1.35rem, 4vw, 1.8rem); margin: 4px 0 6px; color: var(--text); }
+.loja-situacao p { margin: 0 0 6px; }
+.loja-contrato { display: flex; gap: 24px; flex-wrap: wrap; margin: 12px 0 0; }
+.loja-contrato div { min-width: 140px; }
+.loja-contrato dt { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
+.loja-contrato dd { margin: 2px 0 0; font-weight: 600; }
+
+.espaco-selos { display: flex; gap: 6px; flex-wrap: wrap; }
+.espaco-bloqueio { font-size: .85rem; color: var(--err); }
+
+.lista-contatos { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.contato-item { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+.contato-item.contato-novo { border-left: 4px solid var(--brand); }
+.contato-topo { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.contato-topo .u-dim { margin-left: auto; font-size: .85rem; }
+.contato-mensagem { margin: 8px 0; white-space: pre-line; }
+.contato-canais { margin: 0; font-size: .9rem; }
+
+.loja-logo-editor { display: flex; gap: 16px; align-items: center; margin-bottom: 14px; }
+.loja-cadastro { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin: 6px 0 14px; }
+.loja-cadastro legend { font-size: .85rem; color: var(--text-dim); padding: 0 6px; }
+.card input[type="color"] { min-height: 44px; padding: 4px; }
+
+/* Diálogo do espaço: o mesmo arranjo do modal do Admin e do dlgPerfil. */
+.dlg-espaco { border: none; border-radius: var(--radius); padding: 0; width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+.dlg-espaco::backdrop { background: rgba(15, 23, 42, .55); }
+.dlg-espaco-caixa { display: flex; flex-direction: column; max-height: calc(100vh - 32px); }
+.dlg-espaco-topo { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.dlg-espaco-topo h3 { margin: 0; }
+.dlg-espaco-corpo { padding: 16px 20px; overflow: auto; display: grid; gap: 12px; }
+.dlg-espaco-corpo label { font-size: .85rem; color: var(--text-dim); display: block; margin-bottom: 5px; }
+.dlg-espaco-corpo input, .dlg-espaco-corpo select, .dlg-espaco-corpo textarea {
+  width: 100%; padding: 10px 12px; font: inherit; border: 1px solid var(--border); border-radius: var(--radius-campo);
+}
+.dlg-espaco-rodape { display: flex; gap: 10px; justify-content: flex-end; padding: 14px 20px; border-top: 1px solid var(--border); }
+.dlg-espaco .modal-x { background: none; border: none; font-size: 1.6rem; line-height: 1; cursor: pointer; color: var(--text-dim); }
+@media (max-width: 767px) {
+  .dlg-espaco-corpo input, .dlg-espaco-corpo select, .dlg-espaco-corpo textarea { font-size: 16px; }
+}

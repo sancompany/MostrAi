@@ -70,14 +70,13 @@ const fimHaUmaHora = (id) =>
 // Comprovante precisa de uma tela real (ponto_id e dispositivo_id são NOT
 // NULL). Sem tela no banco a checagem era pulada em silêncio (revisão Codex
 // do PR #89, 28/09/2026) — agora cria ponto + tela de teste e apaga no fim.
+// SEMPRE a própria: pegar "a primeira tela do banco" pegava, no banco limpo
+// do CI, a tela de OUTRO arquivo que roda em paralelo e se apaga no fim
+// (como a de tests/marketplace-lojas.test.js) — a mídia nova falhava por FK antes do
+// `try`, o servidor do teste ficava aberto e o processo nunca encerrava
+// (CI do PR #167, 26/11/2026). Mesma lição de tests/banco-horas.test.js.
 let tela;
-let fixtureCriada = false;
 test.before(async () => {
-  const { rows } = await pool.query('SELECT id, ponto_id FROM dispositivos ORDER BY id LIMIT 1');
-  if (rows[0]) {
-    tela = rows[0];
-    return;
-  }
   const { rows: pontos } = await pool.query(
     `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato)
      VALUES ('Ponto histórico (teste)', 'Rua Dois, 2', 'Matão', 'SP', '15990000', 'outro', 'R', '1') RETURNING id`,
@@ -87,7 +86,6 @@ test.before(async () => {
     [pontos[0].id],
   );
   tela = telas[0];
-  fixtureCriada = true;
 });
 
 const criadas = [];
@@ -97,7 +95,7 @@ test.after(async () => {
     await pool.query('DELETE FROM midias_proprias WHERE id = $1', [midia.id]);
     await pool.query('DELETE FROM criativos WHERE id = $1', [criativoId]);
   }
-  if (fixtureCriada) {
+  if (tela) {
     await pool.query('DELETE FROM dispositivos WHERE id = $1', [tela.id]);
     await pool.query('DELETE FROM pontos WHERE id = $1', [tela.ponto_id]);
   }
@@ -105,9 +103,9 @@ test.after(async () => {
 });
 
 test('transições: retirada do ar não volta; excluída não muda; pausar só de ativa', async () => {
-  const app = await subirApp();
   const a = await novaMidia('Hist A');
   criadas.push(a);
+  const app = await subirApp();
   try {
     const id = a.midia.id;
     let r = await app.chamar('POST', `/admin/midias-proprias/${id}/retomar`);
@@ -135,9 +133,9 @@ test('transições: retirada do ar não volta; excluída não muda; pausar só d
 // PERSISTIDA — com o período vencido ela ainda é 'ativa', e Pausar era
 // aceito, tirando a mídia do histórico e oferecendo "Retomar" depois.
 test('período vencido: não pausa (409), a persistida continua ativa e a derivada é encerrada', async () => {
-  const app = await subirApp();
   const a = await novaMidia('Hist vencida');
   criadas.push(a);
+  const app = await subirApp();
   try {
     const id = a.midia.id;
     await fimHaUmaHora(id);
@@ -156,9 +154,9 @@ test('período vencido: não pausa (409), a persistida continua ativa e a deriva
 });
 
 test('período vencido: pausada não retoma (409) e cai no histórico como encerrada', async () => {
-  const app = await subirApp();
   const a = await novaMidia('Hist pausada vencida');
   criadas.push(a);
+  const app = await subirApp();
   try {
     const id = a.midia.id;
     let r = await app.chamar('POST', `/admin/midias-proprias/${id}/pausar`);
@@ -180,9 +178,9 @@ test('período vencido: pausada não retoma (409) e cai no histórico como encer
 // 'encerrada'. Agora período, frequência e cobertura ficam travados; só o
 // nome muda (o card nem mostra Editar).
 test('período vencido: Editar não estende o período nem mexe na frequência (409); só o nome muda', async () => {
-  const app = await subirApp();
   const a = await novaMidia('Hist vencida editada');
   criadas.push(a);
+  const app = await subirApp();
   try {
     const id = a.midia.id;
     await fimHaUmaHora(id);
@@ -203,9 +201,9 @@ test('período vencido: Editar não estende o período nem mexe na frequência (
 });
 
 test('excluir: exclusão lógica — some da playlist e das listas de trabalho, comprovante fica, sem volta', async () => {
-  const app = await subirApp();
   const a = await novaMidia('Hist B');
   criadas.push(a);
+  const app = await subirApp();
   try {
     const id = a.midia.id;
     // Comprovante de exibição de antes da exclusão.
@@ -263,9 +261,9 @@ test('excluir: exclusão lógica — some da playlist e das listas de trabalho, 
 // 'reprovado' (não 'retirado': esse tem "Colocar no ar" na ficha), e a fila
 // não mexe mais nele.
 test('excluir com criativo pendente: sai da fila como reprovado e a fila não o aprova nem substitui', async () => {
-  const app = await subirApp();
   const a = await novaMidia('Hist pendente', { aprovado: false });
   criadas.push(a);
+  const app = await subirApp();
   try {
     const { criativoId } = a;
     assert.strictEqual((await criativosRepo.buscarPorId(criativoId)).status, 'pendente');

@@ -85,6 +85,7 @@
       `<a href="${href}" id="${id}" class="modo-aba"${ehAqui(href) ? ' aria-current="page"' : ''}>${texto}</a>`;
     return `
       ${aba('/anunciante/painel.html', 'navDashboard', 'Painel')}
+      <a href="/anunciante/minha-loja" id="navLoja" class="modo-aba"${ehAqui('/anunciante/minha-loja') ? ' aria-current="page"' : ''} hidden>Minha loja</a>
       <a href="/planos.html" id="navPlanos"${ehAqui('/planos.html') ? ' aria-current="page"' : ''}>Planos</a>
       <div class="sino-wrap">
         <button type="button" class="sino-btn" id="btnSino" aria-label="Atualizações" aria-haspopup="true" aria-expanded="false">
@@ -115,6 +116,10 @@
     // O Painel serve toda conta desde a Fatia 6 (dono de ponto que não
     // anuncia também mora nele): a aba nunca fica "bloqueada".
     marcar('navDashboard', papeis.length > 0);
+    // Marketplace de Lojas: a aba só existe para a conta com o papel 'loja'
+    // (dado pelo Admin ao criar a loja). Sem o papel, nem aparece.
+    const loja = document.getElementById('navLoja');
+    if (loja) loja.hidden = !papeis.includes('loja');
   };
 
   const NAVS = { publico: navPublico, conta: navConta, minimo: navMinimo };
@@ -343,6 +348,7 @@
       };
       document.querySelector('header.site nav.main').innerHTML = `
         ${aba('/anunciante/painel.html', 'anunciante', 'Painel')}
+        ${papeis.includes('loja') ? '<a href="/anunciante/minha-loja" class="modo-aba">Minha loja</a>' : ''}
         <a href="/planos.html"${ehAqui('/planos.html') ? ' aria-current="page"' : ''}>Planos</a>
         <a class="avatar-btn" href="${casa}" aria-label="Meu perfil">
           ${conta.foto_url ? `<img src="${esc(conta.foto_url)}" alt="">` : `<span>${esc(inicial)}</span>`}

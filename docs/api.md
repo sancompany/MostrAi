@@ -420,46 +420,70 @@ das rotas em 24/09/2026 (**410**; dado e histórico ficam no banco).
 | GET | `/admin/banco-horas/aguardando-credito` | Histórico: a fila da válvula de 3 meses, que saiu em 25/09/2026 (banco de horas não expira — RN-53). Nenhum código põe linha nova lá; a rota só lista alguma linha antiga ainda não resolvida (em produção: nenhuma). |
 | POST | `/admin/banco-horas/:id/resolver` | Marca a linha como resolvida (`resolvido_em`) — registra QUE o admin decidiu (crédito manual, desconto na próxima fatura, ou nada), nunca decide o quê nem move dinheiro sozinho. 404 se a linha não existe ou já foi resolvida. |
 
-### Marketplace de Lojas (Etapa 3, migration 123) — desligado sem `MARKETPLACE_ATIVO=1`
+### Marketplace de Lojas (migrations 123 e 124) — desligado sem `MARKETPLACE_ATIVO=1`
 
-Sem a chave, toda rota abaixo responde 404. Nenhuma lê ou escreve tabela da
-rede própria (`planos`, `assinaturas`, `pontos`, `dispositivos`, playlist).
-Sem venda ao comprador: a vitrine capta contato. Regras e estado em
+Sem a chave, toda rota e página abaixo responde 404 (o router se retira e
+quem responde é o 404 do site). A única exceção é
+`GET /admin/marketplace/estado` → `{ativo}`, que diz ao Admin se mostra o
+item "Lojas" no menu. Nenhuma rota lê ou escreve tabela da rede própria
+(`planos`, `assinaturas`, `pontos`, `dispositivos`, playlist). Sem venda ao
+comprador: a vitrine capta contato. Regras e estado em
 `docs/marketplace/README.md`.
+
+Imagens (logo da loja, foto do espaço) só entram por upload multipart
+(campo `arquivo`, até 5 MB → 413): tipo conferido pelos bytes (JPG, PNG,
+WebP; outro → 400), gravado no Storage da Mostraí. URL de imagem livre no
+JSON é ignorada.
 
 **Admin** (sessão do admin, `requireAdminSession` em `/admin`):
 
 | Método | Rota | O que faz |
 |---|---|---|
+| GET | `/admin/marketplace/estado` | `{ativo: true\|false}` — responde mesmo com a chave desligada. |
 | GET | `/admin/lojas/planos` | Planos de loja (`planos_loja`). |
 | POST | `/admin/lojas/planos` | Cria `{id, nome, modalidade: mensal\|anual, prazo_meses, valor_mensal, taxa_percentual?, dias_tolerancia?}`. Anual exige 12+ meses. 409 se o id existe. |
 | PATCH | `/admin/lojas/planos/:id` | Altera o plano; contrato já assinado não muda (a assinatura copiou os valores). |
+| GET | `/admin/lojas/contas?busca=` | Contas que podem virar loja (por nome, e-mail ou id; 2+ caracteres): sem loja, não excluídas, fora da conta própria. Até 20. |
+| GET | `/admin/lojas/espacos` | Fila de moderação: espaços de todas as lojas (publicados primeiro), com a loja, `loja_na_vitrine` e o bloqueio. Até 500. |
 | GET | `/admin/lojas` | Lojas com a assinatura ativa e a `situacao` calculada. |
-| POST | `/admin/lojas` | Cria `{conta_id, slug, nome, razao_social?, documento?, email?, telefone?, cidade?, uf?, descricao?, logo_url?, cor_primaria?}` em `rascunho` e põe o papel `loja` na conta. 409: endereço já usado ou conta já tem loja. |
-| GET | `/admin/lojas/:id` | Ficha: loja, `situacao`, assinatura, espaços, total de contatos. |
+| POST | `/admin/lojas` | Cria `{conta_id, slug, nome, razao_social?, documento?, email?, telefone?, cidade?, uf?, descricao?, cor_primaria?}` em `rascunho` e põe o papel `loja` na conta. 409: endereço já usado ou conta já tem loja. |
+| GET | `/admin/lojas/:id` | Ficha: loja, `situacao`, assinatura, espaços, total de contatos e `historico` (todas as assinaturas com os pagamentos, últimos 100 eventos). |
 | PATCH | `/admin/lojas/:id` | Altera o cadastro. |
+| POST | `/admin/lojas/:id/logo` | Upload da logo (multipart). |
 | POST | `/admin/lojas/:id/status` | `{status, motivo?}` — rascunho→ativa/encerrada, ativa↔suspensa, →encerrada (final). Motivo obrigatório para suspender e encerrar. |
 | POST | `/admin/lojas/:id/assinaturas` | `{plano_loja_id, inicio?}` — contrato de início + prazo − 1 dia. Uma ativa por loja; a vencida vira `encerrada` na renovação; em curso → 409 (cancelar antes). |
 | POST | `/admin/lojas/assinaturas/:id/pagamentos` | `{pago_ate, valor, meio, referencia?}` — estende `pago_ate` (nunca para trás, nunca além do fim). Registro imutável. |
 | POST | `/admin/lojas/assinaturas/:id/cancelar` | `{motivo}` — tira da vitrine na hora. |
 | GET | `/admin/lojas/:id/contatos` | Contatos recebidos pela vitrine. |
-| POST | `/admin/lojas/:id/espacos/:espaco/status` | Moderação: `{status: rascunho\|publicado\|pausado\|arquivado}`. |
+| POST | `/admin/lojas/:id/espacos/:espaco/moderacao` | `{acao: bloquear, motivo}` (3–300 caracteres) tira o espaço da vitrine (`pausado`; arquivado fica arquivado) e trava a republicação pela dona. `{acao: liberar}` só destrava — o espaço segue pausado até a dona publicar. 404: espaço de outra loja, ou liberar sem bloqueio. Evento `espaco_bloqueado`/`espaco_liberado` no histórico. |
 
 **Dona da loja** (sessão da conta; só a própria loja — nenhum id vem da requisição): 401 sem sessão, 404 se a conta não tem loja.
 
 | Método | Rota | O que faz |
 |---|---|---|
 | GET | `/conta/loja` | A ficha da própria loja, com a `situacao`. |
-| PATCH | `/conta/loja` | Edita só a vitrine (descrição, logo, cor, contato, cidade/UF); nome, razão social e documento são do Admin. |
-| POST | `/conta/loja/espacos` | Cria espaço `{slug, nome, tipo, cidade, uf, endereco?, bairro?, latitude?+longitude?, medidas?, fluxo_estimado_mensal?, preco?+periodo_preco?, foto_url?, status?}`. Preço e período vão juntos (ou "sob consulta"). |
-| PATCH | `/conta/loja/espacos/:espaco` | Altera o espaço (inclusive `status`). |
-| GET | `/conta/loja/contatos` | Contatos recebidos. |
+| PATCH | `/conta/loja` | Edita o perfil (nome, descrição, cor, e-mail, telefone, cidade/UF). Razão social e documento só enquanto a loja está em `rascunho`; depois, só o Admin. O endereço (`slug`) não muda. |
+| POST | `/conta/loja/logo` | Upload da logo (multipart). |
+| POST | `/conta/loja/espacos` | Cria espaço `{slug, nome, tipo, cidade, uf, endereco?, bairro?, latitude?+longitude?, medidas?, fluxo_estimado_mensal?, preco?+periodo_preco?, status?}`. Preço e período vão juntos (ou "sob consulta"). |
+| PATCH | `/conta/loja/espacos/:espaco` | Altera o espaço (inclusive `status`). Espaço bloqueado pelo Admin → `status: publicado` dá 409 (o banco também recusa: CHECK `lojas_espacos_bloqueado_fora_da_vitrine`); os outros campos ela edita. |
+| POST | `/conta/loja/espacos/:espaco/foto` | Upload da foto do espaço (multipart). 404 para espaço de outra loja — nada é gravado. |
+| GET | `/conta/loja/contatos` | Contatos recebidos (com `lido_em` e `respondido_em`). |
 | POST | `/conta/loja/contatos/:contato/lido` | Marca como lido. |
+| POST | `/conta/loja/contatos/:contato/respondido` | Marca como respondido (e lido). |
 
-**Vitrine pública** (sem login; só loja `ativa` com assinatura ativa, vigente e em dia, de conta não suspensa nem excluída; só espaço `publicado`):
+**Vitrine pública** (sem login; só loja `ativa` com assinatura ativa, vigente e em dia, de conta não suspensa nem excluída; só espaço `publicado` e sem bloqueio do Admin):
 
 | Método | Rota | O que faz |
 |---|---|---|
 | GET | `/marketplace/api/espacos?cidade=&tipo=` | Espaços publicados das lojas visíveis (até 500). Sem documento, razão social, conta ou contrato. 400 com tipo inválido. |
 | GET | `/marketplace/api/lojas/:slug` | A loja e os espaços publicados dela. 404 fora da vitrine. |
-| POST | `/marketplace/api/lojas/:slug/contato` | `{nome, email, mensagem, telefone?, periodo_desejado?, espaco?}` → 201. Limitador por IP (`limiteTentativas`). 404 se a loja ou o espaço não estão na vitrine. |
+| POST | `/marketplace/api/lojas/:slug/contato` | `{nome, email, mensagem, telefone?, periodo_desejado?, espaco?}` → 201. Limitador por IP (`limiteTentativas`). 404 se a loja ou o espaço não estão na vitrine. Guardado 12 meses (expurgo de hora em hora). |
+
+**Páginas** (HTML sem build, `Cache-Control: no-store`, sem script/estilo inline):
+
+| Rota | O que é |
+|---|---|
+| `/marketplace` | Vitrine geral, filtros de cidade e tipo (`?cidade=&tipo=`). Layout `publico`. |
+| `/loja/:slug` | Página da loja: cor e logo dela, espaços, formulário de contato. Título e descrição já no HTML (escapados). 404 do site quando a loja não está na vitrine. |
+| `/anunciante/minha-loja` | Painel da dona (layout `conta`; aba "Minha loja" aparece para quem tem o papel `loja`): contrato e avisos, espaços, pedidos de orçamento, perfil. |
+| `/admin/#lojas/lojas`, `#lojas/planos`, `#lojas/moderacao` | Admin → Lojas (o item só aparece com a chave ligada). |

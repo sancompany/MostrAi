@@ -339,6 +339,10 @@ if (require.main === module) {
     // previsto sem ninguém encerrar são encerrados pelo sistema (com o
     // benefício da hospedagem), a cada 5 min.
     require('./pontos/hospedagem').iniciarJob();
+    // Marketplace de Lojas (migration 124): contato da vitrine com mais de 12
+    // meses sai, de hora em hora (LGPD). Roda com o módulo ligado ou não —
+    // sem contato nenhum, não apaga nada.
+    require('./lojas/repository').iniciarRetencao();
     // Trimundi: fila de avisos de pagamento, e-mail e pedidos vencidos — só
     // com ela ligada (esquema `trimundi` do banco da Mostraí, ADR-049).
     require('./trimundi').iniciarProcessos();
