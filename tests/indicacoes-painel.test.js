@@ -386,7 +386,12 @@ test('QR Code: decodifica o MESMO link à vista, com o cupom do ponto, e o cadas
     const url = new URL(conteudo);
     assert.strictEqual(url.origin + url.pathname, 'https://mostrai.test/anunciante/cadastro.html');
     assert.deepStrictEqual([...url.searchParams.keys()], ['ref']);
-    assert.ok(!conteudo.includes(String(p.conta.id)));
+    // O `ref` é o cupom e nada mais. O cupom tem 3 dígitos aleatórios
+    // (indicacoes/repository.js) e o id da conta no CI também tem 3: procurar
+    // o id no link inteiro falhava quando o sorteio coincidia (CI do PR #167,
+    // 26/11/2026). O id é procurado no que sobra fora do cupom.
+    assert.strictEqual(url.searchParams.get('ref'), p.codigo);
+    assert.ok(!conteudo.replace(p.codigo, '').includes(String(p.conta.id)));
 
     // Quem escaneia e se cadastra fica indicado por ESTE ponto.
     const { r } = await cadastrar(app, { indicado_por_cupom: url.searchParams.get('ref') });
