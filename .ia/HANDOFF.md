@@ -1,6 +1,27 @@
 # Current Handoff
 
 ## Updated
+2026-11-26 — **Marketplace de Lojas — Etapa 3** (decisão do dono), branch
+`claude/beautiful-faraday-cjq1nt-marketplace-lojas`, PR em rascunho, sem
+merge nem deploy. Migration 123 (só tabelas novas: `planos_loja`, `lojas`,
+`assinaturas_loja`, `assinaturas_loja_pagamentos`, `lojas_espacos`,
+`lojas_contatos`, `lojas_eventos`), módulo `src/lojas/`, rotas desligadas sem
+`MARKETPLACE_ATIVO=1`. Porta de entrada: `docs/marketplace/README.md`.
+Não desfazer sem contexto:
+- plano/assinatura de loja NUNCA em `planos`/`assinaturas` (o gerador e o
+  webhook tratariam a loja como anunciante — auditoria R3);
+- espaço da vitrine NUNCA em `pontos` (a Etapa 2, filtro `loja_id IS NULL`,
+  não foi feita e é pré-requisito do modo Completo);
+- venda ao comprador / split vetados pelo San Checkout V1.
+
+2026-11-26 — **TICK bloqueada por ordem do dono, até segundas ordens**:
+`TRIMUNDI_ATIVA=0` no serviço `mostrai` do Northflank (só essa variável
+mudou); edição 2 pausada pelo mesmo caminho do Admin, com auditoria (a 1 já
+estava encerrada). `/ticket/*` e `/tic/*` respondem 503; a Mostraí segue no
+ar. Religar: `TRIMUNDI_ATIVA=1` e republicar a edição pelo Admin. A
+`SentinelaTick` avisa por e-mail que a TICK está fora (mantida porque também
+vigia o `/health` da Mostraí).
+
 2026-11-16 — **PUBLICADO**: PRs #150–#156 incorporados à `main` (squash, na
 ordem) com autorização do dono; migrations TICK 013–019 aplicadas em
 produção pelo arranque do contêiner, uma por deploy; backup antes

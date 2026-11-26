@@ -242,6 +242,10 @@ app.use(require('./conta/modos').router);
 app.use(require('./conta/ponto-admin').router);
 app.use(require('./conta/financeiro'));
 app.use(require('./comunicados/routes'));
+// Marketplace de Lojas (Etapa 3, migration 123): Admin em /admin/lojas/*,
+// dona em /conta/loja/*, vitrine em /marketplace/api/*. Desligado sem
+// MARKETPLACE_ATIVO=1 (404). Não toca nenhuma tabela da rede própria.
+app.use(require('./lojas/routes'));
 // Trimundi (ticketeira, projeto próprio hospedado aqui — ADR-048): Admin em
 // /admin/trimundi/* (já atrás do requireAdminSession acima) e público em
 // /ticket/*. Desligada (sem TRIMUNDI_ATIVA=1), responde 503 e nada mais roda.

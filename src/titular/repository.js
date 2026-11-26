@@ -49,6 +49,9 @@ async function exportarConta(anuncianteId) {
     interessesHospedagem,
     saldoHospedagem,
     negociosDaConta,
+    lojaDaConta,
+    assinaturasDaLoja,
+    espacosDaLoja,
   ] = await Promise.all([
     q('SELECT * FROM pontos WHERE anunciante_id = $1 ORDER BY id'),
     q(`SELECT id, arquivo_original_url, arquivo_normalizado_url, thumbnail_url,
@@ -131,6 +134,16 @@ async function exportarConta(anuncianteId) {
               n.validado_em, n.criado_em
          FROM negocios n LEFT JOIN categorias k ON k.id = n.categoria_id
         WHERE n.anunciante_id = $1 ORDER BY n.id`),
+    // Marketplace de Lojas (migration 123): a loja da conta, o contrato com a
+    // Mostraí (com os pagamentos) e o catálogo. Os contatos recebidos pela
+    // vitrine são dado de quem escreveu, não da titular — ficam de fora.
+    q('SELECT * FROM lojas WHERE conta_id = $1 ORDER BY id'),
+    q(`SELECT s.*, COALESCE((SELECT json_agg(json_build_object('pago_ate', p.pago_ate, 'valor', p.valor, 'meio', p.meio,
+                                                               'referencia', p.referencia, 'registrado_em', p.registrado_em)
+                                            ORDER BY p.id)
+                               FROM assinaturas_loja_pagamentos p WHERE p.assinatura_id = s.id), '[]') AS pagamentos
+         FROM assinaturas_loja s JOIN lojas l ON l.id = s.loja_id WHERE l.conta_id = $1 ORDER BY s.id`),
+    q(`SELECT e.* FROM lojas_espacos e JOIN lojas l ON l.id = e.loja_id WHERE l.conta_id = $1 ORDER BY e.id`),
   ]);
 
   return {
@@ -164,6 +177,9 @@ async function exportarConta(anuncianteId) {
     interesses_em_hospedar: interessesHospedagem,
     saldo_de_hospedagem: saldoHospedagem,
     negocios_anunciados: negociosDaConta,
+    loja_no_marketplace: lojaDaConta,
+    assinaturas_da_loja: assinaturasDaLoja,
+    espacos_da_loja: espacosDaLoja,
   };
 }
 

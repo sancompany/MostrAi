@@ -419,3 +419,47 @@ das rotas em 24/09/2026 (**410**; dado e histórico ficam no banco).
 | GET | `/admin/banco-horas` | Diagnóstico da CAPACIDADE desde 01/10/2026 (o saldo devido ao cliente é o de `/admin/saldo-veiculacao`). Todas as competências apuradas, mais recente primeiro — `ativo` (saldo pendente), `drenado` (inclusive mês que fechou com saldo 0: trilha de auditoria) e `aguardando_credito` (histórico). Em segundos: `segundos_obrigacao`, `segundos_entregues`, `segundos_banco`, `segundos_drenados`, `apurado_em`; as colunas `exibicoes_*` são o equivalente na duração do dia da apuração. |
 | GET | `/admin/banco-horas/aguardando-credito` | Histórico: a fila da válvula de 3 meses, que saiu em 25/09/2026 (banco de horas não expira — RN-53). Nenhum código põe linha nova lá; a rota só lista alguma linha antiga ainda não resolvida (em produção: nenhuma). |
 | POST | `/admin/banco-horas/:id/resolver` | Marca a linha como resolvida (`resolvido_em`) — registra QUE o admin decidiu (crédito manual, desconto na próxima fatura, ou nada), nunca decide o quê nem move dinheiro sozinho. 404 se a linha não existe ou já foi resolvida. |
+
+### Marketplace de Lojas (Etapa 3, migration 123) — desligado sem `MARKETPLACE_ATIVO=1`
+
+Sem a chave, toda rota abaixo responde 404. Nenhuma lê ou escreve tabela da
+rede própria (`planos`, `assinaturas`, `pontos`, `dispositivos`, playlist).
+Sem venda ao comprador: a vitrine capta contato. Regras e estado em
+`docs/marketplace/README.md`.
+
+**Admin** (sessão do admin, `requireAdminSession` em `/admin`):
+
+| Método | Rota | O que faz |
+|---|---|---|
+| GET | `/admin/lojas/planos` | Planos de loja (`planos_loja`). |
+| POST | `/admin/lojas/planos` | Cria `{id, nome, modalidade: mensal\|anual, prazo_meses, valor_mensal, taxa_percentual?, dias_tolerancia?}`. Anual exige 12+ meses. 409 se o id existe. |
+| PATCH | `/admin/lojas/planos/:id` | Altera o plano; contrato já assinado não muda (a assinatura copiou os valores). |
+| GET | `/admin/lojas` | Lojas com a assinatura ativa e a `situacao` calculada. |
+| POST | `/admin/lojas` | Cria `{conta_id, slug, nome, razao_social?, documento?, email?, telefone?, cidade?, uf?, descricao?, logo_url?, cor_primaria?}` em `rascunho` e põe o papel `loja` na conta. 409: endereço já usado ou conta já tem loja. |
+| GET | `/admin/lojas/:id` | Ficha: loja, `situacao`, assinatura, espaços, total de contatos. |
+| PATCH | `/admin/lojas/:id` | Altera o cadastro. |
+| POST | `/admin/lojas/:id/status` | `{status, motivo?}` — rascunho→ativa/encerrada, ativa↔suspensa, →encerrada (final). Motivo obrigatório para suspender e encerrar. |
+| POST | `/admin/lojas/:id/assinaturas` | `{plano_loja_id, inicio?}` — contrato de início + prazo − 1 dia. Uma ativa por loja; a vencida vira `encerrada` na renovação; em curso → 409 (cancelar antes). |
+| POST | `/admin/lojas/assinaturas/:id/pagamentos` | `{pago_ate, valor, meio, referencia?}` — estende `pago_ate` (nunca para trás, nunca além do fim). Registro imutável. |
+| POST | `/admin/lojas/assinaturas/:id/cancelar` | `{motivo}` — tira da vitrine na hora. |
+| GET | `/admin/lojas/:id/contatos` | Contatos recebidos pela vitrine. |
+| POST | `/admin/lojas/:id/espacos/:espaco/status` | Moderação: `{status: rascunho\|publicado\|pausado\|arquivado}`. |
+
+**Dona da loja** (sessão da conta; só a própria loja — nenhum id vem da requisição): 401 sem sessão, 404 se a conta não tem loja.
+
+| Método | Rota | O que faz |
+|---|---|---|
+| GET | `/conta/loja` | A ficha da própria loja, com a `situacao`. |
+| PATCH | `/conta/loja` | Edita só a vitrine (descrição, logo, cor, contato, cidade/UF); nome, razão social e documento são do Admin. |
+| POST | `/conta/loja/espacos` | Cria espaço `{slug, nome, tipo, cidade, uf, endereco?, bairro?, latitude?+longitude?, medidas?, fluxo_estimado_mensal?, preco?+periodo_preco?, foto_url?, status?}`. Preço e período vão juntos (ou "sob consulta"). |
+| PATCH | `/conta/loja/espacos/:espaco` | Altera o espaço (inclusive `status`). |
+| GET | `/conta/loja/contatos` | Contatos recebidos. |
+| POST | `/conta/loja/contatos/:contato/lido` | Marca como lido. |
+
+**Vitrine pública** (sem login; só loja `ativa` com assinatura ativa, vigente e em dia, de conta não suspensa nem excluída; só espaço `publicado`):
+
+| Método | Rota | O que faz |
+|---|---|---|
+| GET | `/marketplace/api/espacos?cidade=&tipo=` | Espaços publicados das lojas visíveis (até 500). Sem documento, razão social, conta ou contrato. 400 com tipo inválido. |
+| GET | `/marketplace/api/lojas/:slug` | A loja e os espaços publicados dela. 404 fora da vitrine. |
+| POST | `/marketplace/api/lojas/:slug/contato` | `{nome, email, mensagem, telefone?, periodo_desejado?, espaco?}` → 201. Limitador por IP (`limiteTentativas`). 404 se a loja ou o espaço não estão na vitrine. |
